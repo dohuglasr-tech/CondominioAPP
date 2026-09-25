@@ -13,15 +13,23 @@ export interface ReportePagoPayload {
  * El campo `estado` queda en 'pendiente' por defecto (definido en la BD).
  */
 export async function reportarPago(payload: ReportePagoPayload): Promise<{ error: string | null }> {
+  // Obtener el ID del usuario actual para el campo 'reportado_por'
+  const { data: authData } = await supabase.auth.getUser()
+  if (!authData?.user) {
+    return { error: 'No estás autenticado.' }
+  }
+
   const { error } = await supabase
-    .from('pagos')
+    .from('pagos_reportados')
     .insert({
       apartamento_id: payload.apartamento_id,
       monto_bs: payload.monto_bs,
-      numero_referencia: payload.numero_referencia,
-      banco_origen: payload.banco_origen,
+      referencia: payload.numero_referencia, // en BD se llama referencia
+      metodo: 'transferencia_bs', // campo requerido por la base de datos
+      notas_admin: `Banco Origen: ${payload.banco_origen}`, // guardamos el banco aquí temporalmente
       comprobante_url: payload.comprobante_url ?? null,
       estado: 'pendiente',
+      reportado_por: authData.user.id, // el usuario que lo reporta
     })
 
   if (error) {
