@@ -43,10 +43,31 @@ export const ProfileSetup: React.FC = () => {
     ...EMPTY,
     condicion_habitacional: condicionInicial,
     carga_familiar: p?.carga_familiar?.toString() || '',
+    propietario_nombre: p?.propietario_nombre || '',
+    propietario_cedula: p?.propietario_cedula || '',
+    propietario_telefono: p?.propietario_telefono || '',
+    propietario_email: p?.propietario_email || '',
   })
   const [step, setStep] = useState<1 | 2 | 3>(1)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  React.useEffect(() => {
+    if (p) {
+      setForm(prev => ({
+        ...prev,
+        condicion_habitacional: p.condicion_habitacional === 'alquilado' ? 'alquilado' : (prev.condicion_habitacional || 'propio'),
+        carga_familiar: p.carga_familiar ? p.carga_familiar.toString() : prev.carga_familiar,
+        propietario_nombre: p.propietario_nombre || prev.propietario_nombre,
+        propietario_cedula: p.propietario_cedula || prev.propietario_cedula,
+        propietario_telefono: p.propietario_telefono || prev.propietario_telefono,
+        propietario_email: p.propietario_email || prev.propietario_email,
+        nombre_completo: p.nombre_completo || prev.nombre_completo,
+        cedula: p.cedula || prev.cedula,
+        telefono: p.telefono || prev.telefono,
+      }))
+    }
+  }, [p])
 
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {

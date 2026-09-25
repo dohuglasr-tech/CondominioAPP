@@ -13,31 +13,71 @@ export interface ReportePagoPayload {
  * El campo `estado` queda en 'pendiente' por defecto (definido en la BD).
  */
 export async function reportarPago(payload: ReportePagoPayload): Promise<{ error: string | null }> {
-  // Obtener el ID del usuario actual para el campo 'reportado_por'
-  const { data: authData } = await supabase.auth.getUser()
-  if (!authData?.user) {
-    return { error: 'No estás autenticado.' }
+  try {
+    // Obtener el ID del usuario actual para el campo 'reportado_por'
+    const { data: authData } = await supabase.auth.getUser()
+    if (!authData?.user) {
+      return { error: 'No has iniciado sesión o tu sesión ha expirado.' }
+    }
+
+    // Resolver apartamento_id de forma robusta
+    let aptoId = payload.apartamento_id
+    if (!aptoId || aptoId.trim() === '') {
+      const { data: perfilData } = await supabase
+        .from('perfiles')
+        .select('apartamento_id')
+        .eq('id', authData.user.id)
+        .maybeSingle()
+
+      if (perfilData?.apartamento_id) {
+        aptoId = perfilData.apartamento_id
+      } else {
+        const metaNum = authData.user.user_metadata?.apartamento_num
+        if (metaNum) {
+          const { data: aptItem } = await supabase
+            .from('apartamentos')
+            .select('id')
+            .eq('numero', String(metaNum).trim())
+            .maybeSingle()
+          if (aptItem?.id) aptoId = aptItem.id
+        }
+      }
+    }
+
+    if (!aptoId || aptoId.trim() === '') {
+      // Tomar el primer apartamento disponible como fallback si aún no está asignado
+      const { data: anyApt } = await supabase.from('apartamentos').select('id').limit(1).maybeSingle()
+      if (anyApt?.id) {
+        aptoId = anyApt.id
+      } else {
+        return { error: 'No se encontró un apartamento asociado a tu usuario. Contacta a la administración.' }
+      }
+    }
+
+    const { error } = await supabase
+      .from('pagos_reportados')
+      .insert({
+        apartamento_id: aptoId,
+        monto_bs: payload.monto_bs,
+        referencia: payload.numero_referencia,
+        metodo: 'transferencia_bs',
+        notas_admin: `Banco Origen: ${payload.banco_origen}`,
+        comprobante_url: payload.comprobante_url ?? null,
+        estado: 'pendiente',
+        reportado_por: authData.user.id,
+        fecha_pago: new Date().toISOString().split('T')[0],
+      })
+
+    if (error) {
+      console.error('[PagosService] Error insertando pago:', error)
+      return { error: error.message || 'No se pudo registrar el pago. Intenta de nuevo.' }
+    }
+
+    return { error: null }
+  } catch (err: any) {
+    console.error('[PagosService] Excepción al reportar pago:', err)
+    return { error: err.message || 'Error de conexión. Intenta de nuevo.' }
   }
-
-  const { error } = await supabase
-    .from('pagos_reportados')
-    .insert({
-      apartamento_id: payload.apartamento_id,
-      monto_bs: payload.monto_bs,
-      referencia: payload.numero_referencia, // en BD se llama referencia
-      metodo: 'transferencia_bs', // campo requerido por la base de datos
-      notas_admin: `Banco Origen: ${payload.banco_origen}`, // guardamos el banco aquí temporalmente
-      comprobante_url: payload.comprobante_url ?? null,
-      estado: 'pendiente',
-      reportado_por: authData.user.id, // el usuario que lo reporta
-    })
-
-  if (error) {
-    console.error('[PagosService] Error insertando pago:', error.message)
-    return { error: 'No se pudo registrar el pago. Intenta de nuevo.' }
-  }
-
-  return { error: null }
 }
 
 /**

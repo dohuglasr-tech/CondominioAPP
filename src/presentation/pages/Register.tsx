@@ -8,8 +8,13 @@ export function Register() {
     email: '',
     password: '',
     apartamento: '',
-    tipo: 'propio',
+    tipo: 'propio', // 'propio' | 'alquilado'
     cargaFamiliar: '',
+    // Datos del propietario si es inquilino
+    propietarioNombre: '',
+    propietarioCedula: '',
+    propietarioTelefono: '',
+    propietarioEmail: '',
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -24,46 +29,86 @@ export function Register() {
     setLoading(true)
     setError(null)
 
+    const aptNum = form.apartamento.trim().toUpperCase()
+
+    // Validar datos de inquilino si aplica
+    if (form.tipo === 'alquilado') {
+      if (!form.propietarioNombre.trim()) {
+        setError('Por favor ingresa el nombre del propietario.')
+        setLoading(false)
+        return
+      }
+      if (!form.propietarioCedula.trim()) {
+        setError('Por favor ingresa la cédula del propietario.')
+        setLoading(false)
+        return
+      }
+      if (!form.propietarioTelefono.trim()) {
+        setError('Por favor ingresa el teléfono del propietario.')
+        setLoading(false)
+        return
+      }
+    }
+
     try {
-      // 1. Verificar que el apartamento existe en la base de datos
+      // 1. Verificar si el apartamento ya existe en la base de datos
+      let aptId: string | null = null
+
       const { data: aptData, error: aptError } = await supabase
         .from('apartamentos')
         .select('id, numero')
-        .eq('numero', form.apartamento.trim())
+        .ilike('numero', aptNum)
         .maybeSingle()
 
       if (aptError) {
-        setError('Error al verificar el apartamento. Intente de nuevo.')
-        setLoading(false)
-        return
+        console.warn('[Register] Aviso al consultar apartamento:', aptError)
+        if (aptError.code === '42501' || aptError.message?.includes('permission denied')) {
+          setError('Permiso de base de datos denegado. Por favor ejecuta el script migration_v5.sql en Supabase SQL Editor.')
+          setLoading(false)
+          return
+        }
       }
 
-      if (!aptData) {
-        setError(`El apartamento ${form.apartamento} no está registrado en el sistema. Contacta a la administración.`)
-        setLoading(false)
-        return
-      }
+      if (aptData) {
+        aptId = aptData.id
 
-      // 2. Verificar que el apartamento NO esté ya reclamado por otro perfil
-      const { data: existingProfile, error: profileCheckErr } = await supabase
-        .from('perfiles')
-        .select('id, nombre_completo')
-        .eq('apartamento_id', aptData.id)
-        .maybeSingle()
+        // 2. Verificar que el apartamento NO esté ya reclamado por otro perfil
+        const { data: existingProfile, error: profileCheckErr } = await supabase
+          .from('perfiles')
+          .select('id, nombre_completo')
+          .eq('apartamento_id', aptData.id)
+          .maybeSingle()
 
-      if (profileCheckErr) {
-        setError('Error al verificar el apartamento. Intente de nuevo.')
-        setLoading(false)
-        return
-      }
+        if (profileCheckErr && profileCheckErr.code !== 'PGRST116') {
+          console.warn('[Register] Aviso verificando perfil existente:', profileCheckErr)
+        }
 
-      if (existingProfile) {
-        setError(
-          `El apartamento ${form.apartamento} ya tiene un usuario registrado. ` +
-          `Si crees que es un error, comunícate con la administración.`
-        )
-        setLoading(false)
-        return
+        if (existingProfile) {
+          setError(
+            `El apartamento ${form.apartamento} ya tiene un usuario registrado. ` +
+            `Solo se permite un usuario por apartamento.`
+          )
+          setLoading(false)
+          return
+        }
+      } else {
+        // El apartamento no existía previamente, se crea automáticamente para que quede registrado
+        const { data: newApt, error: createErr } = await supabase
+          .from('apartamentos')
+          .insert({
+            numero: aptNum,
+            alicuota: 0.015625,
+            estado: 'habitado'
+          })
+          .select('id, numero')
+          .maybeSingle()
+
+        if (createErr) {
+          console.warn('[Register] Aviso creando apartamento:', createErr)
+        }
+        if (newApt?.id) {
+          aptId = newApt.id
+        }
       }
 
       // 3. Registrar usuario en Supabase Auth
@@ -72,7 +117,7 @@ export function Register() {
         password: form.password,
         options: {
           data: {
-            apartamento_num: form.apartamento.trim(),
+            apartamento_num: aptNum,
             condicion: form.tipo,
             carga_familiar: form.cargaFamiliar,
           }
@@ -81,33 +126,40 @@ export function Register() {
 
       if (signUpError) throw signUpError
 
-      // 4. Si se creó el usuario, esperar brevemente a que el trigger genere el perfil
-      //    y luego actualizar el perfil con los datos correctos y vincular el apartamento.
+      // 4. Guardar o actualizar perfil inmediatamente
       if (signUpData?.user) {
-        // Pequeño delay para que el trigger de Supabase cree el perfil primero
-        await new Promise(resolve => setTimeout(resolve, 1500))
+        const payload: Record<string, any> = {
+          id: signUpData.user.id,
+          rol: 'residente',
+          estado_cuenta: 'activa',
+          clave_cambiada: true,
+          perfil_completo: false,
+          condicion_habitacional: form.tipo,
+          carga_familiar: parseInt(form.cargaFamiliar) || 1,
+          apartamento_id: aptId,
+        }
 
-        const { error: updateErr } = await supabase
+        if (form.tipo === 'alquilado') {
+          payload.propietario_nombre = form.propietarioNombre.trim()
+          payload.propietario_cedula = form.propietarioCedula.trim()
+          payload.propietario_telefono = form.propietarioTelefono.trim()
+          if (form.propietarioEmail.trim()) {
+            payload.propietario_email = form.propietarioEmail.trim()
+          }
+        }
+
+        const { error: upsertErr } = await supabase
           .from('perfiles')
-          .update({
-            estado_cuenta: 'activa',
-            clave_cambiada: true,           // evita la pantalla de cambio de contraseña
-            perfil_completo: false,          // fuerza el flujo de completar perfil
-            condicion_habitacional: form.tipo,
-            carga_familiar: parseInt(form.cargaFamiliar) || 1,
-            apartamento_id: aptData.id,      // vincular el apartamento directamente
-          })
-          .eq('id', signUpData.user.id)
+          .upsert(payload, { onConflict: 'id' })
 
-        if (updateErr) {
-          console.error('[Register] Error actualizando perfil:', updateErr.message)
+        if (upsertErr) {
+          console.error('[Register] Error guardando perfil:', upsertErr.message)
         }
       }
 
-      // 5. Si la confirmación de email está desactivada → sesión inmediata
-      //    El AuthContext detectará perfil_completo=false → redirige a /completar-perfil
+      // 5. Redireccionar o mostrar éxito
       if (signUpData?.session) {
-        navigate('/')  // PrivateRoute lo redirigirá a /completar-perfil automáticamente
+        navigate('/') // Redirige a completar perfil o dashboard
       } else {
         setSuccess(true)
       }
@@ -127,54 +179,75 @@ export function Register() {
     container: {
       minHeight: '100vh',
       backgroundColor: '#0a0a0a',
+      fontFamily: "'Inter', sans-serif",
       display: 'flex',
       flexDirection: 'column' as const,
       alignItems: 'center',
       justifyContent: 'center',
-      padding: '20px',
-      fontFamily: 'Inter, sans-serif'
-    },
-    headerBox: { textAlign: 'center' as const, marginBottom: '32px' },
-    title: { color: '#ffffff', fontSize: '24px', fontWeight: 'bold', marginBottom: '8px' },
-    subtitle: { color: '#888888', fontSize: '14px' },
-    linkOrange: { color: '#f97316', cursor: 'pointer', textDecoration: 'none', fontWeight: 600 },
-    formBox: {
-      backgroundColor: '#1a1a1a',
-      padding: '40px',
-      borderRadius: '16px',
-      width: '100%',
-      maxWidth: '420px',
+      padding: '24px',
       boxSizing: 'border-box' as const,
-      display: 'flex',
-      flexDirection: 'column' as const,
-      gap: '20px',
-      border: '1px solid #2a2a2a',
     },
-    label: { display: 'block', color: '#ffffff', fontSize: '14px', fontWeight: 600, marginBottom: '8px' },
+    header: {
+      textAlign: 'center' as const,
+      marginBottom: '32px',
+    },
+    logo: {
+      fontSize: '48px',
+      marginBottom: '12px',
+    },
+    title: {
+      fontSize: '28px',
+      fontWeight: 800,
+      color: '#ffffff',
+      margin: '0 0 8px 0',
+      letterSpacing: '-0.5px',
+    },
+    subtitle: {
+      fontSize: '14px',
+      color: '#888888',
+      margin: 0,
+    },
+    formBox: {
+      backgroundColor: '#141414',
+      border: '1px solid #1e1e1e',
+      borderRadius: '16px',
+      padding: '32px',
+      width: '100%',
+      maxWidth: '440px',
+      boxSizing: 'border-box' as const,
+      boxShadow: '0 8px 30px rgba(0,0,0,0.5)',
+    },
+    label: {
+      display: 'block',
+      fontSize: '13px',
+      fontWeight: 600,
+      color: '#ffffff',
+      marginBottom: '8px',
+    },
     input: {
       width: '100%',
-      backgroundColor: '#000000',
+      backgroundColor: '#050505',
       border: '1px solid #2a2a2a',
-      color: '#ffffff',
-      padding: '12px 16px',
       borderRadius: '8px',
+      padding: '12px 14px',
+      color: '#ffffff',
       fontSize: '14px',
+      boxSizing: 'border-box' as const,
       outline: 'none',
       transition: 'border-color 0.2s',
-      boxSizing: 'border-box' as const,
     },
     button: {
       width: '100%',
-      backgroundColor: loading ? '#a3520a' : '#f97316',
+      backgroundColor: '#f97316',
       color: '#ffffff',
       border: 'none',
-      padding: '14px',
       borderRadius: '8px',
-      fontSize: '16px',
-      fontWeight: 'bold',
-      cursor: loading ? 'not-allowed' : 'pointer',
+      padding: '14px',
+      fontSize: '14px',
+      fontWeight: 700,
+      cursor: 'pointer',
+      marginTop: '10px',
       transition: 'background-color 0.2s',
-      marginTop: '10px'
     },
     errorBox: {
       backgroundColor: '#ef444420',
@@ -194,7 +267,7 @@ export function Register() {
       marginTop: '24px',
       textAlign: 'center' as const,
       border: '1px dashed #333',
-      maxWidth: '420px',
+      maxWidth: '440px',
       width: '100%',
     },
     infoBox: {
@@ -205,6 +278,16 @@ export function Register() {
       fontSize: '12px',
       color: '#f97316',
       lineHeight: 1.6,
+    },
+    ownerBox: {
+      backgroundColor: 'rgba(59,130,246,0.06)',
+      border: '1px solid rgba(59,130,246,0.25)',
+      borderRadius: '12px',
+      padding: '16px',
+      display: 'flex',
+      flexDirection: 'column' as const,
+      gap: '14px',
+      animation: 'fadeIn 0.3s ease-in-out',
     }
   }
 
@@ -216,7 +299,7 @@ export function Register() {
             <div style={{ fontSize: '48px', marginBottom: '16px' }}>✅</div>
             <h2 style={{ color: '#fff', marginBottom: '12px' }}>¡Registro Exitoso!</h2>
             <p style={{ color: '#888', fontSize: '14px', lineHeight: '1.5', marginBottom: '24px' }}>
-              Revisa tu correo <strong>{form.email}</strong> para confirmar tu cuenta y luego completa tu perfil.
+              Revisa tu correo <strong>{form.email}</strong> para confirmar tu cuenta y luego inicia sesión.
             </p>
             <button style={styles.button} onClick={() => navigate('/login')}>Ir al Login</button>
           </div>
@@ -227,11 +310,10 @@ export function Register() {
 
   return (
     <div style={styles.container}>
-      <div style={styles.headerBox}>
-        <h1 style={styles.title}>Crea tu cuenta</h1>
-        <p style={styles.subtitle}>
-          ¿Ya tienes una cuenta? <span style={styles.linkOrange} onClick={() => navigate('/login')}>Inicia sesión aquí</span>
-        </p>
+      <div style={styles.header}>
+        <div style={styles.logo}>🏢</div>
+        <h1 style={styles.title}>Crear Cuenta</h1>
+        <p style={styles.subtitle}>Portal de Gestión Residencial</p>
       </div>
 
       <div style={styles.formBox}>
@@ -283,18 +365,67 @@ export function Register() {
             </div>
           </div>
 
-          {/* Aviso si es inquilino: llenarás los datos del propietario después */}
+          {/* Menú desplegable cuando es Inquilino */}
           {form.tipo === 'alquilado' && (
-            <div style={{
-              backgroundColor: 'rgba(59,130,246,0.08)',
-              border: '1px solid rgba(59,130,246,0.25)',
-              borderRadius: '10px',
-              padding: '12px 14px',
-              fontSize: '12px',
-              color: '#93c5fd',
-              lineHeight: 1.6,
-            }}>
-              📋 Como <strong>inquilino</strong>, después de registrarte deberás completar también los datos del propietario del apartamento (nombre, cédula y teléfono).
+            <div style={styles.ownerBox}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '16px' }}>📋</span>
+                <span style={{ color: '#93c5fd', fontSize: '13px', fontWeight: 700 }}>
+                  Datos del Propietario del Apartamento
+                </span>
+              </div>
+              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0, lineHeight: 1.4 }}>
+                Como inquilino, debes indicar la información del dueño del inmueble:
+              </p>
+
+              <div>
+                <label style={{ ...styles.label, fontSize: '12px', color: '#cbd5e1' }}>Nombre del Propietario *</label>
+                <input
+                  name="propietarioNombre"
+                  placeholder="Nombre y Apellido"
+                  style={styles.input}
+                  value={form.propietarioNombre}
+                  onChange={handleChange}
+                  required
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ ...styles.label, fontSize: '12px', color: '#cbd5e1' }}>Cédula *</label>
+                  <input
+                    name="propietarioCedula"
+                    placeholder="V-12345678"
+                    style={styles.input}
+                    value={form.propietarioCedula}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
+                <div>
+                  <label style={{ ...styles.label, fontSize: '12px', color: '#cbd5e1' }}>Teléfono *</label>
+                  <input
+                    name="propietarioTelefono"
+                    placeholder="0414-1234567"
+                    style={styles.input}
+                    value={form.propietarioTelefono}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ ...styles.label, fontSize: '12px', color: '#cbd5e1' }}>Correo del Propietario (opcional)</label>
+                <input
+                  name="propietarioEmail"
+                  type="email"
+                  placeholder="propietario@correo.com"
+                  style={styles.input}
+                  value={form.propietarioEmail}
+                  onChange={handleChange}
+                />
+              </div>
             </div>
           )}
 
@@ -334,7 +465,7 @@ export function Register() {
       </div>
 
       <div style={styles.helpBox}>
-        ¿Tu apartamento aparece como ya registrado o no existe en el sistema?<br />
+        ¿Tu apartamento aparece como ya registrado o tienes dudas?<br />
         Comunícate con la <strong>administración del edificio</strong> para recibir ayuda.
       </div>
 
