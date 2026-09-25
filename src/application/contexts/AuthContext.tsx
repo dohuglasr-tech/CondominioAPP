@@ -15,11 +15,13 @@ interface AuthContextType {
   signOut: () => Promise<void>
   updatePassword: (newPassword: string, email?: string) => Promise<{ error: string | null }>
   refreshPerfil: () => Promise<void>
+  refreshConfig: () => Promise<void>
   // Helpers de rol
   isAdmin: boolean
   isResidente: boolean
   isConserje: boolean
   needsPasswordChange: boolean
+  needsProfileSetup: boolean
 }
 
 const AuthContext = createContext<AuthContextType | null>(null)
@@ -65,6 +67,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const refreshPerfil = useCallback(async () => {
     if (user) await cargarPerfil(user.id)
   }, [user, cargarPerfil])
+
+  const refreshConfig = useCallback(async () => {
+    await cargarConfig()
+  }, [cargarConfig])
 
   // ── Inicializar sesión al montar ──────────────────────────────
   useEffect(() => {
@@ -169,6 +175,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Solo evaluar si ya tenemos perfil cargado (evita falso positivo durante carga)
   const needsPasswordChange = !!user && !!perfil &&
     (!perfil.clave_cambiada || perfil.estado_cuenta === 'pendiente_cambio_clave')
+  // Perfil incompleto: residente que no ha completado sus datos personales
+  const needsProfileSetup = !!user && !!perfil && isResidente &&
+    !needsPasswordChange && !(perfil as any).perfil_completo
 
   return (
     <AuthContext.Provider
@@ -182,10 +191,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         signOut,
         updatePassword,
         refreshPerfil,
+        refreshConfig,
         isAdmin,
         isResidente,
         isConserje,
         needsPasswordChange,
+        needsProfileSetup,
       }}
     >
       {children}

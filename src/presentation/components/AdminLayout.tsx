@@ -16,7 +16,10 @@ const adminNav = [
 export const AdminLayout: React.FC = () => {
   const { pathname } = useLocation()
   const navigate = useNavigate()
-  const { perfil } = useAuth()
+  const { perfil, config } = useAuth()
+
+  const edificioNombre = config?.nombre_edificio || 'Mi Edificio'
+  const edificioLogo   = config?.logo_url || null
 
   const handleLogout = () => {
     localStorage.removeItem('admin_auth')
@@ -100,14 +103,25 @@ export const AdminLayout: React.FC = () => {
       {/* MOBILE TOP BAR */}
       <div className="admin-mobile-top-bar">
         <div className="admin-mobile-top-inner">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '20px' }}>🏢</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{
+              width: '36px', height: '36px', borderRadius: '10px',
+              background: 'rgba(249,115,22,0.1)',
+              border: '1px solid rgba(249,115,22,0.2)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              overflow: 'hidden', flexShrink: 0,
+            }}>
+              {edificioLogo
+                ? <img src={edificioLogo} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                : <span style={{ fontSize: '18px' }}>🏢</span>
+              }
+            </div>
             <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <span style={{ color: '#fff', fontSize: '15px', fontWeight: 700, lineHeight: 1.2 }}>Torre 5</span>
+              <span style={{ color: '#fff', fontSize: '14px', fontWeight: 700, lineHeight: 1.2 }}>{edificioNombre}</span>
               <span style={{ color: '#f97316', fontSize: '10px', fontWeight: 600 }}>ADMINISTRADOR</span>
             </div>
           </div>
-          <button 
+          <button
             onClick={handleLogout}
             style={{ background: 'transparent', border: 'none', color: '#888', fontSize: '20px', padding: '8px' }}
           >
@@ -139,10 +153,21 @@ export const AdminLayout: React.FC = () => {
       <aside className="admin-sidebar">
         {/* Brand */}
         <div style={{ padding: '0 20px 24px', borderBottom: '1px solid #1e1e1e' }}>
-          <div style={{ fontSize: '24px', marginBottom: '4px' }}>🏢</div>
-          <h1 style={{ color: '#fff', fontSize: '15px', fontWeight: 700, margin: 0 }}>Torre 5</h1>
+          <div style={{
+            width: '48px', height: '48px', borderRadius: '14px', marginBottom: '10px',
+            background: 'rgba(249,115,22,0.08)',
+            border: '1px solid rgba(249,115,22,0.2)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            overflow: 'hidden',
+          }}>
+            {edificioLogo
+              ? <img src={edificioLogo} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              : <span style={{ fontSize: '24px' }}>🏢</span>
+            }
+          </div>
+          <h1 style={{ color: '#fff', fontSize: '15px', fontWeight: 700, margin: '0 0 6px' }}>{edificioNombre}</h1>
           <span style={{
-            display: 'inline-block', marginTop: '6px',
+            display: 'inline-block',
             backgroundColor: '#f9731620', color: '#f97316',
             fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '999px',
             border: '1px solid #f9731640'

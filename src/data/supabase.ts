@@ -55,4 +55,14 @@ export interface ConfigEdificio {
   tasa_bcv_actual: number
   tasa_bcv_actualizada: string | null
   logo_url: string | null
+  rif: string | null
+  direccion: string | null
+  telefono: string | null
+  email_contacto: string | null
+  banco: string | null
+  cuenta_bancaria: string | null
+  titular_cuenta: string | null
+  ciudad: string | null
+  updated_at: string | null
 }
+
