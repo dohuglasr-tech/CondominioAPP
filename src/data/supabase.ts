@@ -1,10 +1,10 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string || 'https://mock-dummy-url.supabase.co'
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string || 'mock-anon-key'
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Faltan variables de entorno VITE_SUPABASE_URL o VITE_SUPABASE_ANON_KEY')
+if (!import.meta.env.VITE_SUPABASE_URL) {
+  console.warn('⚠️ Advertencia: VITE_SUPABASE_URL no detectado. La DB no está conectada, se usará la data de prueba (Mock) de la UI.')
 }
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
