@@ -35,10 +35,19 @@ export const ProfileSetup: React.FC = () => {
   const edificioDireccion = c?.direccion || ''
   const edificioLogo = c?.logo_url || null
 
-  const [form, setForm] = useState<ProfileForm>(EMPTY)
+  // Pre-llenar la condición desde el perfil guardado en el registro
+  const condicionInicial: 'propio' | 'alquilado' =
+    p?.condicion_habitacional === 'alquilado' ? 'alquilado' : 'propio'
+
+  const [form, setForm] = useState<ProfileForm>({
+    ...EMPTY,
+    condicion_habitacional: condicionInicial,
+    carga_familiar: p?.carga_familiar?.toString() || '',
+  })
   const [step, setStep] = useState<1 | 2 | 3>(1)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setForm(prev => ({ ...prev, [e.target.name]: e.target.value }))

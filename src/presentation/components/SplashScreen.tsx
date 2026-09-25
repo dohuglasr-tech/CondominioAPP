@@ -65,23 +65,32 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ logoUrl, buildingNam
           animation-delay: 0.7s;
         }
         .splash-logo-glass {
+          position: relative;
           width: 110px; height: 110px;
-          border-radius: 32px;
-          background: rgba(255,255,255,0.06);
-          backdrop-filter: blur(20px) saturate(180%);
-          -webkit-backdrop-filter: blur(20px) saturate(180%);
-          border: 1px solid rgba(255,255,255,0.12);
+          border-radius: 36px;
+          background: linear-gradient(135deg, rgba(255,255,255,0.15) 0%, rgba(255,255,255,0.02) 100%);
+          backdrop-filter: blur(24px) saturate(200%);
+          -webkit-backdrop-filter: blur(24px) saturate(200%);
+          border: 1px solid rgba(255,255,255,0.25);
           box-shadow:
-            0 0 0 1px rgba(249,115,22,0.15),
-            0 8px 32px rgba(0,0,0,0.5),
-            inset 0 1px 0 rgba(255,255,255,0.15);
+            0 16px 40px rgba(0,0,0,0.6),
+            inset 0 2px 0 rgba(255,255,255,0.4),
+            inset 0 -1px 0 rgba(255,255,255,0.1),
+            0 0 0 1px rgba(249,115,22,0.2);
           display: flex; align-items: center; justify-content: center;
           overflow: hidden;
           animation: splash-pulse 2.5s ease-in-out infinite;
         }
+        .splash-logo-glass::after {
+          content: '';
+          position: absolute;
+          top: 0; left: 0; right: 0; height: 45%;
+          background: linear-gradient(180deg, rgba(255,255,255,0.3) 0%, rgba(255,255,255,0) 100%);
+          pointer-events: none;
+        }
         .splash-name {
           font-family: Inter, sans-serif;
-          font-size: 22px; font-weight: 800;
+          font-size: 24px; font-weight: 800;
           color: #ffffff; letter-spacing: -0.3px;
           text-align: center; max-width: 240px;
           text-shadow: 0 2px 12px rgba(249,115,22,0.3);
@@ -89,8 +98,8 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ logoUrl, buildingNam
         .splash-sub {
           font-family: Inter, sans-serif;
           font-size: 11px; font-weight: 600; letter-spacing: 2.5px;
-          color: rgba(249,115,22,0.7); text-transform: uppercase;
-          margin-top: -16px;
+          color: rgba(249,115,22,0.8); text-transform: uppercase;
+          margin-top: 8px;
         }
         .splash-dots { display: flex; gap: 6px; }
         .splash-dot {

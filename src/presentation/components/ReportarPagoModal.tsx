@@ -61,7 +61,9 @@ export function ReportarPagoModal({ apartamentoId, onClose, onSuccess }: Props) 
     e.preventDefault()
     if (!banco || !monto || !referencia) return
 
-    const montoNum = parseFloat(monto)
+    const montoLimpio = monto.replace(/\./g, '').replace(',', '.')
+    const montoNum = parseFloat(montoLimpio)
+    
     if (isNaN(montoNum) || montoNum <= 0) {
       setError('Ingresa un monto válido.')
       return
@@ -308,13 +310,20 @@ export function ReportarPagoModal({ apartamentoId, onClose, onSuccess }: Props) 
           <div>
             <label style={st.label}>Monto (Bs.)</label>
             <input
-              type="number"
-              min="0.01"
-              step="0.01"
-              placeholder="0.00"
+              type="text"
+              placeholder="0,00"
               style={st.input}
               value={monto}
-              onChange={(e) => setMonto(e.target.value)}
+              onChange={(e) => {
+                let val = e.target.value.replace(/[^0-9,]/g, '')
+                const parts = val.split(',')
+                if (parts.length > 2) val = parts[0] + ',' + parts.slice(1).join('')
+                
+                let [intPart, decPart] = val.split(',')
+                intPart = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+                
+                setMonto(decPart !== undefined ? `${intPart},${decPart.slice(0, 2)}` : intPart)
+              }}
               required
               onFocus={focusStyle}
               onBlur={blurStyle}
