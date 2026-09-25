@@ -1,0 +1,5 @@
+[functions.cron-tasa-bcv]
+verify_jwt = false
+
+[functions.notificacion-pago]
+verify_jwt = false
