@@ -1,10 +1,6 @@
 import React, { useState } from 'react'
 
-const REPORTES_MOCK = [
-  { id: '1', titulo: 'Bombillo fundido pasillo piso 4', categoria: 'mantenimiento', estado: 'en_progreso', descripcion: 'El bombillo frente al apartamento 42 se fundió.', apartamento: '4-B', created_at: '2026-09-22T08:30:00Z', respuesta_admin: 'El conserje lo cambiará hoy.' },
-  { id: '2', titulo: 'Fuga de agua tubería externa', categoria: 'mantenimiento', estado: 'abierto', descripcion: 'Bote de agua constante cerca de los jardines.', apartamento: '7-A', created_at: '2026-09-21T14:00:00Z', respuesta_admin: '' },
-  { id: '3', titulo: 'Ruido nocturno piso 8', categoria: 'ruido', estado: 'resuelto', descripcion: 'Fiesta hasta las 3am el viernes.', apartamento: '8-C', created_at: '2026-09-19T22:00:00Z', respuesta_admin: 'Se habló con el residente, comprometido a no repetirlo.' },
-]
+const REPORTES_MOCK: any[] = []
 
 const ESTADOS: Record<string, { label: string, color: string }> = {
   abierto: { label: 'Abierto', color: '#ef4444' },

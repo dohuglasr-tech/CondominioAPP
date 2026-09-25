@@ -1,10 +1,6 @@
 import React, { useState } from 'react'
 
-const MENSAJES_MOCK = [
-  { id: '1', remitente: 'María González', apto: '1-A', texto: 'Buenos días, ¿cuándo van a revisar el ascensor?', timestamp: '2026-09-24T09:15:00Z', esAdmin: false },
-  { id: '2', remitente: 'Admin Torre 5', apto: '', texto: 'Buen día vecinos, el técnico del ascensor vendrá el miércoles en la mañana.', timestamp: '2026-09-24T10:00:00Z', esAdmin: true },
-  { id: '3', remitente: 'Carlos Rodríguez', apto: '2-B', texto: 'Gracias por la información!', timestamp: '2026-09-24T10:05:00Z', esAdmin: false },
-]
+const MENSAJES_MOCK: any[] = []
 
 export const AdminChat: React.FC = () => {
   const [mensajes, setMensajes] = useState(MENSAJES_MOCK)
@@ -25,6 +21,12 @@ export const AdminChat: React.FC = () => {
     setAnuncio('')
     alert('Anuncio enviado a todos los residentes.')
   }
+
+  // Calculate live stats
+  const mensajesHoy = mensajes.filter(m => new Date(m.timestamp).toDateString() === new Date().toDateString()).length;
+  const anunciosDelMes = mensajes.filter(m => m.remitente === '📣 ANUNCIO OFICIAL' && new Date(m.timestamp).getMonth() === new Date().getMonth()).length;
+  const residentesActivos = new Set(mensajes.filter(m => !m.esAdmin).map(m => m.remitente)).size;
+
 
   return (
     <div style={{ padding: '32px', height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -87,7 +89,11 @@ export const AdminChat: React.FC = () => {
 
           <div style={{ backgroundColor: '#141414', border: '1px solid #1e1e1e', borderRadius: '14px', padding: '20px' }}>
             <h3 style={{ color: '#fff', fontSize: '14px', fontWeight: 700, marginBottom: '12px' }}>📊 Estadísticas</h3>
-            {[{ label: 'Mensajes hoy', value: '7' }, { label: 'Residentes activos', value: '18' }, { label: 'Anuncios del mes', value: '3' }].map((s, i) => (
+            {[
+              { label: 'Mensajes hoy', value: mensajesHoy }, 
+              { label: 'Residentes activos', value: residentesActivos }, 
+              { label: 'Anuncios del mes', value: anunciosDelMes }
+            ].map((s, i) => (
               <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: i < 2 ? '1px solid #1e1e1e' : 'none' }}>
                 <span style={{ color: '#888', fontSize: '13px' }}>{s.label}</span>
                 <span style={{ color: '#fff', fontWeight: 700 }}>{s.value}</span>

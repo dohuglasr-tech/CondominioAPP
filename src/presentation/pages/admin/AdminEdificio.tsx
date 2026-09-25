@@ -113,23 +113,47 @@ export const AdminEdificio: React.FC = () => {
         logo_url = null
       }
 
-      // Upsert into configuracion_edificio
-      const { error: dbError } = await supabase
-        .from('configuracion_edificio')
-        .update({
-          nombre_edificio: info.nombre_edificio,
-          rif: info.rif,
-          direccion: info.direccion,
-          total_apartamentos: Number(info.total_apartamentos),
-          telefono: info.telefono,
-          email_contacto: info.email_contacto,
-          banco: info.banco,
-          cuenta_bancaria: info.cuenta_bancaria,
-          titular_cuenta: info.titular_cuenta,
-          logo_url,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', (config as any)?.id)
+      let dbError;
+      
+      const updateData = {
+        nombre_edificio: info.nombre_edificio,
+        rif: info.rif,
+        direccion: info.direccion,
+        total_apartamentos: Number(info.total_apartamentos),
+        telefono: info.telefono,
+        email_contacto: info.email_contacto,
+        banco: info.banco,
+        cuenta_bancaria: info.cuenta_bancaria,
+        titular_cuenta: info.titular_cuenta,
+        logo_url,
+        updated_at: new Date().toISOString(),
+      };
+
+      if ((config as any)?.id) {
+        // Update existente
+        const { error } = await supabase
+          .from('configuracion_edificio')
+          .update(updateData)
+          .eq('id', (config as any).id)
+        dbError = error
+      } else {
+        // Buscar si existe alguna fila (por si acaso el contexto no lo tenía)
+        const { data: existing } = await supabase.from('configuracion_edificio').select('id').limit(1).single()
+        
+        if (existing?.id) {
+          const { error } = await supabase
+            .from('configuracion_edificio')
+            .update(updateData)
+            .eq('id', existing.id)
+          dbError = error
+        } else {
+          // Si no existe ninguna fila, insertamos una nueva (Upsert behavior manual)
+          const { error } = await supabase
+            .from('configuracion_edificio')
+            .insert([updateData])
+          dbError = error
+        }
+      }
 
       if (dbError) throw dbError
 

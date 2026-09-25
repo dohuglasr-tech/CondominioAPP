@@ -15,11 +15,7 @@ interface GastoForm {
 const CATEGORIAS = ['agua', 'luz', 'gas', 'espacios_comunes', 'imprevistos', 'administracion', 'conserjeria', 'servicios_externos', 'reparaciones']
 const TIPOS = ['ordinario', 'extraordinario', 'fondo_reserva']
 
-const GASTOS_MOCK = [
-  { id: '1', descripcion: 'Corpoelec Septiembre', categoria: 'luz', tipo: 'ordinario', monto_usd: 62.84, mes_aplicacion: '2026-09-01' },
-  { id: '2', descripcion: 'Hidrocapital Agosto', categoria: 'agua', tipo: 'ordinario', monto_usd: 42.99, mes_aplicacion: '2026-09-01' },
-  { id: '3', descripcion: 'Fondo de Reserva', categoria: 'espacios_comunes', tipo: 'fondo_reserva', monto_usd: 187.40, mes_aplicacion: '2026-09-01' },
-]
+const GASTOS_MOCK: any[] = []
 
 const EMPTY_FORM: GastoForm = { descripcion: '', categoria: 'luz', monto_usd: '', mes_aplicacion: new Date().toISOString().slice(0, 7), tipo: 'ordinario', notas: '' }
 

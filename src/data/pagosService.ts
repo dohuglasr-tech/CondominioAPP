@@ -48,8 +48,22 @@ export async function subirComprobante(
     .upload(path, file, { upsert: false, contentType: file.type })
 
   if (uploadError) {
-    console.error('[PagosService] Error subiendo comprobante:', uploadError.message)
-    return { url: null, error: 'No se pudo subir el comprobante.' }
+    console.warn('[PagosService] Storage no disponible, usando base64:', uploadError.message)
+    // Fallback: convertir imagen a base64 para guardar en la DB directamente
+    return new Promise(resolve => {
+      const reader = new FileReader()
+      reader.onload = ev => {
+        const base64 = ev.target?.result as string
+        // Limitamos a 500KB para evitar rows demasiado grandes
+        if (base64 && base64.length < 500000) {
+          resolve({ url: base64, error: null })
+        } else {
+          resolve({ url: null, error: 'La imagen es demasiado grande. Por favor usa una imagen menor a 500KB.' })
+        }
+      }
+      reader.onerror = () => resolve({ url: null, error: 'No se pudo leer el archivo.' })
+      reader.readAsDataURL(file)
+    })
   }
 
   const { data } = supabase.storage.from('pagos').getPublicUrl(path)

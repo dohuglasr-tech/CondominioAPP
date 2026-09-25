@@ -1,9 +1,6 @@
 import React, { useState } from 'react'
 
-const PROPUESTAS_MOCK = [
-  { id: '1', titulo: 'Pintar la fachada principal', descripcion: 'Usar el fondo de reserva para pintar la fachada.', fecha_cierre: '2026-10-15', estado: 'activa', votos: [12, 5, 1] },
-  { id: '2', titulo: 'Cambio de empresa de seguridad', descripcion: 'Se recibió oferta de empresa SecureV.', fecha_cierre: '2026-09-30', estado: 'cerrada', votos: [22, 8] },
-]
+const PROPUESTAS_MOCK: any[] = []
 
 const inputStyle: React.CSSProperties = { width: '100%', backgroundColor: '#0a0a0a', border: '1px solid #2a2a2a', color: '#fff', padding: '10px 12px', borderRadius: '8px', fontSize: '13px' }
 const labelStyle: React.CSSProperties = { display: 'block', color: '#888', fontSize: '12px', marginBottom: '6px' }

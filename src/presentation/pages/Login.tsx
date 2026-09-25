@@ -207,6 +207,22 @@ export function Login() {
       </div>
 
       <div 
+        onClick={() => window.open('/app-release.apk', '_blank')}
+        style={{
+          marginTop: '24px',
+          backgroundColor: '#1c1c1c', border: '1px solid #2a2a2a', borderRadius: '12px',
+          padding: '12px 20px', display: 'flex', alignItems: 'center', gap: '12px',
+          color: '#fff', fontSize: '14px', fontWeight: 600, cursor: 'pointer',
+          transition: 'all 0.2s', boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
+        }}
+        onMouseOver={(e) => { e.currentTarget.style.borderColor = '#10b981'; e.currentTarget.style.color = '#10b981' }}
+        onMouseOut={(e) => { e.currentTarget.style.borderColor = '#2a2a2a'; e.currentTarget.style.color = '#fff' }}
+      >
+        <span style={{ fontSize: '20px' }}>🤖</span>
+        Descargar App para Android
+      </div>
+
+      <div 
         onClick={() => navigate('/admin-login')} 
         style={{ marginTop: '24px', color: '#333', fontSize: '11px', cursor: 'pointer' }}
         onMouseOver={(e) => e.currentTarget.style.color = '#666'}

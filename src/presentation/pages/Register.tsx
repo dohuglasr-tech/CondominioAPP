@@ -62,17 +62,23 @@ export function Register() {
       if (signUpError) throw signUpError
 
       if (signUpData?.user) {
-        const { error: profileError } = await supabase.from('perfiles').update({
+        // Aseguramos que el perfil quede como incompleto para forzar el setup
+        await supabase.from('perfiles').update({
           estado_cuenta: 'activa',
-          clave_cambiada: true
+          clave_cambiada: true,
+          perfil_completo: false,
         }).eq('id', signUpData.user.id)
-        
-        if (profileError) {
-          console.error("Error actualizando perfil tras registro:", profileError)
-        }
       }
 
-      setSuccess(true)
+      // Si email confirmation está desactivado, Supabase crea la sesión automáticamente.
+      // El AuthContext detectará perfil_completo=false y redirigirá a /completar-perfil.
+      // Si aún requiere confirmación, mostramos mensaje.
+      if (signUpData?.session) {
+        // sesión activa → el AuthContext redirigirá solo
+        navigate('/')
+      } else {
+        setSuccess(true)
+      }
     } catch (err: any) {
       setError(err.message || 'Error al registrar la cuenta. Intente nuevamente.')
     } finally {

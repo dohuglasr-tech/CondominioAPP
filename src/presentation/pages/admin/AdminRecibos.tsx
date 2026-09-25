@@ -21,12 +21,7 @@ const ESTADO_CONFIG: Record<string, { label: string, color: string, icon: string
   rechazado: { label: 'Rechazado', color: '#ef4444', icon: '❌' },
 }
 
-const MOCK_PAGOS: PagoAdmin[] = [
-  { id: '1', monto_bs: 4500.50, monto_usd: 120, banco_origen: 'Banesco', numero_referencia: '12345678', estado: 'pendiente', created_at: '2026-09-20T10:00:00Z', apartamento: { numero: '12' } },
-  { id: '2', monto_bs: 3980.00, monto_usd: 106, banco_origen: 'Mercantil', numero_referencia: '87654321', estado: 'aprobado', created_at: '2026-09-18T15:30:00Z', apartamento: { numero: '7' } },
-  { id: '3', monto_bs: 4500.50, monto_usd: 120, banco_origen: 'BBVA', numero_referencia: '55512345', estado: 'pendiente', created_at: '2026-09-21T09:15:00Z', apartamento: { numero: '23' } },
-  { id: '4', monto_bs: 4200.00, monto_usd: 112, banco_origen: 'Bicentenario', numero_referencia: '99988877', estado: 'rechazado', created_at: '2026-09-17T12:00:00Z', nota_admin: 'Referencia no válida en el sistema.', apartamento: { numero: '5' } },
-]
+const MOCK_PAGOS: PagoAdmin[] = []
 
 export const AdminRecibos: React.FC = () => {
   const [pagos, setPagos] = useState<PagoAdmin[]>(MOCK_PAGOS)

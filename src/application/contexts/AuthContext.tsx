@@ -176,8 +176,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const needsPasswordChange = !!user && !!perfil &&
     (!perfil.clave_cambiada || perfil.estado_cuenta === 'pendiente_cambio_clave')
   // Perfil incompleto: residente que no ha completado sus datos personales
+  // Se activa si perfil_completo es false O null (perfiles nuevos sin el campo seteado)
   const needsProfileSetup = !!user && !!perfil && isResidente &&
-    !needsPasswordChange && !(perfil as any).perfil_completo
+    !needsPasswordChange && ((perfil as any).perfil_completo !== true)
 
   return (
     <AuthContext.Provider

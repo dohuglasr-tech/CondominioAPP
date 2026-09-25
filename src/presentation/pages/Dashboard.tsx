@@ -181,7 +181,7 @@ export function Dashboard() {
             <div style={s.avatar}>🏢</div>
             <div>
               <p style={s.aptoLabel}>{isAdmin ? 'Administración' : 'Residente'}</p>
-              <h1 style={s.aptoTitle}>{isAdmin ? 'Torre 5' : `Apto ${aptoNumero}`}</h1>
+              <h1 style={s.aptoTitle}>{isAdmin ? 'Panel Admin' : `Apto ${aptoNumero}`}</h1>
             </div>
           </div>
           <button
@@ -293,9 +293,6 @@ export function Dashboard() {
             <div style={s.actionRow}>
               <div style={{ position: 'relative' }}>
                 <div style={s.iconBox('#a855f7')} className="icon-bounce">💬</div>
-                <div style={{ position: 'absolute', top: -5, right: -5, background: '#ef4444', color: '#fff', fontSize: '10px', fontWeight: 'bold', padding: '2px 6px', borderRadius: '10px', border: '2px solid #1c1c1c' }}>
-                  3
-                </div>
               </div>
               <div style={{ flex: 1 }}>
                 <p style={{ fontSize: '15px', fontWeight: 700, color: '#fff' }}>Chat</p>

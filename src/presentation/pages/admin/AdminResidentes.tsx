@@ -25,32 +25,7 @@ interface Residente {
   reportes_abiertos: number
 }
 
-const MOCK_RESIDENTES: Residente[] = [
-  {
-    id: '1', apartamento: '1-A', estado_ocupacion: 'ocupado_propietario', meses_deuda: 0,
-    notas_internas: 'Propietario muy colaborador, siempre paga a tiempo.',
-    propietario: { nombre: 'María González', telefono: '0412-1234567', email: 'maria@email.com' },
-    historial_pagos: [
-      { fecha: '2026-09-05', mes: 'Septiembre', monto: '12.91$', estado: 'aprobado' },
-      { fecha: '2026-08-03', mes: 'Agosto', monto: '11.50$', estado: 'aprobado' }
-    ], reportes_abiertos: 0
-  },
-  {
-    id: '2', apartamento: '2-B', estado_ocupacion: 'alquilado', meses_deuda: 1,
-    notas_internas: 'El inquilino a veces se atrasa unos días, contactar al propietario si pasa del día 10.',
-    propietario: { nombre: 'Carlos Rodríguez', telefono: '0414-9876543', email: 'carlos@email.com' },
-    inquilino: { nombre: 'Pedro Sánchez', telefono: '0424-1112233', email: 'pedro@email.com' },
-    historial_pagos: [
-      { fecha: '2026-08-12', mes: 'Agosto', monto: '11.50$', estado: 'aprobado' }
-    ], reportes_abiertos: 1
-  },
-  {
-    id: '3', apartamento: '3-C', estado_ocupacion: 'desocupado', meses_deuda: 3,
-    notas_internas: 'Apartamento en venta. Propietario fuera del país, muy difícil de contactar.',
-    propietario: { nombre: 'Ana Martínez', telefono: '+34-600123456', email: 'ana@email.com' },
-    historial_pagos: [], reportes_abiertos: 0
-  }
-]
+const MOCK_RESIDENTES: Residente[] = []
 
 const inputStyle: React.CSSProperties = { width: '100%', backgroundColor: '#0a0a0a', border: '1px solid #2a2a2a', color: '#fff', padding: '10px 12px', borderRadius: '8px', fontSize: '13px' }
 const labelStyle: React.CSSProperties = { display: 'block', color: '#888', fontSize: '12px', marginBottom: '6px' }
