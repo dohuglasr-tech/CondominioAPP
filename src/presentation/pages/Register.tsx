@@ -233,12 +233,14 @@ export function Register() {
         await refreshPerfil()
       }
 
-      // 4. Si hay sesión inmediata, entrar directo al Dashboard
-      if (signUpData?.session) {
-        navigate('/')
-      } else {
-        setSuccess(true)
-      }
+      // 4. Redireccionar directamente al Login al terminar el registro
+      await supabase.auth.signOut()
+      navigate('/login', {
+        state: {
+          registered: true,
+          email: form.email.trim(),
+        },
+      })
     } catch (err: any) {
       console.error('[Register] Error general:', err)
       if (err.message?.includes('User already registered')) {

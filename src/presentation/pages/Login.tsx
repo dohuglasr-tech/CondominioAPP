@@ -1,15 +1,19 @@
 import React, { useState } from 'react'
 import { useAuth } from '../../application/contexts/AuthContext'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 
 export function Login() {
-  const [email, setEmail] = useState('')
+  const navigate = useNavigate()
+  const location = useLocation()
+  const state = location.state as { registered?: boolean; email?: string } | null
+
+  const [email, setEmail] = useState(state?.email || '')
   const [password, setPassword] = useState('')
+  const [registeredSuccess, setRegisteredSuccess] = useState(!!state?.registered)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   
   const { signIn } = useAuth()
-  const navigate = useNavigate()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -148,6 +152,22 @@ export function Login() {
       <div style={styles.card} className="animate-slide-up">
         <form onSubmit={handleSubmit}>
           
+          {registeredSuccess && (
+            <div style={{
+              backgroundColor: '#10b98118',
+              color: '#10b981',
+              border: '1px solid #10b98140',
+              padding: '12px 14px',
+              borderRadius: '8px',
+              fontSize: '13px',
+              marginBottom: '20px',
+              lineHeight: 1.5,
+              textAlign: 'center',
+            }}>
+              ✅ ¡Cuenta creada exitosamente! Ingresa tu contraseña para acceder al portal.
+            </div>
+          )}
+
           {error && (
             <div style={styles.errorBox}>
               {error}
