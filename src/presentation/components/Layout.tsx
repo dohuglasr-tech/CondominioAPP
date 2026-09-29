@@ -57,6 +57,14 @@ const SVG = {
       <line x1="12" y1="16" x2="12.01" y2="16"/>
     </svg>
   ),
+  junta: (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
+      <circle cx="9" cy="7" r="4"/>
+      <path d="M23 21v-2a4 4 0 00-3-3.87"/>
+      <path d="M16 3.13a4 4 0 010 7.75"/>
+    </svg>
+  ),
   salir: (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
       <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/>
@@ -83,6 +91,7 @@ export const Layout: React.FC = () => {
   const navItems: { label: string; desc: string; path: string; badge: number; icon: keyof typeof SVG; isNew?: boolean }[] = [
     { label: 'Inicio',        desc: 'Resumen y estado',          path: '/',           badge: 0,              icon: 'inicio' },
     { label: 'Recibos',       desc: 'Historial de pagos',        path: '/recibos',    badge: 0,              icon: 'recibos' },
+    { label: 'Junta de Condominio', desc: 'Organigrama y directiva', path: '/junta',  badge: 0,              icon: 'junta' },
     { label: 'Lista de Mora', desc: 'Transparencia comunitaria', path: '/mora',       badge: 0,              icon: 'mora' },
     { label: 'Chat',          desc: 'Avisos de la comunidad',    path: '/chat',       badge: 0,              icon: 'chat' },
     { label: 'Reportes',      desc: 'Incidencias y tickets',     path: '/reportes',   badge: 0,              icon: 'reportes' },

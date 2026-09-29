@@ -30,6 +30,7 @@ import { AdminRecibosEmitidos } from './presentation/pages/admin/AdminRecibosEmi
 import { AdminCasos } from './presentation/pages/admin/AdminCasos'
 import { AdminMora } from './presentation/pages/admin/AdminMora'
 import { ListaMoraResidente } from './presentation/pages/ListaMoraResidente'
+import { JuntaCondominioResidente } from './presentation/pages/JuntaCondominioResidente'
 import { Register } from './presentation/pages/Register'
 
 // ── Protege rutas privadas ────────────────────────────────────────
@@ -141,6 +142,7 @@ function AppShell() {
           <Route index element={<Dashboard />} />
           <Route path="gastos"     element={<GastosPanel onClose={() => {}} />} />
           <Route path="recibos"    element={<RecibosPanel onClose={() => {}} />} />
+          <Route path="junta"      element={<JuntaCondominioResidente />} />
           <Route path="mora"       element={<ListaMoraResidente />} />
           <Route path="chat"       element={<ChatPanel onClose={() => {}} />} />
           <Route path="propuestas" element={<PropuestasPanel />} />

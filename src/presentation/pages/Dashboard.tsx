@@ -565,12 +565,29 @@ export function Dashboard() {
             </div>
           </div>
 
-          {/* ── 6. ACTIVIDAD */}
-          <div style={s.card()} className="dashboard-card--actividad">
-            <p style={s.tag}>Actividad</p>
-            <p style={{ fontSize: '14px', color: '#666', marginTop: '8px', lineHeight: 1.5 }}>
-              No hay movimientos recientes.
-            </p>
+          {/* ── JUNTA DE CONDOMINIO & ORGANIGRAMA */}
+          <div
+            style={{ ...s.card(), cursor: 'pointer' }}
+            className="dashboard-card--junta card-interactive"
+            onClick={() => navigate('/junta')}
+          >
+            <div style={s.actionRow}>
+              <div style={s.iconBox('#3b82f6')} className="icon-bounce">👥</div>
+              <div style={{ flex: 1 }}>
+                <p style={{ fontSize: '15px', fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  Junta de Condominio
+                  <span style={{
+                    fontSize: '10px', fontWeight: 800,
+                    background: 'rgba(59, 130, 246, 0.2)', color: '#93c5fd',
+                    padding: '1px 6px', borderRadius: '999px', border: '1px solid rgba(59, 130, 246, 0.4)'
+                  }}>
+                    Organigrama
+                  </span>
+                </p>
+                <p style={{ fontSize: '13px', color: '#666', marginTop: '2px' }}>Directiva y contactos clave</p>
+              </div>
+              <button style={s.arrowBtn}>→</button>
+            </div>
           </div>
 
         </div>
@@ -585,9 +602,9 @@ export function Dashboard() {
           max-width: 960px;
           margin: 0 auto;
         }
-        .dashboard-card--main    { grid-column: 1 / 8; grid-row: 1 / 3; }
-        .dashboard-card--bcv     { grid-column: 8 / 13; grid-row: 1 / 2; }
-        .dashboard-card--recibos { grid-column: 8 / 13; grid-row: 2 / 3; }
+        .dashboard-card--main       { grid-column: 1 / 8; grid-row: 1 / 3; }
+        .dashboard-card--bcv        { grid-column: 8 / 13; grid-row: 1 / 2; }
+        .dashboard-card--recibos    { grid-column: 8 / 13; grid-row: 2 / 3; }
         
         .dashboard-card--gastos     { grid-column: 1 / 5;  grid-row: 3 / 4; }
         .dashboard-card--chat       { grid-column: 5 / 9;  grid-row: 3 / 4; }
@@ -595,7 +612,7 @@ export function Dashboard() {
 
         .dashboard-card--propuestas { grid-column: 1 / 5;  grid-row: 4 / 5; }
         .dashboard-card--reportes   { grid-column: 5 / 9;  grid-row: 4 / 5; }
-        .dashboard-card--actividad  { grid-column: 9 / 13; grid-row: 4 / 5; }
+        .dashboard-card--junta      { grid-column: 9 / 13; grid-row: 4 / 5; }
 
         /* ── Mobile: columna única ─────────────────────────── */
         @media (max-width: 680px) {
@@ -610,7 +627,7 @@ export function Dashboard() {
           .dashboard-card--mora,
           .dashboard-card--propuestas,
           .dashboard-card--reportes,
-          .dashboard-card--actividad {
+          .dashboard-card--junta {
             grid-column: 1;
             grid-row: auto;
           }
