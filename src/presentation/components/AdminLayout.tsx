@@ -8,6 +8,7 @@ const adminNav = [
   { label: 'Edificio', icon: '🏢', path: '/admin/edificio', desc: 'Información general' },
   { label: 'Gastos', icon: '💸', path: '/admin/gastos', desc: 'Registrar egresos del mes' },
   { label: 'Recibos', icon: '🧾', path: '/admin/recibos', desc: 'Aprobar / rechazar pagos', isRecibos: true },
+  { label: 'Generar Recibos', icon: '📋', path: '/admin/generar-recibos', desc: 'Emisión masiva del mes' },
   { label: 'Residentes', icon: '🏠', path: '/admin/residentes', desc: 'Gestión de apartamentos' },
   { label: 'Propuestas', icon: '🗳️', path: '/admin/propuestas', desc: 'Crear votaciones' },
   { label: 'Reportes', icon: '📢', path: '/admin/reportes', desc: 'Responder incidencias' },
