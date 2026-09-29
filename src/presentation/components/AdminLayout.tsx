@@ -1,12 +1,13 @@
-import React from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../application/contexts/AuthContext'
+import { supabase } from '../../data/supabase'
 
 const adminNav = [
   { label: 'Dashboard', icon: '📊', path: '/admin', desc: 'Estadísticas generales' },
   { label: 'Edificio', icon: '🏢', path: '/admin/edificio', desc: 'Información general' },
   { label: 'Gastos', icon: '💸', path: '/admin/gastos', desc: 'Registrar egresos del mes' },
-  { label: 'Recibos', icon: '🧾', path: '/admin/recibos', desc: 'Aprobar / rechazar pagos' },
+  { label: 'Recibos', icon: '🧾', path: '/admin/recibos', desc: 'Aprobar / rechazar pagos', isRecibos: true },
   { label: 'Residentes', icon: '🏠', path: '/admin/residentes', desc: 'Gestión de apartamentos' },
   { label: 'Propuestas', icon: '🗳️', path: '/admin/propuestas', desc: 'Crear votaciones' },
   { label: 'Reportes', icon: '📢', path: '/admin/reportes', desc: 'Responder incidencias' },
@@ -18,8 +19,45 @@ export const AdminLayout: React.FC = () => {
   const navigate = useNavigate()
   const { perfil, config } = useAuth()
 
+  const [pendingCount, setPendingCount] = useState<number>(0)
+
   const edificioNombre = config?.nombre_edificio || 'Mi Edificio'
   const edificioLogo   = config?.logo_url || null
+
+  const cargarPendientes = useCallback(async () => {
+    try {
+      const { count, error } = await supabase
+        .from('pagos_reportados')
+        .select('*', { count: 'exact', head: true })
+        .eq('estado', 'pendiente')
+
+      if (!error && count !== null) {
+        setPendingCount(count)
+      }
+    } catch (err) {
+      console.warn('[AdminLayout] Error consultando pendientes:', err)
+    }
+  }, [])
+
+  useEffect(() => {
+    cargarPendientes()
+
+    // ── Suscripción en Tiempo Real para Pagos ──
+    const channel = supabase
+      .channel('admin_layout_realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'pagos_reportados' },
+        () => {
+          cargarPendientes()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [cargarPendientes])
 
   const handleLogout = () => {
     localStorage.removeItem('admin_auth')
@@ -85,9 +123,19 @@ export const AdminLayout: React.FC = () => {
         .admin-bottom-btn {
           display: flex; flex-direction: column; align-items: center; justify-content: center;
           gap: 4px; background: transparent; border: none; color: #4a4a4a; cursor: pointer;
-          padding: 0 16px; min-width: 72px;
+          padding: 0 16px; min-width: 72px; position: relative;
         }
         .admin-bottom-btn.active { color: #f97316; }
+
+        @keyframes badgePulse {
+          0% { transform: scale(1); opacity: 1; }
+          50% { transform: scale(1.15); opacity: 0.9; }
+          100% { transform: scale(1); opacity: 1; }
+        }
+
+        .pulse-badge {
+          animation: badgePulse 2s infinite ease-in-out;
+        }
 
         @media (max-width: 768px) {
           .admin-sidebar { display: none; }
@@ -121,12 +169,37 @@ export const AdminLayout: React.FC = () => {
               <span style={{ color: '#f97316', fontSize: '10px', fontWeight: 600 }}>ADMINISTRADOR</span>
             </div>
           </div>
-          <button
-            onClick={handleLogout}
-            style={{ background: 'transparent', border: 'none', color: '#888', fontSize: '20px', padding: '8px' }}
-          >
-            🚪
-          </button>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            {pendingCount > 0 && (
+              <button
+                onClick={() => navigate('/admin/recibos?filtro=pendiente')}
+                style={{
+                  backgroundColor: '#f59e0b20',
+                  border: '1px solid #f59e0b50',
+                  color: '#f59e0b',
+                  padding: '4px 10px',
+                  borderRadius: '20px',
+                  fontSize: '11px',
+                  fontWeight: 800,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  cursor: 'pointer',
+                }}
+              >
+                <span>⏳</span>
+                <span>{pendingCount}</span>
+              </button>
+            )}
+            <button
+              onClick={handleLogout}
+              style={{ background: 'transparent', border: 'none', color: '#888', fontSize: '20px', padding: '8px', cursor: 'pointer' }}
+              title="Cerrar Sesión"
+            >
+              🚪
+            </button>
+          </div>
         </div>
       </div>
 
@@ -135,13 +208,35 @@ export const AdminLayout: React.FC = () => {
         <div className="admin-bottom-nav-inner">
           {adminNav.map(item => {
             const isActive = pathname === item.path || (item.path !== '/admin' && pathname.startsWith(item.path))
+            const isRecibos = item.isRecibos
             return (
               <button
                 key={item.path}
                 className={`admin-bottom-btn ${isActive ? 'active' : ''}`}
                 onClick={() => navigate(item.path)}
               >
-                <span style={{ fontSize: '22px' }}>{item.icon}</span>
+                <div style={{ position: 'relative' }}>
+                  <span style={{ fontSize: '22px' }}>{item.icon}</span>
+                  {isRecibos && pendingCount > 0 && (
+                    <span
+                      className="pulse-badge"
+                      style={{
+                        position: 'absolute',
+                        top: '-4px',
+                        right: '-8px',
+                        backgroundColor: '#f59e0b',
+                        color: '#000',
+                        fontSize: '10px',
+                        fontWeight: 900,
+                        padding: '1px 5px',
+                        borderRadius: '999px',
+                        boxShadow: '0 0 8px rgba(245,158,11,0.6)',
+                      }}
+                    >
+                      {pendingCount}
+                    </span>
+                  )}
+                </div>
                 <span style={{ fontSize: '10px', fontWeight: 600 }}>{item.label}</span>
               </button>
             )
@@ -178,6 +273,8 @@ export const AdminLayout: React.FC = () => {
         <nav style={{ flex: 1, padding: '12px 12px', display: 'flex', flexDirection: 'column', gap: '4px', overflowY: 'auto' }}>
           {adminNav.map(item => {
             const isActive = pathname === item.path || (item.path !== '/admin' && pathname.startsWith(item.path))
+            const isRecibos = item.isRecibos
+
             return (
               <button
                 key={item.path}
@@ -187,14 +284,33 @@ export const AdminLayout: React.FC = () => {
                   padding: '10px 12px', borderRadius: '10px', border: 'none', cursor: 'pointer', textAlign: 'left',
                   backgroundColor: isActive ? '#f9731618' : 'transparent',
                   borderLeft: isActive ? '3px solid #f97316' : '3px solid transparent',
-                  transition: 'all 0.2s'
+                  transition: 'all 0.2s',
+                  position: 'relative',
                 }}
               >
                 <span style={{ fontSize: '18px' }}>{item.icon}</span>
-                <div>
+                <div style={{ flex: 1 }}>
                   <div style={{ color: isActive ? '#f97316' : '#ccc', fontSize: '13px', fontWeight: 600 }}>{item.label}</div>
                   <div style={{ color: '#555', fontSize: '11px' }}>{item.desc}</div>
                 </div>
+
+                {isRecibos && pendingCount > 0 && (
+                  <span
+                    className="pulse-badge"
+                    style={{
+                      backgroundColor: '#f59e0b',
+                      color: '#000',
+                      fontSize: '11px',
+                      fontWeight: 900,
+                      padding: '2px 8px',
+                      borderRadius: '999px',
+                      boxShadow: '0 0 10px rgba(245,158,11,0.5)',
+                    }}
+                    title={`${pendingCount} pagos pendientes por revisar`}
+                  >
+                    {pendingCount}
+                  </span>
+                )}
               </button>
             )
           })}
@@ -202,7 +318,7 @@ export const AdminLayout: React.FC = () => {
 
         {/* Footer */}
         <div style={{ padding: '12px 20px', borderTop: '1px solid #1e1e1e' }}>
-          <p style={{ color: '#555', fontSize: '11px', marginBottom: '8px' }}>{perfil?.nombre_completo || 'Admin'}</p>
+          <p style={{ color: '#555', fontSize: '11px', marginBottom: '8px' }}>{perfil?.nombre_completo || 'Administrador'}</p>
           <button
             onClick={handleLogout}
             style={{

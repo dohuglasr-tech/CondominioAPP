@@ -65,9 +65,9 @@ export const Layout: React.FC = () => {
   const p = perfil as any
   const c = config as any
 
-  const edificioNombre = c?.nombre || p?.edificio?.nombre || 'Mi Edificio'
+  const edificioNombre = c?.nombre_edificio || c?.nombre || p?.edificio?.nombre || 'Mi Edificio'
   const edificioLogo   = c?.logo_url || p?.edificio?.logo || ''
-  const aptoNumero     = p?.apartamento?.numero || p?.apartamento_id || ''
+  const aptoNumero     = p?.apartamento?.numero || p?.apartamentos?.numero || p?.apartamento_id || ''
 
   const navItems: { label: string; desc: string; path: string; badge: number; icon: keyof typeof SVG; isNew?: boolean }[] = [
     { label: 'Inicio',     desc: 'Resumen y estado',       path: '/',           badge: 0,              icon: 'inicio' },

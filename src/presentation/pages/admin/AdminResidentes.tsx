@@ -159,6 +159,28 @@ export const AdminResidentes: React.FC = () => {
 
   useEffect(() => {
     cargarResidentes()
+
+    const channel = supabase
+      .channel('admin_residentes_realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'perfiles' },
+        () => {
+          cargarResidentes()
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'pagos_reportados' },
+        () => {
+          cargarResidentes()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
   }, [cargarResidentes])
 
   // ── Eliminar usuario por completo (Base de Datos + Auth) ──────
@@ -218,12 +240,42 @@ export const AdminResidentes: React.FC = () => {
     return 'Desocupado'
   }
 
-  const handleGuardar = (e: React.FormEvent) => {
+  const handleGuardar = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!form) return
-    setResidentes(prev => prev.map(r => (r.id === form.id ? form : r)))
-    setSelected(form)
-    setEditMode(false)
+
+    try {
+      const payload: Record<string, any> = {
+        condicion_habitacional: form.estado_ocupacion === 'alquilado' ? 'alquilado' : 'propio',
+      }
+
+      if (form.estado_ocupacion === 'alquilado') {
+        payload.nombre_completo = form.inquilino?.nombre || form.propietario.nombre
+        payload.telefono = form.inquilino?.telefono || form.propietario.telefono
+        payload.propietario_nombre = form.propietario.nombre
+        payload.propietario_telefono = form.propietario.telefono
+        payload.propietario_email = form.propietario.email
+      } else {
+        payload.nombre_completo = form.propietario.nombre
+        payload.telefono = form.propietario.telefono
+      }
+
+      const { error } = await supabase
+        .from('perfiles')
+        .update(payload)
+        .eq('id', form.id)
+
+      if (error) {
+        console.error('[AdminResidentes] Error actualizando perfil en Supabase:', error.message)
+      }
+
+      setResidentes(prev => prev.map(r => (r.id === form.id ? form : r)))
+      setSelected(form)
+      setEditMode(false)
+      await cargarResidentes()
+    } catch (err: any) {
+      console.error('[AdminResidentes] Excepción al guardar residente:', err)
+    }
   }
 
   return (

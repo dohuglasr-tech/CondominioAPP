@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { useAuth } from '../../application/contexts/AuthContext'
 import { obtenerPagos, Pago } from '../../data/recibosService'
+import { supabase } from '../../data/supabase'
 import { useNavigate } from 'react-router-dom'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
@@ -41,40 +42,54 @@ export function RecibosPanel({ onClose }: Props) {
     setTimeout(() => onClose(), 250)
   }, [onClose])
 
-  useEffect(() => {
-    const loadMock = () => {
-      setPagos([
-        {
-          id: 'mock-1',
-          apartamento_id: apartamentoId || 'mock-apt',
-          monto_bs: 4500.50,
-          estado: 'aprobado',
-          fecha_pago: '2025-01-15',
-          banco_origen: 'Banesco',
-          numero_referencia: '12345678',
-          created_at: '2025-01-15T10:00:00Z',
-          banco_destino: '', comprobante_url: '', monto_usd: 120, tasa_bcv: 36.5, user_id: ''
-        }
-      ] as Pago[])
-      setLoading(false)
-    }
-
+  const cargarPagos = useCallback(async () => {
     if (!apartamentoId) {
-      loadMock()
+      setPagos([])
+      setLoading(false)
       return
     }
 
-    obtenerPagos(apartamentoId).then(({ data, error: err }) => {
-      if (data && data.length > 0) {
-        setPagos(data)
+    try {
+      const { data, error: err } = await obtenerPagos(apartamentoId)
+      if (err) {
+        setError(err)
       } else {
-        loadMock()
-        return // loadMock already sets loading to false
+        setPagos(data || [])
       }
-      if (err) setError(err)
+    } catch (e: any) {
+      setError(e.message || 'Error cargando pagos')
+    } finally {
       setLoading(false)
-    })
+    }
   }, [apartamentoId])
+
+  useEffect(() => {
+    cargarPagos()
+
+    if (!apartamentoId) return
+
+    // ── Suscripción en Tiempo Real para el apartamento del residente ──
+    const channel = supabase
+      .channel(`residente_pagos_${apartamentoId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'pagos_reportados',
+          filter: `apartamento_id=eq.${apartamentoId}`,
+        },
+        (payload) => {
+          console.log('[RecibosPanel] Actualización de pago en tiempo real:', payload)
+          cargarPagos()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [apartamentoId, cargarPagos])
 
   const generarPDFRecibo = (pago: Pago) => {
     const doc = new jsPDF();

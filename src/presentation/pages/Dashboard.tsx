@@ -1,7 +1,8 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../../application/contexts/AuthContext'
 import { useBcvRate } from '../../data/useBcvRate'
 import { ReportarPagoModal } from '../components/ReportarPagoModal'
+import { supabase } from '../../data/supabase'
 import { useNavigate } from 'react-router-dom'
 
 export function Dashboard() {
@@ -11,10 +12,53 @@ export function Dashboard() {
 
   const navigate = useNavigate()
   const [modalOpen, setModalOpen] = useState(false)
+  const [ultimoPago, setUltimoPago] = useState<{ id: string; monto_bs: number; referencia: string; estado: string } | null>(null)
   
   const { rate, loading: loadingRate } = useBcvRate()
   const deudaUsd = 0 // Mock actual
   const deudaBs = deudaUsd * rate
+
+  const cargarUltimoPago = useCallback(async () => {
+    if (!apartamentoId) return
+    try {
+      const { data } = await supabase
+        .from('pagos_reportados')
+        .select('id, monto_bs, referencia, estado')
+        .eq('apartamento_id', apartamentoId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (data) setUltimoPago(data)
+    } catch (err) {
+      console.warn('[Dashboard] Error cargando último pago:', err)
+    }
+  }, [apartamentoId])
+
+  useEffect(() => {
+    cargarUltimoPago()
+    if (!apartamentoId) return
+
+    const channel = supabase
+      .channel(`dashboard_resident_${apartamentoId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'pagos_reportados',
+          filter: `apartamento_id=eq.${apartamentoId}`,
+        },
+        () => {
+          cargarUltimoPago()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [apartamentoId, cargarUltimoPago])
 
   const s = {
     page: {
@@ -202,11 +246,35 @@ export function Dashboard() {
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
                 <p style={s.tag}>Estado de Cuenta</p>
-                <div style={s.badge('#10b981')}>● Al día</div>
+                {ultimoPago?.estado === 'pendiente' ? (
+                  <div style={s.badge('#f59e0b')}>⏳ Pago en Revisión</div>
+                ) : (
+                  <div style={s.badge('#10b981')}>● Al día · Solvente</div>
+                )}
               </div>
               <p style={{ ...s.tag, marginBottom: '10px' }}>Deuda Total (Referencial)</p>
               <div style={s.bigAmount}>$0.00</div>
               <div style={{ fontSize: '15px', color: '#f97316', fontWeight: 700, marginTop: '4px' }}>USD</div>
+
+              {ultimoPago?.estado === 'pendiente' && (
+                <div style={{
+                  marginTop: '12px',
+                  backgroundColor: '#f59e0b15',
+                  border: '1px solid #f59e0b35',
+                  borderRadius: '10px',
+                  padding: '8px 12px',
+                  fontSize: '12px',
+                  color: '#f59e0b',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                }}>
+                  <span>⏳</span>
+                  <span>
+                    Reportaste Bs. {ultimoPago.monto_bs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (Ref: {ultimoPago.referencia}). En revisión por administración.
+                  </span>
+                </div>
+              )}
             </div>
             <button
               className="btn-premium ripple-container"
