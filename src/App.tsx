@@ -69,10 +69,18 @@ const ProfileSetupRoute = ({ children }: { children: React.ReactNode }) => {
   return <>{children}</>
 }
 
-// ── Guarda para rutas de administrador ────────────────────────────
+// ── Guarda para rutas de administrador (Supabase Auth real) ─────────
 const AdminRoute = ({ children }: { children: React.ReactNode }) => {
-  const isAdmin = localStorage.getItem('admin_auth') === 'true'
-  return isAdmin ? <>{children}</> : <Navigate to="/admin-login" replace />
+  const { session, perfil, loading } = useAuth()
+
+  // Esperar a que AuthContext termine de cargar la sesión y el perfil
+  if (loading) return <Loader />
+  // Si hay sesión activa pero el perfil aún se está cargando, esperar
+  if (session && perfil === null) return <Loader />
+  // Sin sesión o sin rol de administrador → ir al login de admin
+  if (!session || perfil?.rol !== 'administrador') return <Navigate to="/admin-login" replace />
+
+  return <>{children}</>
 }
 
 // ── Shell de la app (con splash) ─────────────────────────────────

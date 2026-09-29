@@ -168,8 +168,8 @@ export const AdminLayout: React.FC = () => {
     setDrawerOpen(false)
   }, [pathname])
 
-  const handleLogout = () => {
-    localStorage.removeItem('admin_auth')
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
     window.location.href = '/admin-login'
   }
 

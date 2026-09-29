@@ -1,8 +1,6 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-
-const ADMIN_EMAIL = 'admin@torre5.com'
-const ADMIN_PASSWORD = 'admin2026' // En producción esto va en Supabase con rol
+import { supabase } from '../../../data/supabase'
 
 export const AdminLogin: React.FC = () => {
   const navigate = useNavigate()
@@ -11,21 +9,54 @@ export const AdminLogin: React.FC = () => {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError('')
-    
-    setTimeout(() => {
-      if (email === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
-        localStorage.setItem('admin_auth', 'true')
-        // Hard redirect so AdminRoute reads the new localStorage value
-        window.location.href = '/admin'
-      } else {
+
+    try {
+      // 1. Autenticar con Supabase Auth real
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      })
+
+      if (authError || !authData.user) {
         setError('Credenciales incorrectas. Verifica tus datos.')
         setLoading(false)
+        return
       }
-    }, 800)
+
+      // 2. Verificar que el usuario tiene rol de administrador en la tabla perfiles
+      const { data: perfil, error: perfilError } = await supabase
+        .from('perfiles')
+        .select('rol')
+        .eq('id', authData.user.id)
+        .single()
+
+      if (perfilError || !perfil) {
+        // No tiene perfil registrado → no autorizado
+        await supabase.auth.signOut()
+        setError('No tienes permisos de administrador en este sistema.')
+        setLoading(false)
+        return
+      }
+
+      if (perfil.rol !== 'administrador') {
+        // Tiene perfil pero no es admin → cerrar sesión y denegar
+        await supabase.auth.signOut()
+        setError('Tu cuenta no tiene permisos de administrador.')
+        setLoading(false)
+        return
+      }
+
+      // 3. Es administrador verificado → redirigir al panel
+      window.location.href = '/admin'
+
+    } catch {
+      setError('Error de conexión. Intenta nuevamente.')
+      setLoading(false)
+    }
   }
 
   return (
