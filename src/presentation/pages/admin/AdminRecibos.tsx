@@ -187,6 +187,16 @@ export const AdminRecibos: React.FC = () => {
         }
       }
 
+      if (accion === 'aprobado') {
+        const { data: pagoDb } = await supabase.from('pagos_reportados').select('apartamento_id').eq('id', id).maybeSingle()
+        if (pagoDb?.apartamento_id) {
+          await supabase.from('recibos_generados')
+            .update({ estado: 'pagado' })
+            .eq('apartamento_id', pagoDb.apartamento_id)
+            .eq('estado', 'pendiente')
+        }
+      }
+
       setPagos(prev => prev.map(p => (p.id === id ? { ...p, estado: accion, notas_admin: notasFinal } : p)))
       setToastMsg(accion === 'aprobado' ? '✅ Pago aprobado exitosamente' : '❌ Pago rechazado')
       setTimeout(() => setToastMsg(null), 4000)

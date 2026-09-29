@@ -13,30 +13,45 @@ export function Dashboard() {
   const navigate = useNavigate()
   const [modalOpen, setModalOpen] = useState(false)
   const [ultimoPago, setUltimoPago] = useState<{ id: string; monto_bs: number; referencia: string; estado: string } | null>(null)
+  const [reciboPendiente, setReciboPendiente] = useState<{ id: string; total_usd: number; total_bs: number; mes_facturado: string; emitido_at: string } | null>(null)
   
   const { rate, loading: loadingRate } = useBcvRate()
-  const deudaUsd = 0 // Mock actual
-  const deudaBs = deudaUsd * rate
+  const deudaUsd = reciboPendiente ? Number(reciboPendiente.total_usd) : 0
+  const deudaBs = deudaUsd * (rate || 1)
 
-  const cargarUltimoPago = useCallback(async () => {
+  const cargarDatosResidente = useCallback(async () => {
     if (!apartamentoId) return
     try {
-      const { data } = await supabase
-        .from('pagos_reportados')
-        .select('id, monto_bs, referencia, estado')
-        .eq('apartamento_id', apartamentoId)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
+      const [pagoRes, reciboRes] = await Promise.all([
+        supabase
+          .from('pagos_reportados')
+          .select('id, monto_bs, referencia, estado')
+          .eq('apartamento_id', apartamentoId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        supabase
+          .from('recibos_generados')
+          .select('id, total_usd, total_bs, mes_facturado, estado, emitido_at')
+          .eq('apartamento_id', apartamentoId)
+          .eq('estado', 'pendiente')
+          .order('mes_facturado', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+      ])
 
-      if (data) setUltimoPago(data)
+      if (pagoRes.data) setUltimoPago(pagoRes.data)
+      else setUltimoPago(null)
+
+      if (reciboRes.data) setReciboPendiente(reciboRes.data)
+      else setReciboPendiente(null)
     } catch (err) {
-      console.warn('[Dashboard] Error cargando último pago:', err)
+      console.warn('[Dashboard] Error cargando datos del residente:', err)
     }
   }, [apartamentoId])
 
   useEffect(() => {
-    cargarUltimoPago()
+    cargarDatosResidente()
     if (!apartamentoId) return
 
     const channel = supabase
@@ -50,7 +65,19 @@ export function Dashboard() {
           filter: `apartamento_id=eq.${apartamentoId}`,
         },
         () => {
-          cargarUltimoPago()
+          cargarDatosResidente()
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'recibos_generados',
+          filter: `apartamento_id=eq.${apartamentoId}`,
+        },
+        () => {
+          cargarDatosResidente()
         }
       )
       .subscribe()
@@ -58,7 +85,7 @@ export function Dashboard() {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [apartamentoId, cargarUltimoPago])
+  }, [apartamentoId, cargarDatosResidente])
 
   const s = {
     page: {
@@ -248,13 +275,22 @@ export function Dashboard() {
                 <p style={s.tag}>Estado de Cuenta</p>
                 {ultimoPago?.estado === 'pendiente' ? (
                   <div style={s.badge('#f59e0b')}>⏳ Pago en Revisión</div>
+                ) : deudaUsd > 0 ? (
+                  <div style={s.badge('#ef4444')}>🔴 Pago Pendiente</div>
                 ) : (
                   <div style={s.badge('#10b981')}>● Al día · Solvente</div>
                 )}
               </div>
               <p style={{ ...s.tag, marginBottom: '10px' }}>Deuda Total (Referencial)</p>
-              <div style={s.bigAmount}>$0.00</div>
-              <div style={{ fontSize: '15px', color: '#f97316', fontWeight: 700, marginTop: '4px' }}>USD</div>
+              <div style={s.bigAmount}>${deudaUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+              <div style={{ fontSize: '15px', color: '#f97316', fontWeight: 700, marginTop: '4px', display:'flex', alignItems:'center', gap:'8px' }}>
+                <span>USD</span>
+                {reciboPendiente && (
+                  <span style={{ fontSize: '12px', color: '#888', fontWeight: 500 }}>
+                    · Recibo de {new Date(reciboPendiente.mes_facturado).toLocaleDateString('es-VE', { month: 'long', year: 'numeric' })}
+                  </span>
+                )}
+              </div>
 
               {ultimoPago?.estado === 'pendiente' && (
                 <div style={{

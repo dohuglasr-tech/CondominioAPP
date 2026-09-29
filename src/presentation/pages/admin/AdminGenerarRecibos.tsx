@@ -447,11 +447,21 @@ export const AdminGenerarRecibos: React.FC = () => {
   const emitirRecibos = async () => {
     if (!config || apartamentos.length === 0) return
     setEmitiendo(true); setResultado(null)
-    let ok = 0, fail = 0
 
-    for (const apto of apartamentos) {
+    // 1. Limpiar cualquier emisión previa de este mes específico
+    const { error: delErr } = await supabase
+      .from('recibos_generados')
+      .delete()
+      .eq('mes_facturado', mesStr)
+
+    if (delErr) {
+      console.warn('[Emisión] Advertencia al limpiar mes anterior:', delErr.message)
+    }
+
+    // 2. Preparar los payloads de los 62 apartamentos
+    const payloads = apartamentos.map(apto => {
       const calc = calcularApto(apto)
-      const { error } = await supabase.from('recibos_generados').upsert({
+      return {
         apartamento_id:    apto.id,
         mes_facturado:     mesStr,
         tasa_bcv:          config.tasa_bcv_actual || 1,
@@ -471,9 +481,21 @@ export const AdminGenerarRecibos: React.FC = () => {
           notas_residentes: notasResidentes,
         },
         emitido_at: new Date().toISOString(),
-      }, { onConflict: 'apartamento_id,mes_facturado' })
-      if (error) { fail++; console.error('[Emisión]', apto.numero, error.message) }
-      else ok++
+      }
+    })
+
+    // 3. Insertar en lotes seguros de 25 registros
+    let ok = 0, fail = 0
+    const batchSize = 25
+    for (let i = 0; i < payloads.length; i += batchSize) {
+      const batch = payloads.slice(i, i + batchSize)
+      const { error } = await supabase.from('recibos_generados').insert(batch)
+      if (error) {
+        fail += batch.length
+        console.error('[Emisión] Error insertando lote:', error.message)
+      } else {
+        ok += batch.length
+      }
     }
 
     if (cargos.length > 0) {
