@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../../data/supabase'
 
 interface PersonaContacto {
@@ -48,6 +49,7 @@ const labelStyle: React.CSSProperties = {
 }
 
 export const AdminResidentes: React.FC = () => {
+  const navigate = useNavigate()
   const [residentes, setResidentes] = useState<Residente[]>([])
   const [loading, setLoading] = useState(true)
   const [busqueda, setBusqueda] = useState('')
@@ -592,16 +594,35 @@ export const AdminResidentes: React.FC = () => {
                             <p style={{ color: '#777', fontSize: '12px', margin: '2px 0 0' }}>Ref: {p.referencia} · {new Date(p.fecha).toLocaleDateString()}</p>
                           </div>
                         </div>
-                        <span style={{
-                          padding: '4px 10px',
-                          borderRadius: '6px',
-                          fontSize: '11px',
-                          fontWeight: 700,
-                          backgroundColor: p.estado === 'aprobado' ? '#10b98120' : p.estado === 'pendiente' ? '#f59e0b20' : '#ef444420',
-                          color: p.estado === 'aprobado' ? '#10b981' : p.estado === 'pendiente' ? '#f59e0b' : '#ef4444',
-                        }}>
-                          {p.estado.toUpperCase()}
-                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{
+                            padding: '4px 10px',
+                            borderRadius: '6px',
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            backgroundColor: p.estado === 'aprobado' ? '#10b98120' : p.estado === 'pendiente' ? '#f59e0b20' : '#ef444420',
+                            color: p.estado === 'aprobado' ? '#10b981' : p.estado === 'pendiente' ? '#f59e0b' : '#ef4444',
+                          }}>
+                            {p.estado.toUpperCase()}
+                          </span>
+                          {p.estado === 'pendiente' && (
+                            <button
+                              onClick={() => navigate('/admin/recibos?filtro=pendiente')}
+                              style={{
+                                backgroundColor: '#f59e0b',
+                                color: '#000',
+                                border: 'none',
+                                padding: '4px 10px',
+                                borderRadius: '6px',
+                                fontSize: '11px',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                              }}
+                            >
+                              ⚡ Gestionar en Recibos →
+                            </button>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>
