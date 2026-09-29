@@ -66,19 +66,44 @@ interface ActividadItem {
   rawDate: string
 }
 
+const MESES_NOMBRES = [
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+]
+
+const getMesLabel = (key: string) => {
+  if (!key) return ''
+  const [anio, mesNum] = key.split('-')
+  const idx = (parseInt(mesNum) || 1) - 1
+  return `${MESES_NOMBRES[idx] || 'Mes'} de ${anio}`
+}
+
+const getMesSoloNombre = (key: string) => {
+  if (!key) return ''
+  const [, mesNum] = key.split('-')
+  const idx = (parseInt(mesNum) || 1) - 1
+  return MESES_NOMBRES[idx] || ''
+}
+
 export const AdminDashboard: React.FC = () => {
   const navigate = useNavigate()
-  const mes = new Date().toLocaleString('es-VE', { month: 'long', year: 'numeric' })
   const { rate, loading: loadingRate, error: errorRate } = useBcvRate()
+
+  // Determinar mes actual por defecto (YYYY-MM)
+  const hoy = new Date()
+  const anioActual = hoy.getFullYear()
+  const mesActualNum = String(hoy.getMonth() + 1).padStart(2, '0')
+  const mesActualKey = `${anioActual}-${mesActualNum}`
+
+  const [mesSeleccionado, setMesSeleccionado] = useState<string>(mesActualKey)
+  const [mesesDisponibles, setMesesDisponibles] = useState<string[]>([mesActualKey])
 
   const [loading, setLoading] = useState(true)
   const [apartamentosCount, setApartamentosCount] = useState(0)
-  const [pagosPendientes, setPagosPendientes] = useState(0)
-  const [pagosAprobados, setPagosAprobados] = useState(0)
-  const [totalRecaudadoBs, setTotalRecaudadoBs] = useState(0)
   const [reportesAbiertos, setReportesAbiertos] = useState(0)
   const [propuestasActivas, setPropuestasActivas] = useState(0)
   const [actividad, setActividad] = useState<ActividadItem[]>([])
+  const [todosLosPagos, setTodosLosPagos] = useState<any[]>([])
 
   const cargarMetricas = useCallback(async () => {
     try {
@@ -88,60 +113,71 @@ export const AdminDashboard: React.FC = () => {
         .select('*', { count: 'exact', head: true })
       if (aptCount !== null) setApartamentosCount(aptCount)
 
-      // 2. Pagos reportados
-      const { data: pagosData } = await supabase
-        .from('pagos_reportados')
-        .select(`
-          id,
-          monto_bs,
-          referencia,
-          estado,
-          created_at,
-          notas_admin,
-          apartamento:apartamento_id ( numero ),
-          residente:reportado_por ( nombre_completo )
-        `)
-        .order('created_at', { ascending: false })
+      // 2. Pagos reportados y Recibos emitidos
+      const [pagosRes, recibosRes] = await Promise.all([
+        supabase
+          .from('pagos_reportados')
+          .select(`
+            id,
+            monto_bs,
+            referencia,
+            estado,
+            created_at,
+            fecha_pago,
+            notas_admin,
+            apartamento:apartamento_id ( numero ),
+            residente:reportado_por ( nombre_completo )
+          `)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('recibos_generados')
+          .select('mes_facturado')
+          .order('mes_facturado', { ascending: false })
+      ])
 
-      if (pagosData) {
-        let pendientes = 0
-        let aprobados = 0
-        let recaudado = 0
-        const itemsActividad: ActividadItem[] = []
+      const pagosData = pagosRes.data || []
+      setTodosLosPagos(pagosData)
 
-        pagosData.forEach((p: any) => {
-          if (p.estado === 'pendiente') pendientes++
-          if (p.estado === 'aprobado') {
-            aprobados++
-            recaudado += Number(p.monto_bs || 0)
-          }
+      // Extraer lista de meses disponibles
+      const setMeses = new Set<string>()
+      setMeses.add(mesActualKey)
 
-          // Solo los primeros 6 para actividad reciente
-          if (itemsActividad.length < 6) {
-            const aptoNum = p.apartamento?.numero ? `Apto ${p.apartamento.numero}` : 'Apartamento'
-            const residentName = p.residente?.nombre_completo || 'Residente'
-            const d = new Date(p.created_at)
-            const hora = d.toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' })
-            const dia = d.toLocaleDateString('es-VE', { day: '2-digit', month: 'short' })
+      pagosData.forEach((p: any) => {
+        const fecha = (p.fecha_pago || p.created_at || '').substring(0, 7)
+        if (fecha && fecha.length === 7) setMeses.add(fecha)
+      })
 
-            itemsActividad.push({
-              id: p.id,
-              tipo: 'pago',
-              titulo: `Pago reportado - ${aptoNum} (${residentName})`,
-              subtitulo: `Ref: ${p.referencia || 'S/R'} · ${p.notas_admin || 'Transferencia'}`,
-              monto: `Bs. ${(p.monto_bs || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-              estado: p.estado || 'pendiente',
-              fecha: `${dia}, ${hora}`,
-              rawDate: p.created_at,
-            })
-          }
+      if (recibosRes.data) {
+        recibosRes.data.forEach((r: any) => {
+          const m = (r.mes_facturado || '').substring(0, 7)
+          if (m && m.length === 7) setMeses.add(m)
         })
-
-        setPagosPendientes(pendientes)
-        setPagosAprobados(aprobados)
-        setTotalRecaudadoBs(recaudado)
-        setActividad(itemsActividad)
       }
+
+      const listaMeses = Array.from(setMeses).sort((a, b) => b.localeCompare(a))
+      setMesesDisponibles(listaMeses)
+
+      // Armar actividad reciente (primeros 6)
+      const itemsActividad: ActividadItem[] = []
+      pagosData.slice(0, 6).forEach((p: any) => {
+        const aptoNum = p.apartamento?.numero ? `Apto ${p.apartamento.numero}` : 'Apartamento'
+        const residentName = p.residente?.nombre_completo || 'Residente'
+        const d = new Date(p.created_at)
+        const hora = d.toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' })
+        const dia = d.toLocaleDateString('es-VE', { day: '2-digit', month: 'short' })
+
+        itemsActividad.push({
+          id: p.id,
+          tipo: 'pago',
+          titulo: `Pago reportado - ${aptoNum} (${residentName})`,
+          subtitulo: `Ref: ${p.referencia || 'S/R'} · ${p.notas_admin || 'Transferencia'}`,
+          monto: `Bs. ${(p.monto_bs || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          estado: p.estado || 'pendiente',
+          fecha: `${dia}, ${hora}`,
+          rawDate: p.created_at,
+        })
+      })
+      setActividad(itemsActividad)
 
       // 3. Reportes / Falencias
       const { count: falCount } = await supabase
@@ -161,7 +197,46 @@ export const AdminDashboard: React.FC = () => {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [mesActualKey])
+
+  // ── Estadísticas calculadas en función del mes seleccionado ──
+  const stats = useMemo(() => {
+    let pendientesTotal = 0
+    let aprobadosMes = 0
+    let recaudadoMesBs = 0
+    let aprobadosTotal = 0
+    let recaudadoTotalBs = 0
+
+    todosLosPagos.forEach((p: any) => {
+      if (p.estado === 'pendiente') {
+        pendientesTotal++
+      }
+      if (p.estado === 'aprobado') {
+        aprobadosTotal++
+        recaudadoTotalBs += Number(p.monto_bs || 0)
+
+        // Comprobar si pertenece al mes seleccionado (YYYY-MM)
+        const fechaStr = (p.fecha_pago || p.created_at || '').substring(0, 7)
+        if (fechaStr === mesSeleccionado) {
+          aprobadosMes++
+          recaudadoMesBs += Number(p.monto_bs || 0)
+        }
+      }
+    })
+
+    const totalUsdMes = rate > 0 ? recaudadoMesBs / rate : 0
+    const totalUsdHistorico = rate > 0 ? recaudadoTotalBs / rate : 0
+
+    return {
+      pendientesTotal,
+      aprobadosMes,
+      recaudadoMesBs,
+      totalUsdMes,
+      aprobadosTotal,
+      recaudadoTotalBs,
+      totalUsdHistorico
+    }
+  }, [todosLosPagos, mesSeleccionado, rate])
 
   useEffect(() => {
     cargarMetricas()
@@ -194,8 +269,6 @@ export const AdminDashboard: React.FC = () => {
     }
   }, [cargarMetricas])
 
-  const totalUsd = rate > 0 ? totalRecaudadoBs / rate : 0
-
   return (
     <div style={{ padding: '32px' }}>
       {/* Header */}
@@ -219,7 +292,9 @@ export const AdminDashboard: React.FC = () => {
               En Vivo
             </span>
           </div>
-          <p style={{ color: '#666', fontSize: '14px', marginTop: '4px', textTransform: 'capitalize' }}>{mes}</p>
+          <p style={{ color: '#888', fontSize: '14px', marginTop: '4px', textTransform: 'capitalize' }}>
+            {getMesLabel(mesSeleccionado)} {mesSeleccionado === mesActualKey ? '· (Mes Actual)' : ''}
+          </p>
           {!loadingRate && !errorRate && rate > 0 && (
             <p style={{ color: '#f97316', fontSize: '12px', marginTop: '6px', margin: 0 }}>
               Tasa BCV Oficial: {rate.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 4 })} Bs/$
@@ -227,28 +302,66 @@ export const AdminDashboard: React.FC = () => {
           )}
         </div>
 
-        <button
-          onClick={cargarMetricas}
-          style={{
-            backgroundColor: '#1a1a1a',
-            color: '#fff',
-            border: '1px solid #2a2a2a',
-            padding: '8px 16px',
-            borderRadius: '10px',
-            fontSize: '13px',
-            fontWeight: 600,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-          }}
-        >
-          🔄 Actualizar
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          {/* Selector de Mes */}
+          {mesesDisponibles.length > 0 && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              backgroundColor: '#141414',
+              border: '1px solid #262626',
+              padding: '6px 12px',
+              borderRadius: '10px'
+            }}>
+              <span style={{ color: '#888', fontSize: '12px', fontWeight: 600 }}>📅 Mes:</span>
+              <select
+                value={mesSeleccionado}
+                onChange={e => setMesSeleccionado(e.target.value)}
+                style={{
+                  backgroundColor: '#0a0a0a',
+                  color: '#f97316',
+                  border: '1px solid #f9731650',
+                  padding: '6px 10px',
+                  borderRadius: '8px',
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  outline: 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                {mesesDisponibles.map(m => (
+                  <option key={m} value={m}>
+                    {getMesLabel(m)} {m === mesActualKey ? '(Actual)' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <button
+            onClick={cargarMetricas}
+            style={{
+              backgroundColor: '#1a1a1a',
+              color: '#fff',
+              border: '1px solid #2a2a2a',
+              padding: '8px 16px',
+              borderRadius: '10px',
+              fontSize: '13px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+            }}
+          >
+            🔄 Actualizar
+          </button>
+        </div>
       </div>
 
       {/* Banner de alerta si hay pagos pendientes */}
-      {pagosPendientes > 0 && (
+      {stats.pendientesTotal > 0 && (
         <div
           onClick={() => navigate('/admin/recibos?filtro=pendiente')}
           style={{
@@ -268,7 +381,7 @@ export const AdminDashboard: React.FC = () => {
             <span style={{ fontSize: '20px' }}>⏳</span>
             <div>
               <p style={{ color: '#f59e0b', fontSize: '14px', fontWeight: 700, margin: 0 }}>
-                Tienes {pagosPendientes} {pagosPendientes === 1 ? 'pago pendiente' : 'pagos pendientes'} por revisar y aprobar
+                Tienes {stats.pendientesTotal} {stats.pendientesTotal === 1 ? 'pago pendiente' : 'pagos pendientes'} por revisar y aprobar
               </p>
               <p style={{ color: '#aaa', fontSize: '12px', margin: 0, marginTop: '2px' }}>
                 Los residentes están esperando la confirmación de su solvencia.
@@ -295,28 +408,29 @@ export const AdminDashboard: React.FC = () => {
         <StatCard
           icon="⏳"
           label="Pagos Pendientes"
-          value={loading ? '...' : pagosPendientes}
-          sub={pagosPendientes > 0 ? "Requieren aprobación" : "Al día"}
+          value={loading ? '...' : stats.pendientesTotal}
+          sub={stats.pendientesTotal > 0 ? "Requieren aprobación" : "Al día"}
           color="#f59e0b"
-          badge={pagosPendientes > 0 ? "¡Atención!" : undefined}
-          pulse={pagosPendientes > 0}
+          badge={stats.pendientesTotal > 0 ? "¡Atención!" : undefined}
+          pulse={stats.pendientesTotal > 0}
           onClick={() => navigate('/admin/recibos?filtro=pendiente')}
         />
         <StatCard
           icon="✅"
-          label="Pagos Aprobados"
-          value={loading ? '...' : pagosAprobados}
-          sub="Confirmados en BD"
+          label={`Pagos Aprobados (${getMesSoloNombre(mesSeleccionado)})`}
+          value={loading ? '...' : stats.aprobadosMes}
+          sub={`${stats.aprobadosTotal} confirmados en total`}
           color="#10b981"
           onClick={() => navigate('/admin/recibos?filtro=aprobado')}
         />
         <StatCard
           icon="💰"
-          label="Total Recaudado"
-          value={loading ? '...' : `Bs. ${totalRecaudadoBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-          sub={rate > 0 ? `Ref: $${totalUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : undefined}
+          label={`Total Recaudado (${getMesSoloNombre(mesSeleccionado)})`}
+          value={loading ? '...' : `Bs. ${stats.recaudadoMesBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          sub={rate > 0 ? `Ref: $${stats.totalUsdMes.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · ${stats.aprobadosMes} ${stats.aprobadosMes === 1 ? 'pago' : 'pagos'}` : undefined}
           color="#f97316"
-          onClick={() => navigate('/admin/recibos?filtro=aprobado')}
+          badge={getMesSoloNombre(mesSeleccionado)}
+          onClick={() => navigate('/admin/recibos-emitidos')}
         />
         <StatCard
           icon="🏠"
