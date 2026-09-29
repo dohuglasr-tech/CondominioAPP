@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../../../data/supabase'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import { getAlicuotaDecimal, formatAlicuotaPct, compararApartamentos } from '../../../utils/alicuota'
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 interface Apartamento {
@@ -58,7 +59,7 @@ function generarPDF(
   const cAccent: [number,number,number] = [249, 115, 22]
   const cDark:   [number,number,number] = [30, 30, 30]
 
-  const alicuota     = apto.alicuota / 100
+  const alicuota     = getAlicuotaDecimal(apto.alicuota)
   // Totales USD prorrata
   const totalGastosUsd = gastos.reduce((s, g) => s + g.monto_usd, 0)
   const totalGastosBs  = gastos.reduce((s, g) => s + g.monto_bs, 0)
@@ -93,7 +94,7 @@ function generarPDF(
   doc.setTextColor(40, 40, 40)
   doc.setFontSize(10)
 
-  const left  = [['PROPIETARIO:', apto.propietario_nombre || 'Residente'],['APARTAMENTO:', `Nro. ${apto.numero}`],['ALÍCUOTA:', `${apto.alicuota}%`]]
+  const left  = [['PROPIETARIO:', apto.propietario_nombre || 'Residente'],['APARTAMENTO:', `Nro. ${apto.numero}`],['ALÍCUOTA:', formatAlicuotaPct(apto.alicuota)]]
   const right = [['MES:', mesLabel],['AÑO:', String(anio)]]
   let y = 50
   left.forEach(([l, v])  => { doc.setFont('helvetica','bold'); doc.text(l, 14, y); doc.setFont('helvetica','normal'); doc.text(v, 55, y); y += 6 })
@@ -255,12 +256,14 @@ export const AdminGenerarRecibos: React.FC = () => {
           .gte('mes_aplicacion', mesStr).lte('mes_aplicacion', mesStr)
           .order('created_at', { ascending: true }),
         supabase.from('apartamentos')
-          .select('id, numero, piso, alicuota, propietario_nombre, metros_cuadrados')
-          .order('numero', { ascending: true }),
+          .select('id, numero, piso, alicuota, propietario_nombre, metros_cuadrados'),
       ])
       if (configRes.data) setConfig(configRes.data)
       if (gastosRes.data) setGastos(gastosRes.data)
-      if (aptosRes.data)  setApartamentos(aptosRes.data)
+      if (aptosRes.data) {
+        const ordenados = [...aptosRes.data].sort((a, b) => compararApartamentos(a.numero, b.numero))
+        setApartamentos(ordenados)
+      }
     } finally { setLoading(false) }
   }, [mesStr])
 
@@ -276,7 +279,7 @@ export const AdminGenerarRecibos: React.FC = () => {
 
   // ── Cálculo por apto ─────────────────────────────────────────────────
   const calcularApto = (apto: Apartamento) => {
-    const a = apto.alicuota / 100
+    const a = getAlicuotaDecimal(apto.alicuota)
     const subtotalUsd = totalGastosUsd * a
     const subtotalBs  = totalGastosBs  * a
     const fondoUsd    = subtotalUsd * (fondoReservaPct / 100)
@@ -330,7 +333,7 @@ export const AdminGenerarRecibos: React.FC = () => {
         mes_facturado:     mesStr,
         tasa_bcv:          config.tasa_bcv_actual || 1,
         total_gastos_usd:  totalGastosUsd,
-        alicuota:          apto.alicuota / 100,
+        alicuota:          getAlicuotaDecimal(apto.alicuota),
         subtotal_usd:      calc.subtotalUsd,
         fondo_reserva_pct: fondoReservaPct,
         fondo_reserva_usd: calc.fondoUsd,
@@ -476,7 +479,7 @@ export const AdminGenerarRecibos: React.FC = () => {
           {/* Tabla resumen por apartamento */}
           {apartamentos.length > 0 && (
             <div style={S.card}>
-              <h3 style={{ color:'#fff', margin:'0 0 14px', fontSize:'15px', fontWeight:700 }}>🏠 Resumen por Apartamento</h3>
+              <h3 style={{ color:'#fff', margin:'0 0 14px', fontSize:'15px', fontWeight:700 }}>🏠 Resumen por Apartamento ({apartamentos.length} Inmuebles)</h3>
               <div style={{ overflowX:'auto' }}>
                 <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'12px' }}>
                   <thead>
@@ -489,11 +492,19 @@ export const AdminGenerarRecibos: React.FC = () => {
                   <tbody>
                     {apartamentos.map(a => {
                       const c = calcularApto(a)
+                      const esPH = a.numero.toUpperCase().includes('PH')
                       return (
                         <tr key={a.id} style={{ borderBottom:'1px solid #111' }}>
-                          <td style={{ color:'#f97316', fontWeight:800, padding:'7px 8px' }}>#{a.numero}</td>
+                          <td style={{ color:'#f97316', fontWeight:800, padding:'7px 8px' }}>
+                            #{a.numero}
+                            {esPH && (
+                              <span style={{ marginLeft:'6px', fontSize:'9px', backgroundColor:'#f9731625', color:'#f97316', border:'1px solid #f9731640', padding:'1px 5px', borderRadius:'4px', fontWeight:700 }}>
+                                PH
+                              </span>
+                            )}
+                          </td>
                           <td style={{ color:'#666', padding:'7px 8px', maxWidth:'100px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{a.propietario_nombre || '—'}</td>
-                          <td style={{ color:'#888', padding:'7px 8px', textAlign:'right' }}>{a.alicuota}%</td>
+                          <td style={{ color: esPH ? '#f97316' : '#888', padding:'7px 8px', textAlign:'right', fontWeight: esPH ? 700 : 400 }}>{formatAlicuotaPct(a.alicuota)}</td>
                           <td style={{ color:'#10b981', padding:'7px 8px', textAlign:'right' }}>{fmtBs(c.subtotalBs)}</td>
                           <td style={{ color:'#f97316', padding:'7px 8px', textAlign:'right' }}>{fmtUsd(c.subtotalUsd)}</td>
                           <td style={{ color:'#888', padding:'7px 8px', textAlign:'right' }}>{fmtBs(c.fondoBs)}</td>
@@ -633,7 +644,7 @@ export const AdminGenerarRecibos: React.FC = () => {
                     <div><strong>MES:</strong> {mesLabel}</div>
                     <div><strong>APARTAMENTO:</strong> Nro. {apto.numero}</div>
                     <div><strong>AÑO:</strong> {anio}</div>
-                    <div><strong>ALÍCUOTA:</strong> {apto.alicuota}%</div>
+                    <div><strong>ALÍCUOTA:</strong> {formatAlicuotaPct(apto.alicuota)}</div>
                   </div>
                   <hr style={{ border:'none', borderTop:'1px solid #ddd', margin:'10px 0' }} />
 
@@ -650,8 +661,8 @@ export const AdminGenerarRecibos: React.FC = () => {
                       {gastos.map((g, i) => (
                         <tr key={g.id} style={{ backgroundColor: i%2===0?'#f9f9f9':'#fff' }}>
                           <td style={{ padding:'4px 7px' }}>{g.descripcion}</td>
-                          <td style={{ padding:'4px 7px', textAlign:'right' }}>{fmtBs(g.monto_bs * apto.alicuota/100)}</td>
-                          <td style={{ padding:'4px 7px', textAlign:'right' }}>{fmtUsd(g.monto_usd * apto.alicuota/100)}</td>
+                          <td style={{ padding:'4px 7px', textAlign:'right' }}>{fmtBs(g.monto_bs)}</td>
+                          <td style={{ padding:'4px 7px', textAlign:'right' }}>{fmtUsd(g.monto_usd)}</td>
                         </tr>
                       ))}
                     </tbody>
