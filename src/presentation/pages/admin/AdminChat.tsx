@@ -25,6 +25,7 @@ export const AdminChat: React.FC = () => {
   const [anuncio, setAnuncio] = useState('')
   const [enviando, setEnviando] = useState(false)
   const [enviandoAnuncio, setEnviandoAnuncio] = useState(false)
+  const [filtroApto, setFiltroApto] = useState('')
 
   // Estado del Modo Solo Lectura
   const [estadoChat, setEstadoChat] = useState<ChatEstadoConfig>({
@@ -92,7 +93,6 @@ export const AdminChat: React.FC = () => {
         }
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_mensajes' }, (payload) => {
-        // Asegurar que si viene por postgres también se agregue
         const nuevo = payload.new as any
         if (nuevo && nuevo.id) {
           setMensajes(prev => {
@@ -104,7 +104,7 @@ export const AdminChat: React.FC = () => {
               adjunto_tipo: nuevo.adjunto_tipo,
               created_at: nuevo.created_at || new Date().toISOString(),
               autor_id: nuevo.autor_id,
-              autor_nombre: nuevo.autor_nombre || (nuevo.es_admin ? 'Administración' : 'Vecino'),
+              autor_nombre: nuevo.autor_nombre || (nuevo.es_admin ? 'Administración' : (nuevo.apartamento_numero ? `Apto ${nuevo.apartamento_numero}` : 'Vecino')),
               autor_rol: nuevo.autor_rol || (nuevo.es_admin ? 'administrador' : 'residente'),
               apartamento_numero: nuevo.apartamento_numero,
               es_admin: !!nuevo.es_admin,
@@ -211,18 +211,29 @@ export const AdminChat: React.FC = () => {
   }
 
   // Moderar / Eliminar mensaje individual
-  const handleEliminarMensaje = async (id: string, remitente: string) => {
-    if (!window.confirm(`¿Estás seguro de eliminar este mensaje de ${remitente}? Se removerá para todos los usuarios en vivo.`)) {
+  const handleEliminarMensaje = async (id: string, identificador: string) => {
+    if (!window.confirm(`¿Estás seguro de eliminar el mensaje de ${identificador}? Se removerá para todos los usuarios en vivo.`)) {
       return
     }
     setMensajes(prev => prev.filter(m => m.id !== id))
     await eliminarMensajeChat(id)
   }
 
+  // Filtrado de mensajes por apartamento o nombre
+  const mensajesFiltrados = mensajes.filter(m => {
+    if (!filtroApto.trim()) return true
+    const q = filtroApto.trim().toLowerCase()
+    return (
+      (m.apartamento_numero && m.apartamento_numero.toLowerCase().includes(q)) ||
+      m.autor_nombre.toLowerCase().includes(q) ||
+      m.contenido.toLowerCase().includes(q)
+    )
+  })
+
   // Estadísticas
   const mensajesHoy = mensajes.filter(m => new Date(m.created_at).toDateString() === new Date().toDateString()).length
   const anunciosDelMes = mensajes.filter(m => m.es_anuncio).length
-  const residentesActivos = new Set(mensajes.filter(m => !m.es_admin).map(m => m.autor_nombre)).size
+  const apartamentosActivos = new Set(mensajes.filter(m => !m.es_admin && m.apartamento_numero).map(m => m.apartamento_numero)).size
 
   return (
     <div style={{ padding: '28px', height: '100%', display: 'flex', flexDirection: 'column', boxSizing: 'border-box', backgroundColor: '#0a0a0a', color: '#fff' }}>
@@ -243,12 +254,12 @@ export const AdminChat: React.FC = () => {
               color: '#22c55e',
               border: '1px solid rgba(34, 197, 94, 0.3)'
             }}>
-              <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#22c55e', animation: 'pulse 1.5s infinite' }} />
-              Sincronizado con Apartamentos
+              <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#22c55e' }} />
+              Identificación por Apartamento Activa
             </span>
           </div>
           <p style={{ color: '#888', fontSize: '13px', marginTop: '4px', marginBottom: 0 }}>
-            Visualiza en tiempo real las conversaciones de los residentes, modera el chat y emite comunicados oficiales.
+            Visualiza en tiempo real los mensajes identificados por apartamento, modera discusiones y emite comunicados oficiales.
           </p>
         </div>
 
@@ -362,7 +373,7 @@ export const AdminChat: React.FC = () => {
         }}>
           <span>🟢</span>
           <span>
-            <strong>Chat Abierto:</strong> Todos los residentes pueden enviar mensajes y compartir inquietudes. Si ocurre alguna discusión o conflicto, activa el <strong>Modo Solo Lectura</strong> para detener los mensajes de inmediato.
+            <strong>Chat Abierto:</strong> Cada mensaje aparece identificado con el número de apartamento de su autor. Si ocurre alguna discusión o conflicto, activa el <strong>Modo Solo Lectura</strong> para detener los mensajes de inmediato.
           </span>
         </div>
       )}
@@ -379,35 +390,56 @@ export const AdminChat: React.FC = () => {
           overflow: 'hidden',
           boxShadow: '0 8px 30px rgba(0,0,0,0.4)'
         }}>
-          {/* Header del Chat */}
+          {/* Header del Chat con buscador de apartamento */}
           <div style={{
-            padding: '14px 20px',
+            padding: '12px 18px',
             borderBottom: '1px solid #222',
             backgroundColor: '#18181b',
             display: 'flex',
             justifyContent: 'space-between',
-            alignItems: 'center'
+            alignItems: 'center',
+            gap: '12px'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '13px', fontWeight: 700, color: '#e4e4e7' }}>Canal General de Torre 5</span>
-              <span style={{ fontSize: '11px', color: '#71717a' }}>({mensajes.length} mensajes)</span>
+              <span style={{ fontSize: '13px', fontWeight: 700, color: '#e4e4e7' }}>Canal Torre 5</span>
+              <span style={{ fontSize: '11px', color: '#71717a' }}>({mensajesFiltrados.length} mensajes)</span>
             </div>
-            <button
-              onClick={cargarDatos}
-              style={{
-                background: 'transparent',
-                border: 'none',
-                color: '#a1a1aa',
-                cursor: 'pointer',
-                fontSize: '12px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px'
-              }}
-              title="Recargar mensajes"
-            >
-              🔄 Actualizar
-            </button>
+
+            {/* Input para filtrar por apartamento */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <input
+                type="text"
+                value={filtroApto}
+                onChange={e => setFiltroApto(e.target.value)}
+                placeholder="🔍 Filtrar por Apto o Nombre..."
+                style={{
+                  backgroundColor: '#0c0c0e',
+                  border: '1px solid #27272a',
+                  color: '#fff',
+                  padding: '6px 12px',
+                  borderRadius: '8px',
+                  fontSize: '12px',
+                  width: '180px',
+                  outline: 'none'
+                }}
+              />
+              <button
+                onClick={cargarDatos}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#a1a1aa',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}
+                title="Recargar mensajes"
+              >
+                🔄
+              </button>
+            </div>
           </div>
 
           {/* Feed de mensajes */}
@@ -427,12 +459,12 @@ export const AdminChat: React.FC = () => {
               <div style={{ textAlign: 'center', color: '#666', marginTop: '40px', fontSize: '13px' }}>
                 Cargando historial de chat en vivo...
               </div>
-            ) : mensajes.length === 0 ? (
+            ) : mensajesFiltrados.length === 0 ? (
               <div style={{ textAlign: 'center', color: '#666', marginTop: '40px', fontSize: '13px' }}>
-                No hay mensajes aún en la comunidad. Envía el primer mensaje o anuncio.
+                {filtroApto ? `No se encontraron mensajes del Apto o filtro "${filtroApto}".` : 'No hay mensajes aún en la comunidad.'}
               </div>
             ) : (
-              mensajes.map(m => {
+              mensajesFiltrados.map(m => {
                 const isAdmin = m.es_admin || m.autor_rol === 'administrador'
                 const isAnuncio = m.es_anuncio || m.autor_nombre.includes('ANUNCIO') || m.autor_nombre.includes('COMUNICADO')
                 const isAvisoLock = m.contenido.startsWith('🔒 MODO SOLO LECTURA') || m.contenido.startsWith('🔓 MODO SOLO LECTURA')
@@ -470,44 +502,53 @@ export const AdminChat: React.FC = () => {
                       alignItems: isAdmin ? 'flex-end' : 'flex-start',
                       position: 'relative'
                     }}
-                    className="group"
                   >
-                    {/* Encabezado del remitente */}
+                    {/* Encabezado del remitente CON APARTAMENTO DESTACADO */}
                     <div style={{
                       display: 'flex',
                       alignItems: 'center',
                       gap: '6px',
-                      marginBottom: '4px',
+                      marginBottom: '5px',
                       fontSize: '11px',
                       color: '#a1a1aa'
                     }}>
                       {isAdmin ? (
                         <>
                           <span style={{
-                            backgroundColor: isAnuncio ? '#eab308' : '#f97316',
-                            color: '#000',
-                            fontSize: '9px',
+                            backgroundColor: isAnuncio ? '#eab308' : '#3b82f6',
+                            color: isAnuncio ? '#000' : '#fff',
+                            fontSize: '10px',
                             fontWeight: 800,
-                            padding: '1px 6px',
-                            borderRadius: '4px',
-                            textTransform: 'uppercase'
+                            padding: '2px 8px',
+                            borderRadius: '6px',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.3px'
                           }}>
-                            {isAnuncio ? 'OFICIAL' : 'ADMIN'}
+                            {isAnuncio ? '📢 ANUNCIO OFICIAL' : '🛡️ ADMINISTRACIÓN'}
                           </span>
-                          <strong style={{ color: '#fb923c' }}>{m.autor_nombre}</strong>
+                          <strong style={{ color: '#93c5fd' }}>Torre 5</strong>
                         </>
                       ) : (
                         <>
+                          {/* Badge de Apartamento */}
                           <span style={{
-                            backgroundColor: '#27272a',
-                            color: '#e4e4e7',
-                            padding: '1px 6px',
-                            borderRadius: '4px',
-                            fontWeight: 700
+                            backgroundColor: '#f97316',
+                            color: '#fff',
+                            padding: '2px 8px',
+                            borderRadius: '6px',
+                            fontWeight: 800,
+                            fontSize: '11px',
+                            letterSpacing: '0.4px',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            boxShadow: '0 2px 6px rgba(249,115,22,0.3)'
                           }}>
-                            {m.apartamento_numero ? `Apto ${m.apartamento_numero}` : 'Residente'}
+                            🏢 APTO {m.apartamento_numero || 'S/N'}
                           </span>
-                          <span style={{ color: '#d4d4d8', fontWeight: 600 }}>{m.autor_nombre}</span>
+                          <span style={{ color: '#f4f4f5', fontWeight: 700, fontSize: '12px' }}>
+                            {m.autor_nombre}
+                          </span>
                         </>
                       )}
                       <span>·</span>
@@ -517,7 +558,7 @@ export const AdminChat: React.FC = () => {
 
                       {/* Botón de Moderación para Admin */}
                       <button
-                        onClick={() => handleEliminarMensaje(m.id, m.autor_nombre)}
+                        onClick={() => handleEliminarMensaje(m.id, m.apartamento_numero ? `Apto ${m.apartamento_numero} (${m.autor_nombre})` : m.autor_nombre)}
                         title="Eliminar mensaje (Moderación)"
                         style={{
                           background: 'none',
@@ -584,7 +625,7 @@ export const AdminChat: React.FC = () => {
               type="text"
               value={input}
               onChange={e => setInput(e.target.value)}
-              placeholder="Escribe una respuesta oficial como administración..."
+              placeholder="Escribe una respuesta como Administración..."
               style={{
                 flex: 1,
                 backgroundColor: '#0a0a0c',
@@ -637,7 +678,7 @@ export const AdminChat: React.FC = () => {
               </h3>
             </div>
             <p style={{ color: '#71717a', fontSize: '12px', margin: '0 0 14px 0', lineHeight: '1.4' }}>
-              Se destacará con insignia especial y encabezado en el chat de todos los apartamentos.
+              Se destacará con insignia dorada y encabezado en el chat de todos los apartamentos.
             </p>
             <form onSubmit={handleEnviarAnuncio}>
               <textarea
@@ -699,7 +740,7 @@ export const AdminChat: React.FC = () => {
               🛡️ Moderación de Convivencia
             </h3>
             <p style={{ color: '#888', fontSize: '12px', margin: '0 0 14px 0', lineHeight: '1.4' }}>
-              Si ocurre alguna discusión acalorada o conflicto vecinal, puedes congelar temporalmente la escritura con un solo clic.
+              Si ocurre alguna discusión acalorada entre propietarios, puedes congelar temporalmente la escritura con un solo clic.
             </p>
 
             {estadoChat.solo_lectura ? (
@@ -751,7 +792,7 @@ export const AdminChat: React.FC = () => {
             </h3>
             {[
               { label: 'Mensajes totales hoy', value: mensajesHoy },
-              { label: 'Propietarios participando', value: residentesActivos },
+              { label: 'Apartamentos activos', value: apartamentosActivos },
               { label: 'Anuncios oficiales emitidos', value: anunciosDelMes },
               { label: 'Estado del canal', value: estadoChat.solo_lectura ? 'Solo Lectura 🛑' : 'Abierto 🟢' }
             ].map((s, i) => (
@@ -852,7 +893,7 @@ export const AdminChat: React.FC = () => {
                 type="text"
                 value={motivoPersonalizado}
                 onChange={e => setMotivoPersonalizado(e.target.value)}
-                placeholder="Ej: Se suspende temporalmente el chat por discusión sobre el uso de la piscina..."
+                placeholder="Ej: Se suspende temporalmente el chat por discusión sobre el uso de las áreas comunes..."
                 style={{
                   width: '100%',
                   boxSizing: 'border-box',

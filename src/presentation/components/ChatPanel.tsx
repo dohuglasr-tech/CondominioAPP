@@ -16,12 +16,19 @@ interface ChatPanelProps {
 }
 
 export const ChatPanel: React.FC<ChatPanelProps> = ({ onClose }) => {
-  const { session, profile, apartamento } = useAuth()
+  const { session, perfil } = useAuth()
   const [mensajes, setMensajes] = useState<ChatMensaje[]>([])
   const [loading, setLoading] = useState(true)
   const [inputVal, setInputVal] = useState('')
   const [enviando, setEnviando] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
+
+  // Identificación del Apartamento
+  const [miAptoNumero, setMiAptoNumero] = useState<string>(() => {
+    return (perfil as any)?.apartamento?.numero || localStorage.getItem('condominio_mi_apto') || ''
+  })
+  const [editandoApto, setEditandoApto] = useState(false)
+  const [inputAptoManual, setInputAptoManual] = useState('')
 
   // Estado del Modo Solo Lectura
   const [estadoChat, setEstadoChat] = useState<ChatEstadoConfig>({
@@ -39,6 +46,58 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onClose }) => {
       }
     }, 100)
   }
+
+  // Resolver número de apartamento del usuario
+  useEffect(() => {
+    const resolverApto = async () => {
+      // 1. Directo desde perfil
+      const numFromPerfil = (perfil as any)?.apartamento?.numero
+      if (numFromPerfil) {
+        setMiAptoNumero(numFromPerfil)
+        localStorage.setItem('condominio_mi_apto', numFromPerfil)
+        return
+      }
+
+      // 2. Si perfil tiene apartamento_id, consultar tabla apartamentos
+      if (perfil?.apartamento_id) {
+        try {
+          const { data } = await supabase
+            .from('apartamentos')
+            .select('numero')
+            .eq('id', perfil.apartamento_id)
+            .maybeSingle()
+          if (data?.numero) {
+            setMiAptoNumero(data.numero)
+            localStorage.setItem('condominio_mi_apto', data.numero)
+            return
+          }
+        } catch (err) {
+          console.warn('[ChatPanel] Error buscando apartamento por id:', err)
+        }
+      }
+
+      // 3. Si hay sesión de usuario, buscar en perfiles
+      if (session?.user?.id) {
+        try {
+          const { data: pData } = await supabase
+            .from('perfiles')
+            .select('apartamento_id, apartamentos:apartamento_id(numero)')
+            .eq('id', session.user.id)
+            .maybeSingle()
+          const numJoin = (pData as any)?.apartamentos?.numero
+          if (numJoin) {
+            setMiAptoNumero(numJoin)
+            localStorage.setItem('condominio_mi_apto', numJoin)
+            return
+          }
+        } catch (err) {
+          console.warn('[ChatPanel] Error buscando join perfiles:', err)
+        }
+      }
+    }
+
+    resolverApto()
+  }, [perfil, session])
 
   const cargarDatos = async () => {
     setLoading(true)
@@ -99,7 +158,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onClose }) => {
               adjunto_tipo: nuevo.adjunto_tipo,
               created_at: nuevo.created_at || new Date().toISOString(),
               autor_id: nuevo.autor_id,
-              autor_nombre: nuevo.autor_nombre || (nuevo.es_admin ? 'Administración' : 'Vecino'),
+              autor_nombre: nuevo.autor_nombre || (nuevo.es_admin ? 'Administración' : (nuevo.apartamento_numero ? `Apto ${nuevo.apartamento_numero}` : 'Vecino')),
               autor_rol: nuevo.autor_rol || (nuevo.es_admin ? 'administrador' : 'residente'),
               apartamento_numero: nuevo.apartamento_numero,
               es_admin: !!nuevo.es_admin,
@@ -133,6 +192,15 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onClose }) => {
     }
   }, [])
 
+  const guardarAptoManual = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!inputAptoManual.trim()) return
+    const apto = inputAptoManual.trim().toUpperCase()
+    setMiAptoNumero(apto)
+    localStorage.setItem('condominio_mi_apto', apto)
+    setEditandoApto(false)
+  }
+
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!inputVal.trim() || enviando) return
@@ -142,18 +210,25 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onClose }) => {
       return
     }
 
+    // Si aún no tiene número de apartamento definido
+    const aptoFinal = miAptoNumero || localStorage.getItem('condominio_mi_apto') || ''
+    if (!aptoFinal) {
+      setEditandoApto(true)
+      setErrorMsg('Por favor ingresa tu número de apartamento para que tu mensaje quede identificado.')
+      return
+    }
+
     setEnviando(true)
     setErrorMsg(null)
     const val = inputVal.trim()
     setInputVal('')
 
-    const aptoNum = apartamento?.numero || (profile as any)?.apartamento_numero || ''
-    const nombreUsuario = profile?.nombre_completo || `Apto ${aptoNum}` || 'Vecino'
+    const nombreUsuario = perfil?.nombre_completo || `Propietario Apto ${aptoFinal}`
 
     const res = await enviarMensajeDesdeResidente({
       usuarioId: session?.user?.id,
       nombre: nombreUsuario,
-      apartamento: aptoNum,
+      apartamento: aptoFinal,
       contenido: val
     })
 
@@ -220,7 +295,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onClose }) => {
       borderRadius: '0 0 4px 4px'
     },
     header: {
-      padding: '18px 24px',
+      padding: '16px 20px',
       borderBottom: '1px solid #27272a',
       display: 'flex',
       justifyContent: 'space-between',
@@ -247,7 +322,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onClose }) => {
       backgroundColor: '#0c0c0e'
     },
     footer: {
-      padding: '16px 20px',
+      padding: '14px 20px',
       borderTop: '1px solid #27272a',
       backgroundColor: '#18181b',
       flexShrink: 0
@@ -321,26 +396,111 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onClose }) => {
                   backgroundColor: estadoChat.solo_lectura ? '#ef4444' : '#22c55e'
                 }} />
                 <span style={{ fontSize: '11px', color: estadoChat.solo_lectura ? '#f87171' : '#a1a1aa' }}>
-                  {estadoChat.solo_lectura ? 'Modo Solo Lectura' : 'En vivo · Todos los apartamentos'}
+                  {estadoChat.solo_lectura ? 'Modo Solo Lectura Activado' : 'En vivo · Todos los apartamentos'}
                 </span>
               </div>
             </div>
           </div>
 
-          {/* Badge de Usuario actual */}
-          <div style={{
-            fontSize: '11px',
-            backgroundColor: '#27272a',
-            padding: '5px 10px',
-            borderRadius: '20px',
-            color: '#e4e4e7',
-            fontWeight: 600
-          }}>
-            {apartamento?.numero ? `Apto ${apartamento.numero}` : (profile?.nombre_completo || 'Residente')}
+          {/* Badge de Identificación del Apartamento actual */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div
+              onClick={() => {
+                setInputAptoManual(miAptoNumero)
+                setEditandoApto(true)
+              }}
+              title="Haz clic para modificar tu apartamento"
+              style={{
+                fontSize: '11px',
+                backgroundColor: miAptoNumero ? 'rgba(249, 115, 22, 0.15)' : '#3f3f46',
+                color: miAptoNumero ? '#f97316' : '#fff',
+                border: miAptoNumero ? '1px solid rgba(249, 115, 22, 0.4)' : '1px solid #52525b',
+                padding: '6px 12px',
+                borderRadius: '20px',
+                fontWeight: 800,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+            >
+              <span>🏢</span>
+              <span>{miAptoNumero ? `Apto ${miAptoNumero}` : 'Asignar Apto'}</span>
+            </div>
           </div>
         </div>
 
-        {/* AVISO DE MODO SOLO LECTURA EN LA PARTE SUPERIOR */}
+        {/* MODAL / BANNER DE ASIGNACIÓN MANUAL DE APARTAMENTO (SI FALTA) */}
+        {editandoApto && (
+          <div style={{
+            backgroundColor: '#1f1a14',
+            borderBottom: '1px solid #f97316',
+            padding: '12px 20px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '12px',
+            flexWrap: 'wrap'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '18px' }}>🏢</span>
+              <span style={{ color: '#fed7aa', fontSize: '12px', fontWeight: 600 }}>
+                Indica tu número de apartamento para que tus mensajes aparezcan identificados:
+              </span>
+            </div>
+            <form onSubmit={guardarAptoManual} style={{ display: 'flex', gap: '8px' }}>
+              <input
+                type="text"
+                value={inputAptoManual}
+                onChange={e => setInputAptoManual(e.target.value)}
+                placeholder="Ej: 502, PH-1"
+                style={{
+                  backgroundColor: '#0a0a0a',
+                  border: '1px solid #f97316',
+                  color: '#fff',
+                  padding: '6px 12px',
+                  borderRadius: '6px',
+                  fontSize: '12px',
+                  width: '100px',
+                  outline: 'none',
+                  textTransform: 'uppercase'
+                }}
+              />
+              <button
+                type="submit"
+                style={{
+                  backgroundColor: '#f97316',
+                  color: '#fff',
+                  border: 'none',
+                  padding: '6px 12px',
+                  borderRadius: '6px',
+                  fontWeight: 700,
+                  fontSize: '12px',
+                  cursor: 'pointer'
+                }}
+              >
+                Guardar
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditandoApto(false)}
+                style={{
+                  backgroundColor: '#27272a',
+                  color: '#a1a1aa',
+                  border: 'none',
+                  padding: '6px 10px',
+                  borderRadius: '6px',
+                  fontSize: '12px',
+                  cursor: 'pointer'
+                }}
+              >
+                ✕
+              </button>
+            </form>
+          </div>
+        )}
+
+        {/* AVISO DE MODO SOLO LECTURA */}
         {estadoChat.solo_lectura && (
           <div style={{
             backgroundColor: 'rgba(220, 38, 38, 0.12)',
@@ -431,8 +591,9 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onClose }) => {
               }
 
               // Determinar si es mensaje del usuario actual
+              const aptoComparar = miAptoNumero || (perfil as any)?.apartamento?.numero || ''
               const isMe = !isAdmin && (
-                (apartamento?.numero && m.apartamento_numero === apartamento.numero) ||
+                (aptoComparar && m.apartamento_numero === aptoComparar) ||
                 (session?.user?.id && m.autor_id === session.user.id)
               )
 
@@ -446,39 +607,58 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onClose }) => {
                     width: '100%'
                   }}
                 >
-                  {/* Encabezado del mensaje */}
+                  {/* Encabezado del mensaje con IDENTIFICACIÓN DE APARTAMENTO CLARA */}
                   <div style={{
                     display: 'flex',
                     alignItems: 'center',
                     gap: '6px',
                     fontSize: '11px',
                     color: '#71717a',
-                    marginBottom: '4px',
+                    marginBottom: '5px',
                     flexDirection: isMe ? 'row-reverse' : 'row'
                   }}>
-                    <span style={{ fontWeight: 700, color: isAdmin ? '#fb923c' : (isMe ? '#fdba74' : '#e4e4e7') }}>
-                      {isAdmin
-                        ? 'Administración'
-                        : isMe
-                          ? `Yo (Apto ${m.apartamento_numero || apartamento?.numero || ''})`
-                          : (m.apartamento_numero ? `Apto ${m.apartamento_numero}` : m.autor_nombre)}
-                    </span>
-                    <span>•</span>
-                    <span>{parseTime(m.created_at)}</span>
-                    {isAdmin && (
+                    {isAdmin ? (
                       <span style={{
-                        background: isAnuncio ? 'rgba(234, 179, 8, 0.2)' : 'rgba(249,115,22,0.2)',
-                        color: isAnuncio ? '#facc15' : '#f97316',
-                        border: isAnuncio ? '1px solid rgba(234, 179, 8, 0.4)' : '1px solid rgba(249,115,22,0.4)',
-                        padding: '1px 6px',
-                        borderRadius: '4px',
+                        backgroundColor: isAnuncio ? '#eab308' : '#3b82f6',
+                        color: isAnuncio ? '#000' : '#fff',
+                        padding: '2px 8px',
+                        borderRadius: '6px',
                         fontWeight: 800,
-                        fontSize: '9px',
+                        fontSize: '10px',
+                        letterSpacing: '0.4px',
                         textTransform: 'uppercase'
                       }}>
-                        {isAnuncio ? 'OFICIAL' : 'ADMIN'}
+                        {isAnuncio ? '📢 OFICIAL' : '🛡️ ADMINISTRACIÓN'}
+                      </span>
+                    ) : (
+                      <span style={{
+                        backgroundColor: isMe ? '#f97316' : '#27272a',
+                        color: isMe ? '#fff' : '#fb923c',
+                        border: isMe ? '1px solid #ea580c' : '1px solid #3f3f46',
+                        padding: '2px 8px',
+                        borderRadius: '6px',
+                        fontWeight: 800,
+                        fontSize: '11px',
+                        letterSpacing: '0.3px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        boxShadow: isMe ? '0 2px 6px rgba(249,115,22,0.3)' : 'none'
+                      }}>
+                        🏢 APTO {m.apartamento_numero || 'S/N'}
                       </span>
                     )}
+
+                    <span style={{
+                      fontWeight: 700,
+                      color: isAdmin ? '#93c5fd' : (isMe ? '#fdba74' : '#e4e4e7'),
+                      fontSize: '12px'
+                    }}>
+                      {isAdmin ? 'Administración Torre 5' : (isMe ? `Tú (${m.autor_nombre})` : m.autor_nombre)}
+                    </span>
+
+                    <span>•</span>
+                    <span>{parseTime(m.created_at)}</span>
                   </div>
 
                   {/* Globo de texto */}
@@ -552,24 +732,50 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onClose }) => {
               </span>
             </div>
           ) : (
-            <form onSubmit={handleSend} style={st.inputRow}>
-              <input
-                type="text"
-                placeholder={`Escribe como Apto ${apartamento?.numero || ''}...`}
-                value={inputVal}
-                onChange={e => setInputVal(e.target.value)}
-                style={st.input}
-                onFocus={e => e.target.style.borderColor = '#f97316'}
-                onBlur={e => e.target.style.borderColor = '#333'}
-              />
-              <button
-                type="submit"
-                style={st.sendBtn}
-                disabled={!inputVal.trim() || enviando}
-              >
-                {enviando ? '...' : 'Enviar'}
-              </button>
-            </form>
+            <div>
+              {/* Barra de estado: identificado como Apto XXX */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: '#a1a1aa' }}>
+                  <span>Escribiendo como:</span>
+                  <span style={{
+                    backgroundColor: '#27272a',
+                    color: '#f97316',
+                    padding: '1px 6px',
+                    borderRadius: '4px',
+                    fontWeight: 800
+                  }}>
+                    🏢 Apto {miAptoNumero || 'Sin asignar'}
+                  </span>
+                </div>
+                {!miAptoNumero && (
+                  <button
+                    onClick={() => setEditandoApto(true)}
+                    style={{ background: 'none', border: 'none', color: '#f97316', fontSize: '11px', cursor: 'pointer', textDecoration: 'underline' }}
+                  >
+                    Asignar Apto
+                  </button>
+                )}
+              </div>
+
+              <form onSubmit={handleSend} style={st.inputRow}>
+                <input
+                  type="text"
+                  placeholder={miAptoNumero ? `Escribe un mensaje como Apto ${miAptoNumero}...` : 'Escribe un mensaje al condominio...'}
+                  value={inputVal}
+                  onChange={e => setInputVal(e.target.value)}
+                  style={st.input}
+                  onFocus={e => e.target.style.borderColor = '#f97316'}
+                  onBlur={e => e.target.style.borderColor = '#333'}
+                />
+                <button
+                  type="submit"
+                  style={st.sendBtn}
+                  disabled={!inputVal.trim() || enviando}
+                >
+                  {enviando ? '...' : 'Enviar'}
+                </button>
+              </form>
+            </div>
           )}
         </div>
       </div>

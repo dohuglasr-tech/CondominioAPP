@@ -126,11 +126,11 @@ export async function cambiarEstadoSoloLectura(
 }
 
 /**
- * Obtiene los últimos N mensajes del chat comunitario
+ * Obtiene los últimos N mensajes del chat comunitario, garantizando la identificación por apartamento
  */
 export async function obtenerMensajes(limite: number = 80): Promise<{ data: ChatMensaje[]; error: string | null }> {
   try {
-    // Intentamos consulta directa a chat_mensajes
+    // 1. Consultar mensajes
     const { data, error } = await supabase
       .from('chat_mensajes')
       .select('*')
@@ -181,20 +181,56 @@ export async function obtenerMensajes(limite: number = 80): Promise<{ data: Chat
       return { data: parsedLegacy, error: null }
     }
 
+    // 2. Si algunos mensajes no tienen apartamento_numero pero sí autor_id, resolverlos con perfiles
+    const autorIdsFaltantes = Array.from(new Set(
+      (data || [])
+        .filter((d: any) => !d.apartamento_numero && !d.es_admin && d.autor_id)
+        .map((d: any) => d.autor_id)
+    ))
+
+    const mapaAptosPorAutor = new Map<string, { numero: string; nombre: string }>()
+    if (autorIdsFaltantes.length > 0) {
+      try {
+        const { data: perfs } = await supabase
+          .from('perfiles')
+          .select('id, nombre_completo, apartamento:apartamento_id(numero)')
+          .in('id', autorIdsFaltantes)
+
+        if (perfs) {
+          perfs.forEach((p: any) => {
+            if (p.apartamento?.numero) {
+              mapaAptosPorAutor.set(p.id, {
+                numero: p.apartamento.numero,
+                nombre: p.nombre_completo || ''
+              })
+            }
+          })
+        }
+      } catch (errPerf) {
+        console.warn('[ChatService] Error resolviendo perfiles faltantes:', errPerf)
+      }
+    }
+
     // Mapear los datos directos
-    const mensajes: ChatMensaje[] = (data || []).map((d: any) => ({
-      id: d.id,
-      contenido: d.contenido,
-      adjunto_url: d.adjunto_url || null,
-      adjunto_tipo: d.adjunto_tipo || null,
-      created_at: d.created_at || new Date().toISOString(),
-      autor_id: d.autor_id || null,
-      autor_nombre: d.autor_nombre || (d.es_admin ? 'Administración' : 'Vecino'),
-      autor_rol: d.autor_rol || (d.es_admin ? 'administrador' : 'residente'),
-      apartamento_numero: d.apartamento_numero || null,
-      es_admin: !!d.es_admin,
-      es_anuncio: !!d.es_anuncio
-    })).reverse() // Cronológico: más antiguo primero, más nuevo al final
+    const mensajes: ChatMensaje[] = (data || []).map((d: any) => {
+      const infoExtra = d.autor_id ? mapaAptosPorAutor.get(d.autor_id) : null
+      const aptoNum = d.apartamento_numero || infoExtra?.numero || null
+      const nombreFinal = d.autor_nombre || infoExtra?.nombre || (d.es_admin ? 'Administración' : (aptoNum ? `Propietario Apto ${aptoNum}` : 'Vecino'))
+
+      return {
+        id: d.id,
+        contenido: d.contenido,
+        adjunto_url: d.adjunto_url || null,
+        adjunto_tipo: d.adjunto_tipo || null,
+        created_at: d.created_at || new Date().toISOString(),
+        autor_id: d.autor_id || null,
+        autor_nombre: nombreFinal,
+        autor_rol: d.autor_rol || (d.es_admin ? 'administrador' : 'residente'),
+        apartamento_numero: aptoNum,
+        es_admin: !!d.es_admin,
+        es_anuncio: !!d.es_anuncio
+      }
+    }).reverse() // Cronológico: más antiguo primero, más nuevo al final
 
     return { data: mensajes, error: null }
   } catch (err: any) {
@@ -204,7 +240,7 @@ export async function obtenerMensajes(limite: number = 80): Promise<{ data: Chat
 }
 
 /**
- * Envía un mensaje desde el portal de un Residente
+ * Envía un mensaje desde el portal de un Residente, con identificación OBLIGATORIA de apartamento
  */
 export async function enviarMensajeDesdeResidente(params: {
   usuarioId?: string
@@ -220,22 +256,26 @@ export async function enviarMensajeDesdeResidente(params: {
     }
   }
 
-  const nuevoId = crypto.randomUUID ? crypto.randomUUID() : `msg_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`
-  const ahora = new Date().toISOString()
   const contenidoLimpio = params.contenido.trim()
-
   if (!contenidoLimpio) {
     return { error: 'El mensaje no puede estar vacío.' }
   }
+
+  // Garantizar identificación por apartamento
+  const aptoLimpio = (params.apartamento && params.apartamento.trim()) ? params.apartamento.trim() : 'S/N'
+  const nombreLimpio = (params.nombre && params.nombre.trim()) ? params.nombre.trim() : `Apto ${aptoLimpio}`
+
+  const nuevoId = crypto.randomUUID ? crypto.randomUUID() : `msg_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`
+  const ahora = new Date().toISOString()
 
   const nuevoMensaje: ChatMensaje = {
     id: nuevoId,
     contenido: contenidoLimpio,
     created_at: ahora,
     autor_id: params.usuarioId || null,
-    autor_nombre: params.nombre || `Apto ${params.apartamento}`,
+    autor_nombre: nombreLimpio,
     autor_rol: 'residente',
-    apartamento_numero: params.apartamento || '',
+    apartamento_numero: aptoLimpio,
     es_admin: false,
     es_anuncio: false
   }
@@ -247,7 +287,7 @@ export async function enviarMensajeDesdeResidente(params: {
       contenido: contenidoLimpio,
       autor_nombre: nuevoMensaje.autor_nombre,
       autor_rol: 'residente',
-      apartamento_numero: nuevoMensaje.apartamento_numero,
+      apartamento_numero: aptoLimpio,
       es_admin: false,
       es_anuncio: false
     }
