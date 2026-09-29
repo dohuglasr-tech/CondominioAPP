@@ -1,17 +1,17 @@
 /**
  * Utilidades para cálculo, formateo y persistencia de alícuotas en el condominio.
  * 
- * En la base de datos se guarda preferiblemente en formato decimal (ej: 0.015625 para 1.5625% o 0.031250 para 3.1250% de Penthouse).
+ * En la base de datos se guarda preferiblemente en formato decimal (ej: 0.0159 para 1.59% o 0.0259 para 2.59% de Penthouse).
  * Estas funciones toleran tanto valores decimales (<= 0.5) como porcentajes (> 0.5).
  */
 
 /**
  * Convierte el valor de alícuota a fracción decimal para cálculos matemáticos.
  * Ejemplos:
- *  0.015625 -> 0.015625
- *  1.5625   -> 0.015625
- *  0.03125  -> 0.03125 (Penthouse)
- *  3.125    -> 0.03125 (Penthouse)
+ *  0.0159 -> 0.0159
+ *  1.59   -> 0.0159
+ *  0.0259 -> 0.0259 (Penthouse)
+ *  2.59   -> 0.0259 (Penthouse)
  */
 export function getAlicuotaDecimal(val: number | string | null | undefined): number {
   if (val === null || val === undefined || val === '') return 0

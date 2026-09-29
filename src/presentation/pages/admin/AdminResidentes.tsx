@@ -140,8 +140,8 @@ export const AdminResidentes: React.FC = () => {
           apartamento_id: a.id,
           apartamento: a.numero,
           piso: a.piso,
-          alicuota: a.alicuota || (esPH ? 0.03125 : 0.015625),
-          alicuota_input: String(alicPctNum || (esPH ? '3.125' : '1.5625')),
+          alicuota: a.alicuota || (esPH ? 0.0259 : 0.0159),
+          alicuota_input: String(alicPctNum || (esPH ? '2.59' : '1.59')),
           es_ph: esPH,
           tiene_usuario: !!perfil,
           usuario_id: perfil?.id,
@@ -572,13 +572,13 @@ export const AdminResidentes: React.FC = () => {
                       style={{ ...inputStyle, fontSize: '16px', fontWeight: 700, paddingRight: '32px' }}
                       value={form.alicuota_input}
                       onChange={e => setForm({ ...form, alicuota_input: e.target.value })}
-                      placeholder="1.5625"
+                      placeholder="1.59"
                     />
                     <span style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', color: '#f97316', fontWeight: 800 }}>%</span>
                   </div>
                   <div style={{ color: '#aaa', fontSize: '12px' }}>
                     <p style={{ margin: '0 0 4px', color: '#fff', fontWeight: 600 }}>
-                      {form.es_ph ? '⭐ Apartamento Penthouse: paga más por metraje (ej: 3.125%)' : 'Apartamento regular: alícuota estándar (ej: 1.5625%)'}
+                      {form.es_ph ? '⭐ Apartamento Penthouse: paga más por metraje (ej: 2.59%)' : 'Apartamento regular: alícuota estándar (ej: 1.59%)'}
                     </p>
                     <p style={{ margin: 0, color: '#777' }}>
                       Este porcentaje se aplica de forma automática al generar los recibos mensuales de cobro para calcular el monto en Bs y USD.
