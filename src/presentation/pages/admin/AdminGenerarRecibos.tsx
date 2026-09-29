@@ -45,7 +45,11 @@ const S = {
   badge: (color: string) => ({ backgroundColor: `${color}18`, color, border: `1px solid ${color}35`, padding: '2px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 700 }) as React.CSSProperties,
 }
 
-// ─── PDF Generator ────────────────────────────────────────────────────────
+const DEFAULT_NOTAS = `DEPOSITAR EN CUENTA CORRIENTE NRO 0175-0525-4100-7575-1351 BANCO BICENTENARIO A NOMBRE DE ZORAYA ALMEIDA, CÉDULA V-6089037. VERIFICAR QUE SE REALICE LA TRANSACCIÓN. PAGO MÓVIL DISPONIBLE.
+VECINOS: FAVOR NO LANZAR BOTELLAS NI VIDRIOS POR EL BAJANTE, ES SUMAMENTE PELIGROSO.
+VECINOS: FAVOR REVISAR SUS FILTRACIONES Y DRENAJES DE AIRES ACONDICIONADOS.`
+
+// ─── PDF Generator (Diseño moderno estilo factura con colores de la app y formato Excel) ───
 function generarPDF(
   apto: Apartamento,
   gastos: GastoComun[],
@@ -54,15 +58,21 @@ function generarPDF(
   fondoReservaPct: number,
   mesLabel: string,
   anio: number,
+  notasResidentes?: string,
 ): jsPDF {
-  const doc = new jsPDF()
-  const cAccent: [number,number,number] = [249, 115, 22]
-  const cDark:   [number,number,number] = [30, 30, 30]
+  const doc = new jsPDF({ format: 'a4', unit: 'mm' })
+  const cDark:   [number,number,number] = [15, 23, 42]     // Slate 900
+  const cAccent: [number,number,number] = [249, 115, 22]   // Brand Orange
 
-  const alicuota     = getAlicuotaDecimal(apto.alicuota)
-  // Totales USD prorrata
+  const alicuota = getAlicuotaDecimal(apto.alicuota)
   const totalGastosUsd = gastos.reduce((s, g) => s + g.monto_usd, 0)
   const totalGastosBs  = gastos.reduce((s, g) => s + g.monto_bs, 0)
+  
+  const fondoEdificioUsd = totalGastosUsd * (fondoReservaPct / 100)
+  const fondoEdificioBs  = totalGastosBs  * (fondoReservaPct / 100)
+  const totalEdificioUsd = totalGastosUsd + fondoEdificioUsd
+  const totalEdificioBs  = totalGastosBs  + fondoEdificioBs
+
   const subtotalUsd  = totalGastosUsd * alicuota
   const subtotalBs   = totalGastosBs  * alicuota
   const fondoUsd     = subtotalUsd * (fondoReservaPct / 100)
@@ -73,139 +83,233 @@ function generarPDF(
   const totalUsd     = subtotalUsd + fondoUsd + cargosUsd
   const totalBs      = subtotalBs  + fondoBs  + cargosBs
 
-  // ── HEADER ──
+  const esPH = apto.numero.toUpperCase().includes('PH')
+
+  // ── 1. HEADER MODERNO GEOMÉTRICO (Inspiración Imagen 3 con paleta CondominioApp) ──
   doc.setFillColor(...cDark)
-  doc.rect(0, 0, 210, 38, 'F')
-  doc.setTextColor(...cAccent)
+  doc.rect(0, 0, 210, 36, 'F')
+
+  // Línea inferior naranja de acento
+  doc.setFillColor(...cAccent)
+  doc.rect(0, 36, 210, 2, 'F')
+
+  // Acento vertical izquierdo
+  doc.setFillColor(...cAccent)
+  doc.rect(12, 10, 3, 16, 'F')
+
+  // Título e institución (Lado izquierdo)
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(20)
-  doc.text('RECIBO DE CONDOMINIO', 105, 15, { align: 'center' })
-  doc.setTextColor(200, 200, 200)
-  doc.setFontSize(9)
+  doc.setFontSize(8)
+  doc.setTextColor(...cAccent)
+  doc.text('JUNTA DE CONDOMINIO OCUTUY 5', 18, 14)
+
+  doc.setFontSize(16)
+  doc.setTextColor(255, 255, 255)
+  doc.text('RECIBO DE CONDOMINIO', 18, 21)
+
   doc.setFont('helvetica', 'normal')
-  doc.text(`${config.email_contacto || 'juntacondominioocutuy5@gmail.com'}   |   RIF: ${config.rif || 'J-296749485'}`, 105, 23, { align: 'center' })
-  doc.text(config.nombre_edificio || 'RESIDENCIAS OCUTUY 5', 105, 30, { align: 'center' })
-  if (config.direccion) doc.text(config.direccion, 105, 36, { align: 'center' })
+  doc.setFontSize(7.5)
+  doc.setTextColor(203, 213, 225)
+  doc.text('DIRECCIÓN: URBANIZACIÓN CASA BLANCA, RESIDENCIAS OCUTUY 5', 18, 27)
 
-  // ── INFO INMUEBLE ──
-  doc.setDrawColor(...cAccent)
-  doc.setLineWidth(0.4)
-  doc.line(14, 44, 196, 44)
-  doc.setTextColor(40, 40, 40)
-  doc.setFontSize(10)
+  // Datos fiscales y contacto (Lado derecho)
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(8.5)
+  doc.setTextColor(...cAccent)
+  doc.text(`RIF: ${config.rif || 'J-296749485'}`, 198, 14, { align: 'right' })
 
-  const left  = [['PROPIETARIO:', apto.propietario_nombre || 'Residente'],['APARTAMENTO:', `Nro. ${apto.numero}`],['ALÍCUOTA:', formatAlicuotaPct(apto.alicuota)]]
-  const right = [['MES:', mesLabel],['AÑO:', String(anio)]]
-  let y = 50
-  left.forEach(([l, v])  => { doc.setFont('helvetica','bold'); doc.text(l, 14, y); doc.setFont('helvetica','normal'); doc.text(v, 55, y); y += 6 })
-  y = 50
-  right.forEach(([l, v]) => { doc.setFont('helvetica','bold'); doc.text(l, 130, y); doc.setFont('helvetica','normal'); doc.text(v, 152, y); y += 6 })
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(7.5)
+  doc.setTextColor(226, 232, 240)
+  doc.text(`CORREO: ${config.email_contacto || 'juntacondominioocutuy5@gmail.com'}`, 198, 20, { align: 'right' })
+  doc.text(`EDIFICIO: ${config.nombre_edificio || 'RESIDENCIAS OCUTUY 5'}`, 198, 26, { align: 'right' })
 
-  doc.setDrawColor(200, 200, 200)
-  doc.line(14, 68, 196, 68)
+  // ── 2. CUADRO DE INFORMACIÓN DEL INMUEBLE (Formato Excel Imagen 2) ──
+  autoTable(doc, {
+    startY: 41,
+    margin: { left: 12, right: 12 },
+    tableWidth: 186,
+    theme: 'grid',
+    styles: { fontSize: 8, cellPadding: 2.2, textColor: [30, 41, 59], lineColor: [203, 213, 225], lineWidth: 0.3 },
+    head: [['APARTAMENTO', 'PROPIETARIO', 'ALÍCUOTA', 'MES', 'AÑO']],
+    headStyles: { fillColor: [241, 245, 249], textColor: [71, 85, 105], fontStyle: 'bold', fontSize: 7.5, halign: 'center' },
+    body: [[
+      `Nro. ${apto.numero} ${esPH ? '(PH)' : ''}`,
+      apto.propietario_nombre || 'Residente',
+      formatAlicuotaPct(apto.alicuota),
+      mesLabel.toUpperCase(),
+      String(anio)
+    ]],
+    bodyStyles: { fontStyle: 'bold', fontSize: 8.5, halign: 'center' },
+    columnStyles: {
+      0: { halign: 'center', textColor: cAccent, cellWidth: 32 },
+      1: { halign: 'left', fontStyle: 'bold', cellWidth: 74 },
+      2: { halign: 'center', cellWidth: 28 },
+      3: { halign: 'center', cellWidth: 28 },
+      4: { halign: 'center', cellWidth: 24 }
+    }
+  })
 
-  // ── TABLA GASTOS ──
+  // ── 3. TABLA DE GASTOS COMUNES (Formato Excel Imagen 2) ──
   const bodyGastos = gastos.map(g => [
     g.descripcion,
     `${fmtBs(g.monto_bs)} Bs`,
-    `$ ${fmtUsd(g.monto_usd)}`,
+    `$ ${fmtUsd(g.monto_usd)}`
   ])
 
   autoTable(doc, {
-    startY: 72,
-    headStyles: { fillColor: cDark, textColor: [255,255,255], fontStyle: 'bold', halign: 'center', fontSize: 9 },
-    columnStyles: { 0: { cellWidth: 118 }, 1: { halign: 'right', cellWidth: 40 }, 2: { halign: 'right', cellWidth: 28 } },
+    startY: (doc as any).lastAutoTable.finalY + 2.5,
+    margin: { left: 12, right: 12 },
+    tableWidth: 186,
+    theme: 'grid',
+    styles: { fontSize: 7.2, cellPadding: 1.8, textColor: [30, 41, 59], lineColor: [226, 232, 240], lineWidth: 0.2 },
     head: [['DETALLES DE GASTOS COMUNES', 'BOLÍVARES', 'DÓLAR $']],
-    body: bodyGastos,
-    alternateRowStyles: { fillColor: [250, 250, 250] },
-    styles: { fontSize: 8 },
+    headStyles: {
+      fillColor: cDark,
+      textColor: [255, 255, 255],
+      fontStyle: 'bold',
+      fontSize: 7.8,
+      halign: 'center',
+      cellPadding: 2.5
+    },
+    columnStyles: {
+      0: { cellWidth: 116 },
+      1: { halign: 'right', cellWidth: 42, fontStyle: 'normal' },
+      2: { halign: 'right', cellWidth: 28, fontStyle: 'normal' }
+    },
+    alternateRowStyles: { fillColor: [248, 250, 252] },
+    body: bodyGastos
   })
 
-  let finalY = (doc as any).lastAutoTable.finalY
-
-  // ── SUB TOTALES ──
-  const subTotalesBody = [
-    ['SUB TOTAL', `${fmtBs(subtotalBs)} Bs`, `$ ${fmtUsd(subtotalUsd)}`],
-    [`FONDO DE RESERVA (${fondoReservaPct}%)`, `${fmtBs(fondoBs)} Bs`, `$ ${fmtUsd(fondoUsd)}`],
-    ['', `${fmtBs(subtotalBs + fondoBs)} Bs`, `$ ${fmtUsd(subtotalUsd + fondoUsd)}`],
+  // ── 4. SUB TOTALES Y TOTAL EDIFICIO (Formato Excel Imagen 2) ──
+  const subTotalesBody: any[] = [
+    ['SUB TOTAL', `${fmtBs(totalGastosBs)} Bs`, `$ ${fmtUsd(totalGastosUsd)}`],
+    [`FONDO DE RESERVA (${fondoReservaPct}%)`, `${fmtBs(fondoEdificioBs)} Bs`, `$ ${fmtUsd(fondoEdificioUsd)}`],
+    ['TOTAL GASTOS CONDOMINIO', `${fmtBs(totalEdificioBs)} Bs`, `$ ${fmtUsd(totalEdificioUsd)}`]
   ]
-  autoTable(doc, {
-    startY: finalY,
-    theme: 'plain',
-    styles: { fontSize: 9 },
-    columnStyles: { 0: { cellWidth: 118, halign: 'right', fontStyle: 'bold' }, 1: { halign: 'right', cellWidth: 40 }, 2: { halign: 'right', cellWidth: 28 } },
-    body: subTotalesBody,
-  })
-  finalY = (doc as any).lastAutoTable.finalY
 
-  // ── CARGOS ESPECIALES ──
   if (cargosApto.length > 0) {
-    autoTable(doc, {
-      startY: finalY,
-      headStyles: { fillColor: [60,30,10], textColor: [255,200,100], fontStyle: 'bold', fontSize: 9 },
-      columnStyles: { 0: { cellWidth: 118 }, 1: { halign: 'right', cellWidth: 40 }, 2: { halign: 'right', cellWidth: 28 } },
-      head: [['CARGOS ESPECIALES / DEUDAS', 'BOLÍVARES', 'DÓLAR $']],
-      body: cargosApto.map(c => [
-        `${TIPO_CARGO_LABELS[c.tipo] || c.tipo} — ${c.descripcion}`,
+    cargosApto.forEach(c => {
+      subTotalesBody.push([
+        `CARGO: ${TIPO_CARGO_LABELS[c.tipo] || c.tipo} — ${c.descripcion}`,
         `${fmtBs(c.monto_bs || 0)} Bs`,
-        `$ ${fmtUsd(c.monto_usd)}`,
-      ]),
-      styles: { fontSize: 8 },
+        `$ ${fmtUsd(c.monto_usd)}`
+      ])
     })
-    finalY = (doc as any).lastAutoTable.finalY
   }
 
-  // ── TOTAL A PAGAR ──
   autoTable(doc, {
-    startY: finalY,
+    startY: (doc as any).lastAutoTable.finalY,
+    margin: { left: 12, right: 12 },
+    tableWidth: 186,
     theme: 'grid',
-    headStyles: { fillColor: cAccent, textColor: [255,255,255], halign: 'center', fontSize: 10 },
+    styles: { fontSize: 7.5, cellPadding: 1.8, textColor: [30, 41, 59], lineColor: [226, 232, 240], lineWidth: 0.2 },
     columnStyles: {
-      0: { cellWidth: 118, halign: 'right', fontStyle: 'bold', textColor: cAccent },
-      1: { halign: 'right', cellWidth: 40, fontStyle: 'bold' },
-      2: { halign: 'right', cellWidth: 28, fontStyle: 'bold' },
+      0: { cellWidth: 116, halign: 'right', fontStyle: 'bold' },
+      1: { halign: 'right', cellWidth: 42, fontStyle: 'bold' },
+      2: { halign: 'right', cellWidth: 28, fontStyle: 'bold' }
     },
-    body: [['TOTAL A PAGAR', `${fmtBs(totalBs)} Bs`, `$ ${fmtUsd(totalUsd)}`]],
-    styles: { fontSize: 10 },
+    body: subTotalesBody
   })
 
-  const alertY = (doc as any).lastAutoTable.finalY + 5
+  // ── 5. TOTAL A PAGAR (CON ALÍCUOTA APLICADA) ──
+  autoTable(doc, {
+    startY: (doc as any).lastAutoTable.finalY,
+    margin: { left: 12, right: 12 },
+    tableWidth: 186,
+    theme: 'grid',
+    head: [[
+      `TOTAL A PAGAR (ALÍCUOTA ${formatAlicuotaPct(apto.alicuota)})`,
+      `${fmtBs(totalBs)} Bs`,
+      `$ ${fmtUsd(totalUsd)}`
+    ]],
+    headStyles: {
+      fillColor: cAccent,
+      textColor: [255, 255, 255],
+      fontStyle: 'bold',
+      fontSize: 9,
+      cellPadding: 2.8
+    },
+    columnStyles: {
+      0: { cellWidth: 116, halign: 'right' },
+      1: { halign: 'right', cellWidth: 42 },
+      2: { halign: 'right', cellWidth: 28 }
+    }
+  })
 
-  // ── BANNER ADVERTENCIA ──
-  doc.setFillColor(254, 240, 138)
-  doc.rect(14, alertY, 182, 12, 'F')
-  doc.setDrawColor(234, 179, 8)
-  doc.rect(14, alertY, 182, 12, 'S')
-  doc.setTextColor(92, 60, 0)
+  // ── 6. BANNER DE ADVERTENCIA (Formato Imagen 2) ──
+  let currentY = (doc as any).lastAutoTable.finalY + 2.5
+  doc.setFillColor(254, 243, 199)
+  doc.setDrawColor(245, 158, 11)
+  doc.setLineWidth(0.4)
+  doc.rect(12, currentY, 186, 7, 'FD')
+  doc.setTextColor(146, 64, 14)
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(9)
+  doc.setFontSize(7.5)
   doc.text(
-    `*****ATENCIÓN PAGAR  ${fmtUsd(totalUsd)}  $  ANCLADO AL $ BCV DEL DÍA DE SU PAGO*****`,
-    105, alertY + 8, { align: 'center' }
+    `***** ATENCIÓN: PAGAR  ${fmtUsd(totalUsd)}  $  ANCLADO AL $ BCV DEL DÍA DE SU PAGO *****`,
+    105, currentY + 4.7, { align: 'center' }
   )
 
-  // ── DATOS BANCARIOS ──
-  const notaY = alertY + 18
-  doc.setDrawColor(220, 220, 220)
-  doc.line(14, notaY, 196, notaY)
-  doc.setTextColor(80, 80, 80)
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(9)
-  doc.text('DATOS DE PAGO:', 14, notaY + 6)
-  doc.setFont('helvetica', 'normal')
-  let ly = notaY + 12
-  const lineas = [
-    config.banco ? `Banco: ${config.banco}` : 'Banco: (configurar en panel admin)',
-    config.cuenta_bancaria ? `Cuenta: ${config.cuenta_bancaria}` : '',
-    config.titular_cuenta ? `Titular: ${config.titular_cuenta}` : '',
-    'Enviar comprobante al correo del condominio.',
-  ].filter(Boolean)
-  lineas.forEach(l => { doc.text(l, 14, ly); ly += 5 })
+  // ── 7. NOTAS PARA LOS RESIDENTES (Editable por el Admin) ──
+  currentY += 9.5
+  doc.setFillColor(248, 250, 252)
+  doc.setDrawColor(203, 213, 225)
+  doc.setLineWidth(0.3)
+  
+  const textoNotas = (notasResidentes || DEFAULT_NOTAS).trim()
+  const notasLineas = doc.splitTextToSize(textoNotas, 180)
+  const notasHeight = Math.max(14, (notasLineas.length * 3.2) + 6.5)
 
-  // FOOTER
-  doc.setFontSize(7)
-  doc.setTextColor(180, 180, 180)
-  doc.text(`Generado el ${new Date().toLocaleDateString('es-VE')} · Sistema de Gestión de Condominios`, 105, 286, { align: 'center' })
+  doc.rect(12, currentY, 186, notasHeight, 'FD')
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(7.2)
+  doc.setTextColor(15, 23, 42)
+  doc.text('NOTAS PARA LOS RESIDENTES:', 15, currentY + 4)
+
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(6.5)
+  doc.setTextColor(71, 85, 105)
+  doc.text(notasLineas, 15, currentY + 8)
+
+  currentY += notasHeight + 2.5
+
+  // ── 8. TALÓN DE CONTROL DE PAGO (Formato Excel Imagen 2) ──
+  doc.setFillColor(255, 255, 255)
+  doc.setDrawColor(148, 163, 184)
+  doc.setLineWidth(0.3)
+  doc.rect(12, currentY, 186, 21, 'S')
+
+  doc.setFillColor(241, 245, 249)
+  doc.rect(12, currentY, 186, 4.2, 'F')
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(6.5)
+  doc.setTextColor(51, 65, 85)
+  doc.text('TALÓN DE CONTROL DE PAGO (REGISTRO DEL RESIDENTE / ADMINISTRACIÓN)', 105, currentY + 3, { align: 'center' })
+
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(6.5)
+  doc.setTextColor(71, 85, 105)
+
+  let sy = currentY + 7.5
+  doc.text('PAGADO: ___________________________', 16, sy)
+  doc.text('FECHA: ____________________________', 110, sy)
+  
+  sy += 4.2
+  doc.text('BANCO: __________________________________________________________________________', 16, sy)
+
+  sy += 4.2
+  doc.text('MONTO: ____________________________', 16, sy)
+  doc.text('DÓLAR DEL DÍA: _____________________', 110, sy)
+
+  sy += 4.2
+  doc.text('REFERENCIA: ________________________', 16, sy)
+  doc.text('CTA: ______________________________', 110, sy)
+
+  // ── 9. FOOTER ──
+  doc.setFontSize(6)
+  doc.setTextColor(148, 163, 184)
+  doc.text(`Generado el ${new Date().toLocaleDateString('es-VE')} · Sistema de Gestión de Condominios · Residencias Ocutuy 5`, 105, 292, { align: 'center' })
 
   return doc
 }
@@ -232,6 +336,7 @@ export const AdminGenerarRecibos: React.FC = () => {
 
   // Paso 3
   const [previewAptoIdx, setPreviewAptoIdx] = useState(0)
+  const [notasResidentes, setNotasResidentes] = useState(DEFAULT_NOTAS)
 
   // Paso 4
   const [emitiendo, setEmitiendo] = useState(false)
@@ -316,7 +421,7 @@ export const AdminGenerarRecibos: React.FC = () => {
   // ── Descargar PDF ────────────────────────────────────────────────────
   const descargarPDF = (apto: Apartamento) => {
     if (!config) return
-    const doc = generarPDF(apto, gastos, cargos, config, fondoReservaPct, mesLabel, anio)
+    const doc = generarPDF(apto, gastos, cargos, config, fondoReservaPct, mesLabel, anio, notasResidentes)
     doc.save(`Recibo_Apto${apto.numero}_${mesLabel}${anio}.pdf`)
   }
 
@@ -345,6 +450,7 @@ export const AdminGenerarRecibos: React.FC = () => {
           gastos: gastos.map(g => ({ descripcion: g.descripcion, monto_usd: g.monto_usd, monto_bs: g.monto_bs })),
           cargos_especiales: cargos.filter(c => c.apartamento_id === apto.id),
           fondo_reserva_pct: fondoReservaPct,
+          notas_residentes: notasResidentes,
         },
         emitido_at: new Date().toISOString(),
       }, { onConflict: 'apartamento_id,mes_facturado' })
@@ -611,136 +717,308 @@ export const AdminGenerarRecibos: React.FC = () => {
 
       {/* ═══ PASO 3: PREVISUALIZACIÓN ═══ */}
       {paso === 3 && (
-        <div style={{ display:'flex', flexDirection:'column', gap:'16px' }}>
+        <div style={{ display:'flex', flexDirection:'column', gap:'20px', maxWidth:'800px', margin:'0 auto', width:'100%' }}>
+          
+          {/* Card: Notas para los Residentes (Editable por el Admin) */}
+          <div style={{ ...S.card, width:'100%', boxSizing:'border-box' }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'10px' }}>
+              <label style={{ ...S.label, marginBottom:0, display:'flex', alignItems:'center', gap:'8px', color:'#f97316', fontSize:'13px', fontWeight:700 }}>
+                <span>📝</span> NOTAS PARA LOS RESIDENTES
+              </label>
+              <button
+                type="button"
+                onClick={() => setNotasResidentes(DEFAULT_NOTAS)}
+                style={{ background:'transparent', border:'none', color:'#888', cursor:'pointer', fontSize:'11px', textDecoration:'underline' }}
+                title="Hacer clic para restaurar el texto predeterminado"
+              >
+                Restablecer notas predeterminadas
+              </button>
+            </div>
+            <textarea
+              value={notasResidentes}
+              onChange={e => setNotasResidentes(e.target.value)}
+              rows={4}
+              placeholder="Escribe aquí las instrucciones de pago bancario, avisos, normas o notas que aparecerán en el recibo y en el PDF..."
+              style={{
+                ...S.input,
+                fontFamily:'ui-monospace, monospace',
+                fontSize:'12px',
+                lineHeight:'1.5',
+                resize:'vertical',
+                backgroundColor:'#0b0f17',
+                border:'1px solid #334155'
+              }}
+            />
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:'8px' }}>
+              <span style={{ color:'#64748b', fontSize:'11px' }}>
+                ℹ️ Esta nota aparecerá automáticamente en el recuadro "NOTAS" del recibo y en el PDF generado.
+              </span>
+              <span style={{ color:'#94a3b8', fontSize:'11px', fontWeight:600 }}>
+                {notasResidentes.length} caracteres
+              </span>
+            </div>
+          </div>
+
           {apartamentos.length > 0 && config && (() => {
             const apto = apartamentos[previewAptoIdx]
             const calc = calcularApto(apto)
             const caps = cargos.filter(c => c.apartamento_id === apto.id)
+            const esPH = apto.numero.toUpperCase().includes('PH')
+
+            const fondoEdificioUsd = totalGastosUsd * (fondoReservaPct / 100)
+            const fondoEdificioBs  = totalGastosBs  * (fondoReservaPct / 100)
+            const totalEdificioUsd = totalGastosUsd + fondoEdificioUsd
+            const totalEdificioBs  = totalGastosBs  + fondoEdificioBs
 
             return (
               <>
-                {/* Nav */}
-                <div style={{ display:'flex', alignItems:'center', gap:'12px', justifyContent:'center' }}>
-                  <button onClick={() => setPreviewAptoIdx(i => Math.max(0,i-1))} disabled={previewAptoIdx===0}
-                    style={{ ...S.btnSecondary, opacity: previewAptoIdx===0?0.3:1, padding:'8px 16px' }}>← Anterior</button>
-                  <span style={{ color:'#fff', fontWeight:700, fontSize:'14px' }}>Apto {apto.numero} ({previewAptoIdx+1}/{apartamentos.length})</span>
-                  <button onClick={() => setPreviewAptoIdx(i => Math.min(apartamentos.length-1,i+1))} disabled={previewAptoIdx===apartamentos.length-1}
-                    style={{ ...S.btnSecondary, opacity: previewAptoIdx===apartamentos.length-1?0.3:1, padding:'8px 16px' }}>Siguiente →</button>
-                  <button onClick={() => descargarPDF(apto)} style={{ ...S.btnPrimary, marginLeft:'16px' }}>📥 Descargar PDF</button>
+                {/* Selector / Barra de navegación de apartamentos */}
+                <div style={{ display:'flex', alignItems:'center', gap:'12px', justifyContent:'space-between', backgroundColor:'#141414', padding:'12px 18px', borderRadius:'12px', border:'1px solid #222' }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
+                    <button onClick={() => setPreviewAptoIdx(i => Math.max(0,i-1))} disabled={previewAptoIdx===0}
+                      style={{ ...S.btnSecondary, opacity: previewAptoIdx===0?0.3:1, padding:'7px 14px', fontSize:'12px' }}>
+                      ← Anterior
+                    </button>
+                    <select
+                      value={previewAptoIdx}
+                      onChange={e => setPreviewAptoIdx(Number(e.target.value))}
+                      style={{ ...S.input, width:'auto', padding:'6px 12px', fontSize:'13px', fontWeight:700, color:'#f97316', borderColor:'#f97316' }}
+                    >
+                      {apartamentos.map((a, idx) => (
+                        <option key={a.id} value={idx}>
+                          Apto {a.numero} ({idx + 1}/{apartamentos.length}) - {a.propietario_nombre || 'Sin residente'}
+                        </option>
+                      ))}
+                    </select>
+                    <button onClick={() => setPreviewAptoIdx(i => Math.min(apartamentos.length-1,i+1))} disabled={previewAptoIdx===apartamentos.length-1}
+                      style={{ ...S.btnSecondary, opacity: previewAptoIdx===apartamentos.length-1?0.3:1, padding:'7px 14px', fontSize:'12px' }}>
+                      Siguiente →
+                    </button>
+                  </div>
+                  <button onClick={() => descargarPDF(apto)} style={{ ...S.btnPrimary, display:'flex', alignItems:'center', gap:'8px', padding:'8px 18px', fontSize:'13px' }}>
+                    <span>📥</span> Descargar PDF
+                  </button>
                 </div>
 
-                {/* Recibo preview — mismo formato que PDF */}
-                <div style={{ backgroundColor:'#fff', borderRadius:'14px', padding:'28px 32px', color:'#111', fontFamily:'Arial, sans-serif', maxWidth:'680px', margin:'0 auto', boxShadow:'0 20px 60px rgba(0,0,0,0.5)' }}>
-                  {/* Header oscuro */}
-                  <div style={{ backgroundColor:'#1e1e1e', margin:'-28px -32px 18px', padding:'18px 28px', textAlign:'center' }}>
-                    <h2 style={{ color:'#f97316', fontSize:'20px', fontWeight:800, margin:'0 0 4px' }}>RECIBO DE CONDOMINIO</h2>
-                    <p style={{ color:'#bbb', fontSize:'10px', margin:0 }}>{config.email_contacto} &nbsp;|&nbsp; RIF: {config.rif}</p>
-                    <p style={{ color:'#888', fontSize:'10px', margin:'2px 0 0' }}>{config.nombre_edificio}</p>
+                {/* Recibo Preview — 1:1 con PDF y Excel (Estilo moderno pizarra y naranja) */}
+                <div style={{
+                  backgroundColor:'#ffffff',
+                  borderRadius:'12px',
+                  color:'#0f172a',
+                  fontFamily:'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+                  boxShadow:'0 25px 60px -15px rgba(0,0,0,0.7)',
+                  border:'1px solid #334155',
+                  overflow:'hidden'
+                }}>
+                  {/* Header Moderno Estilo Factura (Imagen 3 con Slate 900 & Orange) */}
+                  <div style={{
+                    backgroundColor:'#0f172a',
+                    padding:'20px 24px',
+                    position:'relative',
+                    borderBottom:'3px solid #f97316',
+                    display:'flex',
+                    justifyContent:'space-between',
+                    alignItems:'center',
+                    flexWrap:'wrap',
+                    gap:'16px'
+                  }}>
+                    {/* Lado izquierdo */}
+                    <div style={{ borderLeft:'3px solid #f97316', paddingLeft:'12px' }}>
+                      <div style={{ color:'#f97316', fontSize:'11px', fontWeight:800, letterSpacing:'0.5px', textTransform:'uppercase' }}>
+                        JUNTA DE CONDOMINIO OCUTUY 5
+                      </div>
+                      <h2 style={{ color:'#ffffff', fontSize:'22px', fontWeight:900, margin:'2px 0 4px', letterSpacing:'-0.5px' }}>
+                        RECIBO DE CONDOMINIO
+                      </h2>
+                      <div style={{ color:'#94a3b8', fontSize:'10px' }}>
+                        DIRECCIÓN: URBANIZACIÓN CASA BLANCA, RESIDENCIAS OCUTUY 5
+                      </div>
+                    </div>
+
+                    {/* Lado derecho */}
+                    <div style={{ textAlign:'right', fontSize:'10px', color:'#cbd5e1' }}>
+                      <div style={{ color:'#f97316', fontWeight:800, fontSize:'12px' }}>
+                        RIF: {config.rif || 'J-296749485'}
+                      </div>
+                      <div style={{ marginTop:'2px' }}>
+                        CORREO: {config.email_contacto || 'juntacondominioocutuy5@gmail.com'}
+                      </div>
+                      <div style={{ color:'#94a3b8', marginTop:'2px' }}>
+                        EDIFICIO: {config.nombre_edificio || 'RESIDENCIAS OCUTUY 5'}
+                      </div>
+                    </div>
                   </div>
 
-                  {/* Info */}
-                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'4px', marginBottom:'12px', fontSize:'11px' }}>
-                    <div><strong>PROPIETARIO:</strong> {apto.propietario_nombre || 'Residente'}</div>
-                    <div><strong>MES:</strong> {mesLabel}</div>
-                    <div><strong>APARTAMENTO:</strong> Nro. {apto.numero}</div>
-                    <div><strong>AÑO:</strong> {anio}</div>
-                    <div><strong>ALÍCUOTA:</strong> {formatAlicuotaPct(apto.alicuota)}</div>
-                  </div>
-                  <hr style={{ border:'none', borderTop:'1px solid #ddd', margin:'10px 0' }} />
-
-                  {/* Tabla gastos */}
-                  <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'10px', marginBottom:'2px' }}>
-                    <thead>
-                      <tr style={{ backgroundColor:'#1e1e1e', color:'#fff' }}>
-                        <th style={{ padding:'5px 7px', textAlign:'left', fontWeight:700 }}>DETALLES DE GASTOS COMUNES</th>
-                        <th style={{ padding:'5px 7px', textAlign:'right', minWidth:'90px' }}>BOLÍVARES</th>
-                        <th style={{ padding:'5px 7px', textAlign:'right', minWidth:'70px' }}>DÓLAR $</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {gastos.map((g, i) => (
-                        <tr key={g.id} style={{ backgroundColor: i%2===0?'#f9f9f9':'#fff' }}>
-                          <td style={{ padding:'4px 7px' }}>{g.descripcion}</td>
-                          <td style={{ padding:'4px 7px', textAlign:'right' }}>{fmtBs(g.monto_bs)}</td>
-                          <td style={{ padding:'4px 7px', textAlign:'right' }}>{fmtUsd(g.monto_usd)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-
-                  {/* Sub-totales — mismo formato imagen */}
-                  <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'10px' }}>
-                    <tbody>
-                      <tr>
-                        <td style={{ padding:'4px 7px', textAlign:'right', fontWeight:700 }}>SUB TOTAL</td>
-                        <td style={{ padding:'4px 7px', textAlign:'right', minWidth:'90px' }}>{fmtBs(calc.subtotalBs)}</td>
-                        <td style={{ padding:'4px 7px', textAlign:'right', minWidth:'70px' }}>{fmtUsd(calc.subtotalUsd)}</td>
-                      </tr>
-                      <tr>
-                        <td style={{ padding:'4px 7px', textAlign:'right', fontWeight:700 }}>FONDO DE RESERVA ({fondoReservaPct}%)</td>
-                        <td style={{ padding:'4px 7px', textAlign:'right' }}>{fmtBs(calc.fondoBs)}</td>
-                        <td style={{ padding:'4px 7px', textAlign:'right' }}>{fmtUsd(calc.fondoUsd)}</td>
-                      </tr>
-                      <tr>
-                        <td style={{ padding:'4px 7px', textAlign:'right' }}></td>
-                        <td style={{ padding:'4px 7px', textAlign:'right', fontWeight:700 }}>{fmtBs(calc.subtotalBs + calc.fondoBs)}</td>
-                        <td style={{ padding:'4px 7px', textAlign:'right', fontWeight:700 }}>{fmtUsd(calc.subtotalUsd + calc.fondoUsd)}</td>
-                      </tr>
-                    </tbody>
-                  </table>
-
-                  {/* Cargos especiales */}
-                  {caps.length > 0 && (
-                    <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'10px', marginTop:'2px' }}>
+                  <div style={{ padding:'20px 24px' }}>
+                    {/* Cuadro de información del inmueble (Formato Excel 5 columnas) */}
+                    <table style={{ width:'100%', borderCollapse:'collapse', marginBottom:'14px', border:'1px solid #cbd5e1', fontSize:'11px' }}>
                       <thead>
-                        <tr style={{ backgroundColor:'#3d1f00', color:'#fbbf24' }}>
-                          <th style={{ padding:'4px 7px', textAlign:'left' }}>CARGOS ESPECIALES</th>
-                          <th style={{ padding:'4px 7px', textAlign:'right' }}>BOLÍVARES</th>
-                          <th style={{ padding:'4px 7px', textAlign:'right' }}>DÓLAR $</th>
+                        <tr style={{ backgroundColor:'#f1f5f9', color:'#475569', fontSize:'10px', fontWeight:700 }}>
+                          <th style={{ padding:'6px 8px', border:'1px solid #cbd5e1', textAlign:'center', width:'18%' }}>APARTAMENTO</th>
+                          <th style={{ padding:'6px 8px', border:'1px solid #cbd5e1', textAlign:'left', width:'42%' }}>PROPIETARIO</th>
+                          <th style={{ padding:'6px 8px', border:'1px solid #cbd5e1', textAlign:'center', width:'14%' }}>ALÍCUOTA</th>
+                          <th style={{ padding:'6px 8px', border:'1px solid #cbd5e1', textAlign:'center', width:'13%' }}>MES</th>
+                          <th style={{ padding:'6px 8px', border:'1px solid #cbd5e1', textAlign:'center', width:'13%' }}>AÑO</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {caps.map(c => (
-                          <tr key={c.id} style={{ backgroundColor:'#fffbeb' }}>
-                            <td style={{ padding:'4px 7px' }}>{TIPO_CARGO_LABELS[c.tipo]} — {c.descripcion}</td>
-                            <td style={{ padding:'4px 7px', textAlign:'right' }}>{fmtBs(c.monto_bs||0)}</td>
-                            <td style={{ padding:'4px 7px', textAlign:'right' }}>{fmtUsd(c.monto_usd)}</td>
+                        <tr style={{ fontWeight:700, backgroundColor:'#ffffff' }}>
+                          <td style={{ padding:'6px 8px', border:'1px solid #cbd5e1', textAlign:'center', color:'#f97316', fontSize:'12px' }}>
+                            Nro. {apto.numero} {esPH ? '(PH)' : ''}
+                          </td>
+                          <td style={{ padding:'6px 8px', border:'1px solid #cbd5e1', textAlign:'left', color:'#0f172a' }}>
+                            {apto.propietario_nombre || 'Residente'}
+                          </td>
+                          <td style={{ padding:'6px 8px', border:'1px solid #cbd5e1', textAlign:'center', color:'#0f172a' }}>
+                            {formatAlicuotaPct(apto.alicuota)}
+                          </td>
+                          <td style={{ padding:'6px 8px', border:'1px solid #cbd5e1', textAlign:'center', color:'#0f172a' }}>
+                            {mesLabel.toUpperCase()}
+                          </td>
+                          <td style={{ padding:'6px 8px', border:'1px solid #cbd5e1', textAlign:'center', color:'#0f172a' }}>
+                            {anio}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+
+                    {/* Tabla de gastos comunes (Formato Excel Imagen 2) */}
+                    <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'10px', border:'1px solid #cbd5e1' }}>
+                      <thead>
+                        <tr style={{ backgroundColor:'#0f172a', color:'#ffffff' }}>
+                          <th style={{ padding:'6px 8px', textAlign:'left', fontWeight:700, border:'1px solid #1e293b' }}>DETALLES DE GASTOS COMUNES</th>
+                          <th style={{ padding:'6px 8px', textAlign:'right', fontWeight:700, minWidth:'100px', border:'1px solid #1e293b' }}>BOLÍVARES</th>
+                          <th style={{ padding:'6px 8px', textAlign:'right', fontWeight:700, minWidth:'80px', border:'1px solid #1e293b' }}>DÓLAR $</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {gastos.map((g, i) => (
+                          <tr key={g.id} style={{ backgroundColor: i % 2 === 0 ? '#ffffff' : '#f8fafc' }}>
+                            <td style={{ padding:'4px 8px', border:'1px solid #e2e8f0', color:'#1e293b' }}>{g.descripcion}</td>
+                            <td style={{ padding:'4px 8px', border:'1px solid #e2e8f0', textAlign:'right', fontVariantNumeric:'tabular-nums' }}>{fmtBs(g.monto_bs)} Bs</td>
+                            <td style={{ padding:'4px 8px', border:'1px solid #e2e8f0', textAlign:'right', fontVariantNumeric:'tabular-nums' }}>$ {fmtUsd(g.monto_usd)}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
-                  )}
 
-                  {/* TOTAL A PAGAR */}
-                  <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'12px', marginTop:'2px' }}>
-                    <tbody>
-                      <tr style={{ backgroundColor:'#f97316', color:'#fff' }}>
-                        <td style={{ padding:'8px 7px', fontWeight:800, textAlign:'right' }}>TOTAL A PAGAR</td>
-                        <td style={{ padding:'8px 7px', textAlign:'right', fontWeight:800, minWidth:'90px' }}>{fmtBs(calc.totalBs)}</td>
-                        <td style={{ padding:'8px 7px', textAlign:'right', fontWeight:800, minWidth:'70px' }}>{fmtUsd(calc.totalUsd)}</td>
-                      </tr>
-                    </tbody>
-                  </table>
+                    {/* Subtotales y Total Edificio */}
+                    <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'10px', border:'1px solid #cbd5e1', borderTop:'none' }}>
+                      <tbody>
+                        <tr style={{ backgroundColor:'#ffffff', fontWeight:700 }}>
+                          <td style={{ padding:'4px 8px', textAlign:'right', border:'1px solid #e2e8f0' }}>SUB TOTAL</td>
+                          <td style={{ padding:'4px 8px', textAlign:'right', minWidth:'100px', border:'1px solid #e2e8f0', fontVariantNumeric:'tabular-nums' }}>{fmtBs(totalGastosBs)} Bs</td>
+                          <td style={{ padding:'4px 8px', textAlign:'right', minWidth:'80px', border:'1px solid #e2e8f0', fontVariantNumeric:'tabular-nums' }}>$ {fmtUsd(totalGastosUsd)}</td>
+                        </tr>
+                        <tr style={{ backgroundColor:'#ffffff', fontWeight:700 }}>
+                          <td style={{ padding:'4px 8px', textAlign:'right', border:'1px solid #e2e8f0' }}>FONDO DE RESERVA ({fondoReservaPct}%)</td>
+                          <td style={{ padding:'4px 8px', textAlign:'right', border:'1px solid #e2e8f0', fontVariantNumeric:'tabular-nums' }}>{fmtBs(fondoEdificioBs)} Bs</td>
+                          <td style={{ padding:'4px 8px', textAlign:'right', border:'1px solid #e2e8f0', fontVariantNumeric:'tabular-nums' }}>$ {fmtUsd(fondoEdificioUsd)}</td>
+                        </tr>
+                        <tr style={{ backgroundColor:'#f8fafc', fontWeight:800 }}>
+                          <td style={{ padding:'5px 8px', textAlign:'right', border:'1px solid #e2e8f0' }}>TOTAL GASTOS CONDOMINIO</td>
+                          <td style={{ padding:'5px 8px', textAlign:'right', border:'1px solid #e2e8f0', fontVariantNumeric:'tabular-nums' }}>{fmtBs(totalEdificioBs)} Bs</td>
+                          <td style={{ padding:'5px 8px', textAlign:'right', border:'1px solid #e2e8f0', fontVariantNumeric:'tabular-nums' }}>$ {fmtUsd(totalEdificioUsd)}</td>
+                        </tr>
+                        {caps.map(c => (
+                          <tr key={c.id} style={{ backgroundColor:'#fffbeb', color:'#92400e', fontWeight:700 }}>
+                            <td style={{ padding:'4px 8px', textAlign:'right', border:'1px solid #e2e8f0' }}>
+                              CARGO: {TIPO_CARGO_LABELS[c.tipo] || c.tipo} — {c.descripcion}
+                            </td>
+                            <td style={{ padding:'4px 8px', textAlign:'right', border:'1px solid #e2e8f0' }}>{fmtBs(c.monto_bs || 0)} Bs</td>
+                            <td style={{ padding:'4px 8px', textAlign:'right', border:'1px solid #e2e8f0' }}>$ {fmtUsd(c.monto_usd)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
 
-                  {/* Banner advertencia — formato imagen */}
-                  <div style={{ backgroundColor:'#fef08a', border:'2px solid #ca8a04', padding:'7px 10px', margin:'10px 0 8px', textAlign:'center', fontSize:'10px', fontWeight:800, color:'#713f12', letterSpacing:'0.3px' }}>
-                    *****ATENCIÓN PAGAR &nbsp;{fmtUsd(calc.totalUsd)}&nbsp; $ &nbsp;ANCLADO AL $ BCV DEL DÍA DE SU PAGO*****
-                  </div>
+                    {/* Total a Pagar con Alícuota (Fila Naranja Resaltada) */}
+                    <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'11px', marginTop:'2px', border:'1px solid #ea580c' }}>
+                      <tbody>
+                        <tr style={{ backgroundColor:'#f97316', color:'#ffffff', fontWeight:800 }}>
+                          <td style={{ padding:'8px 8px', textAlign:'right' }}>
+                            TOTAL A PAGAR (ALÍCUOTA {formatAlicuotaPct(apto.alicuota)})
+                          </td>
+                          <td style={{ padding:'8px 8px', textAlign:'right', minWidth:'100px', fontSize:'12px', fontVariantNumeric:'tabular-nums' }}>
+                            {fmtBs(calc.totalBs)} Bs
+                          </td>
+                          <td style={{ padding:'8px 8px', textAlign:'right', minWidth:'80px', fontSize:'12px', fontVariantNumeric:'tabular-nums' }}>
+                            $ {fmtUsd(calc.totalUsd)}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
 
-                  {/* Datos bancarios */}
-                  <div style={{ borderTop:'1px solid #eee', paddingTop:'8px', fontSize:'10px', color:'#666' }}>
-                    <strong style={{ color:'#333' }}>DATOS DE PAGO:</strong>
-                    {config.banco && <p style={{ margin:'3px 0' }}>Banco: {config.banco}</p>}
-                    {config.cuenta_bancaria && <p style={{ margin:'3px 0' }}>Cuenta: {config.cuenta_bancaria}</p>}
-                    {config.titular_cuenta && <p style={{ margin:'3px 0' }}>Titular: {config.titular_cuenta}</p>}
-                    <p style={{ margin:'3px 0' }}>Enviar comprobante al correo del condominio.</p>
+                    {/* Banner de Advertencia (Formato Excel Imagen 2) */}
+                    <div style={{
+                      backgroundColor:'#fef9c3',
+                      border:'1.5px solid #eab308',
+                      borderRadius:'6px',
+                      padding:'7px 10px',
+                      margin:'12px 0',
+                      textAlign:'center',
+                      fontSize:'10px',
+                      fontWeight:800,
+                      color:'#854d0e',
+                      letterSpacing:'0.2px'
+                    }}>
+                      ***** ATENCIÓN: PAGAR &nbsp;{fmtUsd(calc.totalUsd)}&nbsp; $ &nbsp;ANCLADO AL $ BCV DEL DÍA DE SU PAGO *****
+                    </div>
+
+                    {/* NOTAS PARA LOS RESIDENTES (Editable y dinámico) */}
+                    <div style={{
+                      backgroundColor:'#f8fafc',
+                      border:'1px solid #cbd5e1',
+                      borderRadius:'6px',
+                      padding:'10px 12px',
+                      marginBottom:'12px',
+                      fontSize:'9.5px',
+                      lineHeight:'1.45',
+                      color:'#334155'
+                    }}>
+                      <div style={{ fontWeight:800, color:'#0f172a', marginBottom:'4px', fontSize:'10px', display:'flex', alignItems:'center', gap:'6px' }}>
+                        <span>NOTAS PARA LOS RESIDENTES:</span>
+                      </div>
+                      <div style={{ whiteSpace:'pre-line', color:'#475569' }}>
+                        {(notasResidentes || DEFAULT_NOTAS).trim()}
+                      </div>
+                    </div>
+
+                    {/* TALÓN DE CONTROL DE PAGO (Formato Excel Imagen 2) */}
+                    <div style={{ border:'1px solid #94a3b8', borderRadius:'6px', overflow:'hidden', fontSize:'9px' }}>
+                      <div style={{ backgroundColor:'#f1f5f9', padding:'4px 8px', textAlign:'center', fontWeight:800, color:'#334155', borderBottom:'1px solid #cbd5e1', fontSize:'9.5px' }}>
+                        TALÓN DE CONTROL DE PAGO (REGISTRO DEL RESIDENTE / ADMINISTRACIÓN)
+                      </div>
+                      <div style={{ padding:'8px 12px', color:'#475569', display:'flex', flexDirection:'column', gap:'5px' }}>
+                        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px' }}>
+                          <div>PAGADO: ____________________________________</div>
+                          <div>FECHA: _____________________________________</div>
+                        </div>
+                        <div>
+                          BANCO: ____________________________________________________________________________________
+                        </div>
+                        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px' }}>
+                          <div>MONTO: ____________________________________</div>
+                          <div>DÓLAR DEL DÍA: ______________________________</div>
+                        </div>
+                        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px' }}>
+                          <div>REFERENCIA: _______________________________</div>
+                          <div>CTA: _______________________________________</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Pie de página sutil */}
+                    <div style={{ textAlign:'center', marginTop:'14px', fontSize:'8.5px', color:'#94a3b8' }}>
+                      Generado el {new Date().toLocaleDateString('es-VE')} · Sistema de Gestión de Condominios · Residencias Ocutuy 5
+                    </div>
                   </div>
                 </div>
               </>
             )
           })()}
 
-          <div style={{ display:'flex', justifyContent:'space-between', maxWidth:'680px', margin:'0 auto', width:'100%' }}>
+          <div style={{ display:'flex', justifyContent:'space-between', width:'100%' }}>
             <button onClick={() => setPaso(2)} style={S.btnSecondary}>← Atrás</button>
             <button onClick={() => setPaso(4)} style={S.btnPrimary}>Siguiente: Emitir →</button>
           </div>
