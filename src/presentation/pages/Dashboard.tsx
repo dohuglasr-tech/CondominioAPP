@@ -4,6 +4,7 @@ import { useBcvRate } from '../../data/useBcvRate'
 import { ReportarPagoModal } from '../components/ReportarPagoModal'
 import { supabase } from '../../data/supabase'
 import { useNavigate } from 'react-router-dom'
+import { buscarMoraPorApto, TASA_RIESGO_CONFIG, DeudaMoraItem } from '../../data/moraService'
 
 export function Dashboard() {
   const { signOut, perfil, isAdmin } = useAuth()
@@ -14,6 +15,7 @@ export function Dashboard() {
   const [modalOpen, setModalOpen] = useState(false)
   const [ultimoPago, setUltimoPago] = useState<{ id: string; monto_bs: number; referencia: string; estado: string } | null>(null)
   const [reciboPendiente, setReciboPendiente] = useState<{ id: string; total_usd: number; total_bs: number; mes_facturado: string; emitido_at: string } | null>(null)
+  const [moraRecord, setMoraRecord] = useState<DeudaMoraItem | null>(null)
   
   const { rate, loading: loadingRate } = useBcvRate()
   const deudaUsd = reciboPendiente ? Number(reciboPendiente.total_usd) : 0
@@ -45,10 +47,14 @@ export function Dashboard() {
 
       if (reciboRes.data) setReciboPendiente(reciboRes.data)
       else setReciboPendiente(null)
+
+      // Consultar si está en mora
+      const mora = buscarMoraPorApto(aptoNumero || apartamentoId)
+      setMoraRecord(mora)
     } catch (err) {
       console.warn('[Dashboard] Error cargando datos del residente:', err)
     }
-  }, [apartamentoId])
+  }, [apartamentoId, aptoNumero])
 
   useEffect(() => {
     cargarDatosResidente()
@@ -273,6 +279,91 @@ export function Dashboard() {
           </button>
         </header>
 
+        {/* ── ALERTA DE MORA PROLONGADA (Si el apartamento está en la lista de mora) ── */}
+        {moraRecord && (
+          <div
+            style={{
+              maxWidth: '960px',
+              margin: '0 auto 24px auto',
+              background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.16) 0%, rgba(239, 68, 68, 0.16) 100%)',
+              border: `2px solid ${TASA_RIESGO_CONFIG[moraRecord.tasa_riesgo].color}`,
+              borderRadius: '20px',
+              padding: '18px 24px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '16px',
+              boxShadow: `0 8px 30px rgba(0, 0, 0, 0.5), 0 0 16px ${TASA_RIESGO_CONFIG[moraRecord.tasa_riesgo].color}25`
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+              <div style={{
+                width: '44px', height: '44px', borderRadius: '12px',
+                background: TASA_RIESGO_CONFIG[moraRecord.tasa_riesgo].bg,
+                border: `1px solid ${TASA_RIESGO_CONFIG[moraRecord.tasa_riesgo].border}`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '22px', flexShrink: 0
+              }}>
+                ⚠️
+              </div>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <span style={{ fontWeight: 800, fontSize: '15px', color: '#fff' }}>
+                    Tu Apartamento (Apto {moraRecord.apartamento_numero}) figura en la Lista de Mora
+                  </span>
+                  <span style={{
+                    fontSize: '11px', fontWeight: 800,
+                    color: TASA_RIESGO_CONFIG[moraRecord.tasa_riesgo].color,
+                    background: TASA_RIESGO_CONFIG[moraRecord.tasa_riesgo].bg,
+                    border: `1px solid ${TASA_RIESGO_CONFIG[moraRecord.tasa_riesgo].border}`,
+                    padding: '2px 8px', borderRadius: '999px'
+                  }}>
+                    {TASA_RIESGO_CONFIG[moraRecord.tasa_riesgo].badgeText}
+                  </span>
+                </div>
+                <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#cbd5e1' }}>
+                  Presentas <strong>{moraRecord.meses_deuda} meses de atraso</strong> con una deuda anterior acumulada de{' '}
+                  <strong style={{ color: '#f97316' }}>${moraRecord.monto_usd.toFixed(2)} USD</strong>. Regulariza tu situación para evitar restricciones comunitarias.
+                </p>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <button
+                onClick={() => navigate('/mora')}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.08)',
+                  border: '1px solid rgba(255, 255, 255, 0.16)',
+                  color: '#fff',
+                  padding: '8px 14px',
+                  borderRadius: '10px',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  cursor: 'pointer'
+                }}
+              >
+                Ver Lista de Mora
+              </button>
+              <button
+                onClick={() => setModalOpen(true)}
+                style={{
+                  background: 'linear-gradient(135deg, #fb923c 0%, #f97316 100%)',
+                  border: 'none',
+                  color: '#fff',
+                  padding: '8px 16px',
+                  borderRadius: '10px',
+                  fontSize: '12px',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 10px rgba(249, 115, 22, 0.4)'
+                }}
+              >
+                Reportar Pago
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* BENTO GRID — desktop */}
         <div className="dashboard-grid stagger-children">
 
@@ -449,6 +540,31 @@ export function Dashboard() {
             </div>
           </div>
 
+          {/* ── LISTA DE MORA */}
+          <div
+            style={{ ...s.card(), cursor: 'pointer' }}
+            className="dashboard-card--mora card-interactive"
+            onClick={() => navigate('/mora')}
+          >
+            <div style={s.actionRow}>
+              <div style={s.iconBox('#a855f7')} className="icon-bounce">⚖️</div>
+              <div style={{ flex: 1 }}>
+                <p style={{ fontSize: '15px', fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  Lista de Mora
+                  <span style={{
+                    fontSize: '10px', fontWeight: 800,
+                    background: 'rgba(168, 85, 247, 0.2)', color: '#d8b4fe',
+                    padding: '1px 6px', borderRadius: '999px', border: '1px solid rgba(168,85,247,0.4)'
+                  }}>
+                    &gt;3 Meses
+                  </span>
+                </p>
+                <p style={{ fontSize: '13px', color: '#666', marginTop: '2px' }}>Transparencia comunitaria</p>
+              </div>
+              <button style={s.arrowBtn}>→</button>
+            </div>
+          </div>
+
           {/* ── 6. ACTIVIDAD */}
           <div style={s.card()} className="dashboard-card--actividad">
             <p style={s.tag}>Actividad</p>
@@ -473,12 +589,13 @@ export function Dashboard() {
         .dashboard-card--bcv     { grid-column: 8 / 13; grid-row: 1 / 2; }
         .dashboard-card--recibos { grid-column: 8 / 13; grid-row: 2 / 3; }
         
-        .dashboard-card--gastos  { grid-column: 1 / 5;  grid-row: 3 / 4; }
-        .dashboard-card--chat    { grid-column: 5 / 9;  grid-row: 3 / 4; }
-        .dashboard-card--actividad { grid-column: 9 / 13; grid-row: 3 / 5; }
+        .dashboard-card--gastos     { grid-column: 1 / 5;  grid-row: 3 / 4; }
+        .dashboard-card--chat       { grid-column: 5 / 9;  grid-row: 3 / 4; }
+        .dashboard-card--mora       { grid-column: 9 / 13; grid-row: 3 / 4; }
 
-        .dashboard-card--propuestas { grid-column: 1 / 5; grid-row: 4 / 5; }
-        .dashboard-card--reportes   { grid-column: 5 / 9; grid-row: 4 / 5; }
+        .dashboard-card--propuestas { grid-column: 1 / 5;  grid-row: 4 / 5; }
+        .dashboard-card--reportes   { grid-column: 5 / 9;  grid-row: 4 / 5; }
+        .dashboard-card--actividad  { grid-column: 9 / 13; grid-row: 4 / 5; }
 
         /* ── Mobile: columna única ─────────────────────────── */
         @media (max-width: 680px) {
@@ -490,6 +607,7 @@ export function Dashboard() {
           .dashboard-card--recibos,
           .dashboard-card--gastos,
           .dashboard-card--chat,
+          .dashboard-card--mora,
           .dashboard-card--propuestas,
           .dashboard-card--reportes,
           .dashboard-card--actividad {

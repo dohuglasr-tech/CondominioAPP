@@ -27,6 +27,9 @@ import { AdminReportes } from './presentation/pages/admin/AdminReportes'
 import { AdminChat } from './presentation/pages/admin/AdminChat'
 import { AdminGenerarRecibos } from './presentation/pages/admin/AdminGenerarRecibos'
 import { AdminRecibosEmitidos } from './presentation/pages/admin/AdminRecibosEmitidos'
+import { AdminCasos } from './presentation/pages/admin/AdminCasos'
+import { AdminMora } from './presentation/pages/admin/AdminMora'
+import { ListaMoraResidente } from './presentation/pages/ListaMoraResidente'
 import { Register } from './presentation/pages/Register'
 
 // ── Protege rutas privadas ────────────────────────────────────────
@@ -123,6 +126,8 @@ function AppShell() {
           <Route path="chat"       element={<AdminChat />} />
           <Route path="generar-recibos" element={<AdminGenerarRecibos />} />
           <Route path="recibos-emitidos" element={<AdminRecibosEmitidos />} />
+          <Route path="casos"      element={<AdminCasos />} />
+          <Route path="mora"       element={<AdminMora />} />
         </Route>
 
         <Route
@@ -134,12 +139,13 @@ function AppShell() {
           }
         >
           <Route index element={<Dashboard />} />
-          <Route path="gastos"    element={<GastosPanel onClose={() => {}} />} />
-          <Route path="recibos"   element={<RecibosPanel onClose={() => {}} />} />
-          <Route path="chat"      element={<ChatPanel onClose={() => {}} />} />
+          <Route path="gastos"     element={<GastosPanel onClose={() => {}} />} />
+          <Route path="recibos"    element={<RecibosPanel onClose={() => {}} />} />
+          <Route path="mora"       element={<ListaMoraResidente />} />
+          <Route path="chat"       element={<ChatPanel onClose={() => {}} />} />
           <Route path="propuestas" element={<PropuestasPanel />} />
-          <Route path="reportes"  element={<ReportesPanel />} />
-          <Route path="perfil"    element={<PerfilResidente />} />
+          <Route path="reportes"   element={<ReportesPanel />} />
+          <Route path="perfil"     element={<PerfilResidente />} />
         </Route>
       </Routes>
     </>

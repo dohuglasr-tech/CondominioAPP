@@ -80,6 +80,20 @@ const ADMIN_ICONS: Record<string, React.ReactNode> = {
       <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
     </svg>
   ),
+  casos: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
+      <line x1="12" y1="11" x2="12" y2="17"/>
+      <line x1="9" y1="14" x2="15" y2="14"/>
+    </svg>
+  ),
+  mora: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+      <line x1="12" y1="8" x2="12" y2="12"/>
+      <line x1="12" y1="16" x2="12.01" y2="16"/>
+    </svg>
+  ),
 }
 
 const adminNav = [
@@ -88,7 +102,9 @@ const adminNav = [
   { key: 'gastos', label: 'Gastos', path: '/admin/gastos', desc: 'Registrar egresos del mes' },
   { key: 'recibos', label: 'Recibos', path: '/admin/recibos', desc: 'Aprobar / rechazar pagos', isRecibos: true },
   { key: 'generarRecibos', label: 'Generar Recibos', path: '/admin/generar-recibos', desc: 'Emisión masiva del mes' },
-  { key: 'recibosEmitidos', label: 'Recibos Emitidos', path: '/admin/recibos-emitidos', desc: 'Historial y estadísticas de mora' },
+  { key: 'recibosEmitidos', label: 'Recibos Emitidos', path: '/admin/recibos-emitidos', desc: 'Historial y recibos emitidos' },
+  { key: 'casos', label: 'Casos', path: '/admin/casos', desc: 'Multas, acuerdos y locales' },
+  { key: 'mora', label: 'Mora y Deudores', path: '/admin/mora', desc: 'Deudas > 3 meses y riesgo legal' },
   { key: 'residentes', label: 'Residentes', path: '/admin/residentes', desc: 'Gestión de apartamentos' },
   { key: 'propuestas', label: 'Propuestas', path: '/admin/propuestas', desc: 'Crear votaciones' },
   { key: 'reportes', label: 'Reportes', path: '/admin/reportes', desc: 'Responder incidencias' },

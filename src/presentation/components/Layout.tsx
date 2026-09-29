@@ -50,6 +50,13 @@ const SVG = {
       <path d="M5 20c0-3.8 3.1-7 7-7s7 3.2 7 7"/>
     </svg>
   ),
+  mora: (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+      <line x1="12" y1="8" x2="12" y2="12"/>
+      <line x1="12" y1="16" x2="12.01" y2="16"/>
+    </svg>
+  ),
   salir: (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
       <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/>
@@ -74,11 +81,12 @@ export const Layout: React.FC = () => {
   const apartamentoId  = p?.apartamento_id || p?.apartamento?.id || ''
 
   const navItems: { label: string; desc: string; path: string; badge: number; icon: keyof typeof SVG; isNew?: boolean }[] = [
-    { label: 'Inicio',     desc: 'Resumen y estado',       path: '/',           badge: 0,              icon: 'inicio' },
-    { label: 'Recibos',    desc: 'Historial de pagos',     path: '/recibos',    badge: 0,              icon: 'recibos' },
-    { label: 'Chat',       desc: 'Avisos de la comunidad', path: '/chat',       badge: 0,              icon: 'chat' },
-    { label: 'Reportes',   desc: 'Incidencias y tickets',  path: '/reportes',   badge: 0,              icon: 'reportes' },
-    { label: 'Perfil',     desc: 'Mis datos',              path: '/perfil',     badge: 0,              icon: 'perfil' },
+    { label: 'Inicio',        desc: 'Resumen y estado',          path: '/',           badge: 0,              icon: 'inicio' },
+    { label: 'Recibos',       desc: 'Historial de pagos',        path: '/recibos',    badge: 0,              icon: 'recibos' },
+    { label: 'Lista de Mora', desc: 'Transparencia comunitaria', path: '/mora',       badge: 0,              icon: 'mora' },
+    { label: 'Chat',          desc: 'Avisos de la comunidad',    path: '/chat',       badge: 0,              icon: 'chat' },
+    { label: 'Reportes',      desc: 'Incidencias y tickets',     path: '/reportes',   badge: 0,              icon: 'reportes' },
+    { label: 'Perfil',        desc: 'Mis datos',                 path: '/perfil',     badge: 0,              icon: 'perfil' },
   ]
 
   return (
