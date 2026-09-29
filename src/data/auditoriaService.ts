@@ -74,11 +74,15 @@ export async function obtenerHistorialAuditoria(): Promise<LogAuditoria[]> {
   return merged
 }
 
+export type EventoAuditoriaInput = Omit<LogAuditoria, 'id' | 'created_at' | 'fecha'> & {
+  fecha?: string
+}
+
 /**
  * Registrar un nuevo evento de auditoría de manera inmutable
  */
 export async function registrarEventoAuditoria(
-  evento: Omit<LogAuditoria, 'id' | 'created_at'>
+  evento: EventoAuditoriaInput
 ): Promise<{ success: boolean; log: LogAuditoria; error?: string }> {
   const nuevoId = crypto.randomUUID ? crypto.randomUUID() : `log_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`
   const fechaActual = evento.fecha || new Date().toISOString()
