@@ -355,18 +355,36 @@ export const AdminGenerarRecibos: React.FC = () => {
   const cargarDatos = useCallback(async () => {
     setLoading(true)
     try {
-      const [configRes, gastosRes, aptosRes] = await Promise.all([
+      const [configRes, gastosRes, aptosRes, perfilesRes] = await Promise.all([
         supabase.from('configuracion_edificio').select('*').limit(1).maybeSingle(),
         supabase.from('gastos_comunes').select('*')
           .gte('mes_aplicacion', mesStr).lte('mes_aplicacion', mesStr)
           .order('created_at', { ascending: true }),
         supabase.from('apartamentos')
           .select('id, numero, piso, alicuota, propietario_nombre, metros_cuadrados'),
+        supabase.from('perfiles')
+          .select('id, apartamento_id, nombre_completo, condicion_habitacional, propietario_nombre'),
       ])
       if (configRes.data) setConfig(configRes.data)
       if (gastosRes.data) setGastos(gastosRes.data)
       if (aptosRes.data) {
-        const ordenados = [...aptosRes.data].sort((a, b) => compararApartamentos(a.numero, b.numero))
+        const perfilesMap = new Map<string, any>()
+        perfilesRes.data?.forEach(p => {
+          if (p.apartamento_id) perfilesMap.set(p.apartamento_id, p)
+        })
+
+        const ordenados = [...aptosRes.data].map(a => {
+          const perfil = perfilesMap.get(a.id)
+          const nombre = (perfil?.condicion_habitacional === 'alquilado' && perfil?.propietario_nombre)
+            ? perfil.propietario_nombre
+            : (perfil?.nombre_completo || a.propietario_nombre || null)
+
+          return {
+            ...a,
+            propietario_nombre: nombre
+          }
+        }).sort((a, b) => compararApartamentos(a.numero, b.numero))
+
         setApartamentos(ordenados)
       }
     } finally { setLoading(false) }
