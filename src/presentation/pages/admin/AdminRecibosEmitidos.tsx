@@ -572,9 +572,18 @@ export const AdminRecibosEmitidos: React.FC = () => {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px', marginBottom: '24px' }}>
             
             {/* 1. Total Facturado */}
-            <div style={{ backgroundColor: '#141414', border: '1px solid #222', borderRadius: '14px', padding: '18px 20px', position: 'relative', overflow: 'hidden' }}>
+            <div style={{
+              background: 'linear-gradient(180deg, #151922 0%, #0d1117 100%)',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              borderTop: '1px solid rgba(255, 255, 255, 0.14)',
+              borderRadius: '22px',
+              padding: '20px 22px',
+              position: 'relative',
+              overflow: 'hidden',
+              boxShadow: '0 14px 34px -4px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06)'
+            }}>
               <div style={{ position: 'absolute', top: 0, left: 0, width: '4px', height: '100%', backgroundColor: '#f97316' }} />
-              <div style={{ color: '#888', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '6px' }}>
+              <div style={{ color: '#7e8b9b', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '6px' }}>
                 Total Facturado ({mesLabelActivo})
               </div>
               <div style={{ fontSize: '24px', fontWeight: 900, color: '#f97316', letterSpacing: '-0.5px' }}>
@@ -589,13 +598,22 @@ export const AdminRecibosEmitidos: React.FC = () => {
             </div>
 
             {/* 2. Total Recaudado / Cobrado */}
-            <div style={{ backgroundColor: '#141414', border: '1px solid #222', borderRadius: '14px', padding: '18px 20px', position: 'relative', overflow: 'hidden' }}>
+            <div style={{
+              background: 'linear-gradient(180deg, #151922 0%, #0d1117 100%)',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              borderTop: '1px solid rgba(255, 255, 255, 0.14)',
+              borderRadius: '22px',
+              padding: '20px 22px',
+              position: 'relative',
+              overflow: 'hidden',
+              boxShadow: '0 14px 34px -4px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06)'
+            }}>
               <div style={{ position: 'absolute', top: 0, left: 0, width: '4px', height: '100%', backgroundColor: '#10b981' }} />
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                <span style={{ color: '#888', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                <span style={{ color: '#7e8b9b', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.8px' }}>
                   Total Recaudado
                 </span>
-                <span style={{ backgroundColor: '#10b98120', color: '#10b981', border: '1px solid #10b98140', padding: '1px 6px', borderRadius: '6px', fontSize: '10px', fontWeight: 800 }}>
+                <span style={{ backgroundColor: '#10b98118', color: '#10b981', border: '1px solid #10b98135', padding: '2px 8px', borderRadius: '999px', fontSize: '10px', fontWeight: 800 }}>
                   {stats.pctRecaudado}% Cobrado
                 </span>
               </div>
@@ -611,13 +629,22 @@ export const AdminRecibosEmitidos: React.FC = () => {
             </div>
 
             {/* 3. Cartera en Mora / Pendiente */}
-            <div style={{ backgroundColor: '#141414', border: '1px solid #222', borderRadius: '14px', padding: '18px 20px', position: 'relative', overflow: 'hidden' }}>
+            <div style={{
+              background: 'linear-gradient(180deg, #151922 0%, #0d1117 100%)',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              borderTop: '1px solid rgba(255, 255, 255, 0.14)',
+              borderRadius: '22px',
+              padding: '20px 22px',
+              position: 'relative',
+              overflow: 'hidden',
+              boxShadow: '0 14px 34px -4px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06)'
+            }}>
               <div style={{ position: 'absolute', top: 0, left: 0, width: '4px', height: '100%', backgroundColor: '#ef4444' }} />
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                <span style={{ color: '#888', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                <span style={{ color: '#7e8b9b', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.8px' }}>
                   Cartera en Mora
                 </span>
-                <span style={{ backgroundColor: '#ef444420', color: '#ef4444', border: '1px solid #ef444440', padding: '1px 6px', borderRadius: '6px', fontSize: '10px', fontWeight: 800 }}>
+                <span style={{ backgroundColor: '#ef444418', color: '#ef4444', border: '1px solid #ef444435', padding: '2px 8px', borderRadius: '999px', fontSize: '10px', fontWeight: 800 }}>
                   {stats.pctMora}% en Mora
                 </span>
               </div>
@@ -633,9 +660,18 @@ export const AdminRecibosEmitidos: React.FC = () => {
             </div>
 
             {/* 4. Fondo de Reserva Generado */}
-            <div style={{ backgroundColor: '#141414', border: '1px solid #222', borderRadius: '14px', padding: '18px 20px', position: 'relative', overflow: 'hidden' }}>
+            <div style={{
+              background: 'linear-gradient(180deg, #151922 0%, #0d1117 100%)',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              borderTop: '1px solid rgba(255, 255, 255, 0.14)',
+              borderRadius: '22px',
+              padding: '20px 22px',
+              position: 'relative',
+              overflow: 'hidden',
+              boxShadow: '0 14px 34px -4px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06)'
+            }}>
               <div style={{ position: 'absolute', top: 0, left: 0, width: '4px', height: '100%', backgroundColor: '#3b82f6' }} />
-              <div style={{ color: '#888', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '6px' }}>
+              <div style={{ color: '#7e8b9b', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '6px' }}>
                 Fondo de Reserva ({recibos[0]?.fondo_reserva_pct || 10}%)
               </div>
               <div style={{ fontSize: '24px', fontWeight: 900, color: '#3b82f6', letterSpacing: '-0.5px' }}>
@@ -655,12 +691,19 @@ export const AdminRecibosEmitidos: React.FC = () => {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '16px', marginBottom: '28px' }}>
             
             {/* GRÁFICO 1: Tasa de Cobranza vs Morosidad (Donut Chart SVG) */}
-            <div style={{ backgroundColor: '#141414', border: '1px solid #222', borderRadius: '14px', padding: '20px 22px' }}>
+            <div style={{
+              background: 'linear-gradient(180deg, #151922 0%, #0d1117 100%)',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              borderTop: '1px solid rgba(255, 255, 255, 0.14)',
+              borderRadius: '22px',
+              padding: '22px 24px',
+              boxShadow: '0 14px 34px -4px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06)'
+            }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                 <h3 style={{ fontSize: '14px', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <span>🎯</span> Recaudación vs Morosidad
                 </h3>
-                <span style={{ color: '#666', fontSize: '11px' }}>{mesLabelActivo}</span>
+                <span style={{ color: '#7e8b9b', fontSize: '11px', fontWeight: 600 }}>{mesLabelActivo}</span>
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-around', gap: '20px', flexWrap: 'wrap' }}>
@@ -668,7 +711,7 @@ export const AdminRecibosEmitidos: React.FC = () => {
                 <div style={{ position: 'relative', width: '140px', height: '140px' }}>
                   <svg viewBox="0 0 36 36" style={{ width: '100%', height: '100%', transform: 'rotate(-90deg)' }}>
                     {/* Fondo gris */}
-                    <circle cx="18" cy="18" r="15.915" fill="none" stroke="#222" strokeWidth="3.2" />
+                    <circle cx="18" cy="18" r="15.915" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="3.2" />
                     {/* Mora (Rojo) */}
                     <circle
                       cx="18" cy="18" r="15.915" fill="none" stroke="#ef4444" strokeWidth="3.2"
@@ -709,7 +752,14 @@ export const AdminRecibosEmitidos: React.FC = () => {
             </div>
 
             {/* GRÁFICO 2: Gastos Comunes por Categoría (Barras Horizontales) */}
-            <div style={{ backgroundColor: '#141414', border: '1px solid #222', borderRadius: '14px', padding: '20px 22px' }}>
+            <div style={{
+              background: 'linear-gradient(180deg, #151922 0%, #0d1117 100%)',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              borderTop: '1px solid rgba(255, 255, 255, 0.14)',
+              borderRadius: '22px',
+              padding: '22px 24px',
+              boxShadow: '0 14px 34px -4px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06)'
+            }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
                 <h3 style={{ fontSize: '14px', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <span>💸</span> Distribución de Gastos del Mes
@@ -733,7 +783,7 @@ export const AdminRecibosEmitidos: React.FC = () => {
                           </span>
                         </div>
                         {/* Barra de progreso */}
-                        <div style={{ width: '100%', height: '6px', backgroundColor: '#222', borderRadius: '3px', overflow: 'hidden' }}>
+                        <div style={{ width: '100%', height: '6px', backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: '3px', overflow: 'hidden' }}>
                           <div style={{ width: `${Math.max(4, cat.pct)}%`, height: '100%', backgroundColor: color, borderRadius: '3px', transition: 'width 0.5s ease' }} />
                         </div>
                       </div>
@@ -744,7 +794,14 @@ export const AdminRecibosEmitidos: React.FC = () => {
             </div>
 
             {/* GRÁFICO 3: Distribución de Morosidad por Piso */}
-            <div style={{ backgroundColor: '#141414', border: '1px solid #222', borderRadius: '14px', padding: '20px 22px' }}>
+            <div style={{
+              background: 'linear-gradient(180deg, #151922 0%, #0d1117 100%)',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              borderTop: '1px solid rgba(255, 255, 255, 0.14)',
+              borderRadius: '22px',
+              padding: '22px 24px',
+              boxShadow: '0 14px 34px -4px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06)'
+            }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
                 <h3 style={{ fontSize: '14px', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <span>🏢</span> Morosidad por Piso
@@ -780,7 +837,14 @@ export const AdminRecibosEmitidos: React.FC = () => {
           </div>
 
           {/* ── TABLA EXTENSA DE RECIBOS EMITIDOS ── */}
-          <div style={{ backgroundColor: '#141414', border: '1px solid #222', borderRadius: '14px', padding: '20px 24px' }}>
+          <div style={{
+            background: 'linear-gradient(180deg, #151922 0%, #0d1117 100%)',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            borderTop: '1px solid rgba(255, 255, 255, 0.14)',
+            borderRadius: '22px',
+            padding: '24px 26px',
+            boxShadow: '0 14px 34px -4px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06)'
+          }}>
             
             {/* Barra de Búsqueda y Filtros */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '14px', marginBottom: '18px' }}>

@@ -19,39 +19,56 @@ const StatCard: React.FC<StatCardProps> = ({ icon, label, value, sub, color = '#
   <div
     onClick={onClick}
     style={{
-      backgroundColor: '#141414',
-      border: pulse ? `1px solid ${color}` : '1px solid #1e1e1e',
-      boxShadow: pulse ? `0 0 15px ${color}30` : 'none',
-      borderRadius: '14px',
-      padding: '20px',
+      background: 'linear-gradient(180deg, #151922 0%, #0d1117 100%)',
+      border: pulse ? `1px solid ${color}` : '1px solid rgba(255, 255, 255, 0.08)',
+      borderTop: pulse ? `1px solid ${color}` : '1px solid rgba(255, 255, 255, 0.14)',
+      boxShadow: pulse
+        ? `0 0 20px ${color}35, 0 12px 30px rgba(0, 0, 0, 0.5)`
+        : '0 14px 34px -4px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06)',
+      borderRadius: '22px',
+      padding: '22px',
       display: 'flex',
       flexDirection: 'column',
       gap: '8px',
       cursor: onClick ? 'pointer' : 'default',
-      transition: 'all 0.2s ease',
+      transition: 'all 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
       position: 'relative',
     }}
-    onMouseOver={e => { if (onClick) e.currentTarget.style.borderColor = color }}
-    onMouseOut={e => { if (onClick && !pulse) e.currentTarget.style.borderColor = '#1e1e1e' }}
+    onMouseOver={e => {
+      if (onClick) {
+        e.currentTarget.style.borderColor = color
+        e.currentTarget.style.transform = 'translateY(-2px)'
+        e.currentTarget.style.boxShadow = `0 16px 36px -4px rgba(0, 0, 0, 0.65), 0 0 15px ${color}20, inset 0 1px 0 rgba(255, 255, 255, 0.1)`
+      }
+    }}
+    onMouseOut={e => {
+      if (onClick) {
+        e.currentTarget.style.borderColor = pulse ? color : 'rgba(255, 255, 255, 0.08)'
+        e.currentTarget.style.transform = 'translateY(0)'
+        e.currentTarget.style.boxShadow = pulse
+          ? `0 0 20px ${color}35, 0 12px 30px rgba(0, 0, 0, 0.5)`
+          : '0 14px 34px -4px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06)'
+      }
+    }}
   >
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
       <span style={{ fontSize: '24px' }}>{icon}</span>
       {badge && (
         <span style={{
-          backgroundColor: `${color}25`,
+          backgroundColor: `${color}18`,
           color: color,
           fontSize: '11px',
           fontWeight: 700,
-          padding: '2px 8px',
+          padding: '3px 10px',
           borderRadius: '999px',
-          border: `1px solid ${color}40`,
+          border: `1px solid ${color}35`,
         }}>
           {badge}
         </span>
       )}
     </div>
-    <p style={{ color: '#888', fontSize: '12px', fontWeight: 500, margin: 0 }}>{label}</p>
-    <p style={{ color: '#fff', fontSize: '24px', fontWeight: 800, margin: 0 }}>{value}</p>
+    <p style={{ color: '#7e8b9b', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.8px', margin: 0 }}>{label}</p>
+    <p style={{ color: '#fff', fontSize: '24px', fontWeight: 800, margin: 0, letterSpacing: '-0.5px' }}>{value}</p>
     {sub && <p style={{ color, fontSize: '12px', fontWeight: 600, margin: 0 }}>{sub}</p>}
   </div>
 )
@@ -366,38 +383,41 @@ export const AdminDashboard: React.FC = () => {
         <div
           onClick={() => navigate('/admin/recibos?filtro=pendiente')}
           style={{
-            backgroundColor: '#f59e0b15',
-            border: '1px solid #f59e0b40',
-            borderRadius: '12px',
-            padding: '14px 18px',
+            background: 'linear-gradient(180deg, rgba(245, 158, 11, 0.12) 0%, rgba(245, 158, 11, 0.04) 100%)',
+            border: '1px solid rgba(245, 158, 11, 0.35)',
+            borderTop: '1px solid rgba(245, 158, 11, 0.5)',
+            borderRadius: '22px',
+            boxShadow: '0 12px 30px -4px rgba(245, 158, 11, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.08)',
+            padding: '16px 22px',
             marginBottom: '24px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
             cursor: 'pointer',
-            transition: 'background-color 0.2s',
+            transition: 'all 0.2s',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <span style={{ fontSize: '20px' }}>⏳</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <span style={{ fontSize: '24px' }}>⏳</span>
             <div>
               <p style={{ color: '#f59e0b', fontSize: '14px', fontWeight: 700, margin: 0 }}>
                 Tienes {stats.pendientesTotal} {stats.pendientesTotal === 1 ? 'pago pendiente' : 'pagos pendientes'} por revisar y aprobar
               </p>
-              <p style={{ color: '#aaa', fontSize: '12px', margin: 0, marginTop: '2px' }}>
+              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0, marginTop: '2px' }}>
                 Los residentes están esperando la confirmación de su solvencia.
               </p>
             </div>
           </div>
           <button style={{
-            backgroundColor: '#f59e0b',
-            color: '#000',
-            border: 'none',
-            padding: '8px 16px',
-            borderRadius: '8px',
+            background: 'linear-gradient(135deg, #fb923c 0%, #f97316 55%, #ea580c 100%)',
+            color: '#fff',
+            border: '1px solid rgba(255, 255, 255, 0.25)',
+            padding: '8px 18px',
+            borderRadius: '12px',
             fontWeight: 700,
             fontSize: '12px',
             cursor: 'pointer',
+            boxShadow: '0 4px 14px rgba(249, 115, 22, 0.35)',
           }}>
             Revisar Ahora →
           </button>
@@ -473,7 +493,14 @@ export const AdminDashboard: React.FC = () => {
       </div>
 
       {/* Actividad reciente */}
-      <div style={{ backgroundColor: '#141414', border: '1px solid #1e1e1e', borderRadius: '16px', padding: '24px' }}>
+      <div style={{
+        background: 'linear-gradient(180deg, #151922 0%, #0d1117 100%)',
+        border: '1px solid rgba(255, 255, 255, 0.08)',
+        borderTop: '1px solid rgba(255, 255, 255, 0.14)',
+        boxShadow: '0 14px 34px -4px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06)',
+        borderRadius: '22px',
+        padding: '26px'
+      }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
           <div>
             <h2 style={{ color: '#fff', fontSize: '16px', fontWeight: 700, margin: 0 }}>Actividad Reciente en Vivo</h2>
