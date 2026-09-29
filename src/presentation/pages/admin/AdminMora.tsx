@@ -239,6 +239,8 @@ export const AdminMora: React.FC = () => {
   const stats = useMemo(() => {
     let totalUsd = 0
     let totalBs = 0
+    let azulCount = 0
+    let azulUsd = 0
     let amarilloCount = 0
     let amarilloUsd = 0
     let rojoCount = 0
@@ -249,7 +251,10 @@ export const AdminMora: React.FC = () => {
     deudas.forEach(d => {
       totalUsd += d.monto_usd || 0
       totalBs += d.monto_bs || 0
-      if (d.tasa_riesgo === 'amarillo') {
+      if (d.tasa_riesgo === 'azul') {
+        azulCount++
+        azulUsd += d.monto_usd || 0
+      } else if (d.tasa_riesgo === 'amarillo') {
         amarilloCount++
         amarilloUsd += d.monto_usd || 0
       } else if (d.tasa_riesgo === 'rojo') {
@@ -265,6 +270,8 @@ export const AdminMora: React.FC = () => {
       totalDeudores: deudas.length,
       totalUsd,
       totalBs,
+      azulCount,
+      azulUsd,
       amarilloCount,
       amarilloUsd,
       rojoCount,
@@ -295,11 +302,11 @@ export const AdminMora: React.FC = () => {
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <span style={{ fontSize: '30px' }}>⚖️</span>
             <h1 style={{ fontSize: '26px', fontWeight: 800, margin: 0, letterSpacing: '-0.5px' }}>
-              Control de Mora y Deudores Crónicos (&gt;3 Meses)
+              Control de Mora y Cartera de Deudores
             </h1>
           </div>
-          <p style={{ color: '#888', fontSize: '14px', margin: '6px 0 0', maxWidth: '750px' }}>
-            Módulo para cargar y gestionar deudas históricas por apartamento, categorizar tasas de riesgo jurídico (Amarillo, Rojo, Morado) y activar acciones legales. <strong>Sincronizado con la Lista de Mora comunitaria</strong>.
+          <p style={{ color: '#888', fontSize: '14px', margin: '6px 0 0', maxWidth: '850px', lineHeight: 1.5 }}>
+            Control centralizado: recibos emitidos del mes en curso (<strong style={{ color: '#60a5fa' }}>🔵 Azul &lt;1m</strong>) y deudas acumuladas de riesgo (<strong style={{ color: '#eab308' }}>🟡 Amarillo 3m</strong>, <strong style={{ color: '#ef4444' }}>🔴 Rojo 4-6m</strong>, <strong style={{ color: '#c084fc' }}>🟣 Morado &gt;6m</strong>). Totalmente sincronizado con la emisión de recibos y la Lista de Mora comunitaria.
           </p>
         </div>
 
@@ -321,12 +328,12 @@ export const AdminMora: React.FC = () => {
       </div>
 
       {/* STAT CARDS — TASAS DE RIESGO */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px', marginBottom: '28px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '14px', marginBottom: '28px' }}>
         {/* Cartera Total en Mora */}
         <div style={{
           background: 'linear-gradient(180deg, #151922 0%, #0d1117 100%)',
           border: '1px solid rgba(255, 255, 255, 0.08)', borderTop: '1px solid rgba(255, 255, 255, 0.14)',
-          borderRadius: '20px', padding: '22px', boxShadow: '0 10px 25px rgba(0,0,0,0.45)'
+          borderRadius: '20px', padding: '20px', boxShadow: '0 10px 25px rgba(0,0,0,0.45)'
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
             <span style={{ fontSize: '20px' }}>💼</span>
@@ -334,20 +341,44 @@ export const AdminMora: React.FC = () => {
               {stats.totalDeudores} Apartamentos
             </span>
           </div>
-          <div style={{ fontSize: '26px', fontWeight: 800 }}>
+          <div style={{ fontSize: '24px', fontWeight: 800 }}>
             ${stats.totalUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
           <div style={{ fontSize: '13px', color: '#f97316', fontWeight: 600, marginTop: '2px' }}>
             {stats.totalBs > 0 && `+ Bs. ${stats.totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}`}
           </div>
-          <div style={{ fontSize: '12px', color: '#777', marginTop: '6px' }}>Cartera morosa total acumulada</div>
+          <div style={{ fontSize: '12px', color: '#777', marginTop: '6px' }}>Cartera pendiente total acumulada</div>
+        </div>
+
+        {/* Recibo del Mes (<1 mes - Azul) */}
+        <div style={{
+          background: 'linear-gradient(180deg, #0b192e 0%, #060e1c 100%)',
+          border: `1px solid ${TASA_RIESGO_CONFIG.azul.border}`,
+          borderRadius: '20px', padding: '20px', boxShadow: '0 10px 25px rgba(59, 130, 246, 0.12)'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <span style={{ fontSize: '20px' }}>🔵</span>
+            <span style={{
+              fontSize: '11px', color: '#60a5fa', fontWeight: 800,
+              backgroundColor: 'rgba(59, 130, 246, 0.15)', padding: '2px 8px', borderRadius: '999px'
+            }}>
+              &lt; 1 Mes
+            </span>
+          </div>
+          <div style={{ fontSize: '24px', fontWeight: 800, color: '#60a5fa' }}>
+            {stats.azulCount} <span style={{ fontSize: '14px', color: '#93c5fd', fontWeight: 500 }}>aptos</span>
+          </div>
+          <div style={{ fontSize: '13px', color: '#fff', fontWeight: 700, marginTop: '2px' }}>
+            ${stats.azulUsd.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+          </div>
+          <div style={{ fontSize: '12px', color: '#93c5fd', marginTop: '4px' }}>Recibo del Mes Emitido (Cobro ordinario)</div>
         </div>
 
         {/* Riesgo Moderado (Amarillo - 3 meses) */}
         <div style={{
           background: 'linear-gradient(180deg, #1f1b0a 0%, #121005 100%)',
           border: `1px solid ${TASA_RIESGO_CONFIG.amarillo.border}`,
-          borderRadius: '20px', padding: '22px', boxShadow: '0 10px 25px rgba(234, 179, 8, 0.1)'
+          borderRadius: '20px', padding: '20px', boxShadow: '0 10px 25px rgba(234, 179, 8, 0.1)'
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
             <span style={{ fontSize: '20px' }}>🟡</span>
@@ -358,8 +389,8 @@ export const AdminMora: React.FC = () => {
               3 Meses
             </span>
           </div>
-          <div style={{ fontSize: '26px', fontWeight: 800, color: '#eab308' }}>
-            {stats.amarilloCount} <span style={{ fontSize: '15px', color: '#aaa', fontWeight: 500 }}>aptos</span>
+          <div style={{ fontSize: '24px', fontWeight: 800, color: '#eab308' }}>
+            {stats.amarilloCount} <span style={{ fontSize: '14px', color: '#aaa', fontWeight: 500 }}>aptos</span>
           </div>
           <div style={{ fontSize: '13px', color: '#fff', fontWeight: 700, marginTop: '2px' }}>
             ${stats.amarilloUsd.toLocaleString('en-US', { minimumFractionDigits: 2 })}
@@ -371,7 +402,7 @@ export const AdminMora: React.FC = () => {
         <div style={{
           background: 'linear-gradient(180deg, #220e10 0%, #140809 100%)',
           border: `1px solid ${TASA_RIESGO_CONFIG.rojo.border}`,
-          borderRadius: '20px', padding: '22px', boxShadow: '0 10px 25px rgba(239, 68, 68, 0.12)'
+          borderRadius: '20px', padding: '20px', boxShadow: '0 10px 25px rgba(239, 68, 68, 0.12)'
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
             <span style={{ fontSize: '20px' }}>🔴</span>
@@ -382,8 +413,8 @@ export const AdminMora: React.FC = () => {
               4 a 6 Meses
             </span>
           </div>
-          <div style={{ fontSize: '26px', fontWeight: 800, color: '#ef4444' }}>
-            {stats.rojoCount} <span style={{ fontSize: '15px', color: '#aaa', fontWeight: 500 }}>aptos</span>
+          <div style={{ fontSize: '24px', fontWeight: 800, color: '#ef4444' }}>
+            {stats.rojoCount} <span style={{ fontSize: '14px', color: '#aaa', fontWeight: 500 }}>aptos</span>
           </div>
           <div style={{ fontSize: '13px', color: '#fff', fontWeight: 700, marginTop: '2px' }}>
             ${stats.rojoUsd.toLocaleString('en-US', { minimumFractionDigits: 2 })}
@@ -395,7 +426,7 @@ export const AdminMora: React.FC = () => {
         <div style={{
           background: 'linear-gradient(180deg, #1c0f26 0%, #100816 100%)',
           border: `1px solid ${TASA_RIESGO_CONFIG.morado.border}`,
-          borderRadius: '20px', padding: '22px', boxShadow: '0 10px 25px rgba(168, 85, 247, 0.15)'
+          borderRadius: '20px', padding: '20px', boxShadow: '0 10px 25px rgba(168, 85, 247, 0.15)'
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
             <span style={{ fontSize: '20px' }}>🟣</span>
@@ -406,8 +437,8 @@ export const AdminMora: React.FC = () => {
               &gt;6 Meses · Crónico
             </span>
           </div>
-          <div style={{ fontSize: '26px', fontWeight: 800, color: '#a855f7' }}>
-            {stats.moradoCount} <span style={{ fontSize: '15px', color: '#aaa', fontWeight: 500 }}>aptos</span>
+          <div style={{ fontSize: '24px', fontWeight: 800, color: '#a855f7' }}>
+            {stats.moradoCount} <span style={{ fontSize: '14px', color: '#aaa', fontWeight: 500 }}>aptos</span>
           </div>
           <div style={{ fontSize: '13px', color: '#fff', fontWeight: 700, marginTop: '2px' }}>
             ${stats.moradoUsd.toLocaleString('en-US', { minimumFractionDigits: 2 })}
@@ -427,6 +458,7 @@ export const AdminMora: React.FC = () => {
           <span style={{ fontSize: '12px', color: '#888', fontWeight: 700, marginRight: '4px' }}>FILTRAR POR RIESGO:</span>
           {[
             { key: 'todos', label: 'Todos los deudores', icon: '📋', count: deudas.length },
+            { key: 'azul', label: '🔵 Recibo del Mes (<1m)', icon: '', count: stats.azulCount },
             { key: 'amarillo', label: '🟡 Riesgo Moderado (3m)', icon: '', count: stats.amarilloCount },
             { key: 'rojo', label: '🔴 Riesgo Alto (4-6m)', icon: '', count: stats.rojoCount },
             { key: 'morado', label: '🟣 El Más Deudor (>6m)', icon: '', count: stats.moradoCount },
@@ -437,8 +469,8 @@ export const AdminMora: React.FC = () => {
                 key={chip.key}
                 onClick={() => setFiltroRiesgo(chip.key)}
                 style={{
-                  background: active ? '#a855f7' : 'rgba(255, 255, 255, 0.05)',
-                  border: active ? '1px solid #a855f7' : '1px solid rgba(255, 255, 255, 0.09)',
+                  background: active ? (chip.key === 'azul' ? '#2563eb' : '#a855f7') : 'rgba(255, 255, 255, 0.05)',
+                  border: active ? `1px solid ${chip.key === 'azul' ? '#3b82f6' : '#a855f7'}` : '1px solid rgba(255, 255, 255, 0.09)',
                   color: active ? '#fff' : '#ccc',
                   fontWeight: active ? 800 : 500,
                   fontSize: '12px', padding: '7px 14px', borderRadius: '10px',
@@ -520,7 +552,7 @@ export const AdminMora: React.FC = () => {
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       fontSize: '22px', flexShrink: 0
                     }}>
-                      🏢
+                      {d.tasa_riesgo === 'azul' ? '🔵' : d.tasa_riesgo === 'morado' ? '🟣' : d.tasa_riesgo === 'rojo' ? '🔴' : '🟡'}
                     </div>
 
                     <div>
@@ -580,7 +612,7 @@ export const AdminMora: React.FC = () => {
                       display: 'inline-block', marginTop: '6px', fontSize: '11px', fontWeight: 800,
                       color: riesgoMeta.color, background: 'rgba(0,0,0,0.4)', padding: '2px 8px', borderRadius: '6px'
                     }}>
-                      ⏳ {d.meses_deuda} meses de atraso
+                      {d.tasa_riesgo === 'azul' ? '🔵 Recibo del mes (<1m)' : `⏳ ${d.meses_deuda} meses de atraso`}
                     </div>
                   </div>
                 </div>
@@ -619,13 +651,15 @@ export const AdminMora: React.FC = () => {
                   <button
                     onClick={() => setCitacionModal(d)}
                     style={{
-                      background: 'rgba(168, 85, 247, 0.2)', border: '1px solid rgba(168, 85, 247, 0.4)',
-                      color: '#d8b4fe', padding: '6px 14px', borderRadius: '8px', fontSize: '12px',
+                      background: d.tasa_riesgo === 'azul' ? 'rgba(59, 130, 246, 0.2)' : 'rgba(168, 85, 247, 0.2)',
+                      border: `1px solid ${d.tasa_riesgo === 'azul' ? 'rgba(59, 130, 246, 0.4)' : 'rgba(168, 85, 247, 0.4)'}`,
+                      color: d.tasa_riesgo === 'azul' ? '#93c5fd' : '#d8b4fe',
+                      padding: '6px 14px', borderRadius: '8px', fontSize: '12px',
                       fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px'
                     }}
                   >
-                    <span>📜</span>
-                    <span>Ver Carta / Citación</span>
+                    <span>{d.tasa_riesgo === 'azul' ? '✉️' : '📜'}</span>
+                    <span>{d.tasa_riesgo === 'azul' ? 'Ver Recordatorio de Cobro' : 'Ver Carta / Citación'}</span>
                   </button>
                 </div>
 
@@ -851,8 +885,8 @@ export const AdminMora: React.FC = () => {
                 <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#aaa', marginBottom: '6px' }}>
                   Tasa de Riesgo Legal *
                 </label>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
-                  {(['amarillo', 'rojo', 'morado'] as TasaRiesgoMora[]).map(t => {
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '8px' }}>
+                  {(['azul', 'amarillo', 'rojo', 'morado'] as TasaRiesgoMora[]).map(t => {
                     const cfg = TASA_RIESGO_CONFIG[t]
                     const active = formRiesgo === t
                     return (
@@ -988,7 +1022,9 @@ export const AdminMora: React.FC = () => {
                 JUNTA DE CONDOMINIO — EDIFICIO TORRE 5
               </div>
               <h2 style={{ margin: '8px 0 0', fontSize: '20px', fontWeight: 800, color: '#000' }}>
-                COMUNICACIÓN FORMAL DE COBRANZA EXTRAJUDICIAL
+                {citacionModal.tasa_riesgo === 'azul'
+                  ? 'RECORDATORIO FORMAL DE COBRO DE CONDOMINIO'
+                  : 'COMUNICACIÓN FORMAL DE COBRANZA EXTRAJUDICIAL'}
               </h2>
             </div>
 
@@ -1000,7 +1036,9 @@ export const AdminMora: React.FC = () => {
               <hr style={{ borderColor: '#eee', margin: '16px 0' }} />
 
               <p>
-                Por medio de la presente se le notifica que su inmueble presenta un estado de <strong>morosidad prolongada de {citacionModal.meses_deuda} meses</strong> en el pago de las cuotas ordinarias y extraordinarias de condominio, con una deuda total liquidada a la fecha de:
+                {citacionModal.tasa_riesgo === 'azul'
+                  ? 'Por medio de la presente se le notifica que su inmueble presenta el recibo emitido del mes en curso pendiente de pago (<1 mes de mora), con un monto total al cobro de:'
+                  : `Por medio de la presente se le notifica que su inmueble presenta un estado de morosidad prolongada de ${citacionModal.meses_deuda} meses en el pago de las cuotas ordinarias y extraordinarias de condominio, con una deuda total liquidada a la fecha de:`}
               </p>
 
               <div style={{

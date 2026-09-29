@@ -4,7 +4,7 @@ import { useBcvRate } from '../../data/useBcvRate'
 import { ReportarPagoModal } from '../components/ReportarPagoModal'
 import { supabase } from '../../data/supabase'
 import { useNavigate } from 'react-router-dom'
-import { buscarMoraPorApto, TASA_RIESGO_CONFIG, DeudaMoraItem } from '../../data/moraService'
+import { buscarMoraPorApto, obtenerDeudasMora, TASA_RIESGO_CONFIG, DeudaMoraItem } from '../../data/moraService'
 
 interface PagoItem {
   id: string
@@ -112,7 +112,8 @@ export function Dashboard() {
       if (reciboRes.data) setReciboPendiente(reciboRes.data)
       else setReciboPendiente(null)
 
-      // Consultar si está en mora (> 3 meses)
+      // Consultar si está en mora o tiene recibo emitido (<1m Azul o crónico)
+      await obtenerDeudasMora()
       const mora = buscarMoraPorApto(aptoNumero || apartamentoId)
       setMoraRecord(mora)
     } catch (err) {
@@ -340,9 +341,9 @@ export function Dashboard() {
                 </span>
               ) : moraRecord ? (
                 <span style={{
-                  backgroundColor: 'rgba(239, 68, 68, 0.15)',
-                  color: '#ef4444',
-                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                  backgroundColor: moraRecord.tasa_riesgo === 'azul' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                  color: moraRecord.tasa_riesgo === 'azul' ? '#60a5fa' : '#ef4444',
+                  border: `1px solid ${moraRecord.tasa_riesgo === 'azul' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
                   borderRadius: '999px',
                   padding: '3px 10px',
                   fontSize: '11px',
@@ -351,7 +352,7 @@ export function Dashboard() {
                   alignItems: 'center',
                   gap: '5px'
                 }}>
-                  ⚠️ En Lista de Mora ({moraRecord.meses_deuda} meses)
+                  {moraRecord.tasa_riesgo === 'azul' ? '🔵 Recibo al Cobro (<1m)' : `⚠️ En Lista de Mora (${moraRecord.meses_deuda} meses)`}
                 </span>
               ) : deudaUsd > 0 ? (
                 <span style={{
@@ -450,19 +451,23 @@ export function Dashboard() {
             </div>
           )}
 
-          {/* ── ALERTA DE MORA PROLONGADA (Si el apartamento figura en la lista de mora) ── */}
+          {/* ── ALERTA DE RECIBO / MORA (Si el apartamento figura en la lista) ── */}
           {moraRecord && (
             <div style={{
-              background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.16) 0%, rgba(239, 68, 68, 0.16) 100%)',
+              background: moraRecord.tasa_riesgo === 'azul'
+                ? 'linear-gradient(135deg, rgba(59, 130, 246, 0.16) 0%, rgba(37, 99, 235, 0.16) 100%)'
+                : 'linear-gradient(135deg, rgba(168, 85, 247, 0.16) 0%, rgba(239, 68, 68, 0.16) 100%)',
               border: `2px solid ${TASA_RIESGO_CONFIG[moraRecord.tasa_riesgo].color}`,
               borderRadius: '20px',
               padding: '16px',
               boxShadow: `0 8px 24px rgba(0, 0, 0, 0.5), 0 0 16px ${TASA_RIESGO_CONFIG[moraRecord.tasa_riesgo].color}25`
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
-                <span style={{ fontSize: '20px' }}>⚠️</span>
+                <span style={{ fontSize: '20px' }}>{moraRecord.tasa_riesgo === 'azul' ? '🔵' : '⚠️'}</span>
                 <span style={{ fontWeight: 800, fontSize: '13px', color: '#fff' }}>
-                  Apto {moraRecord.apartamento_numero} en Lista de Mora
+                  {moraRecord.tasa_riesgo === 'azul'
+                    ? `Apto ${moraRecord.apartamento_numero} · Recibo del Mes al Cobro`
+                    : `Apto ${moraRecord.apartamento_numero} en Lista de Mora`}
                 </span>
                 <span style={{
                   fontSize: '10px', fontWeight: 800,
@@ -475,8 +480,17 @@ export function Dashboard() {
                 </span>
               </div>
               <p style={{ margin: '0 0 12px 0', fontSize: '11px', color: '#cbd5e1', lineHeight: 1.3 }}>
-                Tienes <strong>{moraRecord.meses_deuda} meses de atraso</strong> con una deuda acumulada de{' '}
-                <strong style={{ color: '#f97316' }}>${moraRecord.monto_usd.toFixed(2)} USD</strong>.
+                {moraRecord.tasa_riesgo === 'azul' ? (
+                  <>
+                    Tienes el recibo del mes emitido (&lt;1 mes) con un monto de{' '}
+                    <strong style={{ color: '#60a5fa' }}>${moraRecord.monto_usd.toFixed(2)} USD</strong>. Reporta tu pago para estar al día.
+                  </>
+                ) : (
+                  <>
+                    Tienes <strong>{moraRecord.meses_deuda} meses de atraso</strong> con una deuda acumulada de{' '}
+                    <strong style={{ color: '#f97316' }}>${moraRecord.monto_usd.toFixed(2)} USD</strong>.
+                  </>
+                )}
               </p>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <button
@@ -824,10 +838,12 @@ export function Dashboard() {
             </div>
           </div>
 
-          {/* ALERTA DE MORA DESKTOP (Si aplica) */}
+          {/* ALERTA DE MORA / RECIBO DESKTOP (Si aplica) */}
           {moraRecord && (
             <div style={{
-              background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.16) 0%, rgba(239, 68, 68, 0.16) 100%)',
+              background: moraRecord.tasa_riesgo === 'azul'
+                ? 'linear-gradient(135deg, rgba(59, 130, 246, 0.16) 0%, rgba(37, 99, 235, 0.16) 100%)'
+                : 'linear-gradient(135deg, rgba(168, 85, 247, 0.16) 0%, rgba(239, 68, 68, 0.16) 100%)',
               border: `2px solid ${TASA_RIESGO_CONFIG[moraRecord.tasa_riesgo].color}`,
               borderRadius: '20px',
               padding: '18px 24px',
@@ -838,11 +854,13 @@ export function Dashboard() {
               boxShadow: `0 8px 30px rgba(0, 0, 0, 0.5), 0 0 16px ${TASA_RIESGO_CONFIG[moraRecord.tasa_riesgo].color}25`
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                <span style={{ fontSize: '32px' }}>⚠️</span>
+                <span style={{ fontSize: '32px' }}>{moraRecord.tasa_riesgo === 'azul' ? '🔵' : '⚠️'}</span>
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span style={{ fontWeight: 800, fontSize: '16px', color: '#fff' }}>
-                      Tu Apartamento ({moraRecord.apartamento_numero}) figura en la Lista de Mora Comunitaria
+                      {moraRecord.tasa_riesgo === 'azul'
+                        ? `Tu Apartamento (${moraRecord.apartamento_numero}) tiene el Recibo del Mes al Cobro`
+                        : `Tu Apartamento (${moraRecord.apartamento_numero}) figura en la Lista de Mora Comunitaria`}
                     </span>
                     <span style={{
                       fontSize: '11px', fontWeight: 800,
@@ -855,8 +873,17 @@ export function Dashboard() {
                     </span>
                   </div>
                   <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#cbd5e1' }}>
-                    Presentas <strong>{moraRecord.meses_deuda} meses de atraso</strong> con una deuda anterior acumulada de{' '}
-                    <strong style={{ color: '#f97316' }}>${moraRecord.monto_usd.toFixed(2)} USD</strong>. Regulariza tu saldo para evitar recargos legales.
+                    {moraRecord.tasa_riesgo === 'azul' ? (
+                      <>
+                        Tienes el recibo del mes emitido (&lt;1 mes) con un monto de{' '}
+                        <strong style={{ color: '#60a5fa' }}>${moraRecord.monto_usd.toFixed(2)} USD</strong>. Cancela dentro del plazo para mantener tu solvencia comunitaria.
+                      </>
+                    ) : (
+                      <>
+                        Presentas <strong>{moraRecord.meses_deuda} meses de atraso</strong> con una deuda anterior acumulada de{' '}
+                        <strong style={{ color: '#f97316' }}>${moraRecord.monto_usd.toFixed(2)} USD</strong>. Regulariza tu saldo para evitar recargos legales.
+                      </>
+                    )}
                   </p>
                 </div>
               </div>

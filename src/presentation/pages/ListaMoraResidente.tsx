@@ -65,6 +65,7 @@ export const ListaMoraResidente: React.FC = () => {
   const stats = useMemo(() => {
     let totalUsd = 0
     let totalBs = 0
+    let azul = 0
     let amarillo = 0
     let rojo = 0
     let morado = 0
@@ -72,12 +73,13 @@ export const ListaMoraResidente: React.FC = () => {
     deudas.forEach(d => {
       totalUsd += d.monto_usd || 0
       totalBs += d.monto_bs || 0
-      if (d.tasa_riesgo === 'amarillo') amarillo++
+      if (d.tasa_riesgo === 'azul') azul++
+      else if (d.tasa_riesgo === 'amarillo') amarillo++
       else if (d.tasa_riesgo === 'rojo') rojo++
       else if (d.tasa_riesgo === 'morado') morado++
     })
 
-    return { totalAptos: deudas.length, totalUsd, totalBs, amarillo, rojo, morado }
+    return { totalAptos: deudas.length, totalUsd, totalBs, azul, amarillo, rojo, morado }
   }, [deudas])
 
   return (
@@ -99,36 +101,41 @@ export const ListaMoraResidente: React.FC = () => {
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <span style={{ fontSize: '28px' }}>📋</span>
           <h1 style={{ fontSize: '24px', fontWeight: 800, margin: 0, letterSpacing: '-0.5px' }}>
-            Lista Comunitaria de Mora (&gt;3 Meses)
+            Lista Comunitaria de Deudores y Morosidad
           </h1>
         </div>
         <p style={{ color: '#888', fontSize: '13px', margin: '6px 0 0', lineHeight: 1.5 }}>
-          Por disposición de la Junta de Condominio y asamblea de copropietarios, se publica el estado de morosidad extendida por apartamento para transparencia comunitaria.
+          Por disposición de la Junta de Condominio y asamblea de copropietarios, se publica el estado de cuentas al cobro y morosidad comunitaria para máxima transparencia.
         </p>
       </div>
 
       {/* BANNER ALERTA SI MI APARTAMENTO ESTÁ EN MORA */}
       {miDeuda && (
         <div style={{
-          background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.22) 0%, rgba(239, 68, 68, 0.22) 100%)',
-          border: '2px solid #a855f7',
+          background: miDeuda.tasa_riesgo === 'azul'
+            ? 'linear-gradient(135deg, rgba(59, 130, 246, 0.22) 0%, rgba(37, 99, 235, 0.22) 100%)'
+            : 'linear-gradient(135deg, rgba(168, 85, 247, 0.22) 0%, rgba(239, 68, 68, 0.22) 100%)',
+          border: `2px solid ${miDeuda.tasa_riesgo === 'azul' ? '#3b82f6' : '#a855f7'}`,
           borderRadius: '20px', padding: '20px 24px', marginBottom: '28px',
-          boxShadow: '0 8px 30px rgba(168, 85, 247, 0.25)',
+          boxShadow: miDeuda.tasa_riesgo === 'azul' ? '0 8px 30px rgba(59, 130, 246, 0.25)' : '0 8px 30px rgba(168, 85, 247, 0.25)',
           display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
             <div style={{
               width: '52px', height: '52px', borderRadius: '16px',
-              background: '#a855f7', color: '#fff',
+              background: miDeuda.tasa_riesgo === 'azul' ? '#2563eb' : '#a855f7', color: '#fff',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '26px', flexShrink: 0, boxShadow: '0 0 15px rgba(168,85,247,0.5)'
+              fontSize: '26px', flexShrink: 0,
+              boxShadow: miDeuda.tasa_riesgo === 'azul' ? '0 0 15px rgba(59, 130, 246, 0.5)' : '0 0 15px rgba(168,85,247,0.5)'
             }}>
-              ⚠️
+              {miDeuda.tasa_riesgo === 'azul' ? '🔵' : '⚠️'}
             </div>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <span style={{ fontSize: '16px', fontWeight: 800, color: '#fff' }}>
-                  Tu Apartamento (Apto {miDeuda.apartamento_numero}) figura en la Lista de Mora
+                  {miDeuda.tasa_riesgo === 'azul'
+                    ? `Tu Apartamento (Apto ${miDeuda.apartamento_numero}) tiene el Recibo del Mes al Cobro`
+                    : `Tu Apartamento (Apto ${miDeuda.apartamento_numero}) figura en la Lista de Mora`}
                 </span>
                 <span style={{
                   fontSize: '11px', fontWeight: 800,
@@ -141,12 +148,24 @@ export const ListaMoraResidente: React.FC = () => {
                 </span>
               </div>
               <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#e2e8f0' }}>
-                Registras <strong>{miDeuda.meses_deuda} meses de atraso</strong> por un monto de{' '}
-                <strong style={{ color: '#f97316' }}>
-                  ${miDeuda.monto_usd.toLocaleString('en-US', { minimumFractionDigits: 2 })} USD
-                </strong>
-                {miDeuda.monto_bs > 0 && ` (Bs. ${miDeuda.monto_bs.toLocaleString('es-VE', { minimumFractionDigits: 2 })})`}.
-                {' '}Estatus actual: <em>{ACCION_LEGAL_CONFIG[miDeuda.accion_legal]?.titulo}</em>.
+                {miDeuda.tasa_riesgo === 'azul' ? (
+                  <>
+                    Tienes pendiente el <strong>recibo emitido del mes en curso (&lt;1 mes)</strong> por un monto de{' '}
+                    <strong style={{ color: '#60a5fa' }}>
+                      ${miDeuda.monto_usd.toLocaleString('en-US', { minimumFractionDigits: 2 })} USD
+                    </strong>
+                    {miDeuda.monto_bs > 0 && ` (Bs. ${miDeuda.monto_bs.toLocaleString('es-VE', { minimumFractionDigits: 2 })})`}. Cancela dentro del plazo para mantener tu solvencia.
+                  </>
+                ) : (
+                  <>
+                    Registras <strong>{miDeuda.meses_deuda} meses de atraso</strong> por un monto de{' '}
+                    <strong style={{ color: '#f97316' }}>
+                      ${miDeuda.monto_usd.toLocaleString('en-US', { minimumFractionDigits: 2 })} USD
+                    </strong>
+                    {miDeuda.monto_bs > 0 && ` (Bs. ${miDeuda.monto_bs.toLocaleString('es-VE', { minimumFractionDigits: 2 })})`}.
+                    {' '}Estatus actual: <em>{ACCION_LEGAL_CONFIG[miDeuda.accion_legal]?.titulo}</em>.
+                  </>
+                )}
               </p>
             </div>
           </div>
@@ -154,10 +173,13 @@ export const ListaMoraResidente: React.FC = () => {
           <button
             onClick={() => setModalPagoOpen(true)}
             style={{
-              background: 'linear-gradient(135deg, #fb923c 0%, #f97316 60%, #ea580c 100%)',
+              background: miDeuda.tasa_riesgo === 'azul'
+                ? 'linear-gradient(135deg, #3b82f6 0%, #2563eb 60%, #1d4ed8 100%)'
+                : 'linear-gradient(135deg, #fb923c 0%, #f97316 60%, #ea580c 100%)',
               color: '#fff', border: 'none', borderRadius: '12px', padding: '12px 22px',
               fontSize: '13px', fontWeight: 800, cursor: 'pointer',
-              boxShadow: '0 4px 15px rgba(249, 115, 22, 0.4)', whiteSpace: 'nowrap'
+              boxShadow: miDeuda.tasa_riesgo === 'azul' ? '0 4px 15px rgba(37, 99, 235, 0.4)' : '0 4px 15px rgba(249, 115, 22, 0.4)',
+              whiteSpace: 'nowrap'
             }}
           >
             💳 Reportar Pago / Regularizar
@@ -166,12 +188,12 @@ export const ListaMoraResidente: React.FC = () => {
       )}
 
       {/* STATS OVERVIEW */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '24px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '24px' }}>
         <div style={{
           background: 'linear-gradient(180deg, #151922 0%, #0d1117 100%)',
           border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '16px', padding: '16px', textAlign: 'center'
         }}>
-          <div style={{ fontSize: '11px', color: '#888', fontWeight: 700, textTransform: 'uppercase' }}>Apartamentos en Mora</div>
+          <div style={{ fontSize: '11px', color: '#888', fontWeight: 700, textTransform: 'uppercase' }}>Apartamentos Deudores</div>
           <div style={{ fontSize: '24px', fontWeight: 800, marginTop: '4px' }}>{stats.totalAptos}</div>
         </div>
 
@@ -179,10 +201,18 @@ export const ListaMoraResidente: React.FC = () => {
           background: 'linear-gradient(180deg, #151922 0%, #0d1117 100%)',
           border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '16px', padding: '16px', textAlign: 'center'
         }}>
-          <div style={{ fontSize: '11px', color: '#888', fontWeight: 700, textTransform: 'uppercase' }}>Mora Total Edificio</div>
+          <div style={{ fontSize: '11px', color: '#888', fontWeight: 700, textTransform: 'uppercase' }}>Total Por Cobrar</div>
           <div style={{ fontSize: '24px', fontWeight: 800, color: '#f97316', marginTop: '4px' }}>
             ${stats.totalUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
+        </div>
+
+        <div style={{
+          background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.25)',
+          borderRadius: '16px', padding: '16px', textAlign: 'center'
+        }}>
+          <div style={{ fontSize: '11px', color: '#60a5fa', fontWeight: 700, textTransform: 'uppercase' }}>🔵 Recibo Mes (&lt;1m)</div>
+          <div style={{ fontSize: '24px', fontWeight: 800, color: '#60a5fa', marginTop: '4px' }}>{stats.azul}</div>
         </div>
 
         <div style={{
@@ -218,6 +248,10 @@ export const ListaMoraResidente: React.FC = () => {
       }}>
         <span style={{ fontSize: '11px', color: '#888', fontWeight: 700 }}>INDICADORES:</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap', fontSize: '12px' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#60a5fa' }}>
+            <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#3b82f6' }} />
+            Azul: Recibo emitido del mes (&lt;1 mes)
+          </span>
           <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#eab308' }}>
             <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#eab308' }} />
             Amarillo: 3 meses de mora
@@ -253,6 +287,7 @@ export const ListaMoraResidente: React.FC = () => {
         <div style={{ display: 'flex', gap: '8px', overflowX: 'auto' }}>
           {[
             { key: 'todos', label: 'Todos' },
+            { key: 'azul', label: '🔵 Azul (<1m)' },
             { key: 'amarillo', label: '🟡 Amarillo' },
             { key: 'rojo', label: '🔴 Rojo' },
             { key: 'morado', label: '🟣 Morado' }
@@ -304,10 +339,10 @@ export const ListaMoraResidente: React.FC = () => {
                 key={d.id}
                 style={{
                   background: 'linear-gradient(180deg, #151922 0%, #0d1117 100%)',
-                  border: esMiApto ? `2px solid #a855f7` : `1px solid ${cfg.border}`,
+                  border: esMiApto ? `2px solid ${cfg.color}` : `1px solid ${cfg.border}`,
                   borderLeft: `5px solid ${cfg.color}`,
                   borderRadius: '16px', padding: '16px 20px',
-                  boxShadow: esMiApto ? '0 0 20px rgba(168,85,247,0.3)' : `0 4px 16px rgba(0,0,0,0.3)`,
+                  boxShadow: esMiApto ? `0 0 20px ${cfg.color}35` : `0 4px 16px rgba(0,0,0,0.3)`,
                   display: 'flex', flexDirection: 'column', gap: '12px'
                 }}
               >
@@ -319,7 +354,7 @@ export const ListaMoraResidente: React.FC = () => {
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       fontSize: '18px', fontWeight: 800, color: cfg.color
                     }}>
-                      {d.tasa_riesgo === 'morado' ? '🟣' : d.tasa_riesgo === 'rojo' ? '🔴' : '🟡'}
+                      {d.tasa_riesgo === 'azul' ? '🔵' : d.tasa_riesgo === 'morado' ? '🟣' : d.tasa_riesgo === 'rojo' ? '🔴' : '🟡'}
                     </div>
 
                     <div>
@@ -331,7 +366,7 @@ export const ListaMoraResidente: React.FC = () => {
                         {esMiApto && (
                           <span style={{
                             fontSize: '10px', fontWeight: 900, textTransform: 'uppercase',
-                            background: '#a855f7', color: '#fff', padding: '2px 8px', borderRadius: '999px'
+                            background: cfg.color, color: '#fff', padding: '2px 8px', borderRadius: '999px'
                           }}>
                             Mi Apartamento
                           </span>
@@ -347,7 +382,7 @@ export const ListaMoraResidente: React.FC = () => {
                       </div>
 
                       <div style={{ fontSize: '12px', color: '#888', marginTop: '2px' }}>
-                        Retraso: <strong style={{ color: '#ccc' }}>{d.meses_deuda} meses impagos</strong>
+                        Retraso: <strong style={{ color: '#ccc' }}>{d.tasa_riesgo === 'azul' ? 'Recibo del mes emitido (<1m)' : `${d.meses_deuda} meses impagos`}</strong>
                         {d.fecha_corte && <span> · Corte: {d.fecha_corte}</span>}
                       </div>
                     </div>
