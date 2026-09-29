@@ -1,4 +1,4 @@
-﻿-- ============================================================
+-- ============================================================
 -- MIGRATION v7: Fix definitivo para Gestion de Recibos Admin
 -- EJECUTAR COMPLETO en Supabase > SQL Editor > RUN
 -- ============================================================
@@ -26,7 +26,7 @@ ALTER TABLE public.pagos_reportados
 
 UPDATE public.pagos_reportados
   SET estado = 'pendiente'
-  WHERE estado IS NULL OR estado = '';
+  WHERE estado IS NULL;
 
 -- 3. RLS pagos_reportados
 ALTER TABLE public.pagos_reportados ENABLE ROW LEVEL SECURITY;
