@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { supabase } from '../../../data/supabase'
 import { useBcvRate } from '../../../data/useBcvRate'
+import { useAuth } from '../../../application/contexts/AuthContext'
+import { registrarEventoAuditoria } from '../../../data/auditoriaService'
 import {
   CasoComunidad,
   TipoCaso,
@@ -14,6 +16,7 @@ import {
 } from '../../../data/casosService'
 
 export const AdminCasos: React.FC = () => {
+  const { perfil } = useAuth()
   const { rate } = useBcvRate()
   const [casos, setCasos] = useState<CasoComunidad[]>([])
   const [loading, setLoading] = useState(true)
@@ -143,18 +146,53 @@ export const AdminCasos: React.FC = () => {
     if (res.error) {
       showToast(`❌ ${res.error}`)
     } else {
-      showToast(casoEditar ? '✅ Caso actualizado correctamente' : '✅ Caso registrado exitosamente')
+      if (casoEditar) {
+        await registrarEventoAuditoria({
+          tipo_accion: 'CAMBIO_CASO',
+          titulo: `Edición de Caso - ${payload.titulo}`,
+          descripcion: `Se actualizó el caso tipo "${payload.tipo}". Estado: ${payload.estado} · Monto: $ ${payload.monto_usd} USD (${payload.moneda}).`,
+          apartamento_numero: payload.apartamento_numero,
+          apartamento_id: payload.apartamento_id,
+          monto_usd: payload.monto_usd,
+          monto_bs: payload.monto_bs,
+          motivo: payload.notas_admin || 'Actualización de caso por el administrador',
+          autor_nombre: perfil?.nombre_completo || 'Administrador',
+          autor_email: (perfil as any)?.email || null,
+          datos_anteriores: casoEditar,
+          datos_nuevos: payload
+        })
+      }
+      showToast(casoEditar ? '✅ Caso actualizado y auditado' : '✅ Caso registrado exitosamente')
       setModalAbierto(false)
       cargarDatos()
     }
   }
 
   const handleEliminar = async (id: string, titulo: string) => {
-    if (window.confirm(`¿Estás seguro de eliminar el caso "${titulo}"?`)) {
-      await eliminarCaso(id)
-      showToast('🗑️ Caso eliminado')
-      cargarDatos()
-    }
+    const itemBorrado = casos.find(c => c.id === id)
+    const motivo = window.prompt(
+      `Ingresa el motivo por el cual eliminas el caso "${titulo}" (obligatorio para el Historial de Auditoría):`,
+      'Caso anulado o cerrado por acuerdo de la junta'
+    )
+    if (!motivo || !motivo.trim()) return
+
+    await registrarEventoAuditoria({
+      tipo_accion: 'CAMBIO_CASO',
+      titulo: `Eliminación de Caso - ${titulo}`,
+      descripcion: `Se eliminó el caso tipo "${itemBorrado?.tipo}" (${titulo}). Monto retirado: $ ${itemBorrado?.monto_usd || 0} USD.`,
+      apartamento_numero: itemBorrado?.apartamento_numero,
+      apartamento_id: itemBorrado?.apartamento_id,
+      monto_usd: itemBorrado?.monto_usd,
+      monto_bs: itemBorrado?.monto_bs,
+      motivo: motivo.trim(),
+      autor_nombre: perfil?.nombre_completo || 'Administrador',
+      autor_email: (perfil as any)?.email || null,
+      datos_anteriores: itemBorrado
+    })
+
+    await eliminarCaso(id)
+    showToast('🗑️ Caso eliminado y archivado en Auditoría')
+    cargarDatos()
   }
 
   const handleCambiarEstadoRapido = async (c: CasoComunidad, nuevoEstado: EstadoCaso) => {

@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { supabase } from '../../../data/supabase'
 import { useBcvRate } from '../../../data/useBcvRate'
+import { useAuth } from '../../../application/contexts/AuthContext'
+import { registrarEventoAuditoria } from '../../../data/auditoriaService'
 import {
   DeudaMoraItem,
   TasaRiesgoMora,
@@ -15,6 +17,7 @@ import {
 } from '../../../data/moraService'
 
 export const AdminMora: React.FC = () => {
+  const { perfil } = useAuth()
   const { rate } = useBcvRate()
   const [deudas, setDeudas] = useState<DeudaMoraItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -169,18 +172,53 @@ export const AdminMora: React.FC = () => {
     if (res.error) {
       showToast(`❌ ${res.error}`)
     } else {
-      showToast(deudaEditar ? '✅ Registro de mora actualizado' : '✅ Deuda anterior montada exitosamente')
+      if (deudaEditar) {
+        await registrarEventoAuditoria({
+          tipo_accion: 'EDICION_DEUDA',
+          titulo: `Edición de Deuda en Mora - Apto ${payload.apartamento_numero}`,
+          descripcion: `Se actualizó la deuda del apartamento ${payload.apartamento_numero}. Monto: $ ${payload.monto_usd} USD (Bs. ${payload.monto_bs}) · Meses: ${payload.meses_deuda} · Riesgo: ${payload.tasa_riesgo}.`,
+          apartamento_numero: payload.apartamento_numero,
+          apartamento_id: payload.apartamento_id,
+          monto_usd: payload.monto_usd,
+          monto_bs: payload.monto_bs,
+          motivo: payload.observaciones || 'Actualización de registro de mora por el administrador',
+          autor_nombre: perfil?.nombre_completo || 'Administrador',
+          autor_email: (perfil as any)?.email || null,
+          datos_anteriores: deudaEditar,
+          datos_nuevos: payload
+        })
+      }
+      showToast(deudaEditar ? '✅ Registro de mora actualizado y auditado' : '✅ Deuda anterior montada exitosamente')
       setModalAbierto(false)
       cargarDatos()
     }
   }
 
   const handleEliminar = async (id: string, apto: string) => {
-    if (window.confirm(`¿Seguro que deseas eliminar el registro de deuda del Apto ${apto}?`)) {
-      await eliminarDeudaMora(id)
-      showToast('🗑️ Registro de mora eliminado')
-      cargarDatos()
-    }
+    const itemBorrado = deudas.find(d => d.id === id)
+    const motivo = window.prompt(
+      `Ingresa el motivo por el cual eliminas o condonas la deuda del Apto ${apto} (obligatorio para el Historial de Auditoría):`,
+      'Deuda regularizada, cancelada o condonada por acuerdo'
+    )
+    if (!motivo || !motivo.trim()) return
+
+    await registrarEventoAuditoria({
+      tipo_accion: 'CONDONACION_DEUDA',
+      titulo: `Eliminación / Condonación de Deuda en Mora - Apto ${apto}`,
+      descripcion: `Se eliminó el registro de mora del apartamento ${apto}. Deuda retirada: $ ${itemBorrado?.monto_usd || 0} USD (Bs. ${itemBorrado?.monto_bs || 0}).`,
+      apartamento_numero: apto,
+      apartamento_id: itemBorrado?.apartamento_id,
+      monto_usd: itemBorrado?.monto_usd,
+      monto_bs: itemBorrado?.monto_bs,
+      motivo: motivo.trim(),
+      autor_nombre: perfil?.nombre_completo || 'Administrador',
+      autor_email: (perfil as any)?.email || null,
+      datos_anteriores: itemBorrado
+    })
+
+    await eliminarDeudaMora(id)
+    showToast('🗑️ Registro de mora eliminado y archivado en Auditoría')
+    cargarDatos()
   }
 
   // Filtrado y estadísticas

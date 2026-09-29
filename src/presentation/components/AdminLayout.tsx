@@ -94,6 +94,12 @@ const ADMIN_ICONS: Record<string, React.ReactNode> = {
       <line x1="12" y1="16" x2="12.01" y2="16"/>
     </svg>
   ),
+  historial: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+      <polyline points="9 12 11 14 15 10"/>
+    </svg>
+  ),
 }
 
 const adminNav = [
@@ -109,6 +115,7 @@ const adminNav = [
   { key: 'propuestas', label: 'Propuestas', path: '/admin/propuestas', desc: 'Crear votaciones' },
   { key: 'reportes', label: 'Reportes', path: '/admin/reportes', desc: 'Responder incidencias' },
   { key: 'chat', label: 'Chat', path: '/admin/chat', desc: 'Enviar avisos a todos' },
+  { key: 'historial', label: 'Historial', path: '/admin/historial', desc: 'Auditoría y arqueo inmutable' },
 ]
 
 export const AdminLayout: React.FC = () => {
@@ -799,6 +806,13 @@ export const AdminLayout: React.FC = () => {
                   {ADMIN_ICONS.edificio}
                 </div>
                 <span className={`offcanvas-label ${pathname.startsWith('/admin/edificio') ? 'active' : ''}`}>Edificio</span>
+              </button>
+
+              <button className="offcanvas-item-btn" onClick={() => navigate('/admin/historial')}>
+                <div className={`offcanvas-circle-icon ${pathname.startsWith('/admin/historial') ? 'active' : ''}`}>
+                  {ADMIN_ICONS.historial}
+                </div>
+                <span className={`offcanvas-label ${pathname.startsWith('/admin/historial') ? 'active' : ''}`}>Historial</span>
               </button>
 
               <button className="offcanvas-item-btn" onClick={() => navigate('/admin/recibos?filtro=pendiente')}>

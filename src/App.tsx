@@ -29,6 +29,7 @@ import { AdminGenerarRecibos } from './presentation/pages/admin/AdminGenerarReci
 import { AdminRecibosEmitidos } from './presentation/pages/admin/AdminRecibosEmitidos'
 import { AdminCasos } from './presentation/pages/admin/AdminCasos'
 import { AdminMora } from './presentation/pages/admin/AdminMora'
+import { AdminHistorial } from './presentation/pages/admin/AdminHistorial'
 import { ListaMoraResidente } from './presentation/pages/ListaMoraResidente'
 import { JuntaCondominioResidente } from './presentation/pages/JuntaCondominioResidente'
 import { Register } from './presentation/pages/Register'
@@ -129,6 +130,7 @@ function AppShell() {
           <Route path="recibos-emitidos" element={<AdminRecibosEmitidos />} />
           <Route path="casos"      element={<AdminCasos />} />
           <Route path="mora"       element={<AdminMora />} />
+          <Route path="historial"  element={<AdminHistorial />} />
         </Route>
 
         <Route

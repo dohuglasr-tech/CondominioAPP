@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '../../../data/supabase'
+import { useAuth } from '../../../application/contexts/AuthContext'
+import { registrarEventoAuditoria } from '../../../data/auditoriaService'
 import { generarPDFRecibo, ReciboAptoData, ReciboGastoData, ReciboCargoData, ReciboConfigData } from '../../../utils/reciboPdfGenerator'
 import { compararApartamentos, formatAlicuotaPct } from '../../../utils/alicuota'
 import jsPDF from 'jspdf'
@@ -57,6 +59,7 @@ const fmtBs  = (n: number) => (n || 0).toLocaleString('es-VE', { minimumFraction
 const fmtUsd = (n: number) => (n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 export const AdminRecibosEmitidos: React.FC = () => {
+  const { perfil } = useAuth()
   const [mesesDisponibles, setMesesDisponibles] = useState<string[]>([])
   const [mesSeleccionado, setMesSeleccionado] = useState<string>('')
   const [recibos, setRecibos] = useState<ReciboEmitido[]>([])
@@ -67,6 +70,17 @@ export const AdminRecibosEmitidos: React.FC = () => {
   const [reciboModal, setReciboModal] = useState<ReciboEmitido | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const [cambiandoEstadoId, setCambiandoEstadoId] = useState<string | null>(null)
+
+  // ── Estados para "Retirar deuda o eliminar emisión" con Auditoría ──────────
+  const [modalEliminarEmisionOpen, setModalEliminarEmisionOpen] = useState(false)
+  const [motivoEliminarEmision, setMotivoEliminarEmision] = useState('')
+  const [palabraConfirmacion, setPalabraConfirmacion] = useState('')
+  const [eliminandoEmision, setEliminandoEmision] = useState(false)
+
+  const [modalEliminarReciboOpen, setModalEliminarReciboOpen] = useState(false)
+  const [reciboParaEliminar, setReciboParaEliminar] = useState<ReciboEmitido | null>(null)
+  const [motivoEliminarRecibo, setMotivoEliminarRecibo] = useState('')
+  const [eliminandoRecibo, setEliminandoRecibo] = useState(false)
 
   const showToast = (msg: string) => {
     setToast(msg)
@@ -227,7 +241,6 @@ export const AdminRecibosEmitidos: React.FC = () => {
     const catMap = new Map<string, { totalUsd: number; totalBs: number }>()
 
     gastosSample.forEach(g => {
-      // Deducir categoría por palabras clave si no está explícita
       let cat = g.categoria || 'Mantenimiento'
       const desc = g.descripcion.toLowerCase()
       if (desc.includes('limpieza') || desc.includes('aseo') || desc.includes('basura')) cat = 'Limpieza y Aseo'
@@ -293,17 +306,24 @@ export const AdminRecibosEmitidos: React.FC = () => {
     }
   }, [recibos])
 
+  // Label amigable del mes
+  const mesLabelActivo = useMemo(() => {
+    if (!mesSeleccionado) return 'Sin emisión'
+    const [a, m] = mesSeleccionado.split('-')
+    const idx = (parseInt(m) || 1) - 1
+    return `${MESES[idx]} ${a}`
+  }, [mesSeleccionado])
+
   // ── 5. Recibos filtrados por búsqueda y estado ───────────────────────────
   const recibosFiltrados = useMemo(() => {
     return recibos.filter(r => {
       if (filtroEstado === 'pendiente' && r.estado !== 'pendiente') return false
       if (filtroEstado === 'pagado' && r.estado !== 'pagado') return false
-
       if (busqueda.trim()) {
-        const q = busqueda.toLowerCase().trim()
-        const apto = r.apartamento?.numero.toLowerCase() || ''
-        const prop = r.apartamento?.propietario_nombre?.toLowerCase() || ''
-        return apto.includes(q) || prop.includes(q)
+        const q = busqueda.toLowerCase()
+        const matchApto = (r.apartamento?.numero || '').toLowerCase().includes(q)
+        const matchNombre = (r.apartamento?.propietario_nombre || '').toLowerCase().includes(q)
+        if (!matchApto && !matchNombre) return false
       }
       return true
     })
@@ -444,16 +464,141 @@ export const AdminRecibosEmitidos: React.FC = () => {
     doc.save(`Informe_Cobranza_${mesLabel}_${anio}.pdf`)
   }
 
-  // Label amigable del mes
-  const mesLabelActivo = useMemo(() => {
-    if (!mesSeleccionado) return 'Sin emisión'
-    const [a, m] = mesSeleccionado.split('-')
-    const idx = (parseInt(m) || 1) - 1
-    return `${MESES[idx]} ${a}`
-  }, [mesSeleccionado])
+  // ── 8. RETIRAR DEUDA O ELIMINAR EMISIÓN MASIVA (CON AUDITORÍA INMUTABLE) ──
+  const handleConfirmarEliminarEmision = async () => {
+    if (!mesSeleccionado || recibos.length === 0) return
+
+    if (!motivoEliminarEmision.trim() || motivoEliminarEmision.trim().length < 8) {
+      alert('Debes justificar el motivo del retiro de deuda (mínimo 8 caracteres) para que quede registrado en el Historial de Auditoría.')
+      return
+    }
+
+    if (palabraConfirmacion.trim().toUpperCase() !== 'ELIMINAR') {
+      alert('Debes escribir la palabra "ELIMINAR" en mayúsculas para confirmar esta acción.')
+      return
+    }
+
+    setEliminandoEmision(true)
+    try {
+      // 1. Guardar log de auditoría inmutable
+      await registrarEventoAuditoria({
+        tipo_accion: 'ELIMINACION_EMISION',
+        titulo: `Anulación y Retiro Total de Emisión de Recibos - ${mesLabelActivo}`,
+        descripcion: `El administrador retiró completamente la deuda emitida correspondiente a ${mesLabelActivo} para ${recibos.length} apartamentos. Total de deuda retirada del sistema: $ ${fmtUsd(stats.totalFacturadoUsd)} USD (Bs. ${fmtBs(stats.totalFacturadoBs)}).`,
+        mes_afectado: mesSeleccionado,
+        monto_usd: stats.totalFacturadoUsd,
+        monto_bs: stats.totalFacturadoBs,
+        motivo: motivoEliminarEmision.trim(),
+        autor_nombre: perfil?.nombre_completo || 'Administrador',
+        autor_email: (perfil as any)?.email || config?.email_contacto || null,
+        datos_anteriores: {
+          mes_facturado: mesSeleccionado,
+          total_apartamentos: recibos.length,
+          total_facturado_usd: stats.totalFacturadoUsd,
+          total_facturado_bs: stats.totalFacturadoBs,
+          recibos: recibos.map(r => ({
+            id: r.id,
+            apto: r.apartamento?.numero,
+            total_usd: r.total_usd,
+            total_bs: r.total_bs,
+            estado: r.estado
+          }))
+        }
+      })
+
+      // 2. Desmarcar cargos especiales aplicados para este mes (para que puedan volver a emitirse)
+      await supabase
+        .from('cargos_especiales')
+        .update({ aplicado: false })
+        .eq('mes_aplicacion', mesSeleccionado)
+
+      // 3. Eliminar los recibos de la base de datos
+      const { error: delError } = await supabase
+        .from('recibos_generados')
+        .delete()
+        .eq('mes_facturado', mesSeleccionado)
+
+      if (delError) {
+        showToast(`❌ Error al eliminar en base de datos: ${delError.message}`)
+        return
+      }
+
+      // 4. Actualizar estado local inmediatamente
+      const mesBorrado = mesSeleccionado
+      const nuevosMeses = mesesDisponibles.filter(m => m !== mesBorrado)
+      setMesesDisponibles(nuevosMeses)
+      setRecibos([])
+      setMesSeleccionado(nuevosMeses.length > 0 ? nuevosMeses[0] : '')
+
+      setModalEliminarEmisionOpen(false)
+      setMotivoEliminarEmision('')
+      setPalabraConfirmacion('')
+      showToast(`✅ Emisión de ${mesLabelActivo} eliminada exitosamente. Registrado en el Historial de Auditoría.`)
+    } catch (err: any) {
+      showToast(`❌ Error: ${err.message}`)
+    } finally {
+      setEliminandoEmision(false)
+    }
+  }
+
+  // ── 9. RETIRAR DEUDA DE UN APARTAMENTO INDIVIDUAL (CON AUDITORÍA) ─────────
+  const handleConfirmarEliminarRecibo = async () => {
+    if (!reciboParaEliminar) return
+
+    if (!motivoEliminarRecibo.trim() || motivoEliminarRecibo.trim().length < 6) {
+      alert('Debes justificar el motivo del retiro de la deuda (mínimo 6 caracteres).')
+      return
+    }
+
+    setEliminandoRecibo(true)
+    try {
+      const r = reciboParaEliminar
+      const aptoNum = r.apartamento?.numero || 'S/N'
+
+      // 1. Guardar log de auditoría
+      await registrarEventoAuditoria({
+        tipo_accion: 'ELIMINACION_RECIBO_INDIVIDUAL',
+        titulo: `Retiro de Recibo y Deuda - Apto ${aptoNum} (${mesLabelActivo})`,
+        descripcion: `Se retiró el recibo y la deuda del apartamento ${aptoNum} correspondiente a ${mesLabelActivo}. Deuda retirada: $ ${fmtUsd(r.total_usd)} USD (Bs. ${fmtBs(r.total_bs)}).`,
+        apartamento_numero: aptoNum,
+        apartamento_id: r.apartamento_id,
+        mes_afectado: r.mes_facturado,
+        monto_usd: r.total_usd,
+        monto_bs: r.total_bs,
+        motivo: motivoEliminarRecibo.trim(),
+        autor_nombre: perfil?.nombre_completo || 'Administrador',
+        autor_email: (perfil as any)?.email || config?.email_contacto || null,
+        datos_anteriores: r
+      })
+
+      // 2. Eliminar recibo de la base de datos
+      const { error: delError } = await supabase
+        .from('recibos_generados')
+        .delete()
+        .eq('id', r.id)
+
+      if (delError) {
+        showToast(`❌ Error al eliminar en BD: ${delError.message}`)
+        return
+      }
+
+      // 3. Actualizar estado local
+      setRecibos(prev => prev.filter(item => item.id !== r.id))
+      setModalEliminarReciboOpen(false)
+      setReciboParaEliminar(null)
+      setMotivoEliminarRecibo('')
+      if (reciboModal?.id === r.id) setReciboModal(null)
+
+      showToast(`✅ Recibo y deuda del Apto ${aptoNum} retirados exitosamente. Registrado en Auditoría.`)
+    } catch (err: any) {
+      showToast(`❌ Error: ${err.message}`)
+    } finally {
+      setEliminandoRecibo(false)
+    }
+  }
 
   return (
-    <div style={{ padding: '28px 32px', maxWidth: '1280px', margin: '0 auto', color: '#fff', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+    <div style={{ padding: '28px 32px', maxWidth: '1280px', margin: '0 auto', color: '#fff', fontFamily: 'Inter, sans-serif' }}>
       
       {/* Toast */}
       {toast && (
@@ -476,11 +621,11 @@ export const AdminRecibosEmitidos: React.FC = () => {
             </h1>
           </div>
           <p style={{ color: '#94a3b8', fontSize: '13px', margin: '4px 0 0 36px' }}>
-            Auditoría de recibos mensuales, control de morosidad, fondo de reserva y recaudación en tiempo real
+            Auditoría de recibos mensuales, control de morosidad, fondo de reserva y anulación controlada de deudas.
           </p>
         </div>
 
-        {/* Controles de Selección de Mes y Reporte */}
+        {/* Controles de Selección de Mes y Botones de Acción */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           {mesesDisponibles.length > 0 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#141414', border: '1px solid #262626', padding: '6px 12px', borderRadius: '10px' }}>
@@ -500,6 +645,35 @@ export const AdminRecibosEmitidos: React.FC = () => {
                 })}
               </select>
             </div>
+          )}
+
+          {/* BOTÓN ESPECIAL: RETIRAR DEUDA / ELIMINAR EMISIÓN */}
+          {recibos.length > 0 && (
+            <button
+              onClick={() => {
+                setMotivoEliminarEmision('')
+                setPalabraConfirmacion('')
+                setModalEliminarEmisionOpen(true)
+              }}
+              style={{
+                backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                color: '#ef4444',
+                border: '1px solid rgba(239, 68, 68, 0.35)',
+                padding: '8px 14px',
+                borderRadius: '10px',
+                fontSize: '13px',
+                fontWeight: 700,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                transition: 'all 0.2s',
+                boxShadow: '0 4px 12px rgba(239, 68, 68, 0.2)'
+              }}
+              title="Retirar la deuda generada y eliminar la emisión de este mes en su totalidad para volver a emitir"
+            >
+              <span>🗑️</span> Retirar Deuda / Eliminar Emisión
+            </button>
           )}
 
           <button
@@ -550,147 +724,131 @@ export const AdminRecibosEmitidos: React.FC = () => {
           </div>
         </div>
       ) : mesesDisponibles.length === 0 ? (
-        <div style={{ backgroundColor: '#141414', border: '1px dashed #333', borderRadius: '14px', padding: '48px 24px', textAlign: 'center' }}>
-          <div style={{ fontSize: '40px', marginBottom: '12px' }}>📋</div>
-          <h2 style={{ fontSize: '18px', fontWeight: 700, margin: '0 0 8px' }}>No hay recibos emitidos todavía</h2>
-          <p style={{ color: '#888', fontSize: '13px', maxWidth: '460px', margin: '0 auto 20px' }}>
-            Para emitir los recibos del mes y generar la deuda en los residentes, ve a la sección <strong>"Generar Recibos"</strong> en el menú lateral.
+        <div style={{
+          backgroundColor: '#141414', border: '1px dashed #2a2a2a', borderRadius: '16px',
+          padding: '60px 20px', textAlign: 'center', color: '#777'
+        }}>
+          <div style={{ fontSize: '40px', marginBottom: '12px' }}>📭</div>
+          <h3 style={{ color: '#fff', fontSize: '18px', margin: '0 0 6px' }}>No hay recibos emitidos en el sistema</h3>
+          <p style={{ margin: 0, fontSize: '13px' }}>
+            Ve al módulo <strong>"Generar Recibos"</strong> para emitir la facturación de gastos comunes del mes.
           </p>
-          <a
-            href="/admin/generar-recibos"
-            style={{
-              display: 'inline-block', backgroundColor: '#f97316', color: '#fff', textDecoration: 'none',
-              padding: '10px 20px', borderRadius: '10px', fontWeight: 700, fontSize: '13px'
-            }}
-          >
-            Ir a Generar Recibos →
-          </a>
         </div>
       ) : (
         <>
-          {/* ── BENTO GRID: MÉTRICAS CLAVE (KPIs) ── */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px', marginBottom: '24px' }}>
+          {/* ── BENTO GRID: KPIS DE CARTERA ── */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '14px', marginBottom: '22px' }}>
             
-            {/* 1. Total Facturado */}
+            {/* KPI 1: Facturación Total */}
             <div style={{
               background: 'linear-gradient(180deg, #151922 0%, #0d1117 100%)',
               border: '1px solid rgba(255, 255, 255, 0.08)',
               borderTop: '1px solid rgba(255, 255, 255, 0.14)',
               borderRadius: '22px',
               padding: '20px 22px',
-              position: 'relative',
-              overflow: 'hidden',
               boxShadow: '0 14px 34px -4px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06)'
             }}>
-              <div style={{ position: 'absolute', top: 0, left: 0, width: '4px', height: '100%', backgroundColor: '#f97316' }} />
-              <div style={{ color: '#7e8b9b', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '6px' }}>
-                Total Facturado ({mesLabelActivo})
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <span style={{ color: '#7e8b9b', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.8px' }}>
+                  Total Facturado
+                </span>
+                <span style={{ fontSize: '20px' }}>🧾</span>
               </div>
-              <div style={{ fontSize: '24px', fontWeight: 900, color: '#f97316', letterSpacing: '-0.5px' }}>
+              <div style={{ color: '#fff', fontSize: '24px', fontWeight: 900, marginTop: '8px', letterSpacing: '-0.5px' }}>
                 $ {fmtUsd(stats.totalFacturadoUsd)}
               </div>
-              <div style={{ color: '#94a3b8', fontSize: '12px', marginTop: '4px' }}>
+              <div style={{ color: '#10b981', fontSize: '12px', fontWeight: 700, marginTop: '2px' }}>
                 Bs. {fmtBs(stats.totalFacturadoBs)}
               </div>
               <div style={{ color: '#64748b', fontSize: '11px', marginTop: '6px' }}>
-                🏢 {recibos.length} apartamentos facturados
+                {recibos.length} apartamentos facturados
               </div>
             </div>
 
-            {/* 2. Total Recaudado / Cobrado */}
+            {/* KPI 2: Total Recaudado / Cobrado */}
             <div style={{
               background: 'linear-gradient(180deg, #151922 0%, #0d1117 100%)',
-              border: '1px solid rgba(255, 255, 255, 0.08)',
-              borderTop: '1px solid rgba(255, 255, 255, 0.14)',
+              border: '1px solid rgba(34, 197, 94, 0.25)',
+              borderTop: '1px solid rgba(34, 197, 94, 0.4)',
               borderRadius: '22px',
               padding: '20px 22px',
-              position: 'relative',
-              overflow: 'hidden',
               boxShadow: '0 14px 34px -4px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06)'
             }}>
-              <div style={{ position: 'absolute', top: 0, left: 0, width: '4px', height: '100%', backgroundColor: '#10b981' }} />
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                <span style={{ color: '#7e8b9b', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.8px' }}>
-                  Total Recaudado
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <span style={{ color: '#22c55e', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.8px' }}>
+                  Recaudado ({stats.pctRecaudado}%)
                 </span>
-                <span style={{ backgroundColor: '#10b98118', color: '#10b981', border: '1px solid #10b98135', padding: '2px 8px', borderRadius: '999px', fontSize: '10px', fontWeight: 800 }}>
-                  {stats.pctRecaudado}% Cobrado
-                </span>
+                <span style={{ fontSize: '20px' }}>🟢</span>
               </div>
-              <div style={{ fontSize: '24px', fontWeight: 900, color: '#10b981', letterSpacing: '-0.5px' }}>
+              <div style={{ color: '#fff', fontSize: '24px', fontWeight: 900, marginTop: '8px', letterSpacing: '-0.5px' }}>
                 $ {fmtUsd(stats.totalCobradoUsd)}
               </div>
-              <div style={{ color: '#94a3b8', fontSize: '12px', marginTop: '4px' }}>
+              <div style={{ color: '#10b981', fontSize: '12px', fontWeight: 700, marginTop: '2px' }}>
                 Bs. {fmtBs(stats.totalCobradoBs)}
               </div>
-              <div style={{ color: '#10b981', fontSize: '11px', marginTop: '6px' }}>
-                ✅ {stats.cantSolventes} apartamentos al día
+              <div style={{ color: '#22c55e', fontSize: '11px', fontWeight: 700, marginTop: '6px' }}>
+                {stats.cantSolventes} apartamentos solventes
               </div>
             </div>
 
-            {/* 3. Cartera en Mora / Pendiente */}
+            {/* KPI 3: Mora / Pendiente */}
             <div style={{
               background: 'linear-gradient(180deg, #151922 0%, #0d1117 100%)',
-              border: '1px solid rgba(255, 255, 255, 0.08)',
-              borderTop: '1px solid rgba(255, 255, 255, 0.14)',
+              border: '1px solid rgba(239, 68, 68, 0.25)',
+              borderTop: '1px solid rgba(239, 68, 68, 0.4)',
               borderRadius: '22px',
               padding: '20px 22px',
-              position: 'relative',
-              overflow: 'hidden',
               boxShadow: '0 14px 34px -4px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06)'
             }}>
-              <div style={{ position: 'absolute', top: 0, left: 0, width: '4px', height: '100%', backgroundColor: '#ef4444' }} />
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                <span style={{ color: '#7e8b9b', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.8px' }}>
-                  Cartera en Mora
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <span style={{ color: '#ef4444', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.8px' }}>
+                  En Mora ({stats.pctMora}%)
                 </span>
-                <span style={{ backgroundColor: '#ef444418', color: '#ef4444', border: '1px solid #ef444435', padding: '2px 8px', borderRadius: '999px', fontSize: '10px', fontWeight: 800 }}>
-                  {stats.pctMora}% en Mora
-                </span>
+                <span style={{ fontSize: '20px' }}>🔴</span>
               </div>
-              <div style={{ fontSize: '24px', fontWeight: 900, color: '#ef4444', letterSpacing: '-0.5px' }}>
+              <div style={{ color: '#fff', fontSize: '24px', fontWeight: 900, marginTop: '8px', letterSpacing: '-0.5px' }}>
                 $ {fmtUsd(stats.totalMoraUsd)}
               </div>
-              <div style={{ color: '#94a3b8', fontSize: '12px', marginTop: '4px' }}>
+              <div style={{ color: '#f87171', fontSize: '12px', fontWeight: 700, marginTop: '2px' }}>
                 Bs. {fmtBs(stats.totalMoraBs)}
               </div>
-              <div style={{ color: '#ef4444', fontSize: '11px', marginTop: '6px' }}>
-                ⚠️ {stats.cantMorosos} apartamentos pendientes
+              <div style={{ color: '#ef4444', fontSize: '11px', fontWeight: 700, marginTop: '6px' }}>
+                {stats.cantMorosos} apartamentos pendientes
               </div>
             </div>
 
-            {/* 4. Fondo de Reserva Generado */}
+            {/* KPI 4: Fondo de Reserva */}
             <div style={{
               background: 'linear-gradient(180deg, #151922 0%, #0d1117 100%)',
               border: '1px solid rgba(255, 255, 255, 0.08)',
               borderTop: '1px solid rgba(255, 255, 255, 0.14)',
               borderRadius: '22px',
               padding: '20px 22px',
-              position: 'relative',
-              overflow: 'hidden',
               boxShadow: '0 14px 34px -4px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06)'
             }}>
-              <div style={{ position: 'absolute', top: 0, left: 0, width: '4px', height: '100%', backgroundColor: '#3b82f6' }} />
-              <div style={{ color: '#7e8b9b', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '6px' }}>
-                Fondo de Reserva ({recibos[0]?.fondo_reserva_pct || 10}%)
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <span style={{ color: '#7e8b9b', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.8px' }}>
+                  Fondo Reserva ({recibos[0]?.fondo_reserva_pct || 10}%)
+                </span>
+                <span style={{ fontSize: '20px' }}>🛡️</span>
               </div>
-              <div style={{ fontSize: '24px', fontWeight: 900, color: '#3b82f6', letterSpacing: '-0.5px' }}>
+              <div style={{ color: '#fff', fontSize: '24px', fontWeight: 900, marginTop: '8px', letterSpacing: '-0.5px' }}>
                 $ {fmtUsd(stats.fondoReservaUsd)}
               </div>
-              <div style={{ color: '#94a3b8', fontSize: '12px', marginTop: '4px' }}>
-                Total Gastos: $ {fmtUsd(stats.totalGastosComunesUsd)}
+              <div style={{ color: '#94a3b8', fontSize: '12px', fontWeight: 600, marginTop: '2px' }}>
+                Gastos: $ {fmtUsd(stats.totalGastosComunesUsd)}
               </div>
               <div style={{ color: '#64748b', fontSize: '11px', marginTop: '6px' }}>
-                🛡️ Fondo retenido para contingencias
+                Tasa BCV: Bs. {recibos[0]?.tasa_bcv || 40}
               </div>
             </div>
 
           </div>
 
-          {/* ── MARCO COMPLETO DE ESTADÍSTICAS Y GRÁFICOS ── */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '16px', marginBottom: '28px' }}>
+          {/* ── BENTO CHARTS ── */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '16px', marginBottom: '22px' }}>
             
-            {/* GRÁFICO 1: Tasa de Cobranza vs Morosidad (Donut Chart SVG) */}
+            {/* GRÁFICO 1: Barra de Recaudación vs Mora */}
             <div style={{
               background: 'linear-gradient(180deg, #151922 0%, #0d1117 100%)',
               border: '1px solid rgba(255, 255, 255, 0.08)',
@@ -699,59 +857,35 @@ export const AdminRecibosEmitidos: React.FC = () => {
               padding: '22px 24px',
               boxShadow: '0 14px 34px -4px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06)'
             }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                <h3 style={{ fontSize: '14px', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span>🎯</span> Recaudación vs Morosidad
-                </h3>
-                <span style={{ color: '#7e8b9b', fontSize: '11px', fontWeight: 600 }}>{mesLabelActivo}</span>
+              <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span>📊</span> Recaudación vs Morosidad
+              </h3>
+
+              <div style={{ width: '100%', height: '14px', backgroundColor: '#ef4444', borderRadius: '7px', overflow: 'hidden', display: 'flex', marginBottom: '14px' }}>
+                <div
+                  style={{
+                    width: `${stats.pctRecaudado}%`,
+                    height: '100%',
+                    backgroundColor: '#10b981',
+                    transition: 'width 0.6s ease'
+                  }}
+                  title={`Cobrado: ${stats.pctRecaudado}%`}
+                />
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-around', gap: '20px', flexWrap: 'wrap' }}>
-                {/* SVG Donut */}
-                <div style={{ position: 'relative', width: '140px', height: '140px' }}>
-                  <svg viewBox="0 0 36 36" style={{ width: '100%', height: '100%', transform: 'rotate(-90deg)' }}>
-                    {/* Fondo gris */}
-                    <circle cx="18" cy="18" r="15.915" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="3.2" />
-                    {/* Mora (Rojo) */}
-                    <circle
-                      cx="18" cy="18" r="15.915" fill="none" stroke="#ef4444" strokeWidth="3.2"
-                      strokeDasharray={`${stats.pctMora} ${100 - stats.pctMora}`}
-                      strokeDashoffset="0"
-                      style={{ transition: 'stroke-dasharray 0.6s ease' }}
-                    />
-                    {/* Cobrado (Verde) */}
-                    <circle
-                      cx="18" cy="18" r="15.915" fill="none" stroke="#10b981" strokeWidth="3.4"
-                      strokeDasharray={`${stats.pctRecaudado} ${100 - stats.pctRecaudado}`}
-                      strokeDashoffset={`${-stats.pctMora}`}
-                      style={{ transition: 'stroke-dasharray 0.6s ease' }}
-                    />
-                  </svg>
-                  {/* Texto central */}
-                  <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-                    <span style={{ fontSize: '20px', fontWeight: 900, color: '#10b981' }}>{stats.pctRecaudado}%</span>
-                    <span style={{ fontSize: '9px', color: '#888', textTransform: 'uppercase', fontWeight: 600 }}>Cobrado</span>
-                  </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ width: '10px', height: '10px', backgroundColor: '#10b981', borderRadius: '50%', display: 'inline-block' }} />
+                  <span style={{ color: '#ccc' }}>Cobrado: <strong>{stats.pctRecaudado}%</strong> (${fmtUsd(stats.totalCobradoUsd)})</span>
                 </div>
-
-                {/* Leyenda y Desglose */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', minWidth: '150px' }}>
-                  <div style={{ borderLeft: '3px solid #10b981', paddingLeft: '8px' }}>
-                    <div style={{ color: '#888', fontSize: '11px' }}>Cobrado ({stats.cantSolventes} aptos)</div>
-                    <div style={{ color: '#10b981', fontWeight: 800, fontSize: '15px' }}>$ {fmtUsd(stats.totalCobradoUsd)}</div>
-                    <div style={{ color: '#64748b', fontSize: '10px' }}>{stats.pctRecaudado}% del total</div>
-                  </div>
-
-                  <div style={{ borderLeft: '3px solid #ef4444', paddingLeft: '8px' }}>
-                    <div style={{ color: '#888', fontSize: '11px' }}>En Mora ({stats.cantMorosos} aptos)</div>
-                    <div style={{ color: '#ef4444', fontWeight: 800, fontSize: '15px' }}>$ {fmtUsd(stats.totalMoraUsd)}</div>
-                    <div style={{ color: '#64748b', fontSize: '10px' }}>{stats.pctMora}% del total</div>
-                  </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ width: '10px', height: '10px', backgroundColor: '#ef4444', borderRadius: '50%', display: 'inline-block' }} />
+                  <span style={{ color: '#ccc' }}>Mora: <strong>{stats.pctMora}%</strong> (${fmtUsd(stats.totalMoraUsd)})</span>
                 </div>
               </div>
             </div>
 
-            {/* GRÁFICO 2: Gastos Comunes por Categoría (Barras Horizontales) */}
+            {/* GRÁFICO 2: Gastos Comunes por Categoría */}
             <div style={{
               background: 'linear-gradient(180deg, #151922 0%, #0d1117 100%)',
               border: '1px solid rgba(255, 255, 255, 0.08)',
@@ -782,7 +916,6 @@ export const AdminRecibosEmitidos: React.FC = () => {
                             $ {fmtUsd(cat.totalUsd)} <span style={{ color: '#64748b', fontSize: '10px' }}>({cat.pct}%)</span>
                           </span>
                         </div>
-                        {/* Barra de progreso */}
                         <div style={{ width: '100%', height: '6px', backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: '3px', overflow: 'hidden' }}>
                           <div style={{ width: `${Math.max(4, cat.pct)}%`, height: '100%', backgroundColor: color, borderRadius: '3px', transition: 'width 0.5s ease' }} />
                         </div>
@@ -1006,6 +1139,27 @@ export const AdminRecibosEmitidos: React.FC = () => {
                               >
                                 👁️
                               </button>
+
+                              {/* BOTÓN RETIRAR DEUDA INDIVIDUAL */}
+                              <button
+                                onClick={() => {
+                                  setReciboParaEliminar(r)
+                                  setMotivoEliminarRecibo('')
+                                  setModalEliminarReciboOpen(true)
+                                }}
+                                style={{
+                                  backgroundColor: 'rgba(239, 68, 68, 0.12)',
+                                  color: '#ef4444',
+                                  border: '1px solid rgba(239, 68, 68, 0.25)',
+                                  padding: '5px 8px',
+                                  borderRadius: '6px',
+                                  fontSize: '11px',
+                                  cursor: 'pointer'
+                                }}
+                                title="Retirar deuda y anular recibo de este apartamento"
+                              >
+                                🗑️
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -1095,18 +1249,44 @@ export const AdminRecibosEmitidos: React.FC = () => {
             )}
 
             {/* Botones de acción */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #222', paddingTop: '14px' }}>
-              <button
-                onClick={() => cambiarEstadoRecibo(reciboModal)}
-                style={{
-                  backgroundColor: reciboModal.estado === 'pagado' ? '#ef444420' : '#10b98120',
-                  color: reciboModal.estado === 'pagado' ? '#ef4444' : '#10b981',
-                  border: reciboModal.estado === 'pagado' ? '1px solid #ef444440' : '1px solid #10b98140',
-                  padding: '8px 14px', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '12px'
-                }}
-              >
-                {reciboModal.estado === 'pagado' ? 'Marcar como Pendiente' : 'Marcar como Pagado'}
-              </button>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #222', paddingTop: '14px', flexWrap: 'wrap', gap: '10px' }}>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <button
+                  onClick={() => cambiarEstadoRecibo(reciboModal)}
+                  style={{
+                    backgroundColor: reciboModal.estado === 'pagado' ? '#ef444420' : '#10b98120',
+                    color: reciboModal.estado === 'pagado' ? '#ef4444' : '#10b981',
+                    border: reciboModal.estado === 'pagado' ? '1px solid #ef444440' : '1px solid #10b98140',
+                    padding: '8px 14px', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '12px'
+                  }}
+                >
+                  {reciboModal.estado === 'pagado' ? 'Marcar como Pendiente' : 'Marcar como Pagado'}
+                </button>
+
+                <button
+                  onClick={() => {
+                    setReciboParaEliminar(reciboModal)
+                    setMotivoEliminarRecibo('')
+                    setModalEliminarReciboOpen(true)
+                  }}
+                  style={{
+                    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                    color: '#ef4444',
+                    border: '1px solid rgba(239, 68, 68, 0.35)',
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    fontWeight: 700,
+                    fontSize: '12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                  title="Retirar deuda y anular este recibo"
+                >
+                  <span>🗑️</span> Retirar Deuda
+                </button>
+              </div>
 
               <div style={{ display: 'flex', gap: '10px' }}>
                 <button
@@ -1129,6 +1309,242 @@ export const AdminRecibosEmitidos: React.FC = () => {
                   <span>📥</span> Descargar PDF
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL DE CONFIRMACIÓN 1: ELIMINAR EMISIÓN COMPLETA DEL MES ── */}
+      {modalEliminarEmisionOpen && (
+        <div style={{
+          position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(6px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: '20px'
+        }}>
+          <div style={{
+            backgroundColor: '#111318', border: '2px solid #ef4444', borderRadius: '20px',
+            maxWidth: '540px', width: '100%', padding: '26px', boxShadow: '0 25px 60px rgba(239, 68, 68, 0.25)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
+              <div style={{
+                width: '46px', height: '46px', borderRadius: '12px',
+                backgroundColor: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.35)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px'
+              }}>
+                🗑️
+              </div>
+              <div>
+                <h3 style={{ color: '#fff', fontSize: '18px', fontWeight: 800, margin: 0 }}>
+                  Retirar Deuda y Eliminar Emisión Completa
+                </h3>
+                <span style={{ color: '#ef4444', fontSize: '12px', fontWeight: 700 }}>
+                  Mes a anular: {mesLabelActivo}
+                </span>
+              </div>
+            </div>
+
+            <p style={{ color: '#cbd5e1', fontSize: '13px', lineHeight: 1.45, margin: '0 0 16px' }}>
+              Esta acción eliminará <strong>en su totalidad la emisión de recibos de {mesLabelActivo}</strong> para todos los <strong>{recibos.length} apartamentos</strong>, retirando una deuda total de <strong style={{ color: '#f97316' }}>$ {fmtUsd(stats.totalFacturadoUsd)} USD (Bs. {fmtBs(stats.totalFacturadoBs)})</strong>.
+            </p>
+
+            <div style={{
+              backgroundColor: 'rgba(234, 179, 8, 0.1)',
+              border: '1px solid rgba(234, 179, 8, 0.3)',
+              borderRadius: '12px',
+              padding: '12px 14px',
+              marginBottom: '16px',
+              fontSize: '12px',
+              color: '#fef08a',
+              lineHeight: 1.4
+            }}>
+              🛡️ <strong>REGISTRO INMUTABLE DE AUDITORÍA:</strong><br />
+              Para garantizar la transparencia ante la comunidad y los auditores, este movimiento quedará grabado permanentemente con tu nombre, sello de tiempo, monto exacto y el motivo que especifiques.
+            </div>
+
+            {/* Motivo obligatorio */}
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', color: '#94a3b8', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', marginBottom: '6px' }}>
+                Motivo / Justificación obligatoria de la anulación:
+              </label>
+              <textarea
+                value={motivoEliminarEmision}
+                onChange={e => setMotivoEliminarEmision(e.target.value)}
+                placeholder="Ej: Se detectó error en la alícuota de gas común. Se anula la emisión para corregir los gastos y reemitir nuevamente."
+                rows={3}
+                style={{
+                  width: '100%',
+                  backgroundColor: '#090a0d',
+                  border: '1px solid #334155',
+                  borderRadius: '10px',
+                  padding: '10px 12px',
+                  color: '#fff',
+                  fontSize: '12.5px',
+                  outline: 'none',
+                  boxSizing: 'border-box'
+                }}
+              />
+            </div>
+
+            {/* Confirmación escribiendo ELIMINAR */}
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', color: '#ef4444', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', marginBottom: '6px' }}>
+                Escribe la palabra "ELIMINAR" para confirmar:
+              </label>
+              <input
+                type="text"
+                value={palabraConfirmacion}
+                onChange={e => setPalabraConfirmacion(e.target.value)}
+                placeholder="ELIMINAR"
+                style={{
+                  width: '100%',
+                  backgroundColor: '#090a0d',
+                  border: '1px solid #ef444450',
+                  borderRadius: '10px',
+                  padding: '10px 12px',
+                  color: '#fff',
+                  fontSize: '13px',
+                  fontWeight: 800,
+                  letterSpacing: '1px',
+                  outline: 'none',
+                  boxSizing: 'border-box'
+                }}
+              />
+            </div>
+
+            {/* Botones */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                onClick={() => setModalEliminarEmisionOpen(false)}
+                disabled={eliminandoEmision}
+                style={{
+                  backgroundColor: '#1f2937', color: '#94a3b8', border: '1px solid #374151',
+                  padding: '10px 18px', borderRadius: '10px', fontSize: '13px', fontWeight: 600, cursor: 'pointer'
+                }}
+              >
+                Cancelar
+              </button>
+
+              <button
+                onClick={handleConfirmarEliminarEmision}
+                disabled={eliminandoEmision || palabraConfirmacion.trim().toUpperCase() !== 'ELIMINAR' || motivoEliminarEmision.trim().length < 8}
+                style={{
+                  backgroundColor: (palabraConfirmacion.trim().toUpperCase() === 'ELIMINAR' && motivoEliminarEmision.trim().length >= 8) ? '#dc2626' : '#451a1a',
+                  color: (palabraConfirmacion.trim().toUpperCase() === 'ELIMINAR' && motivoEliminarEmision.trim().length >= 8) ? '#fff' : '#888',
+                  border: 'none',
+                  padding: '10px 20px',
+                  borderRadius: '10px',
+                  fontSize: '13px',
+                  fontWeight: 800,
+                  cursor: (palabraConfirmacion.trim().toUpperCase() === 'ELIMINAR' && motivoEliminarEmision.trim().length >= 8) ? 'pointer' : 'not-allowed',
+                  boxShadow: '0 4px 14px rgba(220, 38, 38, 0.4)'
+                }}
+              >
+                {eliminandoEmision ? 'Eliminando y auditando...' : 'Confirmar y Retirar Emisión'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL DE CONFIRMACIÓN 2: RETIRAR DEUDA DE APTO INDIVIDUAL ── */}
+      {modalEliminarReciboOpen && reciboParaEliminar && (
+        <div style={{
+          position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(6px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: '20px'
+        }}>
+          <div style={{
+            backgroundColor: '#111318', border: '2px solid #f97316', borderRadius: '20px',
+            maxWidth: '500px', width: '100%', padding: '24px', boxShadow: '0 25px 60px rgba(249, 115, 22, 0.25)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
+              <div style={{
+                width: '44px', height: '44px', borderRadius: '12px',
+                backgroundColor: 'rgba(249, 115, 22, 0.15)', border: '1px solid rgba(249, 115, 22, 0.35)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px'
+              }}>
+                📄
+              </div>
+              <div>
+                <h3 style={{ color: '#fff', fontSize: '18px', fontWeight: 800, margin: 0 }}>
+                  Retirar Deuda - Apto {reciboParaEliminar.apartamento?.numero}
+                </h3>
+                <span style={{ color: '#f97316', fontSize: '12px', fontWeight: 700 }}>
+                  Mes: {mesLabelActivo}
+                </span>
+              </div>
+            </div>
+
+            <p style={{ color: '#cbd5e1', fontSize: '13px', lineHeight: 1.45, margin: '0 0 14px' }}>
+              Se anulará el recibo emitido y se retirará la deuda del <strong>Apartamento {reciboParaEliminar.apartamento?.numero}</strong> por un monto de <strong style={{ color: '#f97316' }}>$ {fmtUsd(reciboParaEliminar.total_usd)} USD (Bs. {fmtBs(reciboParaEliminar.total_bs)})</strong>. El apartamento quedará sin deuda para este mes.
+            </p>
+
+            <div style={{
+              backgroundColor: 'rgba(249, 115, 22, 0.08)',
+              border: '1px solid rgba(249, 115, 22, 0.25)',
+              borderRadius: '10px',
+              padding: '10px 12px',
+              marginBottom: '16px',
+              fontSize: '11.5px',
+              color: '#fed7aa'
+            }}>
+              🛡️ <strong>REGISTRO EN AUDITORÍA:</strong> Este retiro quedará guardado para los arqueos del edificio.
+            </div>
+
+            {/* Motivo obligatorio */}
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', color: '#94a3b8', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', marginBottom: '6px' }}>
+                Motivo del retiro de deuda:
+              </label>
+              <textarea
+                value={motivoEliminarRecibo}
+                onChange={e => setMotivoEliminarRecibo(e.target.value)}
+                placeholder="Ej: Cobro indebido corregido / Pago reportado por adelantado verificado / Condonación autorizada por la junta."
+                rows={2}
+                style={{
+                  width: '100%',
+                  backgroundColor: '#090a0d',
+                  border: '1px solid #334155',
+                  borderRadius: '10px',
+                  padding: '9px 12px',
+                  color: '#fff',
+                  fontSize: '12.5px',
+                  outline: 'none',
+                  boxSizing: 'border-box'
+                }}
+              />
+            </div>
+
+            {/* Botones */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                onClick={() => {
+                  setModalEliminarReciboOpen(false)
+                  setReciboParaEliminar(null)
+                }}
+                disabled={eliminandoRecibo}
+                style={{
+                  backgroundColor: '#1f2937', color: '#94a3b8', border: '1px solid #374151',
+                  padding: '9px 16px', borderRadius: '10px', fontSize: '13px', fontWeight: 600, cursor: 'pointer'
+                }}
+              >
+                Cancelar
+              </button>
+
+              <button
+                onClick={handleConfirmarEliminarRecibo}
+                disabled={eliminandoRecibo || motivoEliminarRecibo.trim().length < 6}
+                style={{
+                  backgroundColor: motivoEliminarRecibo.trim().length >= 6 ? '#ea580c' : '#451a1a',
+                  color: motivoEliminarRecibo.trim().length >= 6 ? '#fff' : '#888',
+                  border: 'none',
+                  padding: '9px 18px',
+                  borderRadius: '10px',
+                  fontSize: '13px',
+                  fontWeight: 800,
+                  cursor: motivoEliminarRecibo.trim().length >= 6 ? 'pointer' : 'not-allowed'
+                }}
+              >
+                {eliminandoRecibo ? 'Retirando...' : 'Confirmar y Retirar Deuda'}
+              </button>
             </div>
           </div>
         </div>
