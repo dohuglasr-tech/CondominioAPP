@@ -26,6 +26,7 @@ import { AdminPropuestas } from './presentation/pages/admin/AdminPropuestas'
 import { AdminReportes } from './presentation/pages/admin/AdminReportes'
 import { AdminChat } from './presentation/pages/admin/AdminChat'
 import { AdminGenerarRecibos } from './presentation/pages/admin/AdminGenerarRecibos'
+import { AdminRecibosEmitidos } from './presentation/pages/admin/AdminRecibosEmitidos'
 import { Register } from './presentation/pages/Register'
 
 // ── Protege rutas privadas ────────────────────────────────────────
@@ -121,6 +122,7 @@ function AppShell() {
           <Route path="reportes"   element={<AdminReportes />} />
           <Route path="chat"       element={<AdminChat />} />
           <Route path="generar-recibos" element={<AdminGenerarRecibos />} />
+          <Route path="recibos-emitidos" element={<AdminRecibosEmitidos />} />
         </Route>
 
         <Route
