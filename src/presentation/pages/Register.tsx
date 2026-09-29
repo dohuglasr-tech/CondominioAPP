@@ -318,56 +318,6 @@ export function Register() {
 
   const steps = ['DATOS PERSONALES', 'APARTAMENTO', 'CONFIRMAR']
 
-  // ── Pantalla de Confirmación de Email (si se requiere) ──────────
-  if (success) {
-    return (
-      <div style={{
-        minHeight: '100vh',
-        backgroundColor: '#0a0a0a',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '20px',
-        fontFamily: 'Inter, sans-serif',
-      }}>
-        <div style={{
-          backgroundColor: '#141414',
-          border: '1px solid #1e1e1e',
-          borderRadius: '18px',
-          padding: '36px',
-          maxWidth: '440px',
-          width: '100%',
-          textAlign: 'center',
-        }}>
-          <div style={{ fontSize: '48px', marginBottom: '16px' }}>✉️</div>
-          <h2 style={{ color: '#fff', fontSize: '22px', fontWeight: 800, margin: '0 0 12px 0' }}>
-            ¡Cuenta Creada con Éxito!
-          </h2>
-          <p style={{ color: '#888', fontSize: '14px', lineHeight: 1.6, marginBottom: '24px' }}>
-            Hemos enviado un enlace de confirmación a <strong>{form.email}</strong>.
-            Confirma tu correo para poder acceder al portal de <strong>{config.nombre_edificio}</strong>.
-          </p>
-          <button
-            onClick={() => navigate('/login')}
-            style={{
-              width: '100%',
-              backgroundColor: '#f97316',
-              color: '#fff',
-              border: 'none',
-              padding: '14px',
-              borderRadius: '10px',
-              fontWeight: 700,
-              fontSize: '14px',
-              cursor: 'pointer',
-            }}
-          >
-            Ir al Iniciar Sesión
-          </button>
-        </div>
-      </div>
-    )
-  }
-
   // ── Render Principal del Wizard Unificado ─────────────────────
   return (
     <div style={{
