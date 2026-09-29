@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../../data/supabase'
 import { useAuth } from '../../application/contexts/AuthContext'
+import { compararApartamentos } from '../../utils/alicuota'
 
 interface RegisterForm {
   // Paso 1: Datos Personales y Acceso
@@ -43,6 +44,8 @@ export function Register() {
   const [form, setForm] = useState<RegisterForm>(EMPTY_FORM)
   const [step, setStep] = useState<1 | 2 | 3>(1)
   const [loading, setLoading] = useState(false)
+  const [validatingApto, setValidatingApto] = useState(false)
+  const [apartamentosEdificio, setApartamentosEdificio] = useState<Array<{ id: string; numero: string; piso: number | null }>>([])
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
 
@@ -59,7 +62,7 @@ export function Register() {
     logo_url: null,
   })
 
-  // Cargar configuración de edificio al montar
+  // Cargar configuración de edificio y lista oficial de apartamentos
   useEffect(() => {
     supabase
       .from('configuracion_edificio')
@@ -73,6 +76,16 @@ export function Register() {
             direccion: data.direccion || null,
             logo_url: data.logo_url || null,
           })
+        }
+      })
+
+    supabase
+      .from('apartamentos')
+      .select('id, numero, piso')
+      .then(({ data }) => {
+        if (data && data.length > 0) {
+          const ordenados = [...data].sort((a, b) => compararApartamentos(a.numero, b.numero))
+          setApartamentosEdificio(ordenados)
         }
       })
   }, [])
@@ -103,7 +116,7 @@ export function Register() {
     return null
   }
 
-  const handleNext = () => {
+  const handleNext = async () => {
     setError(null)
     if (step === 1) {
       const err = validateStep1()
@@ -112,6 +125,45 @@ export function Register() {
     } else if (step === 2) {
       const err = validateStep2()
       if (err) { setError(err); return }
+
+      // Validar que el apartamento exista en la lista oficial y no esté ocupado
+      setValidatingApto(true)
+      const aptNum = form.apartamento.trim().toUpperCase()
+
+      try {
+        const { data: aptData, error: aptError } = await supabase
+          .from('apartamentos')
+          .select('id, numero')
+          .ilike('numero', aptNum)
+          .maybeSingle()
+
+        if (aptError) {
+          console.warn('[Register] Aviso verificando apartamento:', aptError)
+        }
+
+        if (!aptData) {
+          setError(`El apartamento ${form.apartamento} no existe en la lista oficial del edificio. Por favor seleccione o verifique su número.`)
+          setValidatingApto(false)
+          return
+        }
+
+        const { data: existingProfile } = await supabase
+          .from('perfiles')
+          .select('id, nombre_completo')
+          .eq('apartamento_id', aptData.id)
+          .maybeSingle()
+
+        if (existingProfile) {
+          setError('Este departamento ya tiene un usuario existente, contactese con la adminitracion')
+          setValidatingApto(false)
+          return
+        }
+      } catch (e: any) {
+        console.warn('[Register] Error en comprobación de apartamento:', e)
+      } finally {
+        setValidatingApto(false)
+      }
+
       setStep(3)
     }
   }
@@ -124,9 +176,7 @@ export function Register() {
     const aptNum = form.apartamento.trim().toUpperCase()
 
     try {
-      // 1. Verificar si el apartamento ya está registrado y asignado a otro residente
-      let aptId: string | null = null
-
+      // 1. Verificar contra la lista oficial de apartamentos de la Torre
       const { data: aptData, error: aptError } = await supabase
         .from('apartamentos')
         .select('id, numero')
@@ -135,50 +185,30 @@ export function Register() {
 
       if (aptError) {
         console.warn('[Register] Aviso al verificar apartamento:', aptError)
-        if (aptError.code === '42501' || aptError.message?.includes('permission denied')) {
-          setError('Permiso de base de datos denegado. Recuerda ejecutar migration_v5.sql en Supabase SQL Editor.')
-          setLoading(false)
-          return
-        }
       }
 
-      if (aptData) {
-        aptId = aptData.id
-
-        // Comprobar si ya existe un perfil vinculado a este apartamento
-        const { data: existingProfile } = await supabase
-          .from('perfiles')
-          .select('id, nombre_completo')
-          .eq('apartamento_id', aptData.id)
-          .maybeSingle()
-
-        if (existingProfile) {
-          setError(
-            `El apartamento ${form.apartamento} ya tiene un usuario registrado. Solo se permite un usuario por apartamento.`
-          )
-          setLoading(false)
-          setStep(2) // Devolver al paso de apartamento
-          return
-        }
-      } else {
-        // Si el apartamento no existe en la BD (ej. 564, 572), se crea automáticamente
-        const { data: newApt, error: createAptErr } = await supabase
-          .from('apartamentos')
-          .insert({
-            numero: aptNum,
-            alicuota: 0.015625,
-            estado: 'habitado',
-          })
-          .select('id, numero')
-          .maybeSingle()
-
-        if (createAptErr) {
-          console.warn('[Register] Aviso creando apartamento:', createAptErr)
-        }
-        if (newApt?.id) {
-          aptId = newApt.id
-        }
+      if (!aptData) {
+        setError(`El apartamento ${form.apartamento} no existe en la lista oficial del edificio. Por favor contacte con la administración.`)
+        setLoading(false)
+        setStep(2)
+        return
       }
+
+      // 2. Comprobar si ya existe un perfil registrado para este apartamento
+      const { data: existingProfile } = await supabase
+        .from('perfiles')
+        .select('id, nombre_completo')
+        .eq('apartamento_id', aptData.id)
+        .maybeSingle()
+
+      if (existingProfile) {
+        setError('Este departamento ya tiene un usuario existente, contactese con la adminitracion')
+        setLoading(false)
+        setStep(2)
+        return
+      }
+
+      const aptId = aptData.id
 
       // 2. Registrar usuario en Supabase Auth
       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
@@ -229,6 +259,14 @@ export function Register() {
         if (upsertErr) {
           console.error('[Register] Error guardando perfil:', upsertErr.message)
         }
+
+        // Anexar la información del residente y propietario al apartamento oficial
+        await supabase.from('apartamentos').update({
+          propietario_nombre: form.condicion_habitacional === 'propio' ? form.nombre_completo.trim() : form.propietario_nombre.trim(),
+          propietario_cedula: form.condicion_habitacional === 'propio' ? form.cedula.trim() : form.propietario_cedula.trim(),
+          telefono_contacto: form.condicion_habitacional === 'propio' ? form.telefono.trim() : form.propietario_telefono.trim(),
+          estado: 'habitado',
+        }).eq('id', aptId)
 
         await refreshPerfil()
       }
@@ -510,10 +548,21 @@ export function Register() {
                   name="apartamento"
                   value={form.apartamento}
                   onChange={handleChange}
+                  list="lista-apartamentos-torre"
                   style={inp}
-                  placeholder="Ej. 501 o 564"
+                  placeholder="Selecciona o escribe tu apartamento (ej. 501, 565, 5PH1)"
                   autoFocus
                 />
+                <datalist id="lista-apartamentos-torre">
+                  {apartamentosEdificio.map(a => (
+                    <option key={a.id} value={a.numero}>
+                      {a.numero.toUpperCase().includes('PH') ? `Penthouse ${a.numero}` : `Apto ${a.numero} (Piso ${a.piso || '-'})`}
+                    </option>
+                  ))}
+                </datalist>
+                <span style={{ fontSize: '11px', color: '#888', marginTop: '6px', display: 'block' }}>
+                  Solo apartamentos oficiales de la Torre (puedes seleccionarlo de la lista desplegable).
+                </span>
               </div>
 
               <div style={grp}>
@@ -725,6 +774,7 @@ export function Register() {
             <button
               type="button"
               onClick={handleNext}
+              disabled={validatingApto}
               style={{
                 flex: 1,
                 padding: '14px',
@@ -734,11 +784,12 @@ export function Register() {
                 color: '#fff',
                 fontSize: '14px',
                 fontWeight: 700,
-                cursor: 'pointer',
+                cursor: validatingApto ? 'wait' : 'pointer',
+                opacity: validatingApto ? 0.7 : 1,
                 transition: 'background-color 0.2s',
               }}
             >
-              Siguiente →
+              {validatingApto ? 'Verificando...' : 'Siguiente →'}
             </button>
           ) : (
             <button
