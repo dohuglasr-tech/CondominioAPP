@@ -1,4 +1,3 @@
-import React from 'react'
 import { Skeleton, SkeletonCard, SkeletonTable } from './Skeleton'
 
 export function Loader() {
