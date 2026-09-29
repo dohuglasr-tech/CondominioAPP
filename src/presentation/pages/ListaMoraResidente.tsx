@@ -3,7 +3,6 @@ import { useAuth } from '../../application/contexts/AuthContext'
 import { ReportarPagoModal } from '../components/ReportarPagoModal'
 import {
   DeudaMoraItem,
-  TasaRiesgoMora,
   TASA_RIESGO_CONFIG,
   ACCION_LEGAL_CONFIG,
   obtenerDeudasMora

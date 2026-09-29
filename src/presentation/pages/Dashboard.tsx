@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../../application/contexts/AuthContext'
 import { useBcvRate } from '../../data/useBcvRate'
 import { ReportarPagoModal } from '../components/ReportarPagoModal'
@@ -19,7 +19,7 @@ interface PagoItem {
 }
 
 export function Dashboard() {
-  const { signOut, perfil, isAdmin } = useAuth()
+  const { perfil } = useAuth()
   const navigate = useNavigate()
 
   const p = perfil as any
@@ -36,7 +36,6 @@ export function Dashboard() {
   const [pagosRecientes, setPagosRecientes] = useState<PagoItem[]>([])
   const [reciboPendiente, setReciboPendiente] = useState<{ id: string; total_usd: number; total_bs: number; mes_facturado: string; emitido_at: string } | null>(null)
   const [moraRecord, setMoraRecord] = useState<DeudaMoraItem | null>(null)
-  const [loading, setLoading] = useState(true)
 
   const { rate, loading: loadingRate } = useBcvRate()
   const deudaUsd = reciboPendiente ? Number(reciboPendiente.total_usd) : 0
@@ -84,12 +83,10 @@ export function Dashboard() {
   // Cargar pagos, recibos y moras
   const cargarDatosResidente = useCallback(async () => {
     if (!apartamentoId && !aptoNumero) {
-      setLoading(false)
       return
     }
 
     try {
-      setLoading(true)
 
       const queryPagos = apartamentoId
         ? supabase.from('pagos_reportados').select('*').eq('apartamento_id', apartamentoId).order('created_at', { ascending: false }).limit(5)
@@ -118,8 +115,6 @@ export function Dashboard() {
       setMoraRecord(mora)
     } catch (err) {
       console.warn('[Dashboard] Error cargando datos del residente:', err)
-    } finally {
-      setLoading(false)
     }
   }, [apartamentoId, aptoNumero])
 
@@ -698,7 +693,6 @@ export function Dashboard() {
                 {pagosRecientes.slice(0, 4).map((pago) => {
                   const isAprobado = pago.estado === 'aprobado'
                   const isRechazado = pago.estado === 'rechazado'
-                  const isPendiente = !isAprobado && !isRechazado
 
                   return (
                     <div
