@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { supabase } from '../../../data/supabase'
 import { useAuth } from '../../../application/contexts/AuthContext'
+import { comprimirImagen } from '../../../utils/imageCompressor'
 
 export const AdminEdificio: React.FC = () => {
   const { config, refreshConfig } = useAuth()
@@ -46,19 +47,22 @@ export const AdminEdificio: React.FC = () => {
     setInfo(prev => ({ ...prev, [e.target.name]: e.target.value }))
   }
 
-  const processImageFile = (file: File) => {
+  const processImageFile = async (file: File) => {
     if (!file.type.startsWith('image/')) {
       setErrorMsg('Por favor selecciona un archivo de imagen (PNG, JPG, SVG, etc.)')
       return
     }
-    if (file.size > 2 * 1024 * 1024) {
-      setErrorMsg('La imagen no puede superar los 2 MB.')
-      return
+    setErrorMsg(null)
+    try {
+      const res = await comprimirImagen(file, { maxWidth: 512, maxHeight: 512, quality: 0.85 })
+      setLogoFile(res.file)
+      setLogoPreview(URL.createObjectURL(res.file))
+    } catch (_) {
+      setLogoFile(file)
+      const reader = new FileReader()
+      reader.onload = ev => setLogoPreview(ev.target?.result as string)
+      reader.readAsDataURL(file)
     }
-    setLogoFile(file)
-    const reader = new FileReader()
-    reader.onload = ev => setLogoPreview(ev.target?.result as string)
-    reader.readAsDataURL(file)
   }
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {

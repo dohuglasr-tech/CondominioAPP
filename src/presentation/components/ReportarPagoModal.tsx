@@ -1,5 +1,6 @@
 import React, { useState, useRef, useCallback } from 'react'
 import { reportarPago, subirComprobante } from '../../data/pagosService'
+import { comprimirImagen, ResultadoCompresion } from '../../utils/imageCompressor'
 
 const BANCOS_VE = [
   'Banesco', 'Mercantil', 'Provincial', 'Venezuela',
@@ -36,6 +37,8 @@ export function ReportarPagoModal({ apartamentoId, onClose, onSuccess }: Props) 
   const [step, setStep] = useState<1 | 2>(1)
   const [closing, setClosing] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [optimizando, setOptimizando] = useState(false)
+  const [statsCompresion, setStatsCompresion] = useState<ResultadoCompresion | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const [banco, setBanco] = useState('')
@@ -51,10 +54,39 @@ export function ReportarPagoModal({ apartamentoId, onClose, onSuccess }: Props) 
     setTimeout(() => onClose(), 250) // Espera la animación de salida
   }, [onClose])
 
-  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0] ?? null
-    setArchivo(f)
-    if (f) setPreview(URL.createObjectURL(f))
+    if (!f) {
+      setArchivo(null)
+      setPreview(null)
+      setStatsCompresion(null)
+      return
+    }
+
+    if (f.type.startsWith('image/')) {
+      setOptimizando(true)
+      try {
+        const res = await comprimirImagen(f, {
+          maxWidth: 1280,
+          maxHeight: 1280,
+          quality: 0.8,
+          mimeType: 'image/webp'
+        })
+        setArchivo(res.file)
+        setPreview(URL.createObjectURL(res.file))
+        setStatsCompresion(res)
+      } catch (err) {
+        console.warn('Error comprimiendo comprobante:', err)
+        setArchivo(f)
+        setPreview(URL.createObjectURL(f))
+      } finally {
+        setOptimizando(false)
+      }
+    } else {
+      setArchivo(f)
+      setPreview(null)
+      setStatsCompresion(null)
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -361,7 +393,13 @@ export function ReportarPagoModal({ apartamentoId, onClose, onSuccess }: Props) 
               onMouseDown={(e) => (e.currentTarget.style.transform = 'scale(0.98)')}
               onMouseUp={(e) => (e.currentTarget.style.transform = 'scale(1)')}
             >
-              {preview ? (
+              {optimizando ? (
+                <>
+                  <p style={{ fontSize: '28px', marginBottom: '8px' }}>⚡</p>
+                  <p style={{ color: '#f97316', fontSize: '13px', fontWeight: 600 }}>Optimizando comprobante...</p>
+                  <p style={{ color: '#666', fontSize: '11px', marginTop: '4px' }}>Comprimiendo imagen para ahorrar espacio</p>
+                </>
+              ) : preview ? (
                 <>
                   <img src={preview} alt="Comprobante" style={st.previewImg} />
                   <p style={{ color: '#888', fontSize: '12px' }}>Clic para cambiar</p>
@@ -370,7 +408,7 @@ export function ReportarPagoModal({ apartamentoId, onClose, onSuccess }: Props) 
                 <>
                   <p style={{ fontSize: '28px', marginBottom: '8px' }}>📎</p>
                   <p style={{ color: '#888', fontSize: '13px' }}>Adjuntar captura de transferencia</p>
-                  <p style={{ color: '#555', fontSize: '11px', marginTop: '4px' }}>PNG, JPG o PDF · Máx 5MB</p>
+                  <p style={{ color: '#555', fontSize: '11px', marginTop: '4px' }}>PNG, JPG o PDF · Se optimiza automáticamente</p>
                 </>
               )}
               <input
@@ -381,6 +419,25 @@ export function ReportarPagoModal({ apartamentoId, onClose, onSuccess }: Props) 
                 onChange={handleFile}
               />
             </div>
+
+            {statsCompresion && statsCompresion.ahorroPct > 0 && (
+              <div style={{
+                marginTop: '8px',
+                backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                border: '1px solid rgba(16, 185, 129, 0.25)',
+                borderRadius: '8px',
+                padding: '7px 12px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                fontSize: '11.5px',
+                color: '#10b981',
+                fontWeight: 600,
+              }}>
+                <span>⚡ Imagen optimizada</span>
+                <span>{statsCompresion.originalSizeStr} ➔ {statsCompresion.compressedSizeStr} ({statsCompresion.ahorroPct}% ahorro)</span>
+              </div>
+            )}
           </div>
 
           <button

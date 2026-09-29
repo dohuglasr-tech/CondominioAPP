@@ -80,20 +80,39 @@ export async function reportarPago(payload: ReportePagoPayload): Promise<{ error
   }
 }
 
+import { comprimirImagen } from '../utils/imageCompressor'
+
 /**
  * Sube un comprobante de pago al bucket de Supabase Storage.
+ * Comprime la imagen en el cliente para ahorrar más del 90% de almacenamiento en Supabase.
  * Retorna la URL pública o null si falla.
  */
 export async function subirComprobante(
   file: File,
   apartamento_id: string
 ): Promise<{ url: string | null; error: string | null }> {
-  const ext = file.name.split('.').pop()
+  // Comprimir imagen si es archivo de imagen (JPEG, PNG, WebP, etc.)
+  let archivoParaSubir = file
+  if (file.type.startsWith('image/')) {
+    try {
+      const res = await comprimirImagen(file, {
+        maxWidth: 1280,
+        maxHeight: 1280,
+        quality: 0.8,
+        mimeType: 'image/webp'
+      })
+      archivoParaSubir = res.file
+    } catch (e) {
+      console.warn('[PagosService] No se pudo comprimir la imagen, usando original:', e)
+    }
+  }
+
+  const ext = archivoParaSubir.name.split('.').pop() || 'webp'
   const path = `comprobantes/${apartamento_id}/${Date.now()}.${ext}`
 
   const { error: uploadError } = await supabase.storage
     .from('pagos')
-    .upload(path, file, { upsert: false, contentType: file.type })
+    .upload(path, archivoParaSubir, { upsert: false, contentType: archivoParaSubir.type })
 
   if (uploadError) {
     console.warn('[PagosService] Storage no disponible, usando base64:', uploadError.message)
@@ -110,7 +129,7 @@ export async function subirComprobante(
         }
       }
       reader.onerror = () => resolve({ url: null, error: 'No se pudo leer el archivo.' })
-      reader.readAsDataURL(file)
+      reader.readAsDataURL(archivoParaSubir)
     })
   }
 
