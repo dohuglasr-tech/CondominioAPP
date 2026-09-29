@@ -47,7 +47,6 @@ export function Register() {
   const [validatingApto, setValidatingApto] = useState(false)
   const [apartamentosEdificio, setApartamentosEdificio] = useState<Array<{ id: string; numero: string; piso: number | null }>>([])
   const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState(false)
 
   // Configuración del edificio
   const [config, setConfig] = useState<{
