@@ -834,6 +834,26 @@ export function Register() {
           </button>
         </div>
 
+        {/* ── VERSIÓN INFERIOR: ACCESO OCULTO AL PANEL ADMIN ── */}
+        <div style={{ textAlign: 'center', marginTop: '22px', paddingBottom: '16px' }}>
+          <span
+            onClick={() => navigate('/admin-login')}
+            style={{
+              color: '#334155',
+              fontSize: '11px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              letterSpacing: '0.8px',
+              userSelect: 'none',
+              transition: 'color 0.2s'
+            }}
+            onMouseOver={(e) => (e.target as HTMLElement).style.color = '#64748b'}
+            onMouseOut={(e) => (e.target as HTMLElement).style.color = '#334155'}
+          >
+            v1.0.4
+          </span>
+        </div>
+
       </div>
     </div>
   </div>

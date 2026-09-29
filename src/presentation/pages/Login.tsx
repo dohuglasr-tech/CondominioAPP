@@ -294,70 +294,37 @@ export function Login() {
               </button>
             </form>
 
-            {/* Separador */}
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              margin: '22px 0 16px',
-              color: '#475569',
-              fontSize: '11px',
-              fontWeight: 700,
-              letterSpacing: '0.6px',
-              textTransform: 'uppercase'
-            }}>
-              <div style={{ flex: 1, height: '1px', backgroundColor: '#1e2638' }} />
-              <span style={{ padding: '0 12px' }}>O CONTINÚA CON</span>
-              <div style={{ flex: 1, height: '1px', backgroundColor: '#1e2638' }} />
-            </div>
-
-            {/* Acceso Alternativo (Admin / APK) */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-              <button
-                type="button"
-                onClick={() => navigate('/admin-login')}
-                style={{
-                  backgroundColor: '#0a0d14',
-                  border: '1px solid #1e2638',
-                  borderRadius: '10px',
-                  padding: '9px 12px',
-                  color: '#cbd5e1',
-                  fontSize: '12px',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '6px',
-                  transition: 'border-color 0.2s'
-                }}
-                onMouseOver={(e) => e.currentTarget.style.borderColor = '#f97316'}
-                onMouseOut={(e) => e.currentTarget.style.borderColor = '#1e2638'}
-              >
-                <span>🔑</span> Admin
-              </button>
-
+            {/* Descarga App Android (APK) */}
+            <div style={{ marginTop: '16px' }}>
               <button
                 type="button"
                 onClick={() => window.open('/app-release.apk', '_blank')}
                 style={{
+                  width: '100%',
                   backgroundColor: '#0a0d14',
                   border: '1px solid #1e2638',
                   borderRadius: '10px',
-                  padding: '9px 12px',
+                  padding: '11px 14px',
                   color: '#cbd5e1',
-                  fontSize: '12px',
+                  fontSize: '13px',
                   fontWeight: 700,
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: '6px',
-                  transition: 'border-color 0.2s'
+                  gap: '8px',
+                  transition: 'all 0.2s'
                 }}
-                onMouseOver={(e) => e.currentTarget.style.borderColor = '#10b981'}
-                onMouseOut={(e) => e.currentTarget.style.borderColor = '#1e2638'}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.borderColor = '#10b981'
+                  e.currentTarget.style.color = '#10b981'
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.borderColor = '#1e2638'
+                  e.currentTarget.style.color = '#cbd5e1'
+                }}
               >
-                <span>🤖</span> App APK
+                <span>🤖</span> Descargar App Android (APK)
               </button>
             </div>
           </div>
@@ -422,6 +389,26 @@ export function Login() {
             >
               Crear mi cuenta 👤+
             </button>
+          </div>
+
+          {/* ── VERSIÓN INFERIOR: ACCESO OCULTO AL PANEL ADMIN ── */}
+          <div style={{ textAlign: 'center', marginTop: '22px', paddingBottom: '16px' }}>
+            <span
+              onClick={() => navigate('/admin-login')}
+              style={{
+                color: '#334155',
+                fontSize: '11px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                letterSpacing: '0.8px',
+                userSelect: 'none',
+                transition: 'color 0.2s'
+              }}
+              onMouseOver={(e) => (e.target as HTMLElement).style.color = '#64748b'}
+              onMouseOut={(e) => (e.target as HTMLElement).style.color = '#334155'}
+            >
+              v1.0.4
+            </span>
           </div>
 
         </div>
