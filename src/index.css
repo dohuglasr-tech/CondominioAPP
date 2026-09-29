@@ -811,3 +811,38 @@ p  { color: var(--text-secondary); }
   animation: iconBounce 0.4s ease;
 }
 
+/* ── Esqueletos de Carga (Skeleton Loader) ─────────────────── */
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    #171717 0%,
+    #242424 50%,
+    #171717 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.6s ease-in-out infinite;
+}
+
+@keyframes skeleton-pulse {
+  0%, 100% {
+    opacity: 0.95;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.skeleton-pulse {
+  animation: skeleton-pulse 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useBcvRate } from '../../../data/useBcvRate'
 import { supabase } from '../../../data/supabase'
+import { SkeletonCard, SkeletonListItem } from '../../components/Skeleton'
 
 interface StatCardProps {
   icon: string
@@ -405,57 +406,70 @@ export const AdminDashboard: React.FC = () => {
 
       {/* Stats Grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '32px' }}>
-        <StatCard
-          icon="⏳"
-          label="Pagos Pendientes"
-          value={loading ? '...' : stats.pendientesTotal}
-          sub={stats.pendientesTotal > 0 ? "Requieren aprobación" : "Al día"}
-          color="#f59e0b"
-          badge={stats.pendientesTotal > 0 ? "¡Atención!" : undefined}
-          pulse={stats.pendientesTotal > 0}
-          onClick={() => navigate('/admin/recibos?filtro=pendiente')}
-        />
-        <StatCard
-          icon="✅"
-          label={`Pagos Aprobados (${getMesSoloNombre(mesSeleccionado)})`}
-          value={loading ? '...' : stats.aprobadosMes}
-          sub={`${stats.aprobadosTotal} confirmados en total`}
-          color="#10b981"
-          onClick={() => navigate('/admin/recibos?filtro=aprobado')}
-        />
-        <StatCard
-          icon="💰"
-          label={`Total Recaudado (${getMesSoloNombre(mesSeleccionado)})`}
-          value={loading ? '...' : `Bs. ${stats.recaudadoMesBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-          sub={rate > 0 ? `Ref: $${stats.totalUsdMes.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · ${stats.aprobadosMes} ${stats.aprobadosMes === 1 ? 'pago' : 'pagos'}` : undefined}
-          color="#f97316"
-          badge={getMesSoloNombre(mesSeleccionado)}
-          onClick={() => navigate('/admin/recibos-emitidos')}
-        />
-        <StatCard
-          icon="🏠"
-          label="Apartamentos"
-          value={loading ? '...' : apartamentosCount}
-          sub="Registrados en edificio"
-          color="#3b82f6"
-          onClick={() => navigate('/admin/residentes')}
-        />
-        <StatCard
-          icon="📢"
-          label="Reportes de Incidencias"
-          value={loading ? '...' : reportesAbiertos}
-          sub="En el edificio"
-          color="#ec4899"
-          onClick={() => navigate('/admin/reportes')}
-        />
-        <StatCard
-          icon="🗳️"
-          label="Propuestas Activas"
-          value={loading ? '...' : propuestasActivas}
-          sub="En votación"
-          color="#8b5cf6"
-          onClick={() => navigate('/admin/propuestas')}
-        />
+        {loading ? (
+          <>
+            <SkeletonCard />
+            <SkeletonCard />
+            <SkeletonCard />
+            <SkeletonCard />
+            <SkeletonCard />
+            <SkeletonCard />
+          </>
+        ) : (
+          <>
+            <StatCard
+              icon="⏳"
+              label="Pagos Pendientes"
+              value={stats.pendientesTotal}
+              sub={stats.pendientesTotal > 0 ? "Requieren aprobación" : "Al día"}
+              color="#f59e0b"
+              badge={stats.pendientesTotal > 0 ? "¡Atención!" : undefined}
+              pulse={stats.pendientesTotal > 0}
+              onClick={() => navigate('/admin/recibos?filtro=pendiente')}
+            />
+            <StatCard
+              icon="✅"
+              label={`Pagos Aprobados (${getMesSoloNombre(mesSeleccionado)})`}
+              value={stats.aprobadosMes}
+              sub={`${stats.aprobadosTotal} confirmados en total`}
+              color="#10b981"
+              onClick={() => navigate('/admin/recibos?filtro=aprobado')}
+            />
+            <StatCard
+              icon="💰"
+              label={`Total Recaudado (${getMesSoloNombre(mesSeleccionado)})`}
+              value={`Bs. ${stats.recaudadoMesBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+              sub={rate > 0 ? `Ref: $${stats.totalUsdMes.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · ${stats.aprobadosMes} ${stats.aprobadosMes === 1 ? 'pago' : 'pagos'}` : undefined}
+              color="#f97316"
+              badge={getMesSoloNombre(mesSeleccionado)}
+              onClick={() => navigate('/admin/recibos-emitidos')}
+            />
+            <StatCard
+              icon="🏠"
+              label="Apartamentos"
+              value={apartamentosCount}
+              sub="Registrados en edificio"
+              color="#3b82f6"
+              onClick={() => navigate('/admin/residentes')}
+            />
+            <StatCard
+              icon="📢"
+              label="Reportes de Incidencias"
+              value={reportesAbiertos}
+              sub="En el edificio"
+              color="#ec4899"
+              onClick={() => navigate('/admin/reportes')}
+            />
+            <StatCard
+              icon="🗳️"
+              label="Propuestas Activas"
+              value={propuestasActivas}
+              sub="En votación"
+              color="#8b5cf6"
+              onClick={() => navigate('/admin/propuestas')}
+            />
+          </>
+        )}
       </div>
 
       {/* Actividad reciente */}
@@ -481,8 +495,11 @@ export const AdminDashboard: React.FC = () => {
         </div>
 
         {loading ? (
-          <div style={{ padding: '20px', textAlign: 'center', color: '#666', fontSize: '14px' }}>
-            Cargando actividad en tiempo real...
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <SkeletonListItem />
+            <SkeletonListItem />
+            <SkeletonListItem />
+            <SkeletonListItem />
           </div>
         ) : actividad.length === 0 ? (
           <div style={{ padding: '30px', textAlign: 'center', color: '#666', fontSize: '14px' }}>

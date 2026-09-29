@@ -4,6 +4,7 @@ import { generarPDFRecibo, ReciboAptoData, ReciboGastoData, ReciboCargoData, Rec
 import { compararApartamentos, formatAlicuotaPct } from '../../../utils/alicuota'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import { SkeletonCard, SkeletonChart, SkeletonTable } from '../../components/Skeleton'
 
 interface ReciboEmitido {
   id: string
@@ -527,9 +528,26 @@ export const AdminRecibosEmitidos: React.FC = () => {
       </div>
 
       {loading && recibos.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '60px 20px', color: '#888' }}>
-          <div style={{ fontSize: '32px', marginBottom: '12px' }}>⏳</div>
-          <p>Cargando información contable y recibos...</p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Skeleton Bento KPIs */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px' }}>
+            <SkeletonCard height="135px" />
+            <SkeletonCard height="135px" />
+            <SkeletonCard height="135px" />
+            <SkeletonCard height="135px" />
+          </div>
+
+          {/* Skeleton Charts */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '16px' }}>
+            <SkeletonChart height="220px" title="Recaudación vs Morosidad" />
+            <SkeletonChart height="220px" title="Distribución de Gastos" />
+            <SkeletonChart height="220px" title="Morosidad por Piso" />
+          </div>
+
+          {/* Skeleton Table */}
+          <div style={{ backgroundColor: '#141414', border: '1px solid #222', borderRadius: '14px', padding: '24px' }}>
+            <SkeletonTable rows={7} columns={7} />
+          </div>
         </div>
       ) : mesesDisponibles.length === 0 ? (
         <div style={{ backgroundColor: '#141414', border: '1px dashed #333', borderRadius: '14px', padding: '48px 24px', textAlign: 'center' }}>

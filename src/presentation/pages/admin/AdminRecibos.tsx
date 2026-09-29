@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../../../data/supabase'
+import { SkeletonListItem } from '../../components/Skeleton'
 
 interface PagoAdmin {
   id: string
@@ -351,8 +352,11 @@ export const AdminRecibos: React.FC = () => {
 
       {/* Lista de pagos */}
       {loading ? (
-        <div style={{ color: '#666', textAlign: 'center', padding: '40px' }}>
-          Cargando pagos desde Supabase en tiempo real...
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <SkeletonListItem />
+          <SkeletonListItem />
+          <SkeletonListItem />
+          <SkeletonListItem />
         </div>
       ) : filtrados.length === 0 ? (
         <div style={{
