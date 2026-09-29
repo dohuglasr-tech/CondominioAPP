@@ -152,22 +152,44 @@ export const AdminRecibos: React.FC = () => {
         notasFinal = notasFinal ? `${notasFinal} | Nota Admin: ${nota.trim()}` : `Nota Admin: ${nota.trim()}`
       }
 
+      // Construir el objeto de actualización con campos seguros
+      const updatePayload: Record<string, unknown> = {
+        estado: accion,
+        notas_admin: notasFinal,
+      }
+
+      // Intentar incluir fecha_revision (la columna existe si se ejecutó migration_v7)
+      try {
+        updatePayload.fecha_revision = new Date().toISOString()
+      } catch (_) { /* ignorar si la columna no existe aún */ }
+
       const { error } = await supabase
         .from('pagos_reportados')
-        .update({
-          estado: accion,
-          notas_admin: notasFinal,
-          fecha_revision: new Date().toISOString(),
-        })
+        .update(updatePayload)
         .eq('id', id)
 
       if (error) {
-        alert('Error actualizando pago: ' + error.message)
-      } else {
-        setPagos(prev => prev.map(p => (p.id === id ? { ...p, estado: accion, notas_admin: notasFinal } : p)))
-        setToastMsg(accion === 'aprobado' ? '✅ Pago aprobado exitosamente' : '❌ Pago rechazado')
-        setTimeout(() => setToastMsg(null), 4000)
+        // Si el error es por columna inexistente, reintentar sin fecha_revision
+        if (error.message?.includes('fecha_revision') || error.code === '42703') {
+          const { error: error2 } = await supabase
+            .from('pagos_reportados')
+            .update({ estado: accion, notas_admin: notasFinal })
+            .eq('id', id)
+          if (error2) {
+            setToastMsg(`⚠️ Error: ${error2.message}`)
+            setTimeout(() => setToastMsg(null), 5000)
+            return
+          }
+        } else {
+          setToastMsg(`⚠️ Error: ${error.message}`)
+          setTimeout(() => setToastMsg(null), 5000)
+          return
+        }
       }
+
+      setPagos(prev => prev.map(p => (p.id === id ? { ...p, estado: accion, notas_admin: notasFinal } : p)))
+      setToastMsg(accion === 'aprobado' ? '✅ Pago aprobado exitosamente' : '❌ Pago rechazado')
+      setTimeout(() => setToastMsg(null), 4000)
     } catch (err: any) {
       console.error('[AdminRecibos] Error en handleAction:', err)
     } finally {
