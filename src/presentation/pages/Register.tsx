@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../../data/supabase'
 import { useAuth } from '../../application/contexts/AuthContext'
 import { compararApartamentos } from '../../utils/alicuota'
+import { AuthHeroPanel } from '../components/AuthHeroPanel'
 
 interface RegisterForm {
   // Paso 1: Datos Personales y Acceso
@@ -293,12 +294,12 @@ export function Register() {
   // ── Estilos (Mismo look & feel de la pantalla moderna de pasos) ──
   const inp: React.CSSProperties = {
     width: '100%',
-    backgroundColor: '#0d0d0d',
-    border: '1px solid #2a2a2a',
+    backgroundColor: '#0a0d14',
+    border: '1px solid #232d42',
     color: '#fff',
     padding: '12px 14px',
     borderRadius: '10px',
-    fontSize: '14px',
+    fontSize: '13.5px',
     outline: 'none',
     boxSizing: 'border-box',
     transition: 'border-color 0.2s',
@@ -306,91 +307,98 @@ export function Register() {
 
   const lbl: React.CSSProperties = {
     display: 'block',
-    color: '#888',
-    fontSize: '12px',
-    fontWeight: 600,
+    color: '#cbd5e1',
+    fontSize: '11.5px',
+    fontWeight: 700,
     marginBottom: '6px',
     textTransform: 'uppercase',
-    letterSpacing: '0.5px',
+    letterSpacing: '0.4px',
   }
 
   const grp: React.CSSProperties = { marginBottom: '16px' }
 
   const steps = ['DATOS PERSONALES', 'APARTAMENTO', 'CONFIRMAR']
 
-  // ── Render Principal del Wizard Unificado ─────────────────────
+  // ── Render Principal con Split-Screen Hero y Formulario ───────
   return (
     <div style={{
       minHeight: '100vh',
-      backgroundColor: '#0a0a0a',
       display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: '24px 20px',
-      fontFamily: 'Inter, sans-serif',
-      boxSizing: 'border-box',
+      backgroundColor: '#0a0d14',
+      fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+      color: '#fff',
+      flexWrap: 'wrap',
     }}>
-      <div style={{ width: '100%', maxWidth: '480px' }}>
+      
+      {/* ── PANEL IZQUIERDO: HERO NARANJA CON DATOS Y LOGO DEL EDIFICIO ── */}
+      <AuthHeroPanel config={config} />
 
-        {/* Encabezado con Logo y Nombre del Edificio */}
-        <div style={{ textAlign: 'center', marginBottom: '28px' }}>
-          <div style={{
-            width: '68px',
-            height: '68px',
-            borderRadius: '18px',
-            margin: '0 auto 14px',
-            background: 'rgba(249,115,22,0.1)',
-            border: '1px solid rgba(249,115,22,0.25)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            overflow: 'hidden',
-          }}>
-            {config.logo_url ? (
-              <img src={config.logo_url} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-            ) : (
-              <span style={{ fontSize: '32px' }}>🏢</span>
-            )}
+      {/* ── PANEL DERECHO: FORMULARIO DE REGISTRO EN PASOS ── */}
+      <div style={{
+        flex: '1 1 50%',
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '40px 24px',
+        backgroundColor: '#07090e',
+        boxSizing: 'border-box',
+      }}>
+        <div style={{ width: '100%', maxWidth: '480px' }}>
+
+          {/* Encabezado del Formulario */}
+          <div style={{ marginBottom: '20px' }}>
+            <h1 style={{
+              fontSize: '26px',
+              fontWeight: 800,
+              margin: '0 0 6px',
+              letterSpacing: '-0.5px',
+              color: '#ffffff'
+            }}>
+              Crear cuenta de residente
+            </h1>
+            <p style={{
+              fontSize: '13px',
+              color: '#94a3b8',
+              margin: 0,
+              lineHeight: 1.4
+            }}>
+              Regístrate en {config.nombre_edificio} para acceder a tus recibos y pagos.
+            </p>
           </div>
-          <h1 style={{ color: '#fff', fontSize: '24px', fontWeight: 800, margin: '0 0 6px 0', letterSpacing: '-0.5px' }}>
-            Crear tu cuenta
-          </h1>
-          <p style={{ color: '#666', fontSize: '13px', margin: 0 }}>
-            {config.nombre_edificio} · Portal Residencial
-          </p>
-        </div>
 
-        {/* Indicador de Pasos (Step Progress Bar) */}
-        <div style={{ display: 'flex', gap: '8px', marginBottom: '24px' }}>
-          {steps.map((s, i) => (
-            <div key={s} style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <div style={{
-                height: '3px',
-                borderRadius: '99px',
-                backgroundColor: i + 1 <= step ? '#f97316' : '#2a2a2a',
-                transition: 'background-color 0.3s ease',
-              }} />
-              <span style={{
-                fontSize: '10px',
-                fontWeight: 700,
-                textTransform: 'uppercase',
-                letterSpacing: '0.5px',
-                color: i + 1 === step ? '#f97316' : i + 1 < step ? '#666' : '#333',
-              }}>
-                {s}
-              </span>
-            </div>
-          ))}
-        </div>
+          {/* Indicador de Pasos (Step Progress Bar) */}
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
+            {steps.map((s, i) => (
+              <div key={s} style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <div style={{
+                  height: '3px',
+                  borderRadius: '99px',
+                  backgroundColor: i + 1 <= step ? '#f97316' : '#232d42',
+                  transition: 'background-color 0.3s ease',
+                }} />
+                <span style={{
+                  fontSize: '9.5px',
+                  fontWeight: 700,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                  color: i + 1 === step ? '#f97316' : i + 1 < step ? '#94a3b8' : '#475569',
+                }}>
+                  {s}
+                </span>
+              </div>
+            ))}
+          </div>
 
-        {/* Tarjeta del Formulario */}
-        <div style={{
-          backgroundColor: '#141414',
-          border: '1px solid #1e1e1e',
-          borderRadius: '18px',
-          padding: '28px',
-          boxShadow: '0 8px 30px rgba(0,0,0,0.5)',
-        }}>
+          {/* Tarjeta del Formulario */}
+          <div style={{
+            backgroundColor: '#111622',
+            border: '1px solid #1e2638',
+            borderRadius: '16px',
+            padding: '28px',
+            boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
+            marginBottom: '16px'
+          }}>
 
           {error && (
             <div style={{
@@ -763,17 +771,71 @@ export function Register() {
           )}
         </div>
 
-        {/* Enlace para volver al login */}
-        <div style={{ textAlign: 'center', marginTop: '24px' }}>
-          <p style={{ color: '#666', fontSize: '13px', margin: 0 }}>
-            ¿Ya tienes una cuenta registrada?{' '}
-            <Link to="/login" style={{ color: '#f97316', textDecoration: 'none', fontWeight: 600 }}>
-              Iniciar Sesión
-            </Link>
-          </p>
+        {/* ── TARJETA INFERIOR: YA TENGO CUENTA (Estilo callout idéntico a Login) ── */}
+        <div style={{
+          backgroundColor: '#111622',
+          border: '1px solid #1e2638',
+          borderRadius: '16px',
+          padding: '18px 20px',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '14px',
+          flexWrap: 'wrap',
+          marginTop: '20px'
+        }}>
+          <div style={{
+            width: '40px',
+            height: '40px',
+            borderRadius: '50%',
+            backgroundColor: 'rgba(249, 115, 22, 0.15)',
+            border: '1px solid rgba(249, 115, 22, 0.3)',
+            color: '#f97316',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '18px',
+            flexShrink: 0
+          }}>
+            🔑
+          </div>
+
+          <div style={{ flex: 1, minWidth: '170px' }}>
+            <h3 style={{ fontSize: '13.5px', fontWeight: 800, margin: 0, color: '#ffffff' }}>
+              ¿Ya tienes una cuenta?
+            </h3>
+            <p style={{ fontSize: '11.5px', color: '#94a3b8', margin: '2px 0 0', lineHeight: 1.35 }}>
+              Inicia sesión para consultar tus recibos y pagos.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => navigate('/login')}
+            style={{
+              backgroundColor: '#f97316',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '8px',
+              padding: '9px 15px',
+              fontSize: '12px',
+              fontWeight: 800,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              transition: 'background-color 0.2s',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+            onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#ea580c'}
+            onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#f97316'}
+          >
+            Iniciar Sesión →
+          </button>
         </div>
 
       </div>
     </div>
-  )
+  </div>
+)
 }
