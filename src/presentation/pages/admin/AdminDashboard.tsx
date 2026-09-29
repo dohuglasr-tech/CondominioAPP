@@ -108,7 +108,7 @@ export const AdminDashboard: React.FC = () => {
   const [todosLosPagos, setTodosLosPagos] = useState<any[]>([])
   const [gastosMesBs, setGastosMesBs] = useState<number>(0)
 
-  // Ocultar/mostrar saldo (como en la Imagen 1)
+  // Ocultar/mostrar saldo
   const [ocultarSaldos, setOcultarSaldos] = useState(false)
 
   const cargarMetricas = useCallback(async () => {
@@ -119,7 +119,7 @@ export const AdminDashboard: React.FC = () => {
         .select('*', { count: 'exact', head: true })
       if (aptCount !== null) setApartamentosCount(aptCount)
 
-      // 2. Pagos reportados y Recibos emitidos
+      // 2. Pagos reportados, Recibos emitidos y Gastos
       const [pagosRes, recibosRes, gastosRes] = await Promise.all([
         supabase
           .from('pagos_reportados')
@@ -283,10 +283,10 @@ export const AdminDashboard: React.FC = () => {
       `}</style>
 
       {/* ═════════════════════════════════════════════════════════════════ */}
-      {/* ── MOBILE DASHBOARD (EXACTO A LA IMAGEN 1 DE MERCOSUR) ───────── */}
+      {/* ── MOBILE DASHBOARD (CONDOMINIO TORRE 5) ─────────────────────── */}
       {/* ═════════════════════════════════════════════════════════════════ */}
       <div className="admin-mobile-view">
-        {/* TARJETA PRINCIPAL: PATRIMONIO TOTAL (Imagen 1) */}
+        {/* TARJETA PRINCIPAL: TOTAL RECAUDADO ESTE MES */}
         <div style={{
           backgroundColor: '#141519',
           border: '1px solid rgba(255, 255, 255, 0.08)',
@@ -298,7 +298,7 @@ export const AdminDashboard: React.FC = () => {
           {/* Header de la tarjeta */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
             <span style={{ color: '#8e8e93', fontSize: '11px', fontWeight: 800, letterSpacing: '0.8px', textTransform: 'uppercase' }}>
-              PATRIMONIO TOTAL
+              TOTAL RECAUDADO ESTE MES
             </span>
             <button
               onClick={() => setOcultarSaldos(!ocultarSaldos)}
@@ -316,12 +316,12 @@ export const AdminDashboard: React.FC = () => {
             </button>
           </div>
 
-          {/* Gran monto en Bolívares */}
+          {/* Gran cifra en Bolívares */}
           <div style={{ color: '#fff', fontSize: '34px', fontWeight: 900, letterSpacing: '-0.5px', lineHeight: 1.1 }}>
-            {ocultarSaldos ? 'Bs. ••••••' : `Bs. ${(stats.recaudadoMesBs || 89.12).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+            {ocultarSaldos ? 'Bs. ••••••' : `Bs. ${(stats.recaudadoMesBs || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
           </div>
 
-          {/* Badge de Rendimiento / Cobranza */}
+          {/* Píldora de Rendimiento / Cobranza */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px', marginBottom: '18px' }}>
             <span style={{
               backgroundColor: 'rgba(34, 197, 94, 0.14)',
@@ -342,7 +342,7 @@ export const AdminDashboard: React.FC = () => {
             </span>
           </div>
 
-          {/* Desglose de 3 Columnas al pie (EFECTIVO | PORTAFOLIO | BLOQUEADO) */}
+          {/* Desglose de 3 Columnas al pie (COBRADO | GASTOS | EN MORA) */}
           <div style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(3, 1fr)',
@@ -352,16 +352,16 @@ export const AdminDashboard: React.FC = () => {
           }}>
             <div>
               <div style={{ color: '#8e8e93', fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '4px' }}>
-                EFECTIVO
+                COBRADO
               </div>
               <div style={{ color: '#fff', fontSize: '13px', fontWeight: 800 }}>
-                {ocultarSaldos ? '••••' : `Bs. ${(stats.recaudadoMesBs || 89.12).toLocaleString('es-VE', { minimumFractionDigits: 2 })}`}
+                {ocultarSaldos ? '••••' : `Bs. ${(stats.recaudadoMesBs || 0).toLocaleString('es-VE', { minimumFractionDigits: 2 })}`}
               </div>
             </div>
 
             <div>
               <div style={{ color: '#8e8e93', fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '4px' }}>
-                PORTAFOLIO
+                GASTOS
               </div>
               <div style={{ color: '#fff', fontSize: '13px', fontWeight: 800 }}>
                 {ocultarSaldos ? '••••' : `Bs. ${(gastosMesBs || 0).toLocaleString('es-VE', { minimumFractionDigits: 2 })}`}
@@ -370,7 +370,7 @@ export const AdminDashboard: React.FC = () => {
 
             <div>
               <div style={{ color: '#8e8e93', fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '4px' }}>
-                BLOQUEADO
+                EN MORA
               </div>
               <div style={{ color: '#fff', fontSize: '13px', fontWeight: 800 }}>
                 {ocultarSaldos ? '••••' : `Bs. ${(stats.pendientesTotal > 0 ? (stats.pendientesTotal * 15 * (rate || 40)) : 0).toLocaleString('es-VE', { minimumFractionDigits: 2 })}`}
@@ -379,14 +379,14 @@ export const AdminDashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* SECCIÓN: ACCIONES RÁPIDAS (Imagen 1) */}
+        {/* SECCIÓN: ACCIONES RÁPIDAS DE CONDOMINIO */}
         <div>
           <h2 style={{ color: '#fff', fontSize: '18px', fontWeight: 800, margin: '0 0 16px', letterSpacing: '-0.3px' }}>
             Acciones rápidas
           </h2>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '18px 12px' }}>
-            {/* 1. Comprar -> Registrar Gasto (Verde) */}
+            {/* 1. Registrar Gasto (Verde) */}
             <button
               onClick={() => navigate('/admin/gastos')}
               style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
@@ -404,14 +404,14 @@ export const AdminDashboard: React.FC = () => {
                 fontSize: '20px'
               }}>
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="7" y1="17" x2="17" y2="7"/>
-                  <polyline points="7 7 17 7 17 17"/>
+                  <line x1="12" y1="5" x2="12" y2="19"/>
+                  <line x1="5" y1="12" x2="19" y2="12"/>
                 </svg>
               </div>
-              <span style={{ color: '#d4d4d8', fontSize: '12px', fontWeight: 600 }}>Comprar</span>
+              <span style={{ color: '#d4d4d8', fontSize: '12px', fontWeight: 600 }}>+ Gasto</span>
             </button>
 
-            {/* 2. Vender -> Emitir Recibo (Rojizo/Vino) */}
+            {/* 2. Emitir Recibos Masivos (Rojizo/Vino) */}
             <button
               onClick={() => navigate('/admin/generar-recibos')}
               style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
@@ -429,14 +429,16 @@ export const AdminDashboard: React.FC = () => {
                 fontSize: '20px'
               }}>
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="7" y1="7" x2="17" y2="17"/>
-                  <polyline points="17 7 17 17 7 17"/>
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                  <line x1="12" y1="11" x2="12" y2="17"/>
+                  <line x1="9" y1="14" x2="15" y2="14"/>
                 </svg>
               </div>
-              <span style={{ color: '#d4d4d8', fontSize: '12px', fontWeight: 600 }}>Vender</span>
+              <span style={{ color: '#d4d4d8', fontSize: '12px', fontWeight: 600 }}>Emitir Recibo</span>
             </button>
 
-            {/* 3. Mercado -> Mora y Deudores (Azul/Gris) */}
+            {/* 3. Mora y Deudores (Azul/Gris) */}
             <button
               onClick={() => navigate('/admin/mora')}
               style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
@@ -454,13 +456,15 @@ export const AdminDashboard: React.FC = () => {
                 fontSize: '20px'
               }}>
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                  <line x1="12" y1="8" x2="12" y2="12"/>
+                  <line x1="12" y1="16" x2="12.01" y2="16"/>
                 </svg>
               </div>
-              <span style={{ color: '#d4d4d8', fontSize: '12px', fontWeight: 600 }}>Mercado</span>
+              <span style={{ color: '#d4d4d8', fontSize: '12px', fontWeight: 600 }}>Mora / Deuda</span>
             </button>
 
-            {/* 4. Órdenes -> Verificar Pagos (Ámbar) */}
+            {/* 4. Validar Pagos (Ámbar con badge de pendientes) */}
             <button
               onClick={() => navigate('/admin/recibos?filtro=pendiente')}
               style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
@@ -478,9 +482,8 @@ export const AdminDashboard: React.FC = () => {
                 position: 'relative'
               }}>
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="2" y="4" width="20" height="16" rx="2"/>
-                  <line x1="12" y1="8" x2="12" y2="16"/>
-                  <line x1="8" y1="12" x2="16" y2="12"/>
+                  <polyline points="9 11 12 14 22 4"/>
+                  <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
                 </svg>
                 {stats.pendientesTotal > 0 && (
                   <span style={{
@@ -503,10 +506,10 @@ export const AdminDashboard: React.FC = () => {
                   </span>
                 )}
               </div>
-              <span style={{ color: '#d4d4d8', fontSize: '12px', fontWeight: 600 }}>Órdenes</span>
+              <span style={{ color: '#d4d4d8', fontSize: '12px', fontWeight: 600 }}>Validar Pagos</span>
             </button>
 
-            {/* 5. Retirar -> Casos / Cobranza (Morado) */}
+            {/* 5. Casos y Multas (Morado) */}
             <button
               onClick={() => navigate('/admin/casos')}
               style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
@@ -523,39 +526,69 @@ export const AdminDashboard: React.FC = () => {
                 justifyContent: 'center'
               }}>
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/>
-                  <path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/>
-                  <path d="M18 12a2 2 0 0 0 0 4h4v-4z"/>
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                  <line x1="12" y1="11" x2="12" y2="17"/>
+                  <line x1="9" y1="14" x2="15" y2="14"/>
                 </svg>
               </div>
-              <span style={{ color: '#d4d4d8', fontSize: '12px', fontWeight: 600 }}>Retirar</span>
+              <span style={{ color: '#d4d4d8', fontSize: '12px', fontWeight: 600 }}>Casos / Multas</span>
+            </button>
+
+            {/* 6. Apartamentos y Propietarios (Naranja) */}
+            <button
+              onClick={() => navigate('/admin/residentes')}
+              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+            >
+              <div style={{
+                width: '58px',
+                height: '58px',
+                borderRadius: '50%',
+                backgroundColor: '#291a13',
+                border: '1px solid rgba(249, 115, 22, 0.25)',
+                color: '#fb923c',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="4" y="2" width="16" height="20" rx="2"/>
+                  <line x1="9" y1="6" x2="9" y2="6.01"/>
+                  <line x1="15" y1="6" x2="15" y2="6.01"/>
+                  <line x1="9" y1="10" x2="9" y2="10.01"/>
+                  <line x1="15" y1="10" x2="15" y2="10.01"/>
+                </svg>
+              </div>
+              <span style={{ color: '#d4d4d8', fontSize: '12px', fontWeight: 600 }}>Apartamentos</span>
             </button>
           </div>
         </div>
 
-        {/* SECCIÓN: POSICIONES EN CARTERA (Imagen 1) */}
+        {/* SECCIÓN: ESTADO GENERAL DE RECIBOS */}
         <div style={{
           backgroundColor: '#141519',
           border: '1px solid rgba(255, 255, 255, 0.08)',
           borderRadius: '20px',
-          padding: '24px 20px',
+          padding: '22px 20px',
           textAlign: 'center'
         }}>
-          <p style={{ color: '#a1a1aa', fontSize: '14px', fontWeight: 600, margin: '0 0 8px' }}>
-            No tienes posiciones en tu cartera
+          <p style={{ color: '#a1a1aa', fontSize: '14px', fontWeight: 600, margin: '0 0 6px' }}>
+            Balance del Mes de {getMesSoloNombre(mesSeleccionado) || 'Septiembre'}
+          </p>
+          <p style={{ color: '#71717a', fontSize: '12px', margin: '0 0 10px' }}>
+            {apartamentosCount} apartamentos en la comunidad · Cobranza y gastos al día
           </p>
           <div
             onClick={() => navigate('/admin/recibos-emitidos')}
             style={{ color: '#f97316', fontSize: '13px', fontWeight: 700, cursor: 'pointer' }}
           >
-            Explorar mercado
+            Ver todos los recibos emitidos →
           </div>
         </div>
 
-        {/* SECCIÓN: ÓRDENES RECIENTES (Imagen 1) */}
+        {/* SECCIÓN: ÚLTIMOS PAGOS REPORTADOS */}
         <div>
           <h2 style={{ color: '#fff', fontSize: '18px', fontWeight: 800, margin: '0 0 14px', letterSpacing: '-0.3px' }}>
-            Órdenes recientes
+            Últimos Pagos Reportados
           </h2>
 
           {actividad.length === 0 ? (
@@ -567,13 +600,13 @@ export const AdminDashboard: React.FC = () => {
               textAlign: 'center'
             }}>
               <p style={{ color: '#a1a1aa', fontSize: '14px', fontWeight: 600, margin: '0 0 8px' }}>
-                No tienes órdenes registradas
+                No hay pagos pendientes de revisión
               </p>
               <div
                 onClick={() => navigate('/admin/recibos')}
                 style={{ color: '#f97316', fontSize: '13px', fontWeight: 700, cursor: 'pointer' }}
               >
-                Realizar primera operación
+                Ver historial de recibos
               </div>
             </div>
           ) : (
@@ -736,6 +769,7 @@ export const AdminDashboard: React.FC = () => {
               alignItems: 'center',
               justifyContent: 'space-between',
               cursor: 'pointer',
+              transition: 'all 0.2s',
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
