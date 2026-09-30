@@ -1,10 +1,8 @@
 import React, { useState, useEffect } from 'react'
 import { useAuth } from '../../application/contexts/AuthContext'
-import { useNavigate } from 'react-router-dom'
 
 export function ChangePassword() {
-  const { user, needsPasswordChange, signOut, updatePassword } = useAuth()
-  const navigate = useNavigate()
+  const { user, signOut, updatePassword } = useAuth()
 
   const [email, setEmail] = useState(user?.email || '')
   const [password, setPassword] = useState('')

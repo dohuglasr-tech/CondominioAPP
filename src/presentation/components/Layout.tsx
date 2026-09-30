@@ -95,7 +95,7 @@ export const Layout: React.FC = () => {
   const aptoNumero     = p?.apartamento?.numero || p?.apartamentos?.numero || p?.apartamento_id || ''
   const apartamentoId  = p?.apartamento_id || p?.apartamento?.id || ''
   const residenteNombre = p?.nombre_completo || 'Propietario Residente'
-  const residenteEmail  = perfil?.propietario_email || user?.email || (p as any)?.propietario_email || (p as any)?.email || ''
+  const residenteEmail  = p?.propietario_email || user?.email || p?.email || ''
 
   
   const residenteInitials = residenteNombre

@@ -4,7 +4,7 @@ import { useBcvRate } from '../../data/useBcvRate'
 import { ReportarPagoModal } from '../components/ReportarPagoModal'
 import { supabase } from '../../data/supabase'
 import { useNavigate } from 'react-router-dom'
-import { buscarMoraPorApto, obtenerDeudasMora, TASA_RIESGO_CONFIG, DeudaMoraItem, TasaRiesgoMora } from '../../data/moraService'
+import { obtenerDeudasMora, TASA_RIESGO_CONFIG, DeudaMoraItem, TasaRiesgoMora } from '../../data/moraService'
 import { formatAlicuotaPct, getAlicuotaPctNumber } from '../../utils/alicuota'
 
 interface PagoItem {
@@ -27,7 +27,7 @@ const getTasaConfig = (tasa?: string) => {
 }
 
 export function Dashboard() {
-  const { perfil } = useAuth()
+  const { perfil, config } = useAuth()
   const navigate = useNavigate()
 
   const p = perfil as any
