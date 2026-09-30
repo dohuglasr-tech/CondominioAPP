@@ -186,8 +186,9 @@ export const AdminResidentes: React.FC = () => {
   useEffect(() => {
     cargarResidentes()
 
+    const channelId = `admin_residentes_${Math.random().toString(36).slice(2, 7)}`
     const channel = supabase
-      .channel('admin_residentes_realtime')
+      .channel(channelId)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'apartamentos' }, () => cargarResidentes())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'perfiles' }, () => cargarResidentes())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'pagos_reportados' }, () => cargarResidentes())

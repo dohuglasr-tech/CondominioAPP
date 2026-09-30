@@ -116,6 +116,10 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onClose }) => {
     cargarDatos()
 
     // 1. Canal Supabase Realtime (Broadcast + Postgres changes)
+    const existing = supabase.getChannels().find(c => c.topic === `realtime:${CHAT_CHANNEL_NAME}`)
+    if (existing) {
+      try { supabase.removeChannel(existing) } catch {}
+    }
     const channel = supabase.channel(CHAT_CHANNEL_NAME)
 
     channel

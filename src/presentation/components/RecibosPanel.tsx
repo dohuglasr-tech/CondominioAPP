@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useAuth } from '../../application/contexts/AuthContext'
 import { supabase } from '../../data/supabase'
 import { useNavigate } from 'react-router-dom'
@@ -107,7 +107,7 @@ export function RecibosPanel({ onClose }: Props) {
   const p = perfil as any
   const apartamentoId = perfil?.apartamento_id ?? ''
   const aptoNumero = p?.apartamento?.numero || p?.apartamentos?.numero || perfil?.apartamento_id || ''
-  const propietarioNombre = p?.nombre_completo || perfil?.nombre || 'Propietario Residente'
+  const propietarioNombre = perfil?.nombre_completo || p?.nombre || 'Propietario Residente'
 
   const [activeTab, setActiveTab] = useState<'recibos' | 'pagos'>('recibos')
   const [recibos, setRecibos] = useState<ReciboGenerado[]>([])
@@ -169,8 +169,9 @@ export function RecibosPanel({ onClose }: Props) {
     if (!apartamentoId) return
 
     // ── Suscripción Realtime dual (recibos_generados y pagos_reportados) ──
+    const channelId = `residente_recibos_${apartamentoId}_${Math.random().toString(36).slice(2, 7)}`
     const channel = supabase
-      .channel(`residente_recibos_channel_${apartamentoId}`)
+      .channel(channelId)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'recibos_generados', filter: `apartamento_id=eq.${apartamentoId}` },

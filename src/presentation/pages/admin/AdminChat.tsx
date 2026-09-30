@@ -65,6 +65,10 @@ export const AdminChat: React.FC = () => {
     cargarDatos()
 
     // 1. Canal Supabase Realtime para Broadcast directo entre pantallas
+    const existing = supabase.getChannels().find(c => c.topic === `realtime:${CHAT_CHANNEL_NAME}`)
+    if (existing) {
+      try { supabase.removeChannel(existing) } catch {}
+    }
     const channel = supabase.channel(CHAT_CHANNEL_NAME)
 
     channel

@@ -116,8 +116,9 @@ export const AdminRecibos: React.FC = () => {
     cargarPagos()
 
     // ── Suscripción en Tiempo Real para Pagos Reportados ──
+    const channelId = `admin_recibos_${Math.random().toString(36).slice(2, 7)}`
     const channel = supabase
-      .channel('admin_recibos_realtime')
+      .channel(channelId)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'pagos_reportados' },

@@ -4,7 +4,7 @@ import { useBcvRate } from '../../data/useBcvRate'
 import { ReportarPagoModal } from '../components/ReportarPagoModal'
 import { supabase } from '../../data/supabase'
 import { useNavigate } from 'react-router-dom'
-import { buscarMoraPorApto, obtenerDeudasMora, TASA_RIESGO_CONFIG, DeudaMoraItem } from '../../data/moraService'
+import { buscarMoraPorApto, obtenerDeudasMora, TASA_RIESGO_CONFIG, DeudaMoraItem, TasaRiesgoMora } from '../../data/moraService'
 
 interface PagoItem {
   id: string
@@ -19,7 +19,7 @@ interface PagoItem {
 }
 
 const getTasaConfig = (tasa?: string) => {
-  if (tasa && TASA_RIESGO_CONFIG[tasa as TasaRiesgoMora]) {
+  if (tasa && (tasa in TASA_RIESGO_CONFIG)) {
     return TASA_RIESGO_CONFIG[tasa as TasaRiesgoMora]
   }
   return TASA_RIESGO_CONFIG.azul
@@ -132,8 +132,9 @@ export function Dashboard() {
     if (!apartamentoId) return
 
     // Suscripción Realtime para actualizar pagos o recibos inmediatamente
+    const channelId = `dashboard_resident_${apartamentoId}_${Math.random().toString(36).slice(2, 7)}`
     const channel = supabase
-      .channel(`dashboard_resident_${apartamentoId}`)
+      .channel(channelId)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'pagos_reportados', filter: `apartamento_id=eq.${apartamentoId}` },
@@ -152,7 +153,15 @@ export function Dashboard() {
   }, [apartamentoId, cargarApartamentoInfo, cargarDatosResidente])
 
   const mesFacturadoTexto = reciboPendiente?.mes_facturado
-    ? new Date(reciboPendiente.mes_facturado).toLocaleDateString('es-VE', { month: 'long', year: 'numeric' })
+    ? (() => {
+        const parts = reciboPendiente.mes_facturado.substring(0, 7).split('-')
+        if (parts.length === 2) {
+          const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+          const m = parseInt(parts[1], 10) - 1
+          if (m >= 0 && m < 12) return `${MESES[m]} ${parts[0]}`
+        }
+        return reciboPendiente.mes_facturado
+      })()
     : 'Mes en curso'
 
   return (

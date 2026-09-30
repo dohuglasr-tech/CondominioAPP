@@ -291,7 +291,6 @@ export const AdminGastos: React.FC = () => {
             const isExp  = expandido === g.id
             const isEdit = editandoId === g.id
             const clics  = clicsEditar[g.id] || 0
-            const vecesEditado = (g.veces_editado || 0) + (isEdit ? clics : 0)
 
             return (
               <div key={g.id} style={{

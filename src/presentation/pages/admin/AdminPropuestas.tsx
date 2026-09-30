@@ -1,12 +1,19 @@
 import React, { useState } from 'react'
 
-const PROPUESTAS_MOCK: any[] = []
+interface Propuesta {
+  id: string
+  titulo: string
+  descripcion: string
+  fecha_cierre: string
+  estado: 'activa' | 'cerrada'
+  votos: number[]
+}
 
 const inputStyle: React.CSSProperties = { width: '100%', backgroundColor: '#0a0a0a', border: '1px solid #2a2a2a', color: '#fff', padding: '10px 12px', borderRadius: '8px', fontSize: '13px' }
 const labelStyle: React.CSSProperties = { display: 'block', color: '#888', fontSize: '12px', marginBottom: '6px' }
 
 export const AdminPropuestas: React.FC = () => {
-  const [propuestas, setPropuestas] = useState(PROPUESTAS_MOCK)
+  const [propuestas, setPropuestas] = useState<Propuesta[]>([])
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ titulo: '', descripcion: '', fecha_cierre: '', opciones: ['', ''] })
 
@@ -19,7 +26,7 @@ export const AdminPropuestas: React.FC = () => {
 
   const handleCrear = (e: React.FormEvent) => {
     e.preventDefault()
-    const nueva = { id: String(Date.now()), titulo: form.titulo, descripcion: form.descripcion, fecha_cierre: form.fecha_cierre, estado: 'activa', votos: form.opciones.map(() => 0) }
+    const nueva: Propuesta = { id: String(Date.now()), titulo: form.titulo, descripcion: form.descripcion, fecha_cierre: form.fecha_cierre, estado: 'activa', votos: form.opciones.map(() => 0) }
     setPropuestas(prev => [nueva, ...prev])
     setShowForm(false)
     setForm({ titulo: '', descripcion: '', fecha_cierre: '', opciones: ['', ''] })
@@ -75,7 +82,7 @@ export const AdminPropuestas: React.FC = () => {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
         {propuestas.map(p => {
-          const totalVotos = p.votos.reduce((a, b) => a + b, 0)
+          const totalVotos = p.votos.reduce((a: number, b: number) => a + b, 0)
           return (
             <div key={p.id} style={{ backgroundColor: '#141414', border: '1px solid #1e1e1e', borderRadius: '14px', padding: '20px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
@@ -93,7 +100,7 @@ export const AdminPropuestas: React.FC = () => {
                 </div>
               </div>
               {/* Resultados */}
-              {p.votos.map((v, i) => {
+              {p.votos.map((v: number, i: number) => {
                 const pct = totalVotos > 0 ? Math.round((v / totalVotos) * 100) : 0
                 const isWinner = v === Math.max(...p.votos) && totalVotos > 0
                 return (

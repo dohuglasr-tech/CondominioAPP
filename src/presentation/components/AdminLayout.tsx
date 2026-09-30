@@ -149,8 +149,9 @@ export const AdminLayout: React.FC = () => {
     cargarPendientes()
 
     // Suscripción Realtime para Pagos Pendientes
+    const channelId = `admin_layout_${Math.random().toString(36).slice(2, 7)}`
     const channel = supabase
-      .channel('admin_layout_realtime')
+      .channel(channelId)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'pagos_reportados' },

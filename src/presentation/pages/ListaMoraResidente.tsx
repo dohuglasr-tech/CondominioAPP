@@ -334,7 +334,7 @@ export const ListaMoraResidente: React.FC = () => {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {deudasFiltradas.map(d => {
             const cfg = TASA_RIESGO_CONFIG[d.tasa_riesgo] || TASA_RIESGO_CONFIG.azul
-            const accion = ACCION_LEGAL_CONFIG[d.accion_legal] || ACCION_LEGAL_CONFIG.ninguna
+            const accion = ACCION_LEGAL_CONFIG[d.accion_legal] || ACCION_LEGAL_CONFIG.notificacion_amistosa
             const esMiApto =
               miAptoNumero && d.apartamento_numero.trim().toUpperCase() === String(miAptoNumero).trim().toUpperCase()
 

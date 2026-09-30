@@ -246,8 +246,9 @@ export const AdminDashboard: React.FC = () => {
   useEffect(() => {
     cargarMetricas()
 
+    const channelId = `admin_dashboard_${Math.random().toString(36).slice(2, 7)}`
     const channel = supabase
-      .channel('admin_dashboard_realtime')
+      .channel(channelId)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'pagos_reportados' }, () => cargarMetricas())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'falencias' }, () => cargarMetricas())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'perfiles' }, () => cargarMetricas())

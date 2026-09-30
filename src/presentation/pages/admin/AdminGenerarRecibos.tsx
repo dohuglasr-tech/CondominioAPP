@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../../../data/supabase'
 import { notificarApartamento } from '../../../data/notificacionesService'
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
 import { getAlicuotaDecimal, formatAlicuotaPct, compararApartamentos } from '../../../utils/alicuota'
 import { generarPDFRecibo } from '../../../utils/reciboPdfGenerator'
 

@@ -71,8 +71,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           .from('perfiles')
           .update({ ultimo_acceso: new Date().toISOString() })
           .eq('id', userId)
-          .then(() => {})
-          .catch(() => {})
+          .then(() => {}, () => {})
       }
     } catch (e) {
       console.warn('[Auth] Excepción en cargarPerfil:', e)
@@ -170,7 +169,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           .eq('id', user.id)
           
         if (updateError) {
-          alert('Error actualizando perfil: ' + updateError.message)
+          console.error('[Auth] Error actualizando perfil:', updateError.message)
           return { error: updateError.message }
         }
 

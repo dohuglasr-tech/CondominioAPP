@@ -489,7 +489,7 @@ export function Login() {
                     type="button"
                     onClick={handleBiometricLogin}
                     disabled={bioLoading || loading}
-                    title="Ingresar con Huella dactilar o Face ID"
+                    title={bioEnrolledEmail ? `Ingresar con ${bioSupport.label} (${bioEnrolledEmail})` : `Ingresar con ${bioSupport.label}`}
                     style={{
                       width: '100%',
                       display: 'flex',

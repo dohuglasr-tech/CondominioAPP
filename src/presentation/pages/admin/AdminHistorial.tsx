@@ -23,8 +23,9 @@ export const AdminHistorial: React.FC = () => {
     cargarLogs()
 
     // Suscripción Realtime si la tabla existe en Supabase
+    const channelId = `auditoria_${Math.random().toString(36).slice(2, 7)}`
     const channel = supabase
-      .channel('auditoria_realtime')
+      .channel(channelId)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'historial_auditoria' },

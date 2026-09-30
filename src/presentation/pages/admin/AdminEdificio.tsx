@@ -512,7 +512,7 @@ export const AdminEdificio: React.FC = () => {
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {miembros.map((m, idx) => {
+              {miembros.map((m) => {
                 const cat = CATEGORIA_ORGANIGRAMA_CONFIG[m.categoria]
                 const waUrl = formatWhatsappUrl(m.telefono)
 
