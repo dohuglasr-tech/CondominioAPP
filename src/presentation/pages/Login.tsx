@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useAuth } from '../../application/contexts/AuthContext'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { supabase } from '../../data/supabase'
 import { AuthHeroPanel } from '../components/AuthHeroPanel'
 import {
   isBiometricsSupported,
@@ -46,6 +47,13 @@ export function Login() {
   const [registeredSuccess] = useState(!!state?.registered)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // ── Estados para Restablecimiento de Contraseña ──
+  const [showResetModal, setShowResetModal] = useState(false)
+  const [resetEmail, setResetEmail] = useState('')
+  const [resetLoading, setResetLoading] = useState(false)
+  const [resetError, setResetError] = useState<string | null>(null)
+  const [resetSuccess, setResetSuccess] = useState(false)
 
   // ── Estados para Autenticación Biométrica (Face ID / Huella) ──
   const [bioSupport, setBioSupport] = useState<BiometricSupport>({
@@ -137,6 +145,45 @@ export function Login() {
       setIsBioEnrolled(false)
       setBioEnrolledEmail(null)
       setPassword('')
+    }
+  }
+
+  // ── Abrir y procesar restablecimiento de contraseña ───────────────
+  const handleOpenResetModal = () => {
+    setResetEmail(email.trim())
+    setResetError(null)
+    setResetSuccess(false)
+    setShowResetModal(true)
+  }
+
+  const handleSendResetEmail = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const clean = resetEmail.trim().toLowerCase()
+    if (!clean || !clean.includes('@')) {
+      setResetError('Por favor ingresa un correo electrónico válido.')
+      return
+    }
+
+    setResetLoading(true)
+    setResetError(null)
+
+    try {
+      const redirectUrl = `${window.location.origin}/reset-password`
+      const { error: resetErr } = await supabase.auth.resetPasswordForEmail(clean, {
+        redirectTo: redirectUrl
+      })
+
+      if (resetErr) {
+        setResetError(resetErr.message || 'No se pudo enviar el correo de recuperación. Verifica el correo e intenta de nuevo.')
+        setResetLoading(false)
+        return
+      }
+
+      setResetSuccess(true)
+    } catch (err: any) {
+      setResetError(err?.message || 'Error inesperado al solicitar restablecimiento.')
+    } finally {
+      setResetLoading(false)
     }
   }
 
@@ -347,16 +394,17 @@ export function Login() {
                     Contraseña
                   </label>
                   <span
-                    onClick={() => alert('Por favor contacte a la administración del edificio para reestablecer su contraseña.')}
+                    onClick={handleOpenResetModal}
                     style={{
                       fontSize: '11.5px',
-                      color: '#94a3b8',
+                      color: '#f97316',
+                      fontWeight: 600,
                       cursor: 'pointer',
                       textDecoration: 'none',
                       transition: 'color 0.2s'
                     }}
-                    onMouseOver={(e) => (e.target as HTMLElement).style.color = '#f97316'}
-                    onMouseOut={(e) => (e.target as HTMLElement).style.color = '#94a3b8'}
+                    onMouseOver={(e) => (e.target as HTMLElement).style.color = '#ea580c'}
+                    onMouseOut={(e) => (e.target as HTMLElement).style.color = '#f97316'}
                   >
                     ¿Olvidó su contraseña?
                   </span>
@@ -665,6 +713,218 @@ export function Login() {
 
         </div>
       </div>
+
+      {/* ── MODAL DE RECUPERACIÓN DE CONTRASEÑA ── */}
+      {showResetModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.75)',
+          backdropFilter: 'blur(8px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '20px',
+          zIndex: 9999,
+          boxSizing: 'border-box'
+        }}>
+          <div style={{
+            backgroundColor: '#111622',
+            border: '1px solid #1e2638',
+            borderRadius: '20px',
+            padding: '32px 28px',
+            width: '100%',
+            maxWidth: '440px',
+            boxShadow: '0 20px 50px rgba(0,0,0,0.7)',
+            position: 'relative',
+            boxSizing: 'border-box'
+          }}>
+            {/* Botón cerrar X */}
+            <button
+              onClick={() => setShowResetModal(false)}
+              style={{
+                position: 'absolute',
+                top: '18px',
+                right: '18px',
+                background: 'none',
+                border: 'none',
+                color: '#64748b',
+                fontSize: '20px',
+                cursor: 'pointer',
+                padding: '4px',
+                lineHeight: 1
+              }}
+              title="Cerrar"
+            >
+              ✕
+            </button>
+
+            <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+              <div style={{
+                width: '54px',
+                height: '54px',
+                borderRadius: '16px',
+                backgroundColor: 'rgba(249, 115, 22, 0.12)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '26px',
+                marginBottom: '12px'
+              }}>
+                🔑
+              </div>
+              <h2 style={{ fontSize: '20px', fontWeight: 800, color: '#fff', margin: '0 0 6px' }}>
+                Restablecer contraseña
+              </h2>
+              <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0, lineHeight: 1.5 }}>
+                Ingresa el correo electrónico asociado a tu cuenta para recibir un enlace seguro de recuperación.
+              </p>
+            </div>
+
+            {resetSuccess ? (
+              <div>
+                <div style={{
+                  backgroundColor: 'rgba(16, 185, 129, 0.12)',
+                  border: '1px solid rgba(16, 185, 129, 0.3)',
+                  borderRadius: '12px',
+                  padding: '16px',
+                  color: '#34d399',
+                  fontSize: '13px',
+                  lineHeight: 1.5,
+                  textAlign: 'center',
+                  marginBottom: '20px'
+                }}>
+                  <div style={{ fontSize: '24px', marginBottom: '8px' }}>✉️</div>
+                  <strong style={{ display: 'block', fontSize: '14px', marginBottom: '4px' }}>
+                    ¡Enlace enviado!
+                  </strong>
+                  Hemos enviado un correo a <span style={{ color: '#fff', fontWeight: 600 }}>{resetEmail}</span> con el enlace para restablecer tu contraseña.
+                  <div style={{ marginTop: '8px', color: '#94a3b8', fontSize: '12px' }}>
+                    Por favor revisa tu bandeja de entrada y la carpeta de spam o correo no deseado.
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowResetModal(false)}
+                  style={{
+                    width: '100%',
+                    backgroundColor: '#f97316',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '10px',
+                    padding: '12px',
+                    fontSize: '14px',
+                    fontWeight: 700,
+                    cursor: 'pointer'
+                  }}
+                >
+                  Entendido, volver al login
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleSendResetEmail}>
+                {resetError && (
+                  <div style={{
+                    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+                    border: '1px solid rgba(239, 68, 68, 0.35)',
+                    color: '#fca5a5',
+                    padding: '10px 14px',
+                    borderRadius: '10px',
+                    fontSize: '12.5px',
+                    marginBottom: '16px',
+                    textAlign: 'center',
+                    lineHeight: 1.4
+                  }}>
+                    {resetError}
+                  </div>
+                )}
+
+                <div style={{ marginBottom: '18px' }}>
+                  <label style={{
+                    display: 'block',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    color: '#cbd5e1',
+                    marginBottom: '6px',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.4px'
+                  }}>
+                    Correo Electrónico
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    placeholder="correo@ejemplo.com"
+                    value={resetEmail}
+                    onChange={(e) => setResetEmail(e.target.value)}
+                    disabled={resetLoading}
+                    style={{
+                      width: '100%',
+                      backgroundColor: '#0a0d14',
+                      border: '1px solid #232d42',
+                      borderRadius: '10px',
+                      padding: '13px 14px',
+                      color: '#ffffff',
+                      fontSize: '14px',
+                      outline: 'none',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <button
+                    type="submit"
+                    disabled={resetLoading || !resetEmail}
+                    style={{
+                      width: '100%',
+                      backgroundColor: '#f97316',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: '10px',
+                      padding: '13px',
+                      fontSize: '14px',
+                      fontWeight: 800,
+                      cursor: resetLoading || !resetEmail ? 'not-allowed' : 'pointer',
+                      opacity: resetLoading || !resetEmail ? 0.7 : 1,
+                      boxShadow: '0 4px 18px rgba(249, 115, 22, 0.35)',
+                      transition: 'all 0.2s ease',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px'
+                    }}
+                  >
+                    {resetLoading ? 'Enviando enlace...' : 'Enviar enlace de recuperación 🚀'}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowResetModal(false)}
+                    style={{
+                      width: '100%',
+                      backgroundColor: 'transparent',
+                      color: '#94a3b8',
+                      border: '1px solid #232d42',
+                      borderRadius: '10px',
+                      padding: '11px',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
 
     </div>
   )

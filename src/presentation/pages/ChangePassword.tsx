@@ -3,10 +3,10 @@ import { useAuth } from '../../application/contexts/AuthContext'
 import { useNavigate } from 'react-router-dom'
 
 export function ChangePassword() {
-  const { needsPasswordChange, signOut, updatePassword } = useAuth()
+  const { user, needsPasswordChange, signOut, updatePassword } = useAuth()
   const navigate = useNavigate()
 
-  const [email, setEmail] = useState('')
+  const [email, setEmail] = useState(user?.email || '')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -14,10 +14,10 @@ export function ChangePassword() {
   const [success, setSuccess] = useState(false)
 
   useEffect(() => {
-    if (!needsPasswordChange) {
-      navigate('/', { replace: true })
+    if (user?.email && !email) {
+      setEmail(user.email)
     }
-  }, [needsPasswordChange, navigate])
+  }, [user, email])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

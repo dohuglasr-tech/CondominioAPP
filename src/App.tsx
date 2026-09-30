@@ -5,6 +5,7 @@ import { Loader } from './presentation/components/Loader'
 import { SplashScreen } from './presentation/components/SplashScreen'
 import { Login } from './presentation/pages/Login'
 import { ChangePassword } from './presentation/pages/ChangePassword'
+import { ResetPassword } from './presentation/pages/ResetPassword'
 import { ProfileSetup } from './presentation/pages/ProfileSetup'
 import { Dashboard } from './presentation/pages/Dashboard'
 import { Layout } from './presentation/components/Layout'
@@ -191,11 +192,10 @@ const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
 
 // ── Ruta exclusiva cambio de contraseña ───────────────────────────
 const ChangePasswordRoute = ({ children }: { children: React.ReactNode }) => {
-  const { session, loading, needsPasswordChange } = useAuth()
+  const { session, loading } = useAuth()
 
   if (loading) return <Loader />
   if (!session) return <Navigate to="/login" replace />
-  if (!needsPasswordChange) return <Navigate to="/" replace />
 
   return <>{children}</>
 }
@@ -244,6 +244,7 @@ function AppShell() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
 
         <Route
           path="/cambiar-password"

@@ -1,10 +1,20 @@
-import React, { useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useAuth } from '../../application/contexts/AuthContext'
 
 export const PerfilResidente: React.FC = () => {
-  const { user, perfil, config, refreshPerfil, refreshConfig } = useAuth()
+  const { user, perfil, config, refreshPerfil, refreshConfig, updatePassword } = useAuth()
   const p = perfil as any
   const c = config as any
+
+  // ── Estados para cambio de contraseña ──
+  const [showPassModal, setShowPassModal] = useState(false)
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmNewPassword, setConfirmNewPassword] = useState('')
+  const [showPass, setShowPass] = useState(false)
+  const [showConfirmPass, setShowConfirmPass] = useState(false)
+  const [passLoading, setPassLoading] = useState(false)
+  const [passError, setPassError] = useState<string | null>(null)
+  const [passSuccess, setPassSuccess] = useState(false)
 
   // Sincronizar datos frescos al montar la pantalla
   useEffect(() => {
@@ -44,6 +54,50 @@ export const PerfilResidente: React.FC = () => {
       <span style={s.fvalue}>{value}</span>
     </div>
   )
+
+  // ── Manejar actualización de contraseña ──
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setPassError(null)
+
+    if (!newPassword || !confirmNewPassword) {
+      setPassError('Por favor completa ambos campos.')
+      return
+    }
+
+    if (newPassword.length < 6) {
+      setPassError('La contraseña debe tener al menos 6 caracteres.')
+      return
+    }
+
+    if (newPassword !== confirmNewPassword) {
+      setPassError('Las contraseñas no coinciden. Por favor verifícalas.')
+      return
+    }
+
+    setPassLoading(true)
+
+    try {
+      const { error: err } = await updatePassword(newPassword)
+      if (err) {
+        setPassError(err)
+        setPassLoading(false)
+        return
+      }
+
+      setPassSuccess(true)
+      setNewPassword('')
+      setConfirmNewPassword('')
+      setTimeout(() => {
+        setShowPassModal(false)
+        setPassSuccess(false)
+      }, 2000)
+    } catch (ex: any) {
+      setPassError(ex?.message || 'Error inesperado al actualizar la contraseña.')
+    } finally {
+      setPassLoading(false)
+    }
+  }
 
   return (
     <div style={s.page}>
@@ -126,6 +180,309 @@ export const PerfilResidente: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* 5. Seguridad y Contraseña */}
+      <div style={s.card}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+          <p style={{ ...s.cardTitle, margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span>🔐</span> Seguridad de la Cuenta
+          </p>
+          <span style={{ fontSize: '11px', color: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.12)', padding: '3px 8px', borderRadius: '6px', fontWeight: 600 }}>
+            Activa
+          </span>
+        </div>
+        <p style={{ color: '#888', fontSize: '13px', margin: '0 0 16px 0', lineHeight: 1.4 }}>
+          Puedes actualizar la contraseña de tu cuenta en cualquier momento para mantener tu acceso protegido.
+        </p>
+
+        <button
+          type="button"
+          onClick={() => {
+            setPassError(null)
+            setPassSuccess(false)
+            setNewPassword('')
+            setConfirmNewPassword('')
+            setShowPassModal(true)
+          }}
+          style={{
+            backgroundColor: 'rgba(249, 115, 22, 0.12)',
+            color: '#f97316',
+            border: '1px solid rgba(249, 115, 22, 0.35)',
+            borderRadius: '10px',
+            padding: '11px 16px',
+            fontSize: '13px',
+            fontWeight: 700,
+            cursor: 'pointer',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '8px',
+            transition: 'all 0.2s ease'
+          }}
+          onMouseOver={(e) => {
+            e.currentTarget.style.backgroundColor = 'rgba(249, 115, 22, 0.2)'
+            e.currentTarget.style.borderColor = '#f97316'
+          }}
+          onMouseOut={(e) => {
+            e.currentTarget.style.backgroundColor = 'rgba(249, 115, 22, 0.12)'
+            e.currentTarget.style.borderColor = 'rgba(249, 115, 22, 0.35)'
+          }}
+        >
+          <span>🔑</span> Cambiar mi contraseña
+        </button>
+      </div>
+
+      {/* ── MODAL CAMBIAR CONTRASEÑA ── */}
+      {showPassModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.75)',
+          backdropFilter: 'blur(8px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '20px',
+          zIndex: 9999,
+          boxSizing: 'border-box'
+        }}>
+          <div style={{
+            backgroundColor: '#141414',
+            border: '1px solid #262626',
+            borderRadius: '20px',
+            padding: '28px 24px',
+            width: '100%',
+            maxWidth: '420px',
+            boxShadow: '0 20px 50px rgba(0,0,0,0.7)',
+            position: 'relative',
+            boxSizing: 'border-box'
+          }}>
+            {/* Botón cerrar */}
+            <button
+              onClick={() => setShowPassModal(false)}
+              style={{
+                position: 'absolute',
+                top: '16px',
+                right: '16px',
+                background: 'none',
+                border: 'none',
+                color: '#666',
+                fontSize: '20px',
+                cursor: 'pointer',
+                lineHeight: 1
+              }}
+            >
+              ✕
+            </button>
+
+            <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+              <div style={{
+                width: '50px',
+                height: '50px',
+                borderRadius: '16px',
+                backgroundColor: 'rgba(249, 115, 22, 0.12)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '24px',
+                marginBottom: '10px'
+              }}>
+                🔑
+              </div>
+              <h2 style={{ fontSize: '19px', fontWeight: 800, color: '#fff', margin: '0 0 6px' }}>
+                Cambiar Contraseña
+              </h2>
+              <p style={{ fontSize: '13px', color: '#888', margin: 0 }}>
+                Ingresa tu nueva clave de acceso (mínimo 6 caracteres).
+              </p>
+            </div>
+
+            {passSuccess ? (
+              <div style={{
+                backgroundColor: 'rgba(16, 185, 129, 0.12)',
+                border: '1px solid rgba(16, 185, 129, 0.3)',
+                borderRadius: '12px',
+                padding: '20px',
+                textAlign: 'center',
+                color: '#34d399'
+              }}>
+                <div style={{ fontSize: '28px', marginBottom: '8px' }}>✅</div>
+                <strong style={{ display: 'block', fontSize: '15px', marginBottom: '4px' }}>
+                  ¡Contraseña actualizada!
+                </strong>
+                <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>
+                  Tu nueva contraseña ha sido guardada correctamente.
+                </p>
+              </div>
+            ) : (
+              <form onSubmit={handleChangePassword}>
+                {passError && (
+                  <div style={{
+                    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+                    border: '1px solid rgba(239, 68, 68, 0.35)',
+                    color: '#fca5a5',
+                    padding: '10px 14px',
+                    borderRadius: '10px',
+                    fontSize: '12.5px',
+                    marginBottom: '16px',
+                    textAlign: 'center',
+                    lineHeight: 1.4
+                  }}>
+                    {passError}
+                  </div>
+                )}
+
+                {/* Campo Nueva Contraseña */}
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{ display: 'block', color: '#aaa', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>
+                    Nueva Contraseña
+                  </label>
+                  <div style={{ position: 'relative' }}>
+                    <input
+                      type={showPass ? 'text' : 'password'}
+                      required
+                      placeholder="Mínimo 6 caracteres"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      disabled={passLoading}
+                      style={{
+                        width: '100%',
+                        backgroundColor: '#0a0a0a',
+                        border: '1px solid #262626',
+                        borderRadius: '10px',
+                        padding: '12px 40px 12px 14px',
+                        color: '#fff',
+                        fontSize: '14px',
+                        outline: 'none',
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPass(!showPass)}
+                      style={{
+                        position: 'absolute',
+                        right: '10px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        background: 'none',
+                        border: 'none',
+                        color: '#666',
+                        cursor: 'pointer',
+                        fontSize: '16px',
+                        padding: '4px'
+                      }}
+                    >
+                      {showPass ? '🙈' : '👁️'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Campo Confirmar Contraseña */}
+                <div style={{ marginBottom: '22px' }}>
+                  <label style={{ display: 'block', color: '#aaa', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>
+                    Confirmar Contraseña
+                  </label>
+                  <div style={{ position: 'relative' }}>
+                    <input
+                      type={showConfirmPass ? 'text' : 'password'}
+                      required
+                      placeholder="Repite la contraseña"
+                      value={confirmNewPassword}
+                      onChange={(e) => setConfirmNewPassword(e.target.value)}
+                      disabled={passLoading}
+                      style={{
+                        width: '100%',
+                        backgroundColor: '#0a0a0a',
+                        border: '1px solid #262626',
+                        borderRadius: '10px',
+                        padding: '12px 40px 12px 14px',
+                        color: '#fff',
+                        fontSize: '14px',
+                        outline: 'none',
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPass(!showConfirmPass)}
+                      style={{
+                        position: 'absolute',
+                        right: '10px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        background: 'none',
+                        border: 'none',
+                        color: '#666',
+                        cursor: 'pointer',
+                        fontSize: '16px',
+                        padding: '4px'
+                      }}
+                    >
+                      {showConfirmPass ? '🙈' : '👁️'}
+                    </button>
+                  </div>
+                  {newPassword && confirmNewPassword && (
+                    <div style={{
+                      marginTop: '6px',
+                      fontSize: '11.5px',
+                      color: newPassword === confirmNewPassword ? '#10b981' : '#f87171'
+                    }}>
+                      {newPassword === confirmNewPassword ? '✓ Las contraseñas coinciden' : '✗ Las contraseñas no coinciden'}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <button
+                    type="submit"
+                    disabled={passLoading || !newPassword || !confirmNewPassword}
+                    style={{
+                      width: '100%',
+                      backgroundColor: '#f97316',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: '10px',
+                      padding: '13px',
+                      fontSize: '14px',
+                      fontWeight: 700,
+                      cursor: passLoading || !newPassword || !confirmNewPassword ? 'not-allowed' : 'pointer',
+                      opacity: passLoading || !newPassword || !confirmNewPassword ? 0.7 : 1,
+                      boxShadow: '0 4px 18px rgba(249, 115, 22, 0.4)',
+                      transition: 'all 0.2s ease',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}
+                  >
+                    {passLoading ? 'Guardando...' : 'Guardar nueva contraseña'}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowPassModal(false)}
+                    style={{
+                      width: '100%',
+                      backgroundColor: 'transparent',
+                      color: '#888',
+                      border: '1px solid #262626',
+                      borderRadius: '10px',
+                      padding: '11px',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
 
     </div>
   )
