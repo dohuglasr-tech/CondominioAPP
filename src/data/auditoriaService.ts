@@ -11,6 +11,7 @@ export type TipoAccionAuditoria =
   | 'ACTUALIZACION_TASA_BCV'
   | 'HISTORICO_CAMBIO_ESTADO'
   | 'HISTORICO_BULK_ESTADO'
+  | 'RETIRO_SALDO_A_FAVOR'
 
 export interface LogAuditoria {
   id: string

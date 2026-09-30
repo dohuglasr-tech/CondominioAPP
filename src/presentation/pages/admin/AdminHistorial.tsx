@@ -113,6 +113,14 @@ export const AdminHistorial: React.FC = () => {
           border: 'rgba(59, 130, 246, 0.35)',
           icon: '⚙️'
         }
+      case 'RETIRO_SALDO_A_FAVOR':
+        return {
+          label: 'RETIRO SALDO A FAVOR',
+          color: '#10b981',
+          bg: 'rgba(16, 185, 129, 0.15)',
+          border: 'rgba(16, 185, 129, 0.35)',
+          icon: '💚'
+        }
       default:
         return {
           label: 'ACCIÓN REGISTRADA',

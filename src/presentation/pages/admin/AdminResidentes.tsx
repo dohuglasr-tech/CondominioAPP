@@ -2,6 +2,10 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../../data/supabase'
 import { formatAlicuotaPct, parseAlicuotaInput, getAlicuotaDecimal, getAlicuotaPctNumber } from '../../../utils/alicuota'
+import { useAuth } from '../../../application/contexts/AuthContext'
+import { useBcvRate } from '../../../data/useBcvRate'
+import { obtenerTodosLosSaldosAFavor, SaldoApartamento } from '../../../data/saldoFavorService'
+import { RetirarSaldoModal } from '../../components/RetirarSaldoModal'
 
 interface PersonaContacto {
   nombre: string
@@ -58,7 +62,13 @@ const labelStyle: React.CSSProperties = {
 
 export const AdminResidentes: React.FC = () => {
   const navigate = useNavigate()
+  const { perfil, user } = useAuth()
+  const { rate } = useBcvRate()
+  const tasaBcvValida = rate && rate > 1 ? rate : 859.06
+
   const [residentes, setResidentes] = useState<Residente[]>([])
+  const [saldosPorApto, setSaldosPorApto] = useState<Map<string, SaldoApartamento>>(new Map())
+  const [saldoModalOpen, setSaldoModalOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [busqueda, setBusqueda] = useState('')
   const [filtroTipo, setFiltroTipo] = useState<'todos' | 'con_usuario' | 'ph'>('todos')
@@ -83,15 +93,17 @@ export const AdminResidentes: React.FC = () => {
   const [deleting, setDeleting] = useState(false)
   const [deleteMessage, setDeleteMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
-  // ── Cargar apartamentos y perfiles reales desde Supabase ───────────────────
   const cargarResidentes = useCallback(async () => {
     setLoading(true)
     try {
-      const [aptosRes, perfilesRes, pagosRes] = await Promise.all([
+      const [aptosRes, perfilesRes, pagosRes, saldosMap] = await Promise.all([
         supabase.from('apartamentos').select('*'),
         supabase.from('perfiles').select('*'),
-        supabase.from('pagos_reportados').select('id, monto_bs, referencia, estado, fecha_pago, reportado_por, apartamento_id, created_at').order('created_at', { ascending: false })
+        supabase.from('pagos_reportados').select('id, monto_bs, referencia, estado, fecha_pago, reportado_por, apartamento_id, created_at').order('created_at', { ascending: false }),
+        obtenerTodosLosSaldosAFavor(tasaBcvValida),
       ])
+
+      setSaldosPorApto(saldosMap)
 
       if (aptosRes.error) {
         console.warn('[AdminResidentes] Error cargando apartamentos:', aptosRes.error.message)
@@ -462,6 +474,23 @@ export const AdminResidentes: React.FC = () => {
                     <span style={{ fontSize: '11px', color: '#f97316', fontWeight: 700, backgroundColor: '#f9731615', padding: '1px 6px', borderRadius: '4px' }}>
                       {formatAlicuotaPct(r.alicuota)}
                     </span>
+                    {(() => {
+                      const s = saldosPorApto.get(r.id)?.saldo_a_favor_usd || 0
+                      if (s <= 0) return null
+                      return (
+                        <span style={{
+                          fontSize: '11px',
+                          color: '#34d399',
+                          fontWeight: 800,
+                          backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                          border: '1px solid rgba(16, 185, 129, 0.3)',
+                          padding: '1px 6px',
+                          borderRadius: '4px'
+                        }}>
+                          💚 +${s.toFixed(2)}
+                        </span>
+                      )
+                    })()}
                   </div>
                   
                   <p style={{ color: r.tiene_usuario ? '#ccc' : '#666', fontSize: '12px', marginTop: '4px', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -744,6 +773,74 @@ export const AdminResidentes: React.FC = () => {
             </div>
           )}
         </div>
+
+        {/* CARD DESTACADO: SALDO A FAVOR / BILLETERA COMUNITARIA */}
+        {(() => {
+          const saldoInfo = saldosPorApto.get(selected.id)
+          const saldoUsd = saldoInfo?.saldo_a_favor_usd || 0
+          const saldoBs = saldoInfo?.saldo_a_favor_bs || (saldoUsd * tasaBcvValida)
+
+          return (
+            <div style={{
+              backgroundColor: saldoUsd > 0 ? 'rgba(16, 185, 129, 0.08)' : '#0a0a0a',
+              border: saldoUsd > 0 ? '1px solid rgba(16, 185, 129, 0.35)' : '1px solid #2a2a2a',
+              borderRadius: '12px',
+              padding: '18px 20px',
+              marginBottom: '16px',
+              display: 'flex',
+              flexDirection: isMobile ? 'column' : 'row',
+              justifyContent: 'space-between',
+              alignItems: isMobile ? 'flex-start' : 'center',
+              gap: '12px',
+              boxShadow: saldoUsd > 0 ? '0 4px 18px rgba(16, 185, 129, 0.12)' : 'none',
+            }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '18px' }}>💚</span>
+                  <span style={{ color: saldoUsd > 0 ? '#4ade80' : '#888', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 800 }}>
+                    Saldo a Favor / Cuenta Corriente
+                  </span>
+                </div>
+
+                <div style={{ color: saldoUsd > 0 ? '#4ade80' : '#fff', fontSize: isMobile ? '24px' : '26px', fontWeight: 900, marginTop: '4px' }}>
+                  {saldoUsd > 0 ? `+$${saldoUsd.toFixed(2)} USD` : '$0.00 USD'}
+                </div>
+
+                <p style={{ color: '#888', fontSize: '12px', margin: '4px 0 0' }}>
+                  {saldoUsd > 0
+                    ? `≈ Bs. ${saldoBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · Crédito disponible para próximos recibos`
+                    : 'El apartamento no tiene saldo a favor acumulado actualmente.'}
+                </p>
+              </div>
+
+              {saldoUsd > 0 && (
+                <button
+                  onClick={() => setSaldoModalOpen(true)}
+                  style={{
+                    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                    color: '#f87171',
+                    border: '1px solid rgba(239, 68, 68, 0.35)',
+                    padding: '9px 16px',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    fontSize: '12.5px',
+                    fontWeight: 800,
+                    width: isMobile ? '100%' : 'auto',
+                    textAlign: 'center',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    transition: 'all 0.2s',
+                  }}
+                  title="Retirar o anular este saldo a favor con justificación inmutable en Auditoría"
+                >
+                  <span>🗑️</span> Quitar Saldo a Favor
+                </button>
+              )}
+            </div>
+          )
+        })()}
 
         {/* CARD DESTACADO: ALÍCUOTA DEL INMUEBLE */}
         <div style={{
@@ -1241,6 +1338,29 @@ export const AdminResidentes: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal de Retiro de Saldo a Favor con Auditoría */}
+      {selected && (
+        <RetirarSaldoModal
+          isOpen={saldoModalOpen}
+          onClose={() => setSaldoModalOpen(false)}
+          onSuccess={() => {
+            setDeleteMessage({
+              type: 'success',
+              text: `Saldo a favor del Apto ${selected.apartamento} retirado exitosamente. Se registró en el Historial de Auditoría.`
+            })
+            cargarResidentes()
+          }}
+          apartamentoId={selected.id}
+          apartamentoNumero={selected.apartamento}
+          propietarioNombre={selected.propietario.nombre}
+          saldoAFavorUsd={saldosPorApto.get(selected.id)?.saldo_a_favor_usd || 0}
+          saldoAFavorBs={saldosPorApto.get(selected.id)?.saldo_a_favor_bs || 0}
+          tasaBcv={tasaBcvValida}
+          autorNombre={perfil?.nombre_completo || 'Administrador'}
+          autorEmail={user?.email || null}
+        />
       )}
     </div>
   )
