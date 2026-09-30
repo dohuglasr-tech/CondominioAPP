@@ -123,14 +123,23 @@ export function generarPDFRecibo(
   doc.setTextColor(255, 255, 255)
   doc.text('RECIBO DE CONDOMINIO', 18, 21)
 
-  // Sello opcional si está pagado y solvente
+  // Sello opcional si está pagado y solvente (centrado a x=105, y=11, sin tocar títulos ni correo)
   if (pagoInfo?.estado === 'pagado') {
-    doc.setFillColor(34, 197, 94)
-    doc.roundedRect(95, 12, 44, 7, 2, 2, 'F')
+    const badgeW = 34
+    const badgeH = 5.6
+    const badgeX = 105 - (badgeW / 2)
+    const badgeY = 11
+
+    doc.setFillColor(22, 163, 74)
+    doc.roundedRect(badgeX, badgeY, badgeW, badgeH, 1.8, 1.8, 'F')
+    doc.setDrawColor(74, 222, 128)
+    doc.setLineWidth(0.3)
+    doc.roundedRect(badgeX, badgeY, badgeW, badgeH, 1.8, 1.8, 'S')
+
     doc.setFont('helvetica', 'bold')
-    doc.setFontSize(7.5)
+    doc.setFontSize(6.8)
     doc.setTextColor(255, 255, 255)
-    doc.text('✓ PAGADO Y SOLVENTE', 117, 16.8, { align: 'center' })
+    doc.text('PAGADO Y SOLVENTE', 105, badgeY + 3.9, { align: 'center' })
   }
 
   doc.setFont('helvetica', 'normal')
@@ -272,9 +281,9 @@ export function generarPDFRecibo(
     doc.rect(12, currentY, 186, 7, 'FD')
     doc.setTextColor(22, 101, 52)
     doc.setFont('helvetica', 'bold')
-    doc.setFontSize(7.5)
+    doc.setFontSize(7.2)
     doc.text(
-      `✓ RECIBO PAGADO Y VALIDADO POR LA ADMINISTRACIÓN — CONSTANCIA DE SOLVENCIA`,
+      'RECIBO PAGADO Y VALIDADO POR LA ADMINISTRACION - CONSTANCIA DE SOLVENCIA',
       105, currentY + 4.7, { align: 'center' }
     )
   } else {
@@ -286,7 +295,7 @@ export function generarPDFRecibo(
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(7.5)
     doc.text(
-      `***** ATENCIÓN: PAGAR  ${fmtUsd(totalUsd)}  $  ANCLADO AL $ BCV DEL DÍA DE SU PAGO *****`,
+      `***** ATENCION: PAGAR  ${fmtUsd(totalUsd)}  $  ANCLADO AL $ BCV DEL DIA DE SU PAGO *****`,
       105, currentY + 4.7, { align: 'center' }
     )
   }
@@ -332,7 +341,7 @@ export function generarPDFRecibo(
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(6.5)
     doc.setTextColor(22, 101, 52)
-    doc.text('PAGADO: SÍ (VALIDADO EN SISTEMA)', 16, sy)
+    doc.text('PAGADO: SI (VALIDADO EN SISTEMA)', 16, sy)
     doc.setTextColor(71, 85, 105)
     doc.setFont('helvetica', 'normal')
     const fStr = pagoInfo.fecha_pago ? new Date(pagoInfo.fecha_pago).toLocaleDateString('es-VE') : 'Validado'
@@ -343,7 +352,7 @@ export function generarPDFRecibo(
 
     sy += 4.2
     doc.text(`MONTO: ${fmtBs(pagoInfo.monto_bs || totalBs)} Bs  ($ ${fmtUsd(pagoInfo.monto_usd || totalUsd)})`, 16, sy)
-    doc.text(`DÓLAR DEL DÍA: ${config.tasa_bcv_actual ? `${config.tasa_bcv_actual.toFixed(2)} Bs/$` : 'Tasa BCV'}`, 110, sy)
+    doc.text(`DOLAR DEL DIA: ${config.tasa_bcv_actual ? `${config.tasa_bcv_actual.toFixed(2)} Bs/$` : 'Tasa BCV'}`, 110, sy)
 
     sy += 4.2
     doc.text(`REFERENCIA: ${pagoInfo.referencia || 'VALIDADO'}`, 16, sy)
