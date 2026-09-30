@@ -22,7 +22,16 @@
 //   EMAIL_FROM                → ej: "Torre 5 <no-reply@torre5.com>"
 // ============================================================
 
+// @ts-ignore: Deno URL import
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+// Declaración de tipos para Deno runtime en Supabase Edge Functions
+declare const Deno: {
+  env: {
+    get(key: string): string | undefined;
+  };
+  serve(handler: (req: Request) => Promise<Response> | Response): void;
+};
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -330,7 +339,7 @@ async function crearNotificacionInApp(
 }
 
 // ── Handler principal ─────────────────────────────────────────────
-Deno.serve(async (req) => {
+Deno.serve(async (req: Request) => {
   try {
     const payload: WebhookPayload = await req.json();
 

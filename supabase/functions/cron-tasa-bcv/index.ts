@@ -15,7 +15,16 @@
 //   SUPABASE_SERVICE_ROLE_KEY → Service Role Key (para bypasear RLS)
 // ============================================================
 
+// @ts-ignore: Deno URL import
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+// Declaración de tipos para Deno runtime en Supabase Edge Functions
+declare const Deno: {
+  env: {
+    get(key: string): string | undefined;
+  };
+  serve(handler: (req: Request) => Promise<Response> | Response): void;
+};
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -87,7 +96,7 @@ async function recalcularCuotasEnBs(nuevaTasa: number): Promise<void> {
   if (error || !cuotas?.length) return;
 
   // Actualizar lote a lote (máx 500 por llamada)
-  const updates = cuotas.map((c) => ({
+  const updates = cuotas.map((c: any) => ({
     id: c.id,
     saldo_bs: parseFloat((c.saldo_usd * nuevaTasa).toFixed(2)),
     monto_bs: parseFloat((c.saldo_usd * nuevaTasa).toFixed(2)),
@@ -104,7 +113,7 @@ async function recalcularCuotasEnBs(nuevaTasa: number): Promise<void> {
 }
 
 // ── Handler principal ─────────────────────────────────────────────
-Deno.serve(async (_req) => {
+Deno.serve(async (_req: Request) => {
   const log: string[] = [];
   const hoy = new Date().toISOString().split("T")[0];
 
