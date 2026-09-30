@@ -218,7 +218,9 @@ export const AdminGenerarRecibos: React.FC = () => {
       return {
         apartamento_id:    apto.id,
         mes_facturado:     mesStr,
-        tasa_bcv:          (config.tasa_bcv_actual && config.tasa_bcv_actual > 1 ? config.tasa_bcv_actual : (totalGastosUsd > 0 ? parseFloat((totalGastosBs / totalGastosUsd).toFixed(4)) : 859.06)),
+        tasa_bcv:          esHistorico
+          ? (totalGastosUsd > 0 && totalGastosBs > 0 ? parseFloat((totalGastosBs / totalGastosUsd).toFixed(4)) : 0)
+          : (config.tasa_bcv_actual && config.tasa_bcv_actual > 1 ? config.tasa_bcv_actual : (totalGastosUsd > 0 ? parseFloat((totalGastosBs / totalGastosUsd).toFixed(4)) : 859.06)),
         total_gastos_usd:  totalGastosUsd,
         alicuota:          getAlicuotaDecimal(apto.alicuota),
         subtotal_usd:      calc.subtotalUsd,
@@ -385,8 +387,8 @@ export const AdminGenerarRecibos: React.FC = () => {
               <div style={{ fontSize: '13px', color: '#c7d2fe', lineHeight: '1.5' }}>
                 <strong style={{ color: '#fff', fontSize: '14px' }}>Modo Carga Histórica (Administración Anterior — {mesLabel} {anio}):</strong>
                 <br />
-                Este mes es anterior a Septiembre 2026. Al emitir estos recibos <strong>no se enviarán correos masivos</strong> a los copropietarios.
-                Una vez emitidos, podrás ir de inmediato a <strong>Recibos Emitidos</strong> para marcar apartamento por apartamento si pagó o se mantiene en mora.
+                Este mes es anterior a Septiembre 2026. <strong>Esta deuda no está anclada a la tasa BCV</strong>; los cálculos en Bolívares y Dólares se calculan directamente en base a los montos cargados manualmente en los gastos. Al emitir estos recibos <strong>no se enviarán correos masivos</strong> a los copropietarios.
+                Una vez emitidos, podrás gestionarlos en <strong>Recibos Emitidos</strong> o en <strong>Mora y Deudores</strong> para marcar pagos y liquidar deudas atrasadas.
               </div>
             </div>
           )}

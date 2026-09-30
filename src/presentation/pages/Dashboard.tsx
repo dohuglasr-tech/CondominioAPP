@@ -51,8 +51,21 @@ export function Dashboard() {
 
   const { rate, loading: loadingRate } = useBcvRate()
   const tasaValida = rate && rate > 1 ? rate : (config?.tasa_bcv_actual && config.tasa_bcv_actual > 1 ? config.tasa_bcv_actual : 859.06)
-  const deudaUsd = reciboPendiente ? Number(reciboPendiente.total_usd) : 0
-  const deudaBs = deudaUsd * tasaValida
+
+  // Deuda total: Para periodos históricos (< 2026-09) o deudas en mora previas,
+  // NO se ancla dinámicamente al BCV actual; se respeta el monto manual en Bolívares y Dólares de los gastos/deudas.
+  const esHistoricoRecibo = (reciboPendiente?.mes_facturado || '').slice(0, 7) < '2026-09'
+  const deudaUsd = moraRecord
+    ? Number(moraRecord.monto_usd || 0)
+    : (reciboPendiente ? Number(reciboPendiente.total_usd || 0) : 0)
+
+  const deudaBs = moraRecord
+    ? (moraRecord.monto_bs > 0 ? Number(moraRecord.monto_bs) : (esHistoricoRecibo ? 0 : deudaUsd * tasaValida))
+    : reciboPendiente
+    ? (esHistoricoRecibo
+        ? Number(reciboPendiente.total_bs || 0)
+        : (reciboPendiente.total_bs > 0 ? Number(reciboPendiente.total_bs) : deudaUsd * tasaValida))
+    : 0
 
 
   // Cargar datos del apartamento y alícuota real impuesta por el administrador

@@ -121,6 +121,14 @@ export const AdminHistorial: React.FC = () => {
           border: 'rgba(16, 185, 129, 0.35)',
           icon: '💚'
         }
+      case 'PAGO_DEUDA_ATRASADA':
+        return {
+          label: 'DEUDA ATRASADA PAGADA',
+          color: '#10b981',
+          bg: 'rgba(16, 185, 129, 0.2)',
+          border: 'rgba(16, 185, 129, 0.5)',
+          icon: '✅'
+        }
       default:
         return {
           label: 'ACCIÓN REGISTRADA',

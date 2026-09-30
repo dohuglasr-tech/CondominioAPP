@@ -54,6 +54,20 @@ export interface DatosReciboPagado {
   portalUrl?: string
 }
 
+export interface DatosPagoDeudaAtrasada {
+  edificioNombre?: string
+  apartamentoNumero: string
+  propietarioNombre?: string | null
+  telefono?: string | null
+  mesesDeuda?: number
+  montoUsd: number
+  montoBs: number
+  metodoPago?: string | null
+  referencia?: string | null
+  fechaPago?: string | null
+  portalUrl?: string
+}
+
 const DEFAULT_PORTAL_URL = 'https://condominio-app-rouge.vercel.app'
 
 /**
@@ -197,6 +211,34 @@ Puede descargar su recibo oficial certificado en formato PDF en cualquier moment
 🔗 ${portal}/recibos
 
 _¡Muchas gracias por su compromiso y puntualidad con el edificio!_`
+}
+
+/**
+ * 4. Genera constancia de Recibo de Pago de Deuda Atrasada
+ */
+export function generarMensajePagoDeudaAtrasada(datos: DatosPagoDeudaAtrasada): string {
+  const edificio = datos.edificioNombre || 'Residencias Ocutuy 5'
+  const portal = datos.portalUrl || DEFAULT_PORTAL_URL
+
+  const saludo = datos.propietarioNombre
+    ? `Estimado(a) *${datos.propietarioNombre.trim()}*,`
+    : `Estimado propietario del *Apto ${datos.apartamentoNumero}*,`
+
+  return `🏢 *${edificio.toUpperCase()}*
+✅ *RECIBO DE PAGO DE DEUDA ATRASADA Y SOLVENCIA*
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+${saludo}
+
+Le confirmamos que su pago de deuda atrasada ha sido registrado y conciliado exitosamente por la Administración:
+
+🏠 *Apartamento:* ${datos.apartamentoNumero}
+💵 *Monto Solventado:* $ ${fmtUsd(datos.montoUsd)} USD (Bs. ${fmtBs(datos.montoBs)})
+${datos.metodoPago ? `🏦 *Método de Pago:* ${datos.metodoPago}\n` : ''}${datos.referencia ? `🔢 *Nro. Referencia:* ${datos.referencia}\n` : ''}${datos.fechaPago ? `📅 *Fecha de Pago:* ${datos.fechaPago}\n` : ''}🛡️ *Estatus:* SOLVENTE Y CONCILIADO EN SISTEMA
+
+Su *Recibo Oficial de Pago de Deuda Atrasada* ya fue generado y se encuentra disponible para descargar en formato PDF en su portal:
+🔗 ${portal}/recibos
+
+_¡Muchas gracias por su compromiso y por regularizar su cuenta con el edificio!_`
 }
 
 /**

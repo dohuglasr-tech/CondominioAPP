@@ -12,6 +12,7 @@ export type TipoAccionAuditoria =
   | 'HISTORICO_CAMBIO_ESTADO'
   | 'HISTORICO_BULK_ESTADO'
   | 'RETIRO_SALDO_A_FAVOR'
+  | 'PAGO_DEUDA_ATRASADA'
 
 export interface LogAuditoria {
   id: string

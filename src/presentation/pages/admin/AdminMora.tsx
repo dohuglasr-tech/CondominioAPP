@@ -13,9 +13,15 @@ import {
   calcularTasaRiesgoPorMeses,
   obtenerDeudasMora,
   guardarDeudaMora,
-  eliminarDeudaMora
+  eliminarDeudaMora,
+  marcarDeudaMoraComoPagada,
+  obtenerPisoApto
 } from '../../../data/moraService'
-import { generarMensajeCobroMora, abrirWhatsApp } from '../../../utils/whatsappHelper'
+import {
+  generarMensajeCobroMora,
+  generarMensajePagoDeudaAtrasada,
+  abrirWhatsApp
+} from '../../../utils/whatsappHelper'
 import { despacharEmailRecordatorioMora, esElegibleRecordatorio3Dias } from '../../../data/emailService'
 
 export const AdminMora: React.FC = () => {
@@ -25,11 +31,36 @@ export const AdminMora: React.FC = () => {
   const [loading, setLoading] = useState(true)
   const [apartamentos, setApartamentos] = useState<Array<{ id: string; numero: string; piso: number; propietario_nombre?: string; telefono_contacto?: string; propietario_email?: string }>>([])
   const [filtroRiesgo, setFiltroRiesgo] = useState<string>('todos')
+  const [filtroPiso, setFiltroPiso] = useState<string>('todos')
   const [busqueda, setBusqueda] = useState('')
   const [modalAbierto, setModalAbierto] = useState(false)
   const [deudaEditar, setDeudaEditar] = useState<DeudaMoraItem | null>(null)
   const [toastMsg, setToastMsg] = useState<string | null>(null)
   const [citacionModal, setCitacionModal] = useState<DeudaMoraItem | null>(null)
+
+  // Configuración de arquitectura del edificio
+  const totalPisos = (config as any)?.total_pisos ?? 10
+  const tienePh = (config as any)?.tiene_ph ?? true
+  const totalPh = (config as any)?.total_ph ?? 2
+
+  // Estados para modal "Marcar como Pagado" (Liquidación y Recibo Oficial)
+  const [modalPagoItem, setModalPagoItem] = useState<DeudaMoraItem | null>(null)
+  const [pagoMontoUsd, setPagoMontoUsd] = useState<number | ''>('')
+  const [pagoMontoBs, setPagoMontoBs] = useState<number | ''>('')
+  const [pagoFecha, setPagoFecha] = useState(new Date().toISOString().slice(0, 10))
+  const [pagoMetodo, setPagoMetodo] = useState('Transferencia Bancaria')
+  const [pagoReferencia, setPagoReferencia] = useState('')
+  const [pagoNotas, setPagoNotas] = useState('')
+  const [pagoNotificarEmail, setPagoNotificarEmail] = useState(true)
+  const [procesandoPago, setProcesandoPago] = useState(false)
+  const [pagoExitosoResultado, setPagoExitosoResultado] = useState<{
+    item: DeudaMoraItem
+    reciboId?: string
+    montoUsd: number
+    montoBs: number
+    metodo: string
+    ref: string
+  } | null>(null)
 
   // Form states
   const [formAptoId, setFormAptoId] = useState('')
@@ -240,12 +271,48 @@ export const AdminMora: React.FC = () => {
     cargarDatos()
   }
 
+  // ── Filtro por Pisos y Conteo de Deudores por Piso ───────────────────────
+  const pisosOpciones = useMemo(() => {
+    const list: { key: string; label: string }[] = [{ key: 'todos', label: 'Todos los Pisos' }]
+    for (let i = 1; i <= totalPisos; i++) {
+      list.push({ key: String(i), label: `Piso ${i}` })
+    }
+    if (tienePh && totalPh > 0) {
+      list.push({ key: 'PH', label: 'PH' })
+    }
+    return list
+  }, [totalPisos, tienePh, totalPh])
+
+  const conteoPorPiso = useMemo(() => {
+    const map: Record<string, number> = { todos: deudas.length }
+    for (let i = 1; i <= totalPisos; i++) {
+      map[String(i)] = 0
+    }
+    if (tienePh && totalPh > 0) {
+      map['PH'] = 0
+    }
+    deudas.forEach(d => {
+      const p = obtenerPisoApto(d.apartamento_numero, d.piso, totalPisos)
+      if (map[p] !== undefined) {
+        map[p]++
+      }
+    })
+    return map
+  }, [deudas, totalPisos, tienePh, totalPh])
+
   // Filtrado y estadísticas
   const deudasFiltradas = useMemo(() => {
     return deudas.filter(d => {
+      // 1. Filtro por Piso
+      if (filtroPiso !== 'todos') {
+        const p = obtenerPisoApto(d.apartamento_numero, d.piso, totalPisos)
+        if (p !== filtroPiso) return false
+      }
+      // 2. Filtro por Riesgo
       if (filtroRiesgo !== 'todos' && d.tasa_riesgo !== filtroRiesgo) return false
+      // 3. Buscador
       if (busqueda.trim()) {
-        const q = busqueda.toLowerCase()
+        const q = busqueda.toLowerCase().trim()
         const matchApto = (d.apartamento_numero || '').toLowerCase().includes(q)
         const matchProp = (d.propietario_nombre || '').toLowerCase().includes(q)
         const matchConceptos = (d.conceptos_detalle || '').toLowerCase().includes(q)
@@ -253,7 +320,104 @@ export const AdminMora: React.FC = () => {
       }
       return true
     })
-  }, [deudas, filtroRiesgo, busqueda])
+  }, [deudas, filtroPiso, filtroRiesgo, busqueda, totalPisos])
+
+  // ── Handlers para Modal "Marcar como Pagado" ──────────────────────────────
+  const abrirModalPago = (item: DeudaMoraItem) => {
+    setModalPagoItem(item)
+    setPagoMontoUsd(item.monto_usd || '')
+    setPagoMontoBs(item.monto_bs || '')
+    setPagoFecha(new Date().toISOString().slice(0, 10))
+    setPagoMetodo('Transferencia Bancaria')
+    setPagoReferencia('')
+    setPagoNotas('Pago total de deuda atrasada validada en administración')
+    setPagoNotificarEmail(Boolean(item.propietario_email))
+    setPagoExitosoResultado(null)
+  }
+
+  const handleConfirmarPago = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!modalPagoItem) return
+
+    const musd = Number(pagoMontoUsd) || 0
+    const mbs = Number(pagoMontoBs) || 0
+    if (musd <= 0 && mbs <= 0) {
+      showToast('⚠️ Ingresa un monto válido en USD o Bs.')
+      return
+    }
+
+    setProcesandoPago(true)
+    try {
+      const aptoInfo = apartamentos.find(
+        a => a.id === modalPagoItem.apartamento_id || a.numero === modalPagoItem.apartamento_numero
+      )
+
+      const res = await marcarDeudaMoraComoPagada({
+        deudaId: modalPagoItem.id,
+        apartamentoId: modalPagoItem.apartamento_id,
+        apartamentoNumero: modalPagoItem.apartamento_numero,
+        montoUsd: musd,
+        montoBs: mbs,
+        fechaPago: pagoFecha,
+        metodoPago: pagoMetodo,
+        referencia: pagoReferencia.trim() || 'PAGO-DEUDA-ATRASADA',
+        notas: pagoNotas.trim(),
+        adminNombre: perfil?.nombre_completo || 'Administrador',
+        adminEmail: (perfil as any)?.email || null,
+        notificarEmail: pagoNotificarEmail,
+        emailPropietario: modalPagoItem.propietario_email || aptoInfo?.propietario_email || null,
+        nombrePropietario: modalPagoItem.propietario_nombre || aptoInfo?.propietario_nombre || null,
+        edificioNombre: config?.nombre_edificio
+      })
+
+      if (res.error) {
+        showToast(`❌ Error: ${res.error}`)
+      } else {
+        showToast(`✅ Deuda del Apto ${modalPagoItem.apartamento_numero} solventada y recibo generado`)
+        setPagoExitosoResultado({
+          item: modalPagoItem,
+          reciboId: res.reciboId,
+          montoUsd: musd,
+          montoBs: mbs,
+          metodo: pagoMetodo,
+          ref: pagoReferencia.trim() || 'PAGO-DEUDA-ATRASADA'
+        })
+        await cargarDatos()
+      }
+    } catch (err: any) {
+      showToast(`❌ Error: ${err.message || 'Error procesando el pago'}`)
+    } finally {
+      setProcesandoPago(false)
+    }
+  }
+
+  const handleEnviarReciboWhatsApp = (resultado: {
+    item: DeudaMoraItem
+    montoUsd: number
+    montoBs: number
+    metodo: string
+    ref: string
+  }) => {
+    const aptoInfo = apartamentos.find(
+      a => a.id === resultado.item.apartamento_id || a.numero === resultado.item.apartamento_numero
+    )
+    const tel = resultado.item.propietario_telefono || aptoInfo?.telefono_contacto || null
+
+    const msg = generarMensajePagoDeudaAtrasada({
+      edificioNombre: config?.nombre_edificio,
+      apartamentoNumero: resultado.item.apartamento_numero,
+      propietarioNombre: resultado.item.propietario_nombre || aptoInfo?.propietario_nombre || null,
+      telefono: tel,
+      mesesDeuda: resultado.item.meses_deuda,
+      montoUsd: resultado.montoUsd,
+      montoBs: resultado.montoBs,
+      metodoPago: resultado.metodo,
+      referencia: resultado.ref,
+      fechaPago: pagoFecha
+    })
+
+    abrirWhatsApp({ telefono: tel, mensaje: msg })
+  }
 
   const stats = useMemo(() => {
     let totalUsd = 0
@@ -622,9 +786,44 @@ export const AdminMora: React.FC = () => {
         border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '18px',
         padding: '16px 20px', marginBottom: '24px', display: 'flex', flexDirection: 'column', gap: '14px'
       }}>
+        {/* Selector de Pisos (Nivel de Edificio / Torre) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflowX: 'auto', paddingBottom: '4px' }}>
+          <span style={{ fontSize: '12px', color: '#888', fontWeight: 700, marginRight: '4px', whiteSpace: 'nowrap' }}>
+            🏢 FILTRAR POR PISO:
+          </span>
+          {pisosOpciones.map(piso => {
+            const active = filtroPiso === piso.key
+            const count = conteoPorPiso[piso.key] || 0
+            return (
+              <button
+                key={piso.key}
+                onClick={() => setFiltroPiso(piso.key)}
+                style={{
+                  background: active ? '#f97316' : 'rgba(255, 255, 255, 0.05)',
+                  border: active ? '1px solid #f97316' : '1px solid rgba(255, 255, 255, 0.09)',
+                  color: active ? '#fff' : '#ccc',
+                  fontWeight: active ? 800 : 500,
+                  fontSize: '12px', padding: '6px 12px', borderRadius: '10px',
+                  cursor: 'pointer', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '6px',
+                  transition: 'all 0.18s'
+                }}
+              >
+                <span>{piso.label}</span>
+                <span style={{
+                  background: active ? 'rgba(0,0,0,0.35)' : 'rgba(255,255,255,0.1)',
+                  fontSize: '10px', padding: '1px 6px', borderRadius: '999px', fontWeight: 800,
+                  color: active ? '#fff' : (count > 0 ? '#f97316' : '#777')
+                }}>
+                  {count}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+
         {/* Chips de Tasa de Riesgo */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflowX: 'auto', paddingBottom: '4px' }}>
-          <span style={{ fontSize: '12px', color: '#888', fontWeight: 700, marginRight: '4px' }}>FILTRAR POR RIESGO:</span>
+          <span style={{ fontSize: '12px', color: '#888', fontWeight: 700, marginRight: '4px', whiteSpace: 'nowrap' }}>FILTRAR POR RIESGO:</span>
           {[
             { key: 'todos', label: 'Todos los deudores', icon: '📋', count: deudas.length },
             { key: 'azul', label: '🔵 Recibo del Mes (<1m)', icon: '', count: stats.azulCount },
@@ -887,6 +1086,29 @@ export const AdminMora: React.FC = () => {
                   </div>
 
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <button
+                      onClick={() => abrirModalPago(d)}
+                      style={{
+                        background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                        color: '#fff',
+                        border: '1px solid rgba(16, 185, 129, 0.45)',
+                        padding: '6px 14px',
+                        borderRadius: '8px',
+                        fontSize: '12px',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        boxShadow: '0 2px 10px rgba(16, 185, 129, 0.25)',
+                        transition: 'all 0.15s ease'
+                      }}
+                      title="Marcar deuda como solventada y emitir recibo oficial de pago de deuda atrasada"
+                    >
+                      <span>✅</span>
+                      <span>Marcar como Pagado</span>
+                    </button>
+
                     <button
                       onClick={() => abrirModalEditar(d)}
                       style={{
@@ -1342,6 +1564,331 @@ export const AdminMora: React.FC = () => {
                 Cerrar
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL MARCAR DEUDA COMO PAGADA & GENERAR RECIBO OFICIAL */}
+      {modalPagoItem && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9999,
+          background: 'rgba(0, 0, 0, 0.85)', backdropFilter: 'blur(10px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px'
+        }}>
+          <div style={{
+            background: 'linear-gradient(180deg, #131c26 0%, #0d121a 100%)',
+            border: '1px solid rgba(16, 185, 129, 0.35)', borderTop: '3px solid #10b981',
+            borderRadius: '24px', width: '100%', maxWidth: '620px', maxHeight: '92vh', overflowY: 'auto',
+            padding: '28px', boxShadow: '0 25px 60px rgba(0, 0, 0, 0.85), 0 0 30px rgba(16, 185, 129, 0.15)', boxSizing: 'border-box'
+          }}>
+            {pagoExitosoResultado ? (
+              /* PANTALLA DE ÉXITO */
+              <div>
+                <div style={{ textAlign: 'center', padding: '16px 0 24px' }}>
+                  <div style={{
+                    width: '64px', height: '64px', borderRadius: '50%',
+                    background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '32px', color: '#fff', boxShadow: '0 8px 24px rgba(16, 185, 129, 0.4)',
+                    marginBottom: '16px'
+                  }}>
+                    ✓
+                  </div>
+                  <h2 style={{ margin: '0 0 6px', fontSize: '22px', fontWeight: 800, color: '#fff' }}>
+                    ¡Deuda Solventada y Recibo Generado!
+                  </h2>
+                  <p style={{ margin: 0, fontSize: '13px', color: '#94a3b8', lineHeight: 1.5 }}>
+                    El pago ha sido validado, la mora ha sido retirada y el residente ya tiene su Recibo Oficial de Deuda Atrasada disponible en su portal.
+                  </p>
+                </div>
+
+                <div style={{
+                  background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.08)',
+                  borderRadius: '16px', padding: '18px', marginBottom: '22px', display: 'flex', flexDirection: 'column', gap: '10px'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                    <span style={{ color: '#888' }}>Inmueble:</span>
+                    <strong style={{ color: '#fff' }}>Apartamento {pagoExitosoResultado.item.apartamento_numero}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                    <span style={{ color: '#888' }}>Monto Solventado:</span>
+                    <strong style={{ color: '#10b981', fontSize: '15px' }}>
+                      ${pagoExitosoResultado.montoUsd.toLocaleString('en-US', { minimumFractionDigits: 2 })} USD
+                      {pagoExitosoResultado.montoBs > 0 && ` (Bs. ${pagoExitosoResultado.montoBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })})`}
+                    </strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                    <span style={{ color: '#888' }}>Método de Pago:</span>
+                    <span style={{ color: '#cbd5e1' }}>{pagoExitosoResultado.metodo}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                    <span style={{ color: '#888' }}>Nro. Referencia:</span>
+                    <span style={{ color: '#67e8f9', fontFamily: 'monospace', fontWeight: 700 }}>{pagoExitosoResultado.ref}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                    <span style={{ color: '#888' }}>Estatus Actual:</span>
+                    <span style={{ color: '#4ade80', fontWeight: 800 }}>● SOLVENTE Y CONCILIADO</span>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', flexWrap: 'wrap' }}>
+                  <button
+                    onClick={() => handleEnviarReciboWhatsApp(pagoExitosoResultado)}
+                    style={{
+                      background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)',
+                      color: '#fff', border: 'none', padding: '11px 20px', borderRadius: '12px',
+                      fontSize: '13px', fontWeight: 700, cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', gap: '8px',
+                      boxShadow: '0 4px 16px rgba(22, 163, 74, 0.4)'
+                    }}
+                  >
+                    <span>📲</span> Enviar Recibo por WhatsApp
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setModalPagoItem(null)
+                      setPagoExitosoResultado(null)
+                    }}
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.08)',
+                      border: '1px solid rgba(255, 255, 255, 0.15)',
+                      color: '#fff', padding: '11px 22px', borderRadius: '12px',
+                      fontSize: '13px', fontWeight: 600, cursor: 'pointer'
+                    }}
+                  >
+                    Cerrar
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* FORMULARIO DE LIQUIDACIÓN */
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ fontSize: '24px' }}>✅</span>
+                    <div>
+                      <h2 style={{ margin: 0, fontSize: '19px', fontWeight: 800, color: '#fff' }}>
+                        Marcar como Pagado — Apto {modalPagoItem.apartamento_numero}
+                      </h2>
+                      <p style={{ margin: '3px 0 0', fontSize: '12px', color: '#94a3b8' }}>
+                        Liquidación oficial y emisión automática del recibo de deuda atrasada.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setModalPagoItem(null)}
+                    style={{ background: 'transparent', border: 'none', color: '#888', fontSize: '20px', cursor: 'pointer' }}
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {/* Banner de Sincronización y Regla No-BCV */}
+                <div style={{
+                  background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.3)',
+                  borderRadius: '14px', padding: '12px 14px', marginBottom: '18px', fontSize: '12px', color: '#cbd5e1', lineHeight: 1.5
+                }}>
+                  <div style={{ color: '#34d399', fontWeight: 800, marginBottom: '2px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span>🛡️</span> Sincronización Automática Total
+                  </div>
+                  Al confirmar este pago, el apartamento quedará <strong>solvente de inmediato</strong>. Se generará un <strong>Recibo Oficial de Pago de Deuda Atrasada</strong> que el residente podrá visualizar y descargar desde su panel en PDF con sello oficial.
+                </div>
+
+                {/* Resumen del inmueble */}
+                <div style={{
+                  background: 'rgba(0, 0, 0, 0.35)', border: '1px solid rgba(255, 255, 255, 0.07)',
+                  borderRadius: '14px', padding: '12px 16px', marginBottom: '18px',
+                  display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '10px'
+                }}>
+                  <div>
+                    <span style={{ fontSize: '11px', color: '#777', textTransform: 'uppercase', fontWeight: 700 }}>Propietario</span>
+                    <div style={{ fontSize: '13px', fontWeight: 700, color: '#fff' }}>{modalPagoItem.propietario_nombre || 'N/D'}</div>
+                  </div>
+                  <div>
+                    <span style={{ fontSize: '11px', color: '#777', textTransform: 'uppercase', fontWeight: 700 }}>Meses Impagos</span>
+                    <div style={{ fontSize: '13px', fontWeight: 700, color: '#eab308' }}>{modalPagoItem.meses_deuda} meses</div>
+                  </div>
+                  <div>
+                    <span style={{ fontSize: '11px', color: '#777', textTransform: 'uppercase', fontWeight: 700 }}>Deuda Registrada</span>
+                    <div style={{ fontSize: '13px', fontWeight: 800, color: '#fff' }}>
+                      ${modalPagoItem.monto_usd.toLocaleString('en-US', { minimumFractionDigits: 2 })} USD
+                    </div>
+                  </div>
+                </div>
+
+                <form onSubmit={handleConfirmarPago} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  {/* Montos */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#aaa', marginBottom: '6px' }}>
+                        Monto a Solventar ($ USD) *
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        required
+                        value={pagoMontoUsd}
+                        onChange={e => setPagoMontoUsd(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                        style={{
+                          width: '100%', boxSizing: 'border-box', background: '#0a0d13',
+                          border: '1px solid rgba(255, 255, 255, 0.12)', color: '#fff',
+                          padding: '11px 12px', borderRadius: '12px', fontSize: '14px', fontWeight: 800, outline: 'none'
+                        }}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#aaa', marginBottom: '6px' }}>
+                        Monto en Bolívares (Bs.)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={pagoMontoBs}
+                        onChange={e => setPagoMontoBs(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                        style={{
+                          width: '100%', boxSizing: 'border-box', background: '#0a0d13',
+                          border: '1px solid rgba(255, 255, 255, 0.12)', color: '#fff',
+                          padding: '11px 12px', borderRadius: '12px', fontSize: '14px', fontWeight: 800, outline: 'none'
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Fecha y Método */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#aaa', marginBottom: '6px' }}>
+                        Fecha del Pago *
+                      </label>
+                      <input
+                        type="date"
+                        required
+                        value={pagoFecha}
+                        onChange={e => setPagoFecha(e.target.value)}
+                        style={{
+                          width: '100%', boxSizing: 'border-box', background: '#0a0d13',
+                          border: '1px solid rgba(255, 255, 255, 0.12)', color: '#fff',
+                          padding: '10px 12px', borderRadius: '12px', fontSize: '13px', outline: 'none'
+                        }}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#aaa', marginBottom: '6px' }}>
+                        Método / Banco Receptor *
+                      </label>
+                      <select
+                        value={pagoMetodo}
+                        onChange={e => setPagoMetodo(e.target.value)}
+                        style={{
+                          width: '100%', boxSizing: 'border-box', background: '#0a0d13',
+                          border: '1px solid rgba(255, 255, 255, 0.12)', color: '#fff',
+                          padding: '10px 12px', borderRadius: '12px', fontSize: '13px', outline: 'none'
+                        }}
+                      >
+                        <option value="Transferencia Bicentenario">Transferencia Bicentenario</option>
+                        <option value="Pago Móvil">Pago Móvil</option>
+                        <option value="Efectivo USD (Administración)">Efectivo USD (Administración)</option>
+                        <option value="Transferencia Otro Banco">Transferencia Otro Banco</option>
+                        <option value="Zelle">Zelle</option>
+                        <option value="Depósito Bancario">Depósito Bancario</option>
+                        <option value="Acuerdo / Conciliación de Junta">Acuerdo / Conciliación de Junta</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Referencia y Notas */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#aaa', marginBottom: '6px' }}>
+                        Nro. de Referencia / Comprobante
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Ej: REF-928412 o Recibo #042"
+                        value={pagoReferencia}
+                        onChange={e => setPagoReferencia(e.target.value)}
+                        style={{
+                          width: '100%', boxSizing: 'border-box', background: '#0a0d13',
+                          border: '1px solid rgba(255, 255, 255, 0.12)', color: '#fff',
+                          padding: '10px 12px', borderRadius: '12px', fontSize: '13px', outline: 'none'
+                        }}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#aaa', marginBottom: '6px' }}>
+                        Notas de Liquidación
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Ej: Liquidación total en efectivo..."
+                        value={pagoNotas}
+                        onChange={e => setPagoNotas(e.target.value)}
+                        style={{
+                          width: '100%', boxSizing: 'border-box', background: '#0a0d13',
+                          border: '1px solid rgba(255, 255, 255, 0.12)', color: '#fff',
+                          padding: '10px 12px', borderRadius: '12px', fontSize: '13px', outline: 'none'
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Checkbox de Envío de Email */}
+                  {modalPagoItem.propietario_email && (
+                    <label style={{
+                      display: 'flex', alignItems: 'center', gap: '10px',
+                      background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(255, 255, 255, 0.08)',
+                      padding: '10px 14px', borderRadius: '12px', cursor: 'pointer', fontSize: '12px', color: '#ccc'
+                    }}>
+                      <input
+                        type="checkbox"
+                        checked={pagoNotificarEmail}
+                        onChange={e => setPagoNotificarEmail(e.target.checked)}
+                        style={{ width: '16px', height: '16px', accentColor: '#10b981' }}
+                      />
+                      <span>
+                        Enviar constancia de solvencia por correo a <strong>{modalPagoItem.propietario_email}</strong>
+                      </span>
+                    </label>
+                  )}
+
+                  {/* Botones de Acción */}
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setModalPagoItem(null)}
+                      style={{
+                        background: 'rgba(255, 255, 255, 0.08)', border: '1px solid rgba(255, 255, 255, 0.14)',
+                        color: '#ccc', padding: '11px 20px', borderRadius: '12px', fontSize: '13px',
+                        fontWeight: 600, cursor: 'pointer'
+                      }}
+                    >
+                      Cancelar
+                    </button>
+
+                    <button
+                      type="submit"
+                      disabled={procesandoPago}
+                      style={{
+                        background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                        color: '#fff', border: 'none', padding: '11px 26px', borderRadius: '12px',
+                        fontSize: '14px', fontWeight: 800, cursor: procesandoPago ? 'wait' : 'pointer',
+                        boxShadow: '0 4px 16px rgba(16, 185, 129, 0.4)',
+                        opacity: procesandoPago ? 0.7 : 1, display: 'flex', alignItems: 'center', gap: '8px'
+                      }}
+                    >
+                      <span>{procesandoPago ? '⏳' : '✅'}</span>
+                      <span>{procesandoPago ? 'Procesando y Emitiendo...' : 'Confirmar Pago y Emitir Recibo'}</span>
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
           </div>
         </div>
       )}

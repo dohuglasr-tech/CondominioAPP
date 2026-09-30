@@ -43,6 +43,19 @@ interface ReciboGenerado {
     cargos_especiales?: Array<{ tipo: string; descripcion: string; monto_usd: number; monto_bs?: number }>
     fondo_reserva_pct?: number
     notas_residentes?: string
+    es_recibo_deuda_atrasada?: boolean
+    titulo_recibo?: string
+    pago_info?: {
+      referencia?: string
+      metodo_pago?: string
+      banco_origen?: string
+      banco?: string
+      fecha_pago?: string
+      monto_usd?: number
+      monto_bs?: number
+      notas?: string
+    }
+    [key: string]: any
   } | null
   emitido_at: string
 }
@@ -263,19 +276,22 @@ export function RecibosPanel({ onClose }: Props) {
 
       // Si está pagado o hay un pago aprobado para este apartamento
       const esHistorico = (recibo.mes_facturado || '').slice(0, 7) < '2026-09'
+      const esDeudaAtrasada = Boolean(recibo.data_json?.es_recibo_deuda_atrasada)
       const pagoAprobado = pagos.find(p => p.estado === 'aprobado')
       const estaPagado = recibo.estado === 'pagado' || (!esHistorico && !!pagoAprobado)
 
       const pagoInfo: ReciboPagoInfo | undefined = estaPagado
         ? {
             estado: 'pagado',
-            fecha_pago: pagoAprobado?.fecha_pago || pagoAprobado?.created_at || (esHistorico ? recibo.mes_facturado : undefined),
-            banco: pagoAprobado?.banco_origen || config?.banco || (esHistorico ? 'Administración Anterior' : 'Bicentenario'),
-            referencia: pagoAprobado?.referencia || (esHistorico ? 'REGISTRO HISTÓRICO' : 'VALIDADO'),
-            monto_bs: pagoAprobado?.monto_bs || recibo.total_bs,
-            monto_usd: pagoAprobado?.monto_usd || recibo.total_usd,
+            fecha_pago: pagoAprobado?.fecha_pago || recibo.data_json?.pago_info?.fecha_pago || pagoAprobado?.created_at || (esHistorico ? recibo.mes_facturado : undefined),
+            banco: pagoAprobado?.banco_origen || recibo.data_json?.pago_info?.banco || config?.banco || (esHistorico ? 'Administración Anterior' : 'Bicentenario'),
+            referencia: pagoAprobado?.referencia || recibo.data_json?.pago_info?.referencia || (esDeudaAtrasada ? 'PAGO DEUDA ATRASADA' : esHistorico ? 'REGISTRO HISTÓRICO' : 'VALIDADO'),
+            monto_bs: pagoAprobado?.monto_bs || recibo.data_json?.pago_info?.monto_bs || recibo.total_bs,
+            monto_usd: pagoAprobado?.monto_usd || recibo.data_json?.pago_info?.monto_usd || recibo.total_usd,
           }
         : undefined
+
+      const docTitulo = esDeudaAtrasada ? (recibo.data_json?.titulo_recibo || 'RECIBO DE PAGO DE DEUDA ATRASADA') : undefined
 
       const doc = generarPDFRecibo(
         aptoData,
@@ -286,10 +302,15 @@ export function RecibosPanel({ onClose }: Props) {
         mesLabel,
         anio,
         recibo.data_json?.notas_residentes,
-        pagoInfo
+        pagoInfo,
+        docTitulo
       )
 
-      doc.save(`Recibo_Apto${aptoNumero}_${mesLabel}${anio}.pdf`)
+      const nombreArchivo = esDeudaAtrasada
+        ? `Recibo_Pago_Deuda_Atrasada_Apto${aptoNumero}.pdf`
+        : `Recibo_Apto${aptoNumero}_${mesLabel}${anio}.pdf`
+
+      doc.save(nombreArchivo)
     } catch (err) {
       console.error('[RecibosPanel] Error al generar PDF:', err)
       alert('Hubo un error al compilar el PDF del recibo.')
@@ -542,6 +563,7 @@ export function RecibosPanel({ onClose }: Props) {
             {recibos.map((recibo) => {
               const { mesLabel, anio } = parseMesFacturado(recibo.mes_facturado)
               const esHistorico = (recibo.mes_facturado || '').slice(0, 7) < '2026-09'
+              const esDeudaAtrasada = Boolean(recibo.data_json?.es_recibo_deuda_atrasada)
               const estaPagado = recibo.estado === 'pagado' || (!esHistorico && pagos.some(p => p.estado === 'aprobado'))
               const enRevision = !estaPagado && !!pagoEnRevision
               const isExpanded = expandedReciboId === recibo.id
@@ -577,13 +599,19 @@ export function RecibosPanel({ onClose }: Props) {
                   }}>
                     <div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontSize: '18px' }}>📄</span>
+                        <span style={{ fontSize: '18px' }}>{esDeudaAtrasada ? '📜' : '📄'}</span>
                         <h2 style={{ color: '#fff', fontSize: '17px', fontWeight: 800, margin: 0 }}>
-                          Recibo {mesLabel} {anio}
+                          {esDeudaAtrasada ? 'Recibo de Pago de Deuda Atrasada' : `Recibo ${mesLabel} ${anio}`}
                         </h2>
                       </div>
                       <p style={{ color: '#94a3b8', fontSize: '11px', margin: '4px 0 0' }}>
-                        Emitido el {formatFecha(recibo.emitido_at || recibo.mes_facturado)} · Tasa BCV: {fmtBs((recibo.tasa_bcv && recibo.tasa_bcv > 1 ? recibo.tasa_bcv : (config?.tasa_bcv_actual && config.tasa_bcv_actual > 1 ? config.tasa_bcv_actual : (recibo.total_usd > 0 ? parseFloat((recibo.total_bs / recibo.total_usd).toFixed(4)) : 859.06))))} Bs/$
+                        {esDeudaAtrasada ? (
+                          <>Validación de deuda histórica liquidada · Conciliado con la administración</>
+                        ) : esHistorico ? (
+                          <>Emitido el {formatFecha(recibo.emitido_at || recibo.mes_facturado)} · Gastos manuales de administración anterior (Sin anclaje a tasa BCV actual)</>
+                        ) : (
+                          <>Emitido el {formatFecha(recibo.emitido_at || recibo.mes_facturado)} · Tasa BCV: {fmtBs((recibo.tasa_bcv && recibo.tasa_bcv > 1 ? recibo.tasa_bcv : (config?.tasa_bcv_actual && config.tasa_bcv_actual > 1 ? config.tasa_bcv_actual : (recibo.total_usd > 0 ? parseFloat((recibo.total_bs / recibo.total_usd).toFixed(4)) : 859.06))))} Bs/$</>
+                        )}
                       </p>
                     </div>
 
@@ -597,7 +625,7 @@ export function RecibosPanel({ onClose }: Props) {
                           padding: '4px 10px', borderRadius: '999px',
                           fontSize: '11px', fontWeight: 800
                         }}>
-                          ✓ Pagado y Solvente {esHistorico && <span style={{ opacity: 0.8, fontSize: '9.5px', marginLeft: '3px' }}>(Histórico)</span>}
+                          ✓ Pagado y Solvente {esDeudaAtrasada ? <span style={{ opacity: 0.9, fontSize: '9.5px', marginLeft: '3px' }}>(Deuda Atrasada)</span> : esHistorico ? <span style={{ opacity: 0.8, fontSize: '9.5px', marginLeft: '3px' }}>(Histórico)</span> : null}
                         </span>
                       ) : enRevision ? (
                         <span style={{
@@ -689,6 +717,40 @@ export function RecibosPanel({ onClose }: Props) {
                       <span style={{ color: '#4ade80', fontWeight: 800 }}>
                         Monto neto a transferir: ${fmtUsd(Math.max(0, recibo.total_usd - saldoAFavor))} USD
                       </span>
+                    </div>
+                  )}
+
+                  {/* Detalles de Pago y Validación */}
+                  {recibo.data_json?.pago_info && (
+                    <div style={{
+                      backgroundColor: 'rgba(34, 197, 94, 0.07)',
+                      border: '1px solid rgba(34, 197, 94, 0.25)',
+                      borderRadius: '12px',
+                      padding: '10px 14px',
+                      marginBottom: '14px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '4px'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', fontWeight: 800, color: '#4ade80', textTransform: 'uppercase' }}>
+                        <span>🧾</span> Comprobante de Pago Validado
+                      </div>
+                      <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', fontSize: '12px', color: '#e2e8f0' }}>
+                        {recibo.data_json.pago_info.fecha_pago && (
+                          <span>Fecha: <strong>{recibo.data_json.pago_info.fecha_pago}</strong></span>
+                        )}
+                        {recibo.data_json.pago_info.banco && (
+                          <span>Método: <strong>{recibo.data_json.pago_info.banco}</strong></span>
+                        )}
+                        {recibo.data_json.pago_info.referencia && (
+                          <span>Referencia: <strong style={{ color: '#67e8f9' }}>{recibo.data_json.pago_info.referencia}</strong></span>
+                        )}
+                        {recibo.data_json.pago_info.monto_usd && (
+                          <span style={{ color: '#4ade80', fontWeight: 700 }}>
+                            Monto: ${fmtUsd(recibo.data_json.pago_info.monto_usd)} USD
+                          </span>
+                        )}
+                      </div>
                     </div>
                   )}
 

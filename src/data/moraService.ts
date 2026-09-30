@@ -1,5 +1,8 @@
 import { supabase } from './supabase'
 import { appCache } from './cacheService'
+import { notificarApartamento } from './notificacionesService'
+import { despacharEmailPagoAprobado } from './emailService'
+import { registrarEventoAuditoria } from './auditoriaService'
 
 export type TasaRiesgoMora = 'azul' | 'amarillo' | 'rojo' | 'morado'
 
@@ -574,5 +577,310 @@ export async function obtenerMoraPorApto(aptoNumeroOId: string): Promise<DeudaMo
   if (!aptoNumeroOId) return null
   await obtenerDeudasMora()
   return buscarMoraPorApto(aptoNumeroOId)
+}
+
+/**
+ * Determina el piso de un apartamento (del '1' al '10' o 'PH')
+ * Funciona tanto con el valor de la base de datos como infiriéndolo de la nomenclatura
+ */
+export function obtenerPisoApto(aptoNumero: string, pisoDb?: number, totalPisos: number = 10): string {
+  if (pisoDb !== undefined && pisoDb !== null) {
+    if (pisoDb > totalPisos || pisoDb === 11) return 'PH'
+    if (pisoDb >= 1 && pisoDb <= totalPisos) return String(pisoDb)
+  }
+
+  const clean = (aptoNumero || '').trim().toUpperCase()
+  if (clean.includes('PH')) return 'PH'
+  if (clean.startsWith('510')) return '10'
+  const match = clean.match(/^5(\d)\d$/)
+  if (match) {
+    const digit = parseInt(match[1], 10)
+    if (digit === 0) return '1'
+    return String(digit)
+  }
+  const matchGen = clean.match(/^(\d{1,2})\d{2}$/)
+  if (matchGen) {
+    const p = parseInt(matchGen[1], 10)
+    if (p >= 1 && p <= totalPisos) return String(p)
+  }
+
+  return '1'
+}
+
+export interface MarcarDeudaPagadaParams {
+  deudaId?: string
+  apartamentoId: string
+  apartamentoNumero: string
+  montoUsd: number
+  montoBs: number
+  fechaPago: string
+  metodoPago: string
+  referencia: string
+  notas?: string
+  adminNombre?: string
+  adminEmail?: string | null
+  notificarEmail?: boolean
+  emailPropietario?: string | null
+  nombrePropietario?: string | null
+  edificioNombre?: string
+}
+
+/**
+ * Marca una deuda de mora como pagada y solventada en todo el sistema:
+ * 1. Actualiza `deudas_mora` a 'solventado' y saldo en 0.
+ * 2. Si hay recibos emitidos pendientes, los marca como 'pagado' con info de pago.
+ * 3. Si no hay recibos generados (deuda histórica manual), genera el recibo oficial de pago de deuda atrasada.
+ * 4. Inserta el pago aprobado en `pagos_reportados` para historial residente.
+ * 5. Notifica in-app al residente en `notificaciones`.
+ * 6. Envía correo formal con constancia de pago y solvencia al residente (si tiene email).
+ * 7. Asienta el evento en `auditoria`.
+ * 8. Invalida todas las cachés asociadas para sincronización instantánea en 0ms.
+ */
+export async function marcarDeudaMoraComoPagada(
+  params: MarcarDeudaPagadaParams
+): Promise<{ success: boolean; reciboId?: string; error: string | null }> {
+  try {
+    const {
+      deudaId,
+      apartamentoId,
+      apartamentoNumero,
+      montoUsd,
+      montoBs,
+      fechaPago,
+      metodoPago,
+      referencia,
+      notas,
+      adminNombre,
+      adminEmail,
+      notificarEmail,
+      emailPropietario,
+      nombrePropietario,
+      edificioNombre
+    } = params
+
+    // 1. Resolver el UUID real de apartamento
+    let realAptoId = apartamentoId
+    let aptoInfo: any = null
+
+    if (!realAptoId || realAptoId.startsWith('mora-') || realAptoId.startsWith('apto-') || realAptoId.startsWith('recibo-')) {
+      const { data: aptoRow } = await supabase
+        .from('apartamentos')
+        .select('id, numero, alicuota, piso, propietario_nombre')
+        .eq('numero', apartamentoNumero)
+        .maybeSingle()
+      if (aptoRow) {
+        realAptoId = aptoRow.id
+        aptoInfo = aptoRow
+      }
+    } else {
+      const { data: aptoRow } = await supabase
+        .from('apartamentos')
+        .select('id, numero, alicuota, piso, propietario_nombre')
+        .eq('id', realAptoId)
+        .maybeSingle()
+      if (aptoRow) {
+        aptoInfo = aptoRow
+      }
+    }
+
+    // 2. Solventar en deudas_mora
+    try {
+      if (deudaId && !deudaId.startsWith('mora-') && !deudaId.startsWith('recibo-')) {
+        await supabase
+          .from('deudas_mora')
+          .update({
+            estado: 'solventado',
+            monto_usd: 0,
+            monto_bs: 0,
+            observaciones: `Solventado el ${fechaPago}. Ref: ${referencia || 'N/A'}${notas ? ` · ${notas}` : ''}`,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', deudaId)
+      } else if (realAptoId) {
+        await supabase
+          .from('deudas_mora')
+          .update({
+            estado: 'solventado',
+            monto_usd: 0,
+            monto_bs: 0,
+            observaciones: `Solventado el ${fechaPago}. Ref: ${referencia || 'N/A'}${notas ? ` · ${notas}` : ''}`,
+            updated_at: new Date().toISOString()
+          })
+          .eq('apartamento_id', realAptoId)
+      }
+    } catch (eMora) {
+      console.warn('[moraService] Aviso al actualizar deudas_mora:', eMora)
+    }
+
+    // Actualizar cache local
+    const cached = getLocalMoraCache()
+    const idx = cached.findIndex(
+      m => m.id === deudaId || (realAptoId && m.apartamento_id === realAptoId) || m.apartamento_numero === apartamentoNumero
+    )
+    if (idx >= 0) {
+      cached.splice(idx, 1)
+      saveLocalMoraCache(cached)
+    }
+
+    // 3. Sincronizar en recibos_generados
+    let reciboFinalId: string | undefined = undefined
+    if (realAptoId) {
+      const { data: recsPendientes } = await supabase
+        .from('recibos_generados')
+        .select('*')
+        .eq('apartamento_id', realAptoId)
+        .eq('estado', 'pendiente')
+
+      if (recsPendientes && recsPendientes.length > 0) {
+        // Actualizar todos los recibos pendientes a pagado con la información del pago
+        for (const r of recsPendientes) {
+          reciboFinalId = r.id
+          const prevJson = (r.data_json && typeof r.data_json === 'object') ? r.data_json : {}
+          await supabase
+            .from('recibos_generados')
+            .update({
+              estado: 'pagado',
+              data_json: {
+                ...prevJson,
+                pago_info: {
+                  estado: 'pagado',
+                  fecha_pago: fechaPago,
+                  banco: metodoPago,
+                  referencia: referencia || 'PAGO-DEUDA-ATRASADA',
+                  monto_usd: montoUsd,
+                  monto_bs: montoBs,
+                  notas: notas || 'Deuda atrasada solventada por la administración'
+                }
+              }
+            })
+            .eq('id', r.id)
+        }
+      } else {
+        // No había recibos emitidos en el sistema (deuda histórica manual anterior a emisión)
+        // Crear un recibo oficial en recibos_generados para que el residente tenga su constancia descargable
+        const mesFacturado = fechaPago ? `${fechaPago.slice(0, 7)}-01` : '2026-08-01'
+        const tasaEquiv = (montoUsd > 0 && montoBs > 0) ? parseFloat((montoBs / montoUsd).toFixed(4)) : 0
+
+        const nuevoRecibo = {
+          apartamento_id: realAptoId,
+          mes_facturado: mesFacturado,
+          tasa_bcv: tasaEquiv,
+          total_gastos_usd: montoUsd,
+          alicuota: aptoInfo?.alicuota || 1.59,
+          subtotal_usd: montoUsd,
+          fondo_reserva_pct: 0,
+          fondo_reserva_usd: 0,
+          cargos_extra_usd: 0,
+          total_usd: montoUsd,
+          total_bs: montoBs,
+          estado: 'pagado',
+          data_json: {
+            es_recibo_deuda_atrasada: true,
+            titulo_recibo: 'Recibo de Pago de Deuda Atrasada',
+            gastos: [
+              {
+                descripcion: `Liquidación de deuda atrasada histórica (${metodoPago})`,
+                monto_usd: montoUsd,
+                monto_bs: montoBs,
+                categoria: 'Deuda Atrasada'
+              }
+            ],
+            cargos_especiales: [],
+            pago_info: {
+              estado: 'pagado',
+              fecha_pago: fechaPago,
+              banco: metodoPago,
+              referencia: referencia || 'PAGO-DEUDA-ATRASADA',
+              monto_usd: montoUsd,
+              monto_bs: montoBs,
+              notas: notas || 'Cancelación total de deuda histórica conciliada'
+            },
+            notas_residentes: 'RECIBO DE PAGO DE DEUDA ATRASADA Y CONSTANCIA DE SOLVENCIA. CONCILIADO CON ÉXITO POR LA ADMINISTRACIÓN.'
+          },
+          emitido_at: new Date().toISOString()
+        }
+
+        const { data: recCreated, error: errRecCreated } = await supabase
+          .from('recibos_generados')
+          .upsert(nuevoRecibo, { onConflict: 'apartamento_id,mes_facturado' })
+          .select('id')
+          .maybeSingle()
+
+        if (recCreated) {
+          reciboFinalId = recCreated.id
+        } else if (errRecCreated) {
+          console.warn('[moraService] Aviso al insertar recibo de deuda atrasada:', errRecCreated.message)
+        }
+      }
+    }
+
+    // 4. Registrar en pagos_reportados como aprobado
+    if (realAptoId) {
+      try {
+        await supabase.from('pagos_reportados').insert({
+          apartamento_id: realAptoId,
+          monto_bs: montoBs,
+          monto_usd: montoUsd,
+          referencia: referencia || 'PAGO-DEUDA-ATRASADA',
+          banco_origen: metodoPago,
+          metodo_pago: metodoPago.toLowerCase().includes('movil') ? 'pago_movil' : metodoPago.toLowerCase().includes('efectivo') ? 'efectivo_usd' : 'transferencia',
+          estado: 'aprobado',
+          fecha_pago: fechaPago,
+          notas_admin: `Liquidación de deuda atrasada (${metodoPago}). Validado por Administración. Ref: ${referencia}. ${notas ? `Notas: ${notas}` : ''}`
+        })
+      } catch (errP) {
+        console.warn('[moraService] Aviso registrando pago en pagos_reportados:', errP)
+      }
+    }
+
+    // 5. Notificación in-app al residente
+    if (realAptoId) {
+      notificarApartamento({
+        apartamento_id: realAptoId,
+        tipo: 'pago_aprobado',
+        titulo: `✅ Recibo de Pago de Deuda Atrasada — Apto ${apartamentoNumero}`,
+        cuerpo: `Se ha registrado y validado el pago de tu deuda atrasada por $ ${montoUsd.toFixed(2)} USD (Bs. ${montoBs.toFixed(2)}). Tu recibo de pago y constancia de solvencia ya están disponibles para descargar en el panel.`,
+        link: '/recibos'
+      }).catch(err => console.warn('[moraService] Error creando notificación:', err))
+    }
+
+    // 6. Despacho por Correo Electrónico si está solicitado
+    if (notificarEmail && emailPropietario && emailPropietario.includes('@')) {
+      despacharEmailPagoAprobado({
+        destinatarioEmail: emailPropietario,
+        apartamentoNumero,
+        propietarioNombre: nombrePropietario || aptoInfo?.propietario_nombre,
+        edificioNombre: edificioNombre || 'Residencias Ocutuy 5',
+        montoUsd,
+        montoBs,
+        referencia: referencia || 'PAGO-DEUDA-ATRASADA',
+        fechaPago,
+        bancoOrigen: metodoPago
+      }).catch(err => console.warn('[moraService] Error despachando correo de pago aprobado:', err))
+    }
+
+    // 7. Registro de auditoría administrativa
+    registrarEventoAuditoria({
+      tipo_accion: 'PAGO_DEUDA_ATRASADA',
+      titulo: `Pago de Deuda Atrasada Solventado - Apto ${apartamentoNumero}`,
+      descripcion: `El administrador solventó y registró el pago de la deuda en mora del apartamento ${apartamentoNumero}. Monto: $ ${montoUsd} USD (Bs. ${montoBs}) · Método: ${metodoPago} · Ref: ${referencia || 'N/A'}.`,
+      apartamento_numero: apartamentoNumero,
+      apartamento_id: realAptoId,
+      monto_usd: montoUsd,
+      monto_bs: montoBs,
+      motivo: notas || 'Pago y solventación de deuda anterior en mora',
+      autor_nombre: adminNombre || 'Administrador',
+      autor_email: adminEmail || null
+    }).catch(err => console.warn('[moraService] Error registrando auditoría:', err))
+
+    // 8. Invalidación global de cachés
+    limpiarCacheMora()
+    appCache.invalidateTags(['mora', 'recibos', 'pagos', 'apartamentos', 'auditoria', 'saldos'])
+
+    return { success: true, reciboId: reciboFinalId, error: null }
+  } catch (err: any) {
+    console.error('[moraService] Error en marcarDeudaMoraComoPagada:', err)
+    return { success: false, error: err.message || 'Error al procesar el pago de la deuda' }
+  }
 }
 

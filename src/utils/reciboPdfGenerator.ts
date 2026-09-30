@@ -76,6 +76,7 @@ export function generarPDFRecibo(
   anio: number,
   notasResidentes?: string,
   pagoInfo?: ReciboPagoInfo,
+  tituloDoc?: string,
 ): jsPDF {
   const doc = new jsPDF({ format: 'a4', unit: 'mm' })
   const cDark:   [number,number,number] = [15, 23, 42]     // Slate 900
@@ -120,9 +121,9 @@ export function generarPDFRecibo(
   doc.setTextColor(...cAccent)
   doc.text('JUNTA DE CONDOMINIO OCUTUY 5', 18, 14)
 
-  doc.setFontSize(16)
+  doc.setFontSize(tituloDoc ? 13 : 16)
   doc.setTextColor(255, 255, 255)
-  doc.text('RECIBO DE CONDOMINIO', 18, 21)
+  doc.text(tituloDoc || 'RECIBO DE CONDOMINIO', 18, 21)
 
   // Sello opcional si está pagado y solvente (centrado a x=105, y=11, sin tocar títulos ni correo)
   if (pagoInfo?.estado === 'pagado') {
@@ -353,8 +354,18 @@ export function generarPDFRecibo(
 
     sy += 4.2
     doc.text(`MONTO: ${fmtBs(pagoInfo.monto_bs || totalBs)} Bs  ($ ${fmtUsd(pagoInfo.monto_usd || totalUsd)})`, 16, sy)
-    const tasaPdf = (config.tasa_bcv_actual && config.tasa_bcv_actual > 1) ? config.tasa_bcv_actual : (totalUsd > 0 && totalBs > 0 ? totalBs / totalUsd : 859.06)
-    doc.text(`DOLAR DEL DIA: ${fmtBs(tasaPdf)} Bs/$`, 110, sy)
+    const esHist = Boolean(
+      (mesLabel && anio && `${anio}-${mesLabel}` < '2026-09') ||
+      pagoInfo.referencia?.includes('HISTÓRICO') ||
+      pagoInfo.referencia?.includes('DEUDA ATRASADA') ||
+      tituloDoc?.includes('DEUDA ATRASADA')
+    )
+    const tasaPdf = (config.tasa_bcv_actual && config.tasa_bcv_actual > 1 && !esHist)
+      ? config.tasa_bcv_actual
+      : (totalUsd > 0 && totalBs > 0 ? totalBs / totalUsd : 0)
+    if (tasaPdf > 0) {
+      doc.text(`${esHist ? 'TASA HISTÓRICA' : 'DOLAR DEL DIA'}: ${fmtBs(tasaPdf)} Bs/$`, 110, sy)
+    }
 
     sy += 4.2
     doc.text(`REFERENCIA: ${pagoInfo.referencia || 'VALIDADO'}`, 16, sy)

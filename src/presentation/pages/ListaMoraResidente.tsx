@@ -5,28 +5,11 @@ import {
   DeudaMoraItem,
   TASA_RIESGO_CONFIG,
   ACCION_LEGAL_CONFIG,
-  obtenerDeudasMora
+  obtenerDeudasMora,
+  obtenerPisoApto
 } from '../../data/moraService'
 
-/**
- * Determina el piso de un apartamento (del '1' al '10' o 'PH')
- * Funciona tanto con el valor de la base de datos como infiriéndolo de la nomenclatura
- */
-export function obtenerPisoApto(aptoNumero: string, pisoDb?: number): string {
-  if (pisoDb === 11) return 'PH'
-  if (pisoDb && pisoDb >= 1 && pisoDb <= 10) return String(pisoDb)
-
-  const clean = (aptoNumero || '').trim().toUpperCase()
-  if (clean.includes('PH')) return 'PH'
-  if (clean.startsWith('510')) return '10'
-  const match = clean.match(/^5(\d)\d$/)
-  if (match) {
-    const digit = parseInt(match[1], 10)
-    if (digit === 0) return '1'
-    return String(digit)
-  }
-  return '1'
-}
+export { obtenerPisoApto }
 
 export const ListaMoraResidente: React.FC = () => {
   const { perfil, config } = useAuth()
