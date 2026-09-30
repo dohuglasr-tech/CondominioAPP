@@ -235,15 +235,16 @@ export function RecibosPanel({ onClose }: Props) {
       }
 
       // Si está pagado o hay un pago aprobado para este apartamento
+      const esHistorico = (recibo.mes_facturado || '').slice(0, 7) < '2026-09'
       const pagoAprobado = pagos.find(p => p.estado === 'aprobado')
-      const estaPagado = recibo.estado === 'pagado' || !!pagoAprobado
+      const estaPagado = recibo.estado === 'pagado' || (!esHistorico && !!pagoAprobado)
 
       const pagoInfo: ReciboPagoInfo | undefined = estaPagado
         ? {
             estado: 'pagado',
-            fecha_pago: pagoAprobado?.fecha_pago || pagoAprobado?.created_at,
-            banco: pagoAprobado?.banco_origen || config?.banco || 'Bicentenario',
-            referencia: pagoAprobado?.referencia || 'VALIDADO',
+            fecha_pago: pagoAprobado?.fecha_pago || pagoAprobado?.created_at || (esHistorico ? recibo.mes_facturado : undefined),
+            banco: pagoAprobado?.banco_origen || config?.banco || (esHistorico ? 'Administración Anterior' : 'Bicentenario'),
+            referencia: pagoAprobado?.referencia || (esHistorico ? 'REGISTRO HISTÓRICO' : 'VALIDADO'),
             monto_bs: pagoAprobado?.monto_bs || recibo.total_bs,
             monto_usd: pagoAprobado?.monto_usd || recibo.total_usd,
           }
@@ -470,7 +471,8 @@ export function RecibosPanel({ onClose }: Props) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
             {recibos.map((recibo) => {
               const { mesLabel, anio } = parseMesFacturado(recibo.mes_facturado)
-              const estaPagado = recibo.estado === 'pagado' || pagos.some(p => p.estado === 'aprobado')
+              const esHistorico = (recibo.mes_facturado || '').slice(0, 7) < '2026-09'
+              const estaPagado = recibo.estado === 'pagado' || (!esHistorico && pagos.some(p => p.estado === 'aprobado'))
               const enRevision = !estaPagado && !!pagoEnRevision
               const isExpanded = expandedReciboId === recibo.id
 
@@ -525,7 +527,7 @@ export function RecibosPanel({ onClose }: Props) {
                           padding: '4px 10px', borderRadius: '999px',
                           fontSize: '11px', fontWeight: 800
                         }}>
-                          ✓ Pagado y Solvente
+                          ✓ Pagado y Solvente {esHistorico && <span style={{ opacity: 0.8, fontSize: '9.5px', marginLeft: '3px' }}>(Histórico)</span>}
                         </span>
                       ) : enRevision ? (
                         <span style={{

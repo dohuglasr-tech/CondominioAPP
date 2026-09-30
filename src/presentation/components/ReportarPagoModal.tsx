@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react'
+import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { reportarPago, subirComprobante } from '../../data/pagosService'
 import { comprimirImagen, ResultadoCompresion } from '../../utils/imageCompressor'
 
@@ -47,6 +47,29 @@ export function ReportarPagoModal({ apartamentoId, onClose, onSuccess }: Props) 
   const [archivo, setArchivo] = useState<File | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const submitBtnRef = useRef<HTMLButtonElement>(null)
+
+  // Bloquear scroll del body al abrir el modal para que los gestos de scroll se enfoquen en el modal
+  useEffect(() => {
+    const originalOverflow = document.body.style.overflow
+    const originalOverscroll = document.body.style.overscrollBehavior
+    document.body.style.overflow = 'hidden'
+    document.body.style.overscrollBehavior = 'contain'
+    return () => {
+      document.body.style.overflow = originalOverflow
+      document.body.style.overscrollBehavior = originalOverscroll
+    }
+  }, [])
+
+  // Auto-scroll suave hacia el botón cuando se carga comprobante o termina la compresión
+  useEffect(() => {
+    if (preview || statsCompresion) {
+      const timer = setTimeout(() => {
+        submitBtnRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+      }, 150)
+      return () => clearTimeout(timer)
+    }
+  }, [preview, statsCompresion])
 
   // Cierre animado
   const handleClose = useCallback(() => {
@@ -125,30 +148,40 @@ export function ReportarPagoModal({ apartamentoId, onClose, onSuccess }: Props) 
     setLoading(false)
   }
 
+  const isFormValid = Boolean(banco && monto && referencia)
+
   // ── Estilos ────────────────────────────────────────────────────
   const st = {
     overlay: {
       position: 'fixed' as const,
       inset: 0,
-      backgroundColor: 'rgba(0,0,0,0.8)',
-      backdropFilter: 'blur(8px)',
-      WebkitBackdropFilter: 'blur(8px)',
+      backgroundColor: 'rgba(0,0,0,0.85)',
+      backdropFilter: 'blur(10px)',
+      WebkitBackdropFilter: 'blur(10px)',
       display: 'flex',
-      alignItems: 'center',
+      alignItems: 'flex-start',
       justifyContent: 'center',
-      zIndex: 999,
-      padding: '20px',
+      zIndex: 100050, // Muy superior a .layout-bottom-bar (9999) y drawer (100001)
+      padding: '16px',
+      paddingTop: 'max(20px, env(safe-area-inset-top, 20px))',
+      paddingBottom: 'max(40px, env(safe-area-inset-bottom, 40px))',
+      overflowY: 'auto' as const,
+      WebkitOverflowScrolling: 'touch' as const,
+      overscrollBehavior: 'contain' as const,
+      touchAction: 'pan-y' as const,
     },
     modal: {
+      margin: 'auto 0', // Centrado vertical en pantallas amplias sin cortar cabecera en pantallas móviles
       backgroundColor: '#1c1c1c',
       border: '1px solid #2a2a2a',
       borderRadius: '20px',
-      padding: '36px 32px',
+      padding: '28px 24px',
       width: '100%',
       maxWidth: '440px',
       boxShadow: '0 25px 80px rgba(0,0,0,0.7), 0 0 40px rgba(249,115,22,0.08)',
       fontFamily: "'Inter', sans-serif",
       position: 'relative' as const,
+      boxSizing: 'border-box' as const,
     },
     topAccent: {
       position: 'absolute' as const,
@@ -159,30 +192,31 @@ export function ReportarPagoModal({ apartamentoId, onClose, onSuccess }: Props) 
     },
     closeBtn: {
       position: 'absolute' as const,
-      top: '18px', right: '18px',
+      top: '16px', right: '16px',
       background: '#2a2a2a',
       border: 'none',
-      color: '#666',
+      color: '#aaa',
       width: '34px', height: '34px',
       borderRadius: '50%',
       cursor: 'pointer',
       fontSize: '14px',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       transition: 'all 0.2s',
+      zIndex: 10,
     },
-    title: { color: '#fff', fontSize: '20px', fontWeight: 700, marginBottom: '6px' },
-    subtitle: { color: '#888', fontSize: '13px', marginBottom: '28px' },
+    title: { color: '#fff', fontSize: '20px', fontWeight: 700, marginBottom: '4px' },
+    subtitle: { color: '#888', fontSize: '13px', marginBottom: '20px' },
     label: { display: 'block', color: '#fff', fontSize: '13px', fontWeight: 600, marginBottom: '8px' },
     input: {
       width: '100%',
       backgroundColor: '#050505',
       border: '1px solid #2a2a2a',
       borderRadius: '10px',
-      padding: '14px 16px',
+      padding: '13px 15px',
       color: '#fff',
       fontSize: '14px',
       outline: 'none',
-      marginBottom: '20px',
+      marginBottom: '16px',
       boxSizing: 'border-box' as const,
       transition: 'border-color 0.2s, box-shadow 0.3s',
     },
@@ -191,11 +225,11 @@ export function ReportarPagoModal({ apartamentoId, onClose, onSuccess }: Props) 
       backgroundColor: '#050505',
       border: '1px solid #2a2a2a',
       borderRadius: '10px',
-      padding: '14px 16px',
+      padding: '13px 15px',
       color: '#fff',
       fontSize: '14px',
       outline: 'none',
-      marginBottom: '20px',
+      marginBottom: '16px',
       boxSizing: 'border-box' as const,
       cursor: 'pointer',
       transition: 'border-color 0.2s, box-shadow 0.3s',
@@ -203,15 +237,15 @@ export function ReportarPagoModal({ apartamentoId, onClose, onSuccess }: Props) 
     uploadBox: {
       border: '2px dashed #2a2a2a',
       borderRadius: '14px',
-      padding: '28px',
+      padding: preview ? '14px' : '22px 16px',
       textAlign: 'center' as const,
       cursor: 'pointer',
-      marginBottom: '24px',
+      marginBottom: '18px',
       transition: 'border-color 0.25s, background-color 0.25s, transform 0.2s',
     },
     previewImg: {
       width: '100%',
-      maxHeight: '140px',
+      maxHeight: '130px',
       objectFit: 'contain' as const,
       borderRadius: '8px',
       marginBottom: '8px',
@@ -221,7 +255,7 @@ export function ReportarPagoModal({ apartamentoId, onClose, onSuccess }: Props) 
       backgroundColor: '#f97316',
       color: '#fff',
       border: 'none',
-      borderRadius: '10px',
+      borderRadius: '12px',
       padding: '15px',
       fontSize: '15px',
       fontWeight: 700,
@@ -231,6 +265,7 @@ export function ReportarPagoModal({ apartamentoId, onClose, onSuccess }: Props) 
       justifyContent: 'center',
       alignItems: 'center',
       gap: '8px',
+      transition: 'all 0.2s ease',
     },
     errorBox: {
       backgroundColor: 'rgba(220,38,38,0.1)',
@@ -248,6 +283,7 @@ export function ReportarPagoModal({ apartamentoId, onClose, onSuccess }: Props) 
     e.target.style.borderColor = '#f97316'
     e.target.style.boxShadow = '0 0 0 3px rgba(249,115,22,0.15), 0 0 15px rgba(249,115,22,0.08)'
   }
+
   const blurStyle = (e: React.FocusEvent<HTMLInputElement | HTMLSelectElement>) => {
     e.target.style.borderColor = '#2a2a2a'
     e.target.style.boxShadow = 'none'
@@ -256,10 +292,22 @@ export function ReportarPagoModal({ apartamentoId, onClose, onSuccess }: Props) 
   // ── PASO 2: ÉXITO ────────────────────────────────────────────
   if (step === 2) {
     return (
-      <div style={st.overlay} className="modal-overlay" onClick={handleClose}>
-        <div style={st.modal} className="modal-card" onClick={(e) => e.stopPropagation()}>
+      <div style={st.overlay} className="modal-overlay reportar-pago-overlay" onClick={handleClose}>
+        <style>{`
+          .reportar-pago-overlay {
+            -webkit-overflow-scrolling: touch;
+            overscroll-behavior: contain;
+          }
+          @media (max-width: 600px) {
+            .reportar-pago-modal {
+              padding: 22px 18px !important;
+              border-radius: 18px !important;
+            }
+          }
+        `}</style>
+        <div style={st.modal} className="modal-card reportar-pago-modal" onClick={(e) => e.stopPropagation()}>
           <div style={st.topAccent}></div>
-          <div style={{ textAlign: 'center', padding: '20px 0' }}>
+          <div style={{ textAlign: 'center', padding: '16px 0' }}>
             {/* Ícono animado de éxito */}
             <div className="animate-success-pop" style={{ marginBottom: '20px' }}>
               <svg width="72" height="72" viewBox="0 0 72 72" fill="none" style={{ display: 'block', margin: '0 auto' }}>
@@ -276,7 +324,7 @@ export function ReportarPagoModal({ apartamentoId, onClose, onSuccess }: Props) 
             <p style={{ color: '#fff', fontSize: '22px', fontWeight: 700, marginBottom: '10px' }}>
               ¡Pago Reportado!
             </p>
-            <p style={{ color: '#888', fontSize: '14px', lineHeight: 1.6, marginBottom: '32px' }}>
+            <p style={{ color: '#888', fontSize: '14px', lineHeight: 1.6, marginBottom: '28px' }}>
               Tu pago fue registrado y está en revisión.<br />
               La administración lo confirmará en breve.
             </p>
@@ -297,12 +345,28 @@ export function ReportarPagoModal({ apartamentoId, onClose, onSuccess }: Props) 
   return (
     <div
       style={st.overlay}
-      className={`modal-overlay ${closing ? 'closing' : ''}`}
+      className={`modal-overlay reportar-pago-overlay ${closing ? 'closing' : ''}`}
       onClick={handleClose}
     >
+      <style>{`
+        .reportar-pago-overlay {
+          -webkit-overflow-scrolling: touch;
+          overscroll-behavior: contain;
+        }
+        @media (max-width: 600px) {
+          .reportar-pago-modal {
+            padding: 22px 18px !important;
+            border-radius: 18px !important;
+          }
+          .reportar-pago-modal input,
+          .reportar-pago-modal select {
+            font-size: 16px !important;
+          }
+        }
+      `}</style>
       <div
         style={st.modal}
-        className={`modal-card ${closing ? 'closing' : ''}`}
+        className={`modal-card reportar-pago-modal ${closing ? 'closing' : ''}`}
         onClick={(e) => e.stopPropagation()}
       >
         <div style={st.topAccent}></div>
@@ -310,8 +374,9 @@ export function ReportarPagoModal({ apartamentoId, onClose, onSuccess }: Props) 
         <button
           style={st.closeBtn}
           onClick={handleClose}
+          aria-label="Cerrar modal"
           onMouseOver={(e) => { e.currentTarget.style.background = '#333'; e.currentTarget.style.color = '#fff' }}
-          onMouseOut={(e) => { e.currentTarget.style.background = '#2a2a2a'; e.currentTarget.style.color = '#666' }}
+          onMouseOut={(e) => { e.currentTarget.style.background = '#2a2a2a'; e.currentTarget.style.color = '#aaa' }}
         >
           ✕
         </button>
@@ -402,7 +467,7 @@ export function ReportarPagoModal({ apartamentoId, onClose, onSuccess }: Props) 
               ) : preview ? (
                 <>
                   <img src={preview} alt="Comprobante" style={st.previewImg} />
-                  <p style={{ color: '#888', fontSize: '12px' }}>Clic para cambiar</p>
+                  <p style={{ color: '#888', fontSize: '12px' }}>Clic para cambiar comprobante</p>
                 </>
               ) : (
                 <>
@@ -423,6 +488,7 @@ export function ReportarPagoModal({ apartamentoId, onClose, onSuccess }: Props) 
             {statsCompresion && statsCompresion.ahorroPct > 0 && (
               <div style={{
                 marginTop: '8px',
+                marginBottom: '16px',
                 backgroundColor: 'rgba(16, 185, 129, 0.1)',
                 border: '1px solid rgba(16, 185, 129, 0.25)',
                 borderRadius: '8px',
@@ -440,15 +506,23 @@ export function ReportarPagoModal({ apartamentoId, onClose, onSuccess }: Props) 
             )}
           </div>
 
-          <button
-            type="submit"
-            className="btn-premium ripple-container"
-            style={st.btnPrimary}
-            disabled={loading || !banco || !monto || !referencia}
-            onClick={(e) => !loading && createRipple(e)}
-          >
-            {loading ? '⏳ Enviando...' : 'Confirmar Pago'}
-          </button>
+          <div style={{ marginTop: '6px' }}>
+            <button
+              ref={submitBtnRef}
+              type="submit"
+              className="btn-premium ripple-container"
+              style={{
+                ...st.btnPrimary,
+                opacity: (loading || !isFormValid) ? 0.6 : 1,
+                cursor: (loading || !isFormValid) ? 'not-allowed' : 'pointer',
+                boxShadow: (loading || !isFormValid) ? 'none' : st.btnPrimary.boxShadow,
+              }}
+              disabled={loading || !isFormValid}
+              onClick={(e) => !loading && isFormValid && createRipple(e)}
+            >
+              {loading ? '⏳ Reportando...' : 'Reportar Pago'}
+            </button>
+          </div>
         </form>
       </div>
     </div>

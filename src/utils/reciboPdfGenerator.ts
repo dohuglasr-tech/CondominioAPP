@@ -40,6 +40,7 @@ export interface ReciboPagoInfo {
   estado: 'pendiente' | 'pagado'
   fecha_pago?: string | null
   banco?: string | null
+  banco_origen?: string | null
   referencia?: string | null
   monto_bs?: number | null
   monto_usd?: number | null
@@ -348,7 +349,7 @@ export function generarPDFRecibo(
     doc.text(`FECHA: ${fStr}`, 110, sy)
     
     sy += 4.2
-    doc.text(`BANCO: ${pagoInfo.banco || config.banco || 'Bicentenario / Transferencia'}`, 16, sy)
+    doc.text(`BANCO: ${pagoInfo.banco || pagoInfo.banco_origen || config.banco || 'Bicentenario / Transferencia'}`, 16, sy)
 
     sy += 4.2
     doc.text(`MONTO: ${fmtBs(pagoInfo.monto_bs || totalBs)} Bs  ($ ${fmtUsd(pagoInfo.monto_usd || totalUsd)})`, 16, sy)

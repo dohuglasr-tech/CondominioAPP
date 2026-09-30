@@ -695,6 +695,9 @@ p  { color: var(--text-secondary); }
 
 .modal-overlay {
   animation: modalOverlayIn 0.3s ease both;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 .modal-card {
   animation: modalSlideIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;

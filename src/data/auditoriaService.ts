@@ -9,6 +9,8 @@ export type TipoAccionAuditoria =
   | 'MODIFICACION_ALICUOTA'
   | 'CAMBIO_CASO'
   | 'ACTUALIZACION_TASA_BCV'
+  | 'HISTORICO_CAMBIO_ESTADO'
+  | 'HISTORICO_BULK_ESTADO'
 
 export interface LogAuditoria {
   id: string

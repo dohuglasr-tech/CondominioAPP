@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../../data/supabase'
 import { notificarApartamento } from '../../../data/notificacionesService'
 import { despacharEmailRecibo } from '../../../data/emailService'
@@ -55,6 +56,7 @@ const generarPDF = generarPDFRecibo
 
 // ─── Componente Principal ─────────────────────────────────────────────────
 export const AdminGenerarRecibos: React.FC = () => {
+  const navigate = useNavigate()
   const now = new Date()
   const [paso, setPaso] = useState<1|2|3|4>(1)
 
@@ -62,6 +64,7 @@ export const AdminGenerarRecibos: React.FC = () => {
   const [mes, setMes]   = useState(now.getMonth())
   const [anio, setAnio] = useState(now.getFullYear())
   const [fondoReservaPct, setFondoReservaPct] = useState(10)
+  const [fondoReservaPhPct, setFondoReservaPhPct] = useState(10)
   const [gastos, setGastos]         = useState<GastoComun[]>([])
   const [config, setConfig]         = useState<ConfigEdificio | null>(null)
   const [loading, setLoading]       = useState(true)
@@ -85,6 +88,7 @@ export const AdminGenerarRecibos: React.FC = () => {
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 4000) }
 
   const mesStr  = `${anio}-${String(mes + 1).padStart(2, '0')}-01`
+  const esHistorico = mesStr < '2026-09-01'
   const mesLabel = MESES[mes]
 
   const totalGastosUsd = gastos.reduce((s, g) => s + g.monto_usd, 0)
@@ -151,14 +155,16 @@ export const AdminGenerarRecibos: React.FC = () => {
     const a = getAlicuotaDecimal(apto.alicuota)
     const subtotalUsd = totalGastosUsd * a
     const subtotalBs  = totalGastosBs  * a
-    const fondoUsd    = subtotalUsd * (fondoReservaPct / 100)
-    const fondoBs     = subtotalBs  * (fondoReservaPct / 100)
+    const esPH = apto.numero.toUpperCase().includes('PH') || apto.piso === 11
+    const pctApto = esPH ? fondoReservaPhPct : fondoReservaPct
+    const fondoUsd    = subtotalUsd * (pctApto / 100)
+    const fondoBs     = subtotalBs  * (pctApto / 100)
     const caps        = cargos.filter(c => c.apartamento_id === apto.id)
     const cargosUsd   = caps.reduce((s, c) => s + c.monto_usd, 0)
     const cargosBs    = caps.reduce((s, c) => s + (c.monto_bs || 0), 0)
     const totalUsd    = subtotalUsd + fondoUsd + cargosUsd
     const totalBs     = subtotalBs  + fondoBs  + cargosBs
-    return { subtotalUsd, subtotalBs, fondoUsd, fondoBs, cargosUsd, cargosBs, totalUsd, totalBs }
+    return { subtotalUsd, subtotalBs, fondoUsd, fondoBs, cargosUsd, cargosBs, totalUsd, totalBs, esPH, pctApto }
   }
 
   // ── Cargo especial ───────────────────────────────────────────────────
@@ -185,7 +191,9 @@ export const AdminGenerarRecibos: React.FC = () => {
   // ── Descargar PDF ────────────────────────────────────────────────────
   const descargarPDF = (apto: Apartamento) => {
     if (!config) return
-    const doc = generarPDF(apto, gastos, cargos, config, fondoReservaPct, mesLabel, anio, notasResidentes)
+    const esPH = apto.numero.toUpperCase().includes('PH') || apto.piso === 11
+    const pct = esPH ? fondoReservaPhPct : fondoReservaPct
+    const doc = generarPDF(apto, gastos, cargos, config, pct, mesLabel, anio, notasResidentes)
     doc.save(`Recibo_Apto${apto.numero}_${mesLabel}${anio}.pdf`)
   }
 
@@ -214,7 +222,7 @@ export const AdminGenerarRecibos: React.FC = () => {
         total_gastos_usd:  totalGastosUsd,
         alicuota:          getAlicuotaDecimal(apto.alicuota),
         subtotal_usd:      calc.subtotalUsd,
-        fondo_reserva_pct: fondoReservaPct,
+        fondo_reserva_pct: calc.pctApto,
         fondo_reserva_usd: calc.fondoUsd,
         cargos_extra_usd:  calc.cargosUsd,
         total_usd:         calc.totalUsd,
@@ -223,7 +231,7 @@ export const AdminGenerarRecibos: React.FC = () => {
         data_json: {
           gastos: gastos.map(g => ({ descripcion: g.descripcion, monto_usd: g.monto_usd, monto_bs: g.monto_bs })),
           cargos_especiales: cargos.filter(c => c.apartamento_id === apto.id),
-          fondo_reserva_pct: fondoReservaPct,
+          fondo_reserva_pct: calc.pctApto,
           notas_residentes: notasResidentes,
         },
         emitido_at: new Date().toISOString(),
@@ -249,7 +257,9 @@ export const AdminGenerarRecibos: React.FC = () => {
     }
 
     // 4. Notificar a cada apartamento que tiene un nuevo recibo emitido (in-app y email automático)
-    if (ok > 0) {
+    // NOTA: Para meses históricos (< '2026-09-01', carga de administración anterior),
+    // se omiten los despachos de emails automáticos para evitar confusiones o spam a los residentes.
+    if (ok > 0 && !esHistorico) {
       // 4.1 Notificación interna in-app a todos los apartamentos
       apartamentos.forEach(apto => {
         notificarApartamento({
@@ -336,8 +346,8 @@ export const AdminGenerarRecibos: React.FC = () => {
       {paso === 1 && (
         <div style={{ display:'flex', flexDirection:'column', gap:'20px' }}>
 
-          {/* Selector Mes/Año + Fondo de Reserva */}
-          <div style={{ ...S.card, display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'16px', alignItems:'end' }}>
+          {/* Selector Mes/Año + Fondo de Reserva (General y PH) */}
+          <div style={{ ...S.card, display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(200px, 1fr))', gap:'16px', alignItems:'end' }}>
             <div>
               <label style={S.label}>Mes a facturar</label>
               <select style={S.input} value={mes} onChange={e => setMes(Number(e.target.value))}>
@@ -350,9 +360,36 @@ export const AdminGenerarRecibos: React.FC = () => {
             </div>
             <div>
               <label style={S.label}>Fondo de Reserva (%)</label>
-              <input type="number" style={S.input} value={fondoReservaPct} min={0} max={100} onChange={e => setFondoReservaPct(parseFloat(e.target.value)||0)} />
+              <input type="number" style={S.input} value={fondoReservaPct} min={0} max={100} step="0.1" onChange={e => setFondoReservaPct(parseFloat(e.target.value)||0)} />
+            </div>
+            <div>
+              <label style={{ ...S.label, color: '#f59e0b', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <span>👑 Fondo de Reserva PH (%)</span>
+              </label>
+              <input
+                type="number"
+                style={{ ...S.input, borderColor: '#f59e0b60', backgroundColor: '#1c1917', color: '#fef3c7', fontWeight: 700 }}
+                value={fondoReservaPhPct}
+                min={0}
+                max={100}
+                step="0.1"
+                onChange={e => setFondoReservaPhPct(parseFloat(e.target.value)||0)}
+              />
             </div>
           </div>
+
+          {/* Banner Informativo para Carga Histórica (Administración Anterior) */}
+          {esHistorico && (
+            <div style={{ backgroundColor: '#1e1b4b', border: '1px solid #6366f1', borderRadius: '12px', padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '14px' }}>
+              <span style={{ fontSize: '26px' }}>🏛️</span>
+              <div style={{ fontSize: '13px', color: '#c7d2fe', lineHeight: '1.5' }}>
+                <strong style={{ color: '#fff', fontSize: '14px' }}>Modo Carga Histórica (Administración Anterior — {mesLabel} {anio}):</strong>
+                <br />
+                Este mes es anterior a Septiembre 2026. Al emitir estos recibos <strong>no se enviarán correos masivos</strong> a los copropietarios.
+                Una vez emitidos, podrás ir de inmediato a <strong>Recibos Emitidos</strong> para marcar apartamento por apartamento si pagó o se mantiene en mora.
+              </div>
+            </div>
+          )}
 
           {/* Resumen Gastos */}
           <div style={S.card}>
@@ -416,7 +453,7 @@ export const AdminGenerarRecibos: React.FC = () => {
                 <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'12px' }}>
                   <thead>
                     <tr style={{ borderBottom:'1px solid #2a2a2a' }}>
-                      {['Apto','Propietario','Alíc.','Subtotal Bs','Subtotal $','Fondo Bs','Fondo $','Extras','TOTAL Bs','TOTAL $'].map(h => (
+                      {['Apto','Propietario','Alíc.','Subtotal Bs','Subtotal $','Fondo %','Fondo Bs','Fondo $','Extras','TOTAL Bs','TOTAL $'].map(h => (
                         <th key={h} style={{ color:'#555', fontSize:'10px', fontWeight:700, padding:'6px 8px', textAlign:'right', textTransform:'uppercase' }}>{h}</th>
                       ))}
                     </tr>
@@ -424,7 +461,7 @@ export const AdminGenerarRecibos: React.FC = () => {
                   <tbody>
                     {apartamentos.map(a => {
                       const c = calcularApto(a)
-                      const esPH = a.numero.toUpperCase().includes('PH')
+                      const esPH = a.numero.toUpperCase().includes('PH') || a.piso === 11
                       return (
                         <tr key={a.id} style={{ borderBottom:'1px solid #111' }}>
                           <td style={{ color:'#f97316', fontWeight:800, padding:'7px 8px' }}>
@@ -439,6 +476,9 @@ export const AdminGenerarRecibos: React.FC = () => {
                           <td style={{ color: esPH ? '#f97316' : '#888', padding:'7px 8px', textAlign:'right', fontWeight: esPH ? 700 : 400 }}>{formatAlicuotaPct(a.alicuota)}</td>
                           <td style={{ color:'#10b981', padding:'7px 8px', textAlign:'right' }}>{fmtBs(c.subtotalBs)}</td>
                           <td style={{ color:'#f97316', padding:'7px 8px', textAlign:'right' }}>{fmtUsd(c.subtotalUsd)}</td>
+                          <td style={{ color: esPH ? '#f59e0b' : '#888', padding:'7px 8px', textAlign:'right', fontWeight: esPH ? 700 : 400 }}>
+                            {c.pctApto}% {esPH && '👑'}
+                          </td>
                           <td style={{ color:'#888', padding:'7px 8px', textAlign:'right' }}>{fmtBs(c.fondoBs)}</td>
                           <td style={{ color:'#888', padding:'7px 8px', textAlign:'right' }}>{fmtUsd(c.fondoUsd)}</td>
                           <td style={{ color: c.cargosUsd > 0 ? '#f59e0b' : '#444', padding:'7px 8px', textAlign:'right' }}>
@@ -589,10 +629,11 @@ export const AdminGenerarRecibos: React.FC = () => {
             const apto = apartamentos[previewAptoIdx]
             const calc = calcularApto(apto)
             const caps = cargos.filter(c => c.apartamento_id === apto.id)
-            const esPH = apto.numero.toUpperCase().includes('PH')
+            const esPH = calc.esPH
+            const pctApto = calc.pctApto
 
-            const fondoEdificioUsd = totalGastosUsd * (fondoReservaPct / 100)
-            const fondoEdificioBs  = totalGastosBs  * (fondoReservaPct / 100)
+            const fondoEdificioUsd = totalGastosUsd * (pctApto / 100)
+            const fondoEdificioBs  = totalGastosBs  * (pctApto / 100)
             const totalEdificioUsd = totalGastosUsd + fondoEdificioUsd
             const totalEdificioBs  = totalGastosBs  + fondoEdificioBs
 
@@ -737,7 +778,7 @@ export const AdminGenerarRecibos: React.FC = () => {
                           <td style={{ padding:'4px 8px', textAlign:'right', minWidth:'80px', border:'1px solid #e2e8f0', fontVariantNumeric:'tabular-nums' }}>$ {fmtUsd(totalGastosUsd)}</td>
                         </tr>
                         <tr style={{ backgroundColor:'#ffffff', fontWeight:700 }}>
-                          <td style={{ padding:'4px 8px', textAlign:'right', border:'1px solid #e2e8f0' }}>FONDO DE RESERVA ({fondoReservaPct}%)</td>
+                          <td style={{ padding:'4px 8px', textAlign:'right', border:'1px solid #e2e8f0' }}>FONDO DE RESERVA ({pctApto}%{esPH ? ' - PENTHOUSE' : ''})</td>
                           <td style={{ padding:'4px 8px', textAlign:'right', border:'1px solid #e2e8f0', fontVariantNumeric:'tabular-nums' }}>{fmtBs(fondoEdificioBs)} Bs</td>
                           <td style={{ padding:'4px 8px', textAlign:'right', border:'1px solid #e2e8f0', fontVariantNumeric:'tabular-nums' }}>$ {fmtUsd(fondoEdificioUsd)}</td>
                         </tr>
@@ -864,13 +905,21 @@ export const AdminGenerarRecibos: React.FC = () => {
               <div style={{ backgroundColor:'#0f0f0f', border:'1px solid #1e1e1e', borderRadius:'10px', padding:'16px', margin:'20px 0', textAlign:'left' }}>
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px', fontSize:'13px' }}>
                   <div><span style={{ color:'#555' }}>Mes:</span> <span style={{ color:'#fff', fontWeight:700 }}>{mesLabel} {anio}</span></div>
-                  <div><span style={{ color:'#555' }}>Fondo reserva:</span> <span style={{ color:'#fff', fontWeight:700 }}>{fondoReservaPct}%</span></div>
+                  <div><span style={{ color:'#555' }}>F. Reserva Regular:</span> <span style={{ color:'#fff', fontWeight:700 }}>{fondoReservaPct}%</span></div>
+                  <div><span style={{ color:'#555' }}>F. Reserva PH:</span> <span style={{ color:'#f59e0b', fontWeight:700 }}>{fondoReservaPhPct}% 👑</span></div>
+                  <div><span style={{ color:'#555' }}>Apartamentos:</span> <span style={{ color:'#fff', fontWeight:700 }}>{apartamentos.length}</span></div>
                   <div><span style={{ color:'#555' }}>Total gastos $:</span> <span style={{ color:'#f97316', fontWeight:800 }}>$ {fmtUsd(totalGastosUsd)}</span></div>
                   <div><span style={{ color:'#555' }}>Total gastos Bs:</span> <span style={{ color:'#10b981', fontWeight:800 }}>Bs. {fmtBs(totalGastosBs)}</span></div>
-                  <div><span style={{ color:'#555' }}>Apartamentos:</span> <span style={{ color:'#fff', fontWeight:700 }}>{apartamentos.length}</span></div>
                   <div><span style={{ color:'#555' }}>Cargos especiales:</span> <span style={{ color: cargos.length>0?'#f59e0b':'#555', fontWeight:700 }}>{cargos.length}</span></div>
                 </div>
               </div>
+
+              {esHistorico && (
+                <div style={{ backgroundColor: '#1e1b4b', border: '1px solid #6366f1', borderRadius: '8px', padding: '12px 14px', marginBottom: '20px', fontSize: '12px', color: '#c7d2fe', textAlign: 'left', lineHeight: '1.4' }}>
+                  ℹ️ <strong>Carga de Administración Anterior:</strong> Los correos automáticos están silenciados para este mes histórico. Al completar la emisión, podrás ir directo a marcar apartamento por apartamento si pagó o quedó en mora.
+                </div>
+              )}
+
               <div style={{ display:'flex', gap:'12px', justifyContent:'center' }}>
                 <button onClick={() => setPaso(3)} style={S.btnSecondary}>← Volver a Previsualizar</button>
                 <button onClick={emitirRecibos} disabled={emitiendo}
@@ -889,8 +938,31 @@ export const AdminGenerarRecibos: React.FC = () => {
                 <span style={S.badge('#10b981')}>✅ {resultado.ok} emitidos</span>
                 {resultado.fail > 0 && <span style={S.badge('#ef4444')}>❌ {resultado.fail} con error</span>}
               </div>
-              <p style={{ color:'#666', fontSize:'13px', margin:'0 0 24px' }}>Los residentes ya pueden ver su deuda y reportar el pago.</p>
-              <button onClick={() => { setResultado(null); setPaso(1) }} style={S.btnSecondary}>📋 Generar otro mes</button>
+              <p style={{ color:'#666', fontSize:'13px', margin:'0 0 24px' }}>
+                {esHistorico
+                  ? 'Recibos históricos cargados. Ahora puedes marcar apartamento por apartamento el estado de pago de la administración anterior.'
+                  : 'Los residentes ya pueden ver su deuda y reportar el pago.'}
+              </p>
+              
+              <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                {esHistorico && resultado.ok > 0 && (
+                  <button
+                    onClick={() => navigate(`/admin/recibos-emitidos?mes=${mesStr}`)}
+                    style={{ ...S.btnPrimary, backgroundColor: '#6366f1', padding: '12px 24px', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}
+                  >
+                    <span>🏛️</span> Ir a Marcar Pagos de {mesLabel} {anio} ({resultado.ok} aptos) →
+                  </button>
+                )}
+                <button
+                  onClick={() => navigate(`/admin/recibos-emitidos?mes=${mesStr}`)}
+                  style={{ ...S.btnSecondary, display: 'flex', alignItems: 'center', gap: '8px' }}
+                >
+                  <span>📋</span> Ver Recibos Emitidos
+                </button>
+                <button onClick={() => { setResultado(null); setPaso(1) }} style={S.btnSecondary}>
+                  Generar otro mes
+                </button>
+              </div>
             </div>
           )}
         </div>

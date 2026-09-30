@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../../../data/supabase'
 import { useAuth } from '../../../application/contexts/AuthContext'
 import { registrarEventoAuditoria } from '../../../data/auditoriaService'
@@ -64,8 +65,11 @@ const fmtUsd = (n: number) => (n || 0).toLocaleString('en-US', { minimumFraction
 
 export const AdminRecibosEmitidos: React.FC = () => {
   const { perfil } = useAuth()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const mesParam = searchParams.get('mes')
+
   const [mesesDisponibles, setMesesDisponibles] = useState<string[]>([])
-  const [mesSeleccionado, setMesSeleccionado] = useState<string>('')
+  const [mesSeleccionado, setMesSeleccionado] = useState<string>(mesParam || '')
   const [recibos, setRecibos] = useState<ReciboEmitido[]>([])
   const [config, setConfig] = useState<ConfigEdificio | null>(null)
   const [loading, setLoading] = useState(true)
@@ -74,6 +78,17 @@ export const AdminRecibosEmitidos: React.FC = () => {
   const [reciboModal, setReciboModal] = useState<ReciboEmitido | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const [cambiandoEstadoId, setCambiandoEstadoId] = useState<string | null>(null)
+
+  // ── Estados para Administración Anterior (Meses Históricos < 2026-09) ───────
+  const esMesHistorico = useMemo(() => {
+    return (mesSeleccionado || '').slice(0, 7) < '2026-09'
+  }, [mesSeleccionado])
+
+  const [modalBulkPagadosOpen, setModalBulkPagadosOpen] = useState(false)
+  const [modalBulkMoraOpen, setModalBulkMoraOpen] = useState(false)
+  const [ejecutandoBulk, setEjecutandoBulk] = useState(false)
+  const [notificarEmailHistorico, setNotificarEmailHistorico] = useState(false)
+  const [vistaModo, setVistaModo] = useState<'auto' | 'tabla' | 'tarjetas'>('auto')
 
   // ── Estados para "Retirar deuda o eliminar emisión" con Auditoría ──────────
   const [modalEliminarEmisionOpen, setModalEliminarEmisionOpen] = useState(false)
@@ -105,7 +120,9 @@ export const AdminRecibosEmitidos: React.FC = () => {
       if (recibosMesesRes.data && recibosMesesRes.data.length > 0) {
         const unicos = Array.from(new Set(recibosMesesRes.data.map(r => r.mes_facturado)))
         setMesesDisponibles(unicos)
-        if (!mesSeleccionado || !unicos.includes(mesSeleccionado)) {
+        if (mesParam && unicos.includes(mesParam)) {
+          setMesSeleccionado(mesParam)
+        } else if (!mesSeleccionado || !unicos.includes(mesSeleccionado)) {
           setMesSeleccionado(unicos[0])
         }
       } else {
@@ -114,7 +131,7 @@ export const AdminRecibosEmitidos: React.FC = () => {
     } finally {
       setLoading(false)
     }
-  }, [mesSeleccionado])
+  }, [mesSeleccionado, mesParam])
 
   useEffect(() => {
     cargarMeses()
@@ -196,8 +213,26 @@ export const AdminRecibosEmitidos: React.FC = () => {
         setRecibos(prev => prev.map(r => r.id === recibo.id ? { ...r, estado: nuevoEstado } : r))
         showToast(`✅ Recibo Apto ${recibo.apartamento?.numero} marcado como ${nuevoEstado.toUpperCase()}`)
 
+        // Auditoría automática para modificaciones de recibos históricos
+        if (esMesHistorico) {
+          registrarEventoAuditoria({
+            tipo_accion: 'HISTORICO_CAMBIO_ESTADO',
+            titulo: `Apto ${recibo.apartamento?.numero || 'S/N'}: Marcado como ${nuevoEstado.toUpperCase()}`,
+            descripcion: `Actualización de recibo histórico de la administración anterior para el mes ${mesLabelActivo}. Estado asignado: ${nuevoEstado.toUpperCase()}.`,
+            apartamento_numero: recibo.apartamento?.numero,
+            apartamento_id: recibo.apartamento_id,
+            mes_afectado: recibo.mes_facturado,
+            monto_usd: recibo.total_usd,
+            monto_bs: recibo.total_bs,
+            motivo: 'Carga histórica de administración anterior',
+            autor_nombre: perfil?.nombre_completo || 'Administrador',
+            autor_email: (perfil as any)?.email || config?.email_contacto || null
+          }).catch(err => console.warn('[Auditoria] Error:', err))
+        }
+
         // Si cambió a pagado, enviar automáticamente constancia de solvencia y agradecimiento por email
-        if (nuevoEstado === 'pagado') {
+        // Para meses históricos, solo se despacha si la opción 'notificarEmailHistorico' está activada
+        if (nuevoEstado === 'pagado' && (!esMesHistorico || notificarEmailHistorico)) {
           const aptoNum = recibo.apartamento?.numero || 'S/N'
           const dispatchSolvencia = (correo: string) => {
             despacharEmailPagoAprobado({
@@ -230,6 +265,46 @@ export const AdminRecibosEmitidos: React.FC = () => {
       }
     } finally {
       setCambiandoEstadoId(null)
+    }
+  }
+
+  // ── 3.1 Cambio masivo de estado para regularización histórica ──────────────
+  const ejecutarBulkEstado = async (nuevoEstado: 'pagado' | 'pendiente') => {
+    if (!mesSeleccionado || recibos.length === 0) return
+    setEjecutandoBulk(true)
+    try {
+      const { error } = await supabase
+        .from('recibos_generados')
+        .update({ estado: nuevoEstado })
+        .eq('mes_facturado', mesSeleccionado)
+
+      if (error) {
+        showToast(`❌ Error al actualizar en lote: ${error.message}`)
+        return
+      }
+
+      setRecibos(prev => prev.map(r => ({ ...r, estado: nuevoEstado })))
+      showToast(`✅ Todos los recibos de ${mesLabelActivo} marcados como ${nuevoEstado === 'pagado' ? 'PAGADOS' : 'EN MORA'}`)
+
+      // Registrar auditoría del cambio masivo
+      await registrarEventoAuditoria({
+        tipo_accion: 'HISTORICO_BULK_ESTADO',
+        titulo: `Cambio Masivo de Estado: Todos ${nuevoEstado.toUpperCase()} (${mesLabelActivo})`,
+        descripcion: `Se actualizaron masivamente los ${recibos.length} recibos del mes histórico ${mesLabelActivo} al estado ${nuevoEstado.toUpperCase()} por regularización de la administración anterior.`,
+        mes_afectado: mesSeleccionado,
+        monto_usd: nuevoEstado === 'pagado' ? stats.totalFacturadoUsd : 0,
+        monto_bs: nuevoEstado === 'pagado' ? stats.totalFacturadoBs : 0,
+        motivo: `Carga masiva histórica - Administración anterior (${nuevoEstado})`,
+        autor_nombre: perfil?.nombre_completo || 'Administrador',
+        autor_email: (perfil as any)?.email || config?.email_contacto || null
+      }).catch(err => console.warn('[Auditoria] Error:', err))
+
+      setModalBulkPagadosOpen(false)
+      setModalBulkMoraOpen(false)
+    } catch (err: any) {
+      showToast(`❌ Error: ${err.message}`)
+    } finally {
+      setEjecutandoBulk(false)
     }
   }
 
@@ -411,6 +486,8 @@ export const AdminRecibosEmitidos: React.FC = () => {
       titular_cuenta: config.titular_cuenta
     }
 
+    const esHistoricoRecibo = (r.mes_facturado || '').slice(0, 7) < '2026-09'
+
     const doc = generarPDFRecibo(
       aptoData,
       gastos,
@@ -420,7 +497,14 @@ export const AdminRecibosEmitidos: React.FC = () => {
       mesLabel,
       anio,
       r.data_json?.notas_residentes,
-      r.estado === 'pagado' ? { estado: 'pagado', monto_bs: r.total_bs, monto_usd: r.total_usd } : undefined
+      r.estado === 'pagado' ? {
+        estado: 'pagado',
+        monto_bs: r.total_bs,
+        monto_usd: r.total_usd,
+        referencia: esHistoricoRecibo ? 'REGISTRO HISTÓRICO' : undefined,
+        banco: esHistoricoRecibo ? 'Administración Anterior' : undefined,
+        banco_origen: esHistoricoRecibo ? 'Administración Anterior' : undefined,
+      } : undefined
     )
 
     doc.save(`Recibo_Apto${r.apartamento?.numero}_${mesLabel}${anio}.pdf`)
@@ -781,7 +865,10 @@ export const AdminRecibosEmitidos: React.FC = () => {
               <span style={{ color: '#888', fontSize: '12px', fontWeight: 600 }}>Mes Facturado:</span>
               <select
                 value={mesSeleccionado}
-                onChange={e => setMesSeleccionado(e.target.value)}
+                onChange={e => {
+                  setMesSeleccionado(e.target.value)
+                  setSearchParams({ mes: e.target.value })
+                }}
                 style={{
                   backgroundColor: '#0a0a0a', color: '#f97316', border: '1px solid #f9731650',
                   padding: '6px 10px', borderRadius: '8px', fontSize: '13px', fontWeight: 700, outline: 'none', cursor: 'pointer'
@@ -790,7 +877,8 @@ export const AdminRecibosEmitidos: React.FC = () => {
                 {mesesDisponibles.map(m => {
                   const [anioStr, mesNum] = m.split('-')
                   const label = `${MESES[(parseInt(mesNum)||1) - 1]} ${anioStr}`
-                  return <option key={m} value={m}>{label}</option>
+                  const esHist = m.slice(0, 7) < '2026-09'
+                  return <option key={m} value={m}>{label}{esHist ? ' 🏛️ (Histórico)' : ''}</option>
                 })}
               </select>
             </div>
@@ -885,6 +973,120 @@ export const AdminRecibosEmitidos: React.FC = () => {
         </div>
       ) : (
         <>
+          {/* ── BANNER ADMINISTRACIÓN ANTERIOR (MODO HISTÓRICO) ── */}
+          {esMesHistorico && (
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(79, 70, 229, 0.16) 0%, rgba(99, 102, 241, 0.08) 50%, rgba(15, 23, 42, 0.95) 100%)',
+              border: '1px solid rgba(99, 102, 241, 0.4)',
+              borderTop: '1px solid rgba(129, 140, 248, 0.6)',
+              borderRadius: '20px',
+              padding: '22px 26px',
+              marginBottom: '24px',
+              boxShadow: '0 12px 30px -4px rgba(79, 70, 229, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.1)'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
+                <div style={{ flex: 1, minWidth: '280px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ fontSize: '26px' }}>🏛️</span>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <h2 style={{ fontSize: '18px', fontWeight: 800, margin: 0, color: '#e0e7ff', letterSpacing: '-0.3px' }}>
+                          Carga de Pagos — Administración Anterior
+                        </h2>
+                        <span style={{ backgroundColor: 'rgba(99, 102, 241, 0.3)', color: '#a5b4fc', border: '1px solid rgba(129, 140, 248, 0.4)', fontSize: '10.5px', fontWeight: 700, padding: '2px 8px', borderRadius: '6px' }}>
+                          {mesLabelActivo} (Histórico)
+                        </span>
+                      </div>
+                      <p style={{ color: '#c7d2fe', fontSize: '13px', margin: '6px 0 0', lineHeight: '1.5' }}>
+                        Este mes corresponde al periodo previo a la plataforma. Marca apartamento por apartamento si pagó o quedó en mora según los registros recibidos. Los residentes verán este estado en su cuenta y tendrán disponible su PDF descargable con sello de solvencia.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Barra de progreso de regularización */}
+                  <div style={{ marginTop: '16px', backgroundColor: 'rgba(15, 23, 42, 0.6)', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '12px', padding: '12px 16px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '8px', fontWeight: 600, flexWrap: 'wrap', gap: '6px' }}>
+                      <span style={{ color: '#10b981', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#10b981' }} />
+                        Pagados: <strong>{stats.cantSolventes}</strong> ({stats.pctRecaudado}%)
+                      </span>
+                      <span style={{ color: '#ef4444', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#ef4444' }} />
+                        En Mora: <strong>{stats.cantMorosos}</strong> ({stats.pctMora}%)
+                      </span>
+                      <span style={{ color: '#94a3b8' }}>
+                        Total: <strong>{recibos.length}</strong> inmuebles
+                      </span>
+                    </div>
+                    <div style={{ height: '8px', width: '100%', backgroundColor: 'rgba(239, 68, 68, 0.4)', borderRadius: '4px', overflow: 'hidden', display: 'flex' }}>
+                      <div style={{ width: `${stats.pctRecaudado}%`, height: '100%', backgroundColor: '#10b981', transition: 'width 0.4s ease' }} />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Acciones en lote para agilizar */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', minWidth: '240px' }}>
+                  <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.6px' }}>
+                    ⚡ Acciones Rápidas en Lote:
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <button
+                      onClick={() => setModalBulkPagadosOpen(true)}
+                      style={{
+                        backgroundColor: 'rgba(16, 185, 129, 0.18)',
+                        color: '#10b981',
+                        border: '1px solid rgba(16, 185, 129, 0.4)',
+                        padding: '8px 14px',
+                        borderRadius: '8px',
+                        fontSize: '12px',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        transition: 'all 0.15s'
+                      }}
+                      title="Marcar todos los apartamentos como Pagados de una sola vez"
+                    >
+                      <span>✅</span> Marcar Todos Pagados
+                    </button>
+                    <button
+                      onClick={() => setModalBulkMoraOpen(true)}
+                      style={{
+                        backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                        color: '#f87171',
+                        border: '1px solid rgba(239, 68, 68, 0.35)',
+                        padding: '8px 14px',
+                        borderRadius: '8px',
+                        fontSize: '12px',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        transition: 'all 0.15s'
+                      }}
+                      title="Marcar todos los apartamentos como En Mora / Pendiente"
+                    >
+                      <span>⚠️</span> Marcar Todos en Mora
+                    </button>
+                  </div>
+
+                  {/* Switch para notificar por email o no */}
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', marginTop: '4px', fontSize: '11.5px', color: '#cbd5e1' }}>
+                    <input
+                      type="checkbox"
+                      checked={notificarEmailHistorico}
+                      onChange={e => setNotificarEmailHistorico(e.target.checked)}
+                      style={{ cursor: 'pointer', accentColor: '#6366f1' }}
+                    />
+                    <span>Notificar por email al marcar pago (silenciado por defecto)</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* ── BENTO GRID: KPIS DE CARTERA ── */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '14px', marginBottom: '22px' }}>
             
@@ -1173,17 +1375,76 @@ export const AdminRecibosEmitidos: React.FC = () => {
                     </button>
                   ))}
                 </div>
+
+                {/* Selector de Modo de Vista (Tabla vs Tarjetas para Móviles) */}
+                <div style={{ display: 'flex', backgroundColor: '#0a0a0a', border: '1px solid #2a2a2a', borderRadius: '8px', padding: '2px' }}>
+                  <button
+                    onClick={() => setVistaModo('tabla')}
+                    style={{
+                      backgroundColor: vistaModo === 'tabla' ? '#3b82f6' : 'transparent',
+                      color: vistaModo === 'tabla' ? '#fff' : '#888',
+                      border: 'none', padding: '6px 10px', borderRadius: '6px', cursor: 'pointer',
+                      fontSize: '11.5px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px'
+                    }}
+                    title="Vista de Tabla (ideal para pantallas grandes)"
+                  >
+                    <span>📋</span> Tabla
+                  </button>
+                  <button
+                    onClick={() => setVistaModo('tarjetas')}
+                    style={{
+                      backgroundColor: vistaModo === 'tarjetas' ? '#3b82f6' : 'transparent',
+                      color: vistaModo === 'tarjetas' ? '#fff' : '#888',
+                      border: 'none', padding: '6px 10px', borderRadius: '6px', cursor: 'pointer',
+                      fontSize: '11.5px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px'
+                    }}
+                    title="Vista de Tarjetas (ideal para celulares y tablets)"
+                  >
+                    <span>🗂️</span> Tarjetas
+                  </button>
+                  <button
+                    onClick={() => setVistaModo('auto')}
+                    style={{
+                      backgroundColor: vistaModo === 'auto' ? '#6366f1' : 'transparent',
+                      color: vistaModo === 'auto' ? '#fff' : '#888',
+                      border: 'none', padding: '6px 10px', borderRadius: '6px', cursor: 'pointer',
+                      fontSize: '11.5px', fontWeight: 700
+                    }}
+                    title="Modo Automático (se adapta al dispositivo)"
+                  >
+                    Auto
+                  </button>
+                </div>
               </div>
             </div>
 
-            {/* Tabla */}
+            <style>{`
+              .vista-forzada-bloque { display: block !important; }
+              .vista-forzada-grid { display: grid !important; }
+              .vista-forzada-oculto { display: none !important; }
+
+              @media (max-width: 860px) {
+                .vista-recibos-tabla-auto { display: none !important; }
+                .vista-recibos-tarjetas-auto { display: grid !important; }
+              }
+              @media (min-width: 861px) {
+                .vista-recibos-tabla-auto { display: block !important; }
+                .vista-recibos-tarjetas-auto { display: none !important; }
+              }
+            `}</style>
+
+            {/* Tabla y Tarjetas */}
             {recibosFiltrados.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '40px 20px', color: '#777' }}>
                 <p>No se encontraron recibos con los filtros actuales.</p>
               </div>
             ) : (
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+              <>
+                <div
+                  className={vistaModo === 'tabla' ? 'vista-forzada-bloque' : vistaModo === 'tarjetas' ? 'vista-forzada-oculto' : 'vista-recibos-tabla-auto'}
+                  style={{ overflowX: 'auto' }}
+                >
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                   <thead>
                     <tr style={{ borderBottom: '1px solid #222', color: '#777', textTransform: 'uppercase', fontSize: '10.5px', letterSpacing: '0.4px' }}>
                       <th style={{ textAlign: 'left', padding: '10px 12px' }}>Apartamento</th>
@@ -1358,7 +1619,206 @@ export const AdminRecibosEmitidos: React.FC = () => {
                     })}
                   </tbody>
                 </table>
-              </div>
+                </div>
+
+                {/* 2. Vista Tarjetas (Mobile / Tablet / Touch-friendly) */}
+                <div
+                  className={vistaModo === 'tarjetas' ? 'vista-forzada-grid' : vistaModo === 'tabla' ? 'vista-forzada-oculto' : 'vista-recibos-tarjetas-auto'}
+                  style={{
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))',
+                    gap: '14px',
+                    marginTop: '8px'
+                  }}
+                >
+                  {recibosFiltrados.map(r => {
+                    const esPH = r.apartamento?.numero.toUpperCase().includes('PH')
+                    const isPagado = r.estado === 'pagado'
+                    const cambiando = cambiandoEstadoId === r.id
+
+                    return (
+                      <div
+                        key={`card-${r.id}`}
+                        style={{
+                          background: isPagado
+                            ? 'linear-gradient(180deg, rgba(16, 185, 129, 0.08) 0%, rgba(13, 17, 23, 0.95) 100%)'
+                            : 'linear-gradient(180deg, rgba(239, 68, 68, 0.08) 0%, rgba(13, 17, 23, 0.95) 100%)',
+                          border: isPagado ? '1px solid rgba(16, 185, 129, 0.35)' : '1px solid rgba(239, 68, 68, 0.35)',
+                          borderTop: isPagado ? '3px solid #10b981' : '3px solid #ef4444',
+                          borderRadius: '16px',
+                          padding: '16px 18px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          justifyContent: 'space-between',
+                          gap: '14px',
+                          boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)'
+                        }}
+                      >
+                        {/* Header de la tarjeta */}
+                        <div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span style={{ fontSize: '18px', fontWeight: 900, color: '#f97316' }}>
+                                Apto {r.apartamento?.numero}
+                              </span>
+                              {esPH && (
+                                <span style={{ backgroundColor: 'rgba(249, 115, 22, 0.2)', color: '#f97316', border: '1px solid rgba(249, 115, 22, 0.4)', fontSize: '9px', fontWeight: 800, padding: '1px 5px', borderRadius: '4px' }}>
+                                  PH
+                                </span>
+                              )}
+                              {r.apartamento?.piso && (
+                                <span style={{ color: '#64748b', fontSize: '11px', fontWeight: 600 }}>
+                                  Piso {r.apartamento.piso}
+                                </span>
+                              )}
+                            </div>
+
+                            <span style={{
+                              fontSize: '11px',
+                              fontWeight: 800,
+                              padding: '3px 8px',
+                              borderRadius: '6px',
+                              backgroundColor: isPagado ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
+                              color: isPagado ? '#10b981' : '#ef4444',
+                              border: `1px solid ${isPagado ? 'rgba(16, 185, 129, 0.4)' : 'rgba(239, 68, 68, 0.4)'}`
+                            }}>
+                              {isPagado ? '✓ SOLVENTE' : '⚠️ EN MORA'}
+                            </span>
+                          </div>
+
+                          {/* Nombre de Residente */}
+                          <div style={{ color: '#e2e8f0', fontSize: '13px', fontWeight: 600 }}>
+                            {r.apartamento?.propietario_nombre || (
+                              <span style={{ color: '#64748b', fontStyle: 'italic' }}>Sin registrar</span>
+                            )}
+                          </div>
+                          {r.apartamento?.telefono_contacto && (
+                            <div style={{ color: '#64748b', fontSize: '11px', marginTop: '2px' }}>
+                              📞 {r.apartamento.telefono_contacto}
+                            </div>
+                          )}
+
+                          {/* Montos */}
+                          <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: '1fr 1fr',
+                            gap: '8px',
+                            backgroundColor: 'rgba(0, 0, 0, 0.4)',
+                            borderRadius: '10px',
+                            padding: '10px 12px',
+                            marginTop: '12px'
+                          }}>
+                            <div>
+                              <div style={{ color: '#64748b', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase' }}>Total USD</div>
+                              <div style={{ color: '#fff', fontSize: '16px', fontWeight: 900 }}>$ {fmtUsd(r.total_usd)}</div>
+                            </div>
+                            <div>
+                              <div style={{ color: '#64748b', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase' }}>Total Bs</div>
+                              <div style={{ color: '#10b981', fontSize: '15px', fontWeight: 800 }}>{fmtBs(r.total_bs)} Bs</div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Botón táctil grande para alternar pago y barra de acciones */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          <button
+                            onClick={() => cambiarEstadoRecibo(r)}
+                            disabled={cambiando}
+                            style={{
+                              width: '100%',
+                              padding: '11px 14px',
+                              borderRadius: '10px',
+                              fontSize: '12.5px',
+                              fontWeight: 800,
+                              cursor: 'pointer',
+                              border: 'none',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '6px',
+                              backgroundColor: isPagado ? '#10b981' : '#ef4444',
+                              color: '#fff',
+                              boxShadow: isPagado ? '0 4px 14px rgba(16, 185, 129, 0.4)' : '0 4px 14px rgba(239, 68, 68, 0.4)',
+                              opacity: cambiando ? 0.6 : 1,
+                              transition: 'all 0.2s'
+                            }}
+                          >
+                            <span>{isPagado ? '✅ PAGADO' : '⭕ MARCAR COMO PAGADO'}</span>
+                            <span style={{ fontSize: '10px', opacity: 0.85, fontWeight: 500 }}>
+                              ({isPagado ? 'Toca para mora' : 'Toca para pagar'})
+                            </span>
+                          </button>
+
+                          <div style={{ display: 'flex', gap: '6px', justifyContent: 'space-between' }}>
+                            <button
+                              onClick={() => descargarPDFReciboEmitido(r)}
+                              style={{
+                                flex: 1,
+                                backgroundColor: '#1f2937', color: '#fff', border: '1px solid #374151',
+                                padding: '8px 6px', borderRadius: '8px', fontSize: '11px', cursor: 'pointer', fontWeight: 600,
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px'
+                              }}
+                            >
+                              <span>📥</span> PDF
+                            </button>
+
+                            <button
+                              onClick={() => handleWhatsAppRecibo(r)}
+                              style={{
+                                flex: 1,
+                                backgroundColor: 'rgba(34, 197, 94, 0.16)',
+                                color: '#22c55e',
+                                border: '1px solid rgba(34, 197, 94, 0.35)',
+                                padding: '8px 6px',
+                                borderRadius: '8px',
+                                fontSize: '11px',
+                                cursor: 'pointer',
+                                fontWeight: 700,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '4px'
+                              }}
+                            >
+                              <span>📲</span> {isPagado ? 'Solvente' : 'Cobrar'}
+                            </button>
+
+                            <button
+                              onClick={() => setReciboModal(r)}
+                              style={{
+                                backgroundColor: '#141414', color: '#888', border: '1px solid #262626',
+                                padding: '8px 12px', borderRadius: '8px', fontSize: '12px', cursor: 'pointer'
+                              }}
+                              title="Ver desglose detallado"
+                            >
+                              👁️
+                            </button>
+
+                            <button
+                              onClick={() => {
+                                setReciboParaEliminar(r)
+                                setMotivoEliminarRecibo('')
+                                setModalEliminarReciboOpen(true)
+                              }}
+                              style={{
+                                backgroundColor: 'rgba(239, 68, 68, 0.12)',
+                                color: '#ef4444',
+                                border: '1px solid rgba(239, 68, 68, 0.25)',
+                                padding: '8px 10px',
+                                borderRadius: '8px',
+                                fontSize: '12px',
+                                cursor: 'pointer'
+                              }}
+                              title="Retirar recibo / deuda"
+                            >
+                              🗑️
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </>
             )}
           </div>
         </>
@@ -1759,6 +2219,140 @@ export const AdminRecibosEmitidos: React.FC = () => {
                 }}
               >
                 {eliminandoRecibo ? 'Retirando...' : 'Confirmar y Retirar Deuda'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL DE CONFIRMACIÓN 3: MARCAR TODOS COMO PAGADOS (HISTÓRICO) ── */}
+      {modalBulkPagadosOpen && (
+        <div style={{
+          position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(6px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: '20px'
+        }}>
+          <div style={{
+            backgroundColor: '#111318', border: '2px solid #10b981', borderRadius: '20px',
+            maxWidth: '520px', width: '100%', padding: '26px', boxShadow: '0 25px 60px rgba(16, 185, 129, 0.25)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
+              <div style={{
+                width: '46px', height: '46px', borderRadius: '12px',
+                backgroundColor: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.35)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px'
+              }}>
+                🏛️
+              </div>
+              <div>
+                <h3 style={{ color: '#fff', fontSize: '18px', fontWeight: 800, margin: 0 }}>
+                  Marcar Todos como Pagados
+                </h3>
+                <span style={{ color: '#10b981', fontSize: '12px', fontWeight: 700 }}>
+                  Mes: {mesLabelActivo} ({recibos.length} apartamentos)
+                </span>
+              </div>
+            </div>
+
+            <p style={{ color: '#cbd5e1', fontSize: '13px', lineHeight: 1.5, margin: '0 0 16px' }}>
+              ¿Deseas marcar todos los recibos de este mes histórico como <strong>PAGADOS</strong>?
+              <br /><br />
+              Esta herramienta acelera la carga de la administración anterior si la mayoría de los residentes estaban al día. Luego podrás alternar individualmente los pocos que hayan quedado en mora.
+            </p>
+
+            <div style={{
+              backgroundColor: 'rgba(16, 185, 129, 0.08)',
+              border: '1px solid rgba(16, 185, 129, 0.25)',
+              borderRadius: '10px',
+              padding: '10px 14px',
+              marginBottom: '20px',
+              fontSize: '12px',
+              color: '#a7f3d0'
+            }}>
+              🛡️ Se actualizarán de inmediato las cuentas de los copropietarios y se registrará en el Historial de Auditoría.
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                onClick={() => setModalBulkPagadosOpen(false)}
+                disabled={ejecutandoBulk}
+                style={{
+                  backgroundColor: '#1f2937', color: '#94a3b8', border: '1px solid #374151',
+                  padding: '9px 16px', borderRadius: '10px', fontSize: '13px', fontWeight: 600, cursor: 'pointer'
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => ejecutarBulkEstado('pagado')}
+                disabled={ejecutandoBulk}
+                style={{
+                  backgroundColor: '#10b981', color: '#fff', border: 'none',
+                  padding: '9px 20px', borderRadius: '10px', fontSize: '13px', fontWeight: 800, cursor: 'pointer',
+                  boxShadow: '0 4px 14px rgba(16, 185, 129, 0.4)'
+                }}
+              >
+                {ejecutandoBulk ? 'Actualizando...' : '✓ Confirmar y Marcar Todos Pagados'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL DE CONFIRMACIÓN 4: MARCAR TODOS EN MORA (HISTÓRICO) ── */}
+      {modalBulkMoraOpen && (
+        <div style={{
+          position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(6px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: '20px'
+        }}>
+          <div style={{
+            backgroundColor: '#111318', border: '2px solid #ef4444', borderRadius: '20px',
+            maxWidth: '520px', width: '100%', padding: '26px', boxShadow: '0 25px 60px rgba(239, 68, 68, 0.25)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
+              <div style={{
+                width: '46px', height: '46px', borderRadius: '12px',
+                backgroundColor: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.35)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px'
+              }}>
+                ⚠️
+              </div>
+              <div>
+                <h3 style={{ color: '#fff', fontSize: '18px', fontWeight: 800, margin: 0 }}>
+                  Marcar Todos en Mora / Pendiente
+                </h3>
+                <span style={{ color: '#f87171', fontSize: '12px', fontWeight: 700 }}>
+                  Mes: {mesLabelActivo} ({recibos.length} apartamentos)
+                </span>
+              </div>
+            </div>
+
+            <p style={{ color: '#cbd5e1', fontSize: '13px', lineHeight: 1.5, margin: '0 0 16px' }}>
+              ¿Deseas marcar todos los recibos de este mes como <strong>EN MORA (Pendientes)</strong>?
+              <br /><br />
+              Todos los apartamentos figurarán con deuda pendiente de este mes hasta que sean marcados como pagados.
+            </p>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                onClick={() => setModalBulkMoraOpen(false)}
+                disabled={ejecutandoBulk}
+                style={{
+                  backgroundColor: '#1f2937', color: '#94a3b8', border: '1px solid #374151',
+                  padding: '9px 16px', borderRadius: '10px', fontSize: '13px', fontWeight: 600, cursor: 'pointer'
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => ejecutarBulkEstado('pendiente')}
+                disabled={ejecutandoBulk}
+                style={{
+                  backgroundColor: '#ef4444', color: '#fff', border: 'none',
+                  padding: '9px 20px', borderRadius: '10px', fontSize: '13px', fontWeight: 800, cursor: 'pointer',
+                  boxShadow: '0 4px 14px rgba(239, 68, 68, 0.4)'
+                }}
+              >
+                {ejecutandoBulk ? 'Actualizando...' : '⚠️ Confirmar y Marcar en Mora'}
               </button>
             </div>
           </div>
