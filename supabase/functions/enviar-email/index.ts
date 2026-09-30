@@ -22,7 +22,7 @@ declare const Deno: {
 };
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") || "";
-const EMAIL_FROM = Deno.env.get("EMAIL_FROM") || "Residencias Ocutuy 5 <no-reply@resend.dev>";
+const EMAIL_FROM = Deno.env.get("EMAIL_FROM") || "Residencias Ocutuy 5 <onboarding@resend.dev>";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",

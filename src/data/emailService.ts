@@ -504,9 +504,24 @@ export async function enviarEmail(params: {
     if (!error && (data?.ok || data?.id)) {
       return { ok: true }
     }
-  } catch (edgeErr) {
-    // Si la Edge Function no está desplegada aún, continuamos con Resend directo
-    console.debug('[EmailService] Edge function no disponible, probando envío directo:', edgeErr)
+    if (error) {
+      let errMsg = error.message
+      if ((error as any).context && typeof (error as any).context.json === 'function') {
+        try {
+          const body = await (error as any).context.json()
+          if (body?.error) errMsg = body.error
+        } catch {}
+      }
+      if (errMsg.includes('only send testing emails to your own email address')) {
+        return {
+          ok: false,
+          error: 'Modo de prueba Resend: Actualmente solo permite enviar a dohuglas.r@gmail.com. Para enviar a otros residentes, verifica un dominio en resend.com/domains.'
+        }
+      }
+      return { ok: false, error: errMsg }
+    }
+  } catch (edgeErr: any) {
+    console.debug('[EmailService] Error invocando Edge Function, probando envío directo:', edgeErr)
   }
 
   // 2. Intentar llamar a la API de Resend directamente si hay clave en entorno
@@ -520,7 +535,7 @@ export async function enviarEmail(params: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          from: 'Residencias Ocutuy 5 <no-reply@resend.dev>',
+          from: 'Residencias Ocutuy 5 <onboarding@resend.dev>',
           to,
           subject,
           html,
@@ -530,15 +545,24 @@ export async function enviarEmail(params: {
       if (res.ok) {
         return { ok: true }
       }
+      if (resData?.message?.includes('only send testing emails to your own email address')) {
+        return {
+          ok: false,
+          error: 'Modo de prueba Resend: Actualmente solo permite enviar a dohuglas.r@gmail.com. Para enviar a otros residentes, verifica un dominio en resend.com/domains.'
+        }
+      }
       return { ok: false, error: resData?.message || 'Error en servicio Resend' }
     } catch (err: any) {
       return { ok: false, error: err?.message || 'Error de conexión enviando email' }
     }
   }
 
-  // 3. Fallback simulado: Registrar en la consola y notificar en la app
-  console.log(`[EmailService] ✉️ Simulación de envío exitoso a "${to}":`, { subject })
-  return { ok: true }
+  // 3. Si no hay proveedor configurado
+  console.warn(`[EmailService] ⚠️ No se pudo enviar correo a "${to}": Falta proveedor de correo. Asunto:`, subject)
+  return {
+    ok: false,
+    error: 'Servicio de correo no configurado. Se requiere configurar la API Key de Resend en Supabase o en .env.local.'
+  }
 }
 
 // ── DISPARADORES DE ALTO NIVEL ────────────────────────────────────────────────
