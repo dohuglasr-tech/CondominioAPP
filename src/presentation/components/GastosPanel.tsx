@@ -1,9 +1,15 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
-import { obtenerGastosMes, obtenerMesesDisponibles, GastoComun } from '../../data/gastosService'
+import {
+  obtenerGastosMes,
+  obtenerMesesDisponibles,
+  GastoComun,
+  parseComprobantesGasto,
+} from '../../data/gastosService'
 import { useAuth } from '../../application/contexts/AuthContext'
 import { useNavigate } from 'react-router-dom'
+import { ComprobantesGastoModal } from './ComprobantesGastoModal'
 
 interface Props {
   onClose: () => void
@@ -42,6 +48,11 @@ export function GastosPanel({ onClose }: Props) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [closing, setClosing] = useState(false)
+
+  // ── Modal visor de comprobantes para residente ──
+  const [modalGasto, setModalGasto] = useState<GastoComun | null>(null)
+  const [modalTipo, setModalTipo]   = useState<'factura' | 'transferencia'>('factura')
+  const [showModal, setShowModal]   = useState(false)
 
   // ── DATOS DE PRUEBA (MOCK) PARA VISUALIZAR EL DISEÑO ──
   const MOCK_GASTOS: GastoComun[] = [
@@ -389,20 +400,93 @@ export function GastosPanel({ onClose }: Props) {
                       {/* Detalle expandido */}
                       {isExpanded && (
                         <div style={{ marginTop: '16px', borderTop: '1px solid #2a2a2a', paddingTop: '12px' }} className="animate-slide-up">
-                          {grupo.items.map(item => (
-                            <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', gap: '12px' }}>
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <p style={{ color: '#ccc', fontSize: '13px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.descripcion}</p>
-                                <div style={{ marginTop: '4px' }}>
-                                  <span style={st.badge(TIPO_CONFIG[item.tipo]?.color || '#888')}>{TIPO_CONFIG[item.tipo]?.label || item.tipo}</span>
+                          {grupo.items.map(item => {
+                            const comp = parseComprobantesGasto(item.factura_url)
+                            return (
+                              <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', gap: '12px' }}>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <p style={{ color: '#ccc', fontSize: '13px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.descripcion}</p>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
+                                    <span style={st.badge(TIPO_CONFIG[item.tipo]?.color || '#888')}>{TIPO_CONFIG[item.tipo]?.label || item.tipo}</span>
+                                    {comp.factura_url && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          setModalGasto(item)
+                                          setModalTipo('factura')
+                                          setShowModal(true)
+                                        }}
+                                        style={{
+                                          backgroundColor: '#f9731618',
+                                          color: '#f97316',
+                                          border: '1px solid #f9731635',
+                                          borderRadius: '6px',
+                                          padding: '2px 8px',
+                                          fontSize: '11px',
+                                          fontWeight: 700,
+                                          cursor: 'pointer',
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: '4px',
+                                          transition: 'all 0.15s ease',
+                                        }}
+                                        onMouseOver={(e) => {
+                                          e.currentTarget.style.backgroundColor = '#f97316'
+                                          e.currentTarget.style.color = '#fff'
+                                        }}
+                                        onMouseOut={(e) => {
+                                          e.currentTarget.style.backgroundColor = '#f9731618'
+                                          e.currentTarget.style.color = '#f97316'
+                                        }}
+                                      >
+                                        📄 Ver Factura
+                                      </button>
+                                    )}
+                                    {comp.transferencia_url && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          setModalGasto(item)
+                                          setModalTipo('transferencia')
+                                          setShowModal(true)
+                                        }}
+                                        style={{
+                                          backgroundColor: '#10b98118',
+                                          color: '#10b981',
+                                          border: '1px solid #10b98135',
+                                          borderRadius: '6px',
+                                          padding: '2px 8px',
+                                          fontSize: '11px',
+                                          fontWeight: 700,
+                                          cursor: 'pointer',
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: '4px',
+                                          transition: 'all 0.15s ease',
+                                        }}
+                                        onMouseOver={(e) => {
+                                          e.currentTarget.style.backgroundColor = '#10b981'
+                                          e.currentTarget.style.color = '#fff'
+                                        }}
+                                        onMouseOut={(e) => {
+                                          e.currentTarget.style.backgroundColor = '#10b98118'
+                                          e.currentTarget.style.color = '#10b981'
+                                        }}
+                                      >
+                                        💳 Ver Transferencia
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                                  <p style={{ color: '#fff', fontSize: '14px', fontWeight: 600 }}>Bs. {tasa > 0 ? formatUsd(item.monto_usd * tasa) : '---'}</p>
+                                  <p style={{ color: '#888', fontSize: '11px', marginTop: '2px' }}>${formatUsd(item.monto_usd)}</p>
                                 </div>
                               </div>
-                              <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                                <p style={{ color: '#fff', fontSize: '14px', fontWeight: 600 }}>Bs. {tasa > 0 ? formatUsd(item.monto_usd * tasa) : '---'}</p>
-                                <p style={{ color: '#888', fontSize: '11px', marginTop: '2px' }}>${formatUsd(item.monto_usd)}</p>
-                              </div>
-                            </div>
-                          ))}
+                            )
+                          })}
                         </div>
                       )}
                     </div>
@@ -432,6 +516,14 @@ export function GastosPanel({ onClose }: Props) {
           )}
         </div>
       </div>
+
+      {/* Modal visor de comprobantes para Residentes (Lectura) */}
+      <ComprobantesGastoModal
+        isOpen={showModal}
+        onClose={() => setShowModal(false)}
+        gasto={modalGasto}
+        initialTipo={modalTipo}
+      />
     </div>
   )
 }
