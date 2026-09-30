@@ -367,6 +367,11 @@ CREATE TABLE IF NOT EXISTS public.visitantes (
 -- ────────────────────────────────────────────────────────────
 -- 13.1 ÍNDICES DE RENDIMIENTO Y OPTIMIZACIÓN
 -- ────────────────────────────────────────────────────────────
+ALTER TABLE public.perfiles ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE public.perfiles ADD COLUMN IF NOT EXISTS propietario_email TEXT;
+ALTER TABLE public.pagos_reportados ADD COLUMN IF NOT EXISTS reportado_por UUID;
+ALTER TABLE public.pagos_reportados ADD COLUMN IF NOT EXISTS fecha_revision TIMESTAMPTZ;
+
 CREATE INDEX IF NOT EXISTS idx_recibos_apto_estado ON public.recibos_generados (apartamento_id, estado);
 CREATE INDEX IF NOT EXISTS idx_recibos_mes_facturado ON public.recibos_generados (mes_facturado DESC);
 CREATE INDEX IF NOT EXISTS idx_recibos_estado ON public.recibos_generados (estado) WHERE estado = 'pendiente';

@@ -7,6 +7,15 @@
 -- ==============================================================================
 
 -- ────────────────────────────────────────────────────────────
+-- 0. GARANTIZAR COLUMNAS BASE (Idempotente y 100% Seguro)
+--    Evita errores si alguna columna opcional no fue creada en migraciones previas.
+-- ────────────────────────────────────────────────────────────
+ALTER TABLE public.perfiles ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE public.perfiles ADD COLUMN IF NOT EXISTS propietario_email TEXT;
+ALTER TABLE public.pagos_reportados ADD COLUMN IF NOT EXISTS reportado_por UUID;
+ALTER TABLE public.pagos_reportados ADD COLUMN IF NOT EXISTS fecha_revision TIMESTAMPTZ;
+
+-- ────────────────────────────────────────────────────────────
 -- 1. TABLA: recibos_generados
 -- ────────────────────────────────────────────────────────────
 -- Acelera la búsqueda del último recibo pendiente por apartamento (Dashboard y RecibosPanel)
