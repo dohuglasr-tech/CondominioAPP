@@ -125,6 +125,10 @@ export function generarHtmlReciboEmitido(datos: DatosEmailRecibo): { subject: st
   const rif = datos.cedulaRif || DEFAULT_RIF
   const pmoTel = datos.telefonoPagoMovil || '0414-XXXXXXX'
 
+  const tasaBcvReal = (datos.tasaBcv && datos.tasaBcv > 1)
+    ? datos.tasaBcv
+    : (datos.totalUsd > 0 && datos.totalBs > 0 ? parseFloat((datos.totalBs / datos.totalUsd).toFixed(4)) : 859.06)
+
   const subject = `🏢 Aviso de Cobro Condominio — ${datos.mesLabel.toUpperCase()} ${datos.anio} | Apto. ${datos.apartamentoNumero}`
 
   const html = `
@@ -187,7 +191,7 @@ export function generarHtmlReciboEmitido(datos: DatosEmailRecibo): { subject: st
                       Bs. ${fmtBs(datos.totalBs)}
                     </div>
                     <div style="font-size:11px;color:#64748b;margin-top:6px;">
-                      Calculado a la Tasa Oficial BCV: <strong>${fmtBs(datos.tasaBcv)} Bs/$</strong>
+                      Calculado a la Tasa Oficial BCV: <strong>${fmtBs(tasaBcvReal)} Bs/$</strong>
                     </div>
                   </td>
                 </tr>

@@ -231,7 +231,7 @@ export function RecibosPanel({ onClose }: Props) {
         banco: config?.banco,
         cuenta_bancaria: config?.cuenta_bancaria,
         titular_cuenta: config?.titular_cuenta,
-        tasa_bcv_actual: recibo.tasa_bcv || config?.tasa_bcv_actual || 1,
+        tasa_bcv_actual: (recibo.tasa_bcv && recibo.tasa_bcv > 1 ? recibo.tasa_bcv : (config?.tasa_bcv_actual && config.tasa_bcv_actual > 1 ? config.tasa_bcv_actual : (recibo.total_usd > 0 ? parseFloat((recibo.total_bs / recibo.total_usd).toFixed(4)) : 859.06))),
       }
 
       // Si está pagado o hay un pago aprobado para este apartamento
@@ -295,7 +295,7 @@ export function RecibosPanel({ onClose }: Props) {
         anio,
         totalUsd: recibo.total_usd,
         totalBs: recibo.total_bs,
-        tasaBcv: recibo.tasa_bcv || config?.tasa_bcv_actual || authConfig?.tasa_bcv_actual || 1,
+        tasaBcv: (recibo.tasa_bcv && recibo.tasa_bcv > 1 ? recibo.tasa_bcv : (config?.tasa_bcv_actual && config.tasa_bcv_actual > 1 ? config.tasa_bcv_actual : (authConfig?.tasa_bcv_actual && authConfig.tasa_bcv_actual > 1 ? authConfig.tasa_bcv_actual : (recibo.total_usd > 0 ? parseFloat((recibo.total_bs / recibo.total_usd).toFixed(4)) : 859.06)))),
         alicuotaPct: formatAlicuotaPct(recibo.alicuota),
         bancoNombre: config?.banco || authConfig?.banco || 'Banco Bicentenario',
         cuentaNumero: config?.cuenta_bancaria || authConfig?.cuenta_bancaria || '0175-0525-4100-7575-1351',
@@ -511,7 +511,7 @@ export function RecibosPanel({ onClose }: Props) {
                         </h2>
                       </div>
                       <p style={{ color: '#94a3b8', fontSize: '11px', margin: '4px 0 0' }}>
-                        Emitido el {formatFecha(recibo.emitido_at || recibo.mes_facturado)} · Tasa BCV: {fmtBs(recibo.tasa_bcv)} Bs/$
+                        Emitido el {formatFecha(recibo.emitido_at || recibo.mes_facturado)} · Tasa BCV: {fmtBs((recibo.tasa_bcv && recibo.tasa_bcv > 1 ? recibo.tasa_bcv : (config?.tasa_bcv_actual && config.tasa_bcv_actual > 1 ? config.tasa_bcv_actual : (recibo.total_usd > 0 ? parseFloat((recibo.total_bs / recibo.total_usd).toFixed(4)) : 859.06))))} Bs/$
                       </p>
                     </div>
 

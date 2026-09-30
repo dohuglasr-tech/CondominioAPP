@@ -435,7 +435,7 @@ export const AdminRecibosEmitidos: React.FC = () => {
         anio,
         totalUsd: r.total_usd,
         totalBs: r.total_bs,
-        tasaBcv: r.tasa_bcv || config?.tasa_bcv_actual || 1,
+        tasaBcv: (r.tasa_bcv && r.tasa_bcv > 1 ? r.tasa_bcv : (config?.tasa_bcv_actual && config.tasa_bcv_actual > 1 ? config.tasa_bcv_actual : (r.total_usd > 0 ? parseFloat((r.total_bs / r.total_usd).toFixed(4)) : 859.06))),
         alicuotaPct: formatAlicuotaPct(r.alicuota),
         bancoNombre: config?.banco,
         cuentaNumero: config?.cuenta_bancaria,
@@ -490,7 +490,7 @@ export const AdminRecibosEmitidos: React.FC = () => {
           anio,
           totalUsd: r.total_usd,
           totalBs: r.total_bs,
-          tasaBcv: r.tasa_bcv || config?.tasa_bcv_actual || 1,
+          tasaBcv: (r.tasa_bcv && r.tasa_bcv > 1 ? r.tasa_bcv : (config?.tasa_bcv_actual && config.tasa_bcv_actual > 1 ? config.tasa_bcv_actual : (r.total_usd > 0 ? parseFloat((r.total_bs / r.total_usd).toFixed(4)) : 859.06))),
           alicuotaPct: formatAlicuotaPct(r.alicuota),
           bancoNombre: config?.banco,
           cuentaNumero: config?.cuenta_bancaria,
@@ -967,7 +967,7 @@ export const AdminRecibosEmitidos: React.FC = () => {
                 Gastos: $ {fmtUsd(stats.totalGastosComunesUsd)}
               </div>
               <div style={{ color: '#64748b', fontSize: '11px', marginTop: '6px' }}>
-                Tasa BCV: Bs. {recibos[0]?.tasa_bcv || 40}
+                Tasa BCV: Bs. {fmtBs((recibos[0]?.tasa_bcv && recibos[0].tasa_bcv > 1 ? recibos[0].tasa_bcv : (config?.tasa_bcv_actual && config.tasa_bcv_actual > 1 ? config.tasa_bcv_actual : 859.06)))}
               </div>
             </div>
 

@@ -39,7 +39,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .from('configuracion_edificio')
       .select('*')
       .single()
-    if (data) setConfig(data)
+    if (data) {
+      if (!data.tasa_bcv_actual || data.tasa_bcv_actual <= 1) {
+        data.tasa_bcv_actual = 859.06
+      }
+      setConfig(data)
+    }
   }, [])
 
   // ── Cargar perfil del usuario ─────────────────────────────────

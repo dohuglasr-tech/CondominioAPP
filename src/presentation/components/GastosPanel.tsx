@@ -33,7 +33,7 @@ function formatUsd(n: number): string {
 export function GastosPanel({ onClose }: Props) {
   const { config } = useAuth()
   const navigate = useNavigate()
-  const tasa = config?.tasa_bcv_actual ?? 0
+  const tasa = (config?.tasa_bcv_actual && config.tasa_bcv_actual > 1) ? config.tasa_bcv_actual : 859.06
 
   const [gastos, setGastos] = useState<GastoComun[]>([])
   const [totalUsd, setTotalUsd] = useState(0)
@@ -329,7 +329,7 @@ export function GastosPanel({ onClose }: Props) {
                 ${formatUsd(totalAMostrar)}
               </p>
               <p style={{ color: '#555', fontSize: '11px', marginTop: '2px' }}>
-                USD (Ref) {tasa > 0 ? `| Tasa: ${tasa}` : ''}
+                USD (Ref) {tasa > 0 ? `| Tasa: ${tasa.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Bs/$` : ''}
               </p>
             </div>
           </div>

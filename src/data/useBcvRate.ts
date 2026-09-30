@@ -10,7 +10,7 @@ interface BcvRate {
 
 export function useBcvRate() {
   const [data, setData] = useState<BcvRate>({
-    rate: 37.50, // Fallback rate
+    rate: 859.06, // Tasa BCV Oficial de referencia
     lastUpdate: new Date().toISOString(),
     loading: true,
     error: null
@@ -29,13 +29,24 @@ export function useBcvRate() {
         if (res.ok) {
           const json = await res.json()
           const tasa = Number(json?.promedio ?? json?.precio ?? json?.venta)
-          if (mounted && tasa && !isNaN(tasa) && tasa > 0) {
+          if (mounted && tasa && !isNaN(tasa) && tasa > 1) {
             setData({
               rate: tasa,
               lastUpdate: json.fechaActualizacion || new Date().toISOString(),
               loading: false,
               error: null
             })
+
+            // Sincronizar en segundo plano con configuracion_edificio en Supabase
+            supabase
+              .from('configuracion_edificio')
+              .update({
+                tasa_bcv_actual: tasa,
+                tasa_bcv_actualizada: json.fechaActualizacion || new Date().toISOString()
+              })
+              .neq('id', '00000000-0000-0000-0000-000000000000')
+              .then(() => {}, () => {})
+
             return
           }
         }

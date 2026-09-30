@@ -433,7 +433,7 @@ export function Dashboard() {
                   TASA BCV
                 </div>
                 <div style={{ color: '#fff', fontSize: '13px', fontWeight: 800 }}>
-                  Bs. {(rate || 40).toFixed(2)}
+                  Bs. {(rate && rate > 1 ? rate : 859.06).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </div>
               </div>
             </div>
@@ -819,7 +819,7 @@ export function Dashboard() {
                 <div>
                   <div style={{ color: '#8e8e93', fontSize: '10px', fontWeight: 800, textTransform: 'uppercase' }}>TASA BCV</div>
                   <div style={{ color: '#fff', fontSize: '13px', fontWeight: 800 }}>
-                    {loadingRate ? 'Cargando...' : `Bs. ${(rate || 40).toFixed(2)} / $`}
+                    {loadingRate ? 'Cargando...' : `Bs. ${(rate && rate > 1 ? rate : 859.06).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / $`}
                   </div>
                 </div>
               </div>

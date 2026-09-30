@@ -352,7 +352,8 @@ export function generarPDFRecibo(
 
     sy += 4.2
     doc.text(`MONTO: ${fmtBs(pagoInfo.monto_bs || totalBs)} Bs  ($ ${fmtUsd(pagoInfo.monto_usd || totalUsd)})`, 16, sy)
-    doc.text(`DOLAR DEL DIA: ${config.tasa_bcv_actual ? `${config.tasa_bcv_actual.toFixed(2)} Bs/$` : 'Tasa BCV'}`, 110, sy)
+    const tasaPdf = (config.tasa_bcv_actual && config.tasa_bcv_actual > 1) ? config.tasa_bcv_actual : (totalUsd > 0 && totalBs > 0 ? totalBs / totalUsd : 859.06)
+    doc.text(`DOLAR DEL DIA: ${fmtBs(tasaPdf)} Bs/$`, 110, sy)
 
     sy += 4.2
     doc.text(`REFERENCIA: ${pagoInfo.referencia || 'VALIDADO'}`, 16, sy)

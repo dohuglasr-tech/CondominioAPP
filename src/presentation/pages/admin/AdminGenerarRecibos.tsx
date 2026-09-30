@@ -205,7 +205,7 @@ export const AdminGenerarRecibos: React.FC = () => {
       return {
         apartamento_id:    apto.id,
         mes_facturado:     mesStr,
-        tasa_bcv:          config.tasa_bcv_actual || 1,
+        tasa_bcv:          (config.tasa_bcv_actual && config.tasa_bcv_actual > 1 ? config.tasa_bcv_actual : (totalGastosUsd > 0 ? parseFloat((totalGastosBs / totalGastosUsd).toFixed(4)) : 859.06)),
         total_gastos_usd:  totalGastosUsd,
         alicuota:          getAlicuotaDecimal(apto.alicuota),
         subtotal_usd:      calc.subtotalUsd,
@@ -259,6 +259,10 @@ export const AdminGenerarRecibos: React.FC = () => {
         const emailDestino = apto.propietario_email
         if (emailDestino && emailDestino.includes('@')) {
           const calc = calcularApto(apto)
+          const tasaBcvReal = (config?.tasa_bcv_actual && config.tasa_bcv_actual > 1)
+            ? config.tasa_bcv_actual
+            : (calc.totalUsd > 0 ? parseFloat((calc.totalBs / calc.totalUsd).toFixed(4)) : 859.06)
+
           await despacharEmailRecibo({
             destinatarioEmail: emailDestino,
             apartamentoNumero: apto.numero,
@@ -268,7 +272,7 @@ export const AdminGenerarRecibos: React.FC = () => {
             anio,
             totalUsd: calc.totalUsd,
             totalBs: calc.totalBs,
-            tasaBcv: config?.tasa_bcv_actual || 1,
+            tasaBcv: tasaBcvReal,
             alicuotaPct: formatAlicuotaPct(apto.alicuota),
             bancoNombre: config?.banco,
             cuentaNumero: config?.cuenta_bancaria,

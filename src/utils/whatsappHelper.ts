@@ -92,6 +92,10 @@ export function generarMensajeCobroRecibo(datos: DatosCobroRecibo): string {
     ? `Estimado(a) *${datos.propietarioNombre.trim()}*,`
     : `Estimado propietario del *Apto ${datos.apartamentoNumero}*,`
 
+  const tasaBcvReal = (datos.tasaBcv && datos.tasaBcv > 1)
+    ? datos.tasaBcv
+    : (datos.totalUsd > 0 && datos.totalBs > 0 ? parseFloat((datos.totalBs / datos.totalUsd).toFixed(4)) : 859.06)
+
   return `🏢 *${edificio.toUpperCase()}*
 📄 *AVISO DE COBRO — RECIBO DE CONDOMINIO*
 🗓️ *Periodo:* ${datos.mesLabel.toUpperCase()} ${datos.anio}
@@ -103,7 +107,7 @@ Le informamos que ya ha sido emitido el recibo de condominio correspondiente a s
 🏠 *Inmueble:* Apartamento ${datos.apartamentoNumero}
 💵 *Total a pagar:* $ ${fmtUsd(datos.totalUsd)} USD
 🇻🇪 *Equivalente en Bolívares:* Bs. ${fmtBs(datos.totalBs)}
-📊 *Tasa oficial BCV:* ${fmtBs(datos.tasaBcv)} Bs/$
+📊 *Tasa oficial BCV:* ${fmtBs(tasaBcvReal)} Bs/$
 
 🏦 *DATOS BANCARIOS PARA REALIZAR EL PAGO:*
 • *Banco:* ${banco}
