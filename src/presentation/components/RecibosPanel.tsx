@@ -297,13 +297,7 @@ export function RecibosPanel({ onClose }: Props) {
 
       // Si está pagado o hay un pago aprobado para este apartamento
       const esHistorico = (recibo.mes_facturado || '').slice(0, 7) < '2026-09'
-      const esHistorico2025 = (recibo.mes_facturado || '').startsWith('2025') || Boolean(recibo.data_json?.es_historico_2025)
       const esDeudaAtrasada = Boolean(recibo.data_json?.es_recibo_deuda_atrasada)
-
-      if (esHistorico2025) {
-        alert('Este recibo corresponde a la administración pasada (Año 2025) y ya fue entregado en físico oportunamente. En la plataforma está disponible en modo de solo lectura para consulta.')
-        return
-      }
 
       const pagoAprobado = pagos.find(p => p.estado === 'aprobado')
       const estaPagado = recibo.estado === 'pagado' || (!esHistorico && !!pagoAprobado)
@@ -612,9 +606,7 @@ export function RecibosPanel({ onClose }: Props) {
                     onClick={() => setFiltroAnio(anio)}
                     style={{
                       background: filtroAnio === anio
-                        ? anio === '2025'
-                          ? 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)'
-                          : 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)'
+                        ? 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)'
                         : 'rgba(255, 255, 255, 0.06)',
                       color: filtroAnio === anio ? '#fff' : '#cbd5e1',
                       border: 'none',
@@ -629,8 +621,8 @@ export function RecibosPanel({ onClose }: Props) {
                       transition: 'all 0.15s ease'
                     }}
                   >
-                    <span>{anio === '2025' ? '🏛️' : '📅'}</span>
-                    <span>{anio === '2025' ? '2025 (Histórico)' : anio}</span>
+                    <span>📅</span>
+                    <span>{anio}</span>
                   </button>
                 ))}
                 <button
@@ -686,30 +678,6 @@ export function RecibosPanel({ onClose }: Props) {
               </div>
             </div>
 
-            {/* Banner específico si se visualiza el Archivo Histórico 2025 */}
-            {filtroAnio === '2025' && (
-              <div style={{
-                backgroundColor: 'rgba(59, 130, 246, 0.08)',
-                border: '1px solid rgba(59, 130, 246, 0.25)',
-                borderRadius: '14px',
-                padding: '14px 18px',
-                marginBottom: '10px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px'
-              }}>
-                <span style={{ fontSize: '24px' }}>🏛️</span>
-                <div>
-                  <div style={{ color: '#93c5fd', fontWeight: 800, fontSize: '13px' }}>
-                    Archivo Histórico — Gestión 2025 (Administración Pasada)
-                  </div>
-                  <div style={{ color: '#94a3b8', fontSize: '11.5px', marginTop: '2px', lineHeight: 1.4 }}>
-                    Recibos digitalizados para consulta y desglose de gastos. No generan deudas activas ni pagos en la plataforma actual.
-                  </div>
-                </div>
-              </div>
-            )}
-
             {recibosFiltrados.length === 0 ? (
               <div style={{
                 textAlign: 'center',
@@ -731,7 +699,6 @@ export function RecibosPanel({ onClose }: Props) {
               recibosFiltrados.map((recibo) => {
               const { mesLabel, anio } = parseMesFacturado(recibo.mes_facturado)
               const esHistorico = (recibo.mes_facturado || '').slice(0, 7) < '2026-09'
-              const esHistorico2025 = (recibo.mes_facturado || '').startsWith('2025') || Boolean(recibo.data_json?.es_historico_2025)
               const esDeudaAtrasada = Boolean(recibo.data_json?.es_recibo_deuda_atrasada)
               const estaPagado = recibo.estado === 'pagado' || (!esHistorico && pagos.some(p => p.estado === 'aprobado'))
               const enRevision = !estaPagado && !!pagoEnRevision
@@ -751,7 +718,7 @@ export function RecibosPanel({ onClose }: Props) {
                       ? '1px solid rgba(245, 158, 11, 0.35)'
                       : '1px solid rgba(249, 115, 22, 0.35)',
                     borderLeftWidth: '5px',
-                    borderLeftColor: esHistorico2025 ? '#3b82f6' : estaPagado ? '#22c55e' : enRevision ? '#f59e0b' : '#f97316',
+                    borderLeftColor: estaPagado ? '#22c55e' : enRevision ? '#f59e0b' : '#f97316',
                     borderRadius: '16px',
                     padding: '20px',
                     boxShadow: '0 4px 20px rgba(0, 0, 0, 0.35)',
@@ -768,16 +735,14 @@ export function RecibosPanel({ onClose }: Props) {
                   }}>
                     <div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontSize: '18px' }}>{esHistorico2025 ? '🏛️' : esDeudaAtrasada ? '📜' : '📄'}</span>
+                        <span style={{ fontSize: '18px' }}>{esDeudaAtrasada ? '📜' : '📄'}</span>
                         <h2 style={{ color: '#fff', fontSize: '17px', fontWeight: 800, margin: 0 }}>
-                          {esDeudaAtrasada ? 'Recibo de Pago de Deuda Atrasada' : esHistorico2025 ? `Recibo Histórico ${mesLabel} ${anio}` : `Recibo ${mesLabel} ${anio}`}
+                          {esDeudaAtrasada ? 'Recibo de Pago de Deuda Atrasada' : `Recibo ${mesLabel} ${anio}`}
                         </h2>
                       </div>
                       <p style={{ color: '#94a3b8', fontSize: '11px', margin: '4px 0 0' }}>
                         {esDeudaAtrasada ? (
                           <>Validación de deuda histórica liquidada · Conciliado con la administración</>
-                        ) : esHistorico2025 ? (
-                          <>🏛️ Registro Histórico (Gestión 2025 - Administración Pasada) · Solo consulta digital en pantalla</>
                         ) : esHistorico ? (
                           <>Emitido el {formatFecha(recibo.emitido_at || recibo.mes_facturado)} · Gastos manuales de administración anterior (Sin anclaje a tasa BCV actual)</>
                         ) : (
@@ -788,17 +753,7 @@ export function RecibosPanel({ onClose }: Props) {
 
                     {/* Badge de Estado */}
                     <div>
-                      {esHistorico2025 ? (
-                        <span style={{
-                          display: 'inline-flex', alignItems: 'center', gap: '5px',
-                          background: 'rgba(59, 130, 246, 0.15)', color: '#60a5fa',
-                          border: '1px solid rgba(59, 130, 246, 0.35)',
-                          padding: '4px 10px', borderRadius: '999px',
-                          fontSize: '11px', fontWeight: 800
-                        }}>
-                          🏛️ Adm. Pasada (2025)
-                        </span>
-                      ) : estaPagado ? (
+                      {estaPagado ? (
                         <span style={{
                           display: 'inline-flex', alignItems: 'center', gap: '5px',
                           background: 'rgba(34, 197, 94, 0.15)', color: '#22c55e',
@@ -937,27 +892,7 @@ export function RecibosPanel({ onClose }: Props) {
 
                   {/* Mensaje descriptivo según estado */}
                   <div style={{ marginBottom: '16px' }}>
-                    {esHistorico2025 ? (
-                      <div style={{
-                        backgroundColor: 'rgba(59, 130, 246, 0.08)',
-                        border: '1px solid rgba(59, 130, 246, 0.25)',
-                        borderRadius: '12px',
-                        padding: '12px 14px',
-                        display: 'flex',
-                        alignItems: 'flex-start',
-                        gap: '10px',
-                        fontSize: '12px',
-                        color: '#93c5fd'
-                      }}>
-                        <span style={{ fontSize: '18px', lineHeight: 1 }}>🏛️</span>
-                        <div style={{ lineHeight: 1.45 }}>
-                          <strong style={{ color: '#bfdbfe' }}>Documento Histórico (Administración Anterior - Año 2025):</strong>
-                          <div style={{ color: '#cbd5e1', marginTop: '2px', fontSize: '11.5px' }}>
-                            Este recibo corresponde a la gestión administrativa anterior y está disponible exclusivamente en <strong>modo de solo lectura</strong> para que consultes el desglose de los gastos comunes cobrados. El recibo físico original ya fue emitido y entregado a los propietarios en ese período, por lo que la descarga del PDF con el nuevo formato se encuentra deshabilitada.
-                          </div>
-                        </div>
-                      </div>
-                    ) : estaPagado ? (
+                    {estaPagado ? (
                       <p style={{ margin: 0, fontSize: '12px', color: '#86efac', lineHeight: 1.4 }}>
                         ✓ Pago conciliado por la administración. Tu recibo oficial con sello de solvencia está listo para descargar.
                       </p>
@@ -974,83 +909,64 @@ export function RecibosPanel({ onClose }: Props) {
 
                   {/* Botones de Acción */}
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
-                    {/* Botón Descargar PDF Oficial: oculto si es histórico de 2025 */}
-                    {!esHistorico2025 ? (
-                      <button
-                        onClick={() => handleDescargarPDF(recibo)}
-                        disabled={descargandoId === recibo.id}
-                        style={{
-                          background: estaPagado
-                            ? 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)'
-                            : 'rgba(255, 255, 255, 0.08)',
-                          border: estaPagado ? 'none' : '1px solid rgba(255, 255, 255, 0.16)',
-                          color: '#fff',
-                          borderRadius: '10px',
-                          padding: '9px 16px',
-                          fontSize: '12px',
-                          fontWeight: 700,
-                          cursor: descargandoId === recibo.id ? 'wait' : 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          boxShadow: estaPagado ? '0 3px 12px rgba(34, 197, 94, 0.35)' : 'none'
-                        }}
-                      >
-                        <span>📥</span>
-                        <span>
-                          {descargandoId === recibo.id
-                            ? 'Generando PDF...'
-                            : estaPagado
-                            ? 'Descargar Recibo Oficial (PDF)'
-                            : 'Descargar Aviso de Cobro (PDF)'}
-                        </span>
-                      </button>
-                    ) : (
-                      <div style={{
-                        fontSize: '11.5px',
-                        color: '#94a3b8',
-                        background: 'rgba(255, 255, 255, 0.04)',
-                        border: '1px solid rgba(255, 255, 255, 0.09)',
+                    {/* Botón Descargar PDF Oficial: es el mismo del admin */}
+                    <button
+                      onClick={() => handleDescargarPDF(recibo)}
+                      disabled={descargandoId === recibo.id}
+                      style={{
+                        background: estaPagado
+                          ? 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)'
+                          : 'rgba(255, 255, 255, 0.08)',
+                        border: estaPagado ? 'none' : '1px solid rgba(255, 255, 255, 0.16)',
+                        color: '#fff',
                         borderRadius: '10px',
-                        padding: '8px 14px',
-                        display: 'inline-flex',
+                        padding: '9px 16px',
+                        fontSize: '12px',
+                        fontWeight: 700,
+                        cursor: descargandoId === recibo.id ? 'wait' : 'pointer',
+                        display: 'flex',
                         alignItems: 'center',
-                        gap: '6px'
-                      }}>
-                        <span>📑</span>
-                        <span>Recibo físico ya entregado en 2025 (Solo lectura)</span>
-                      </div>
-                    )}
+                        gap: '6px',
+                        boxShadow: estaPagado ? '0 3px 12px rgba(34, 197, 94, 0.35)' : 'none'
+                      }}
+                    >
+                      <span>📥</span>
+                      <span>
+                        {descargandoId === recibo.id
+                          ? 'Generando PDF...'
+                          : estaPagado
+                          ? 'Descargar Recibo Oficial (PDF)'
+                          : 'Descargar Aviso de Cobro (PDF)'}
+                      </span>
+                    </button>
 
-                    {/* Botón Verde Enviar / Compartir por WhatsApp: solo si NO es histórico 2025 */}
-                    {!esHistorico2025 && (
-                      <button
-                        type="button"
-                        onClick={() => handleCompartirWhatsApp(recibo)}
-                        style={{
-                          background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.2) 0%, rgba(22, 163, 74, 0.3) 100%)',
-                          border: '1px solid rgba(34, 197, 94, 0.5)',
-                          color: '#4ade80',
-                          borderRadius: '10px',
-                          padding: '9px 16px',
-                          fontSize: '12px',
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          boxShadow: '0 2px 10px rgba(34, 197, 94, 0.25)',
-                          transition: 'all 0.2s ease'
-                        }}
-                        title="Enviar recibo con datos de pago por WhatsApp con 1 solo clic"
-                      >
-                        <span>📲</span>
-                        <span>{estaPagado ? 'Compartir Solvencia WhatsApp' : 'Enviar por WhatsApp'}</span>
-                      </button>
-                    )}
+                    {/* Botón Verde Enviar / Compartir por WhatsApp */}
+                    <button
+                      type="button"
+                      onClick={() => handleCompartirWhatsApp(recibo)}
+                      style={{
+                        background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.2) 0%, rgba(22, 163, 74, 0.3) 100%)',
+                        border: '1px solid rgba(34, 197, 94, 0.5)',
+                        color: '#4ade80',
+                        borderRadius: '10px',
+                        padding: '9px 16px',
+                        fontSize: '12px',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        boxShadow: '0 2px 10px rgba(34, 197, 94, 0.25)',
+                        transition: 'all 0.2s ease'
+                      }}
+                      title="Enviar recibo con datos de pago por WhatsApp con 1 solo clic"
+                    >
+                      <span>📲</span>
+                      <span>{estaPagado ? 'Compartir Solvencia WhatsApp' : 'Enviar por WhatsApp'}</span>
+                    </button>
 
                     {/* Si está pendiente, botón para reportar pago */}
-                    {!esHistorico2025 && !estaPagado && !enRevision && (
+                    {!estaPagado && !enRevision && (
                       <button
                         onClick={() => setReportarModalOpen(true)}
                         style={{
@@ -1077,13 +993,13 @@ export function RecibosPanel({ onClose }: Props) {
                     <button
                       onClick={() => setExpandedReciboId(isExpanded ? null : recibo.id)}
                       style={{
-                        background: esHistorico2025 ? 'rgba(59, 130, 246, 0.12)' : 'transparent',
-                        border: esHistorico2025 ? '1px solid rgba(59, 130, 246, 0.35)' : '1px solid rgba(255, 255, 255, 0.12)',
-                        color: esHistorico2025 ? '#93c5fd' : '#94a3b8',
+                        background: 'transparent',
+                        border: '1px solid rgba(255, 255, 255, 0.12)',
+                        color: '#94a3b8',
                         borderRadius: '10px',
                         padding: '9px 14px',
                         fontSize: '12px',
-                        fontWeight: esHistorico2025 ? 700 : 600,
+                        fontWeight: 600,
                         cursor: 'pointer',
                         marginLeft: 'auto',
                         display: 'flex',
