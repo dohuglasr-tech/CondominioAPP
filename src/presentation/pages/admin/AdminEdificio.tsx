@@ -25,8 +25,10 @@ export const AdminEdificio: React.FC = () => {
     rif: '',
     direccion: '',
     total_apartamentos: 62,
-    total_pisos: 15,
-    apartamentos_por_piso: 4,
+    total_pisos: 10,
+    apartamentos_por_piso: 6,
+    tiene_ph: true,
+    total_ph: 2,
     color_primario: '#f97316',
     telefono: '',
     email_contacto: '',
@@ -67,8 +69,10 @@ export const AdminEdificio: React.FC = () => {
         rif: config.rif || '',
         direccion: config.direccion || '',
         total_apartamentos: config.total_apartamentos || 62,
-        total_pisos: (config as any).total_pisos ?? 15,
-        apartamentos_por_piso: (config as any).apartamentos_por_piso ?? 4,
+        total_pisos: (config as any).total_pisos ?? 10,
+        apartamentos_por_piso: (config as any).apartamentos_por_piso ?? 6,
+        tiene_ph: (config as any).tiene_ph ?? true,
+        total_ph: (config as any).total_ph ?? 2,
         color_primario: (config as any).color_primario || '#f97316',
         telefono: config.telefono || '',
         email_contacto: config.email_contacto || '',
@@ -102,6 +106,22 @@ export const AdminEdificio: React.FC = () => {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setInfo(prev => ({ ...prev, [e.target.name]: e.target.value }))
+  }
+
+  const handleEstructuraChange = (field: 'total_pisos' | 'apartamentos_por_piso' | 'tiene_ph' | 'total_ph', value: any) => {
+    setInfo(prev => {
+      const next = { ...prev, [field]: value }
+      const pisos = Number(field === 'total_pisos' ? value : next.total_pisos) || 0
+      const aptosPorPiso = Number(field === 'apartamentos_por_piso' ? value : next.apartamentos_por_piso) || 0
+      const tienePh = Boolean(field === 'tiene_ph' ? value : next.tiene_ph)
+      const totalPh = tienePh ? (Number(field === 'total_ph' ? value : next.total_ph) || 0) : 0
+      
+      const nuevoTotal = (pisos * aptosPorPiso) + totalPh
+      return {
+        ...next,
+        total_apartamentos: nuevoTotal > 0 ? nuevoTotal : next.total_apartamentos
+      }
+    })
   }
 
   const handleColorChange = (newColor: string) => {
@@ -182,8 +202,10 @@ export const AdminEdificio: React.FC = () => {
         rif: info.rif,
         direccion: info.direccion,
         total_apartamentos: Number(info.total_apartamentos) || 62,
-        total_pisos: Number(info.total_pisos) || 15,
-        apartamentos_por_piso: Number(info.apartamentos_por_piso) || 4,
+        total_pisos: Number(info.total_pisos) || 10,
+        apartamentos_por_piso: Number(info.apartamentos_por_piso) || 6,
+        tiene_ph: Boolean(info.tiene_ph),
+        total_ph: info.tiene_ph ? (Number(info.total_ph) || 0) : 0,
         color_primario: info.color_primario || '#f97316',
         telefono: info.telefono,
         email_contacto: info.email_contacto,
@@ -456,36 +478,130 @@ export const AdminEdificio: React.FC = () => {
             </div>
 
             {/* Parámetros Estructurales del Edificio / Torre */}
-            <div style={{ marginTop: '24px', marginBottom: '24px', backgroundColor: '#181a20', border: '1px solid #282c37', borderRadius: '12px', padding: '18px' }}>
+            <div style={{ marginTop: '24px', marginBottom: '24px', backgroundColor: '#181a20', border: '1px solid #282c37', borderRadius: '12px', padding: '20px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
-                <span style={{ fontSize: '18px' }}>📐</span>
+                <span style={{ fontSize: '20px' }}>📐</span>
                 <div>
-                  <h4 style={{ color: '#fff', fontSize: '15px', fontWeight: 700, margin: 0 }}>Estructura y Pisos de la Torre</h4>
-                  <p style={{ color: '#94a3b8', fontSize: '12px', margin: '2px 0 0' }}>Configura la cantidad de pisos y la distribución estándar por piso de tu condominio.</p>
+                  <h4 style={{ color: '#fff', fontSize: '15px', fontWeight: 700, margin: 0 }}>Estructura Arquitectónica y Penthouse (PH)</h4>
+                  <p style={{ color: '#94a3b8', fontSize: '12px', margin: '2px 0 0' }}>Configura los pisos, apartamentos por nivel y departamentos PH. El total de apartamentos se suma y sincroniza automáticamente.</p>
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '14px', alignItems: 'start' }}>
                 <div>
-                  <label style={labelStyle}>Total de Apartamentos</label>
-                  <input type="number" min="1" name="total_apartamentos" value={info.total_apartamentos} onChange={handleChange} style={inputStyle} required />
+                  <label style={labelStyle}>Pisos Regulares</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="100"
+                    name="total_pisos"
+                    value={info.total_pisos}
+                    onChange={(e) => handleEstructuraChange('total_pisos', parseInt(e.target.value, 10) || 0)}
+                    style={inputStyle}
+                    required
+                  />
+                  <span style={{ fontSize: '11px', color: '#64748b' }}>Pisos estándar (del 1 al {info.total_pisos || 1})</span>
                 </div>
+
                 <div>
-                  <label style={labelStyle}>Número de Pisos</label>
-                  <input type="number" min="1" max="100" name="total_pisos" value={info.total_pisos} onChange={handleChange} style={inputStyle} required />
+                  <label style={labelStyle}>Aptos por Piso</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="50"
+                    name="apartamentos_por_piso"
+                    value={info.apartamentos_por_piso}
+                    onChange={(e) => handleEstructuraChange('apartamentos_por_piso', parseInt(e.target.value, 10) || 0)}
+                    style={inputStyle}
+                    required
+                  />
+                  <span style={{ fontSize: '11px', color: '#64748b' }}>Apartamentos en cada nivel</span>
                 </div>
+
                 <div>
-                  <label style={labelStyle}>Apartamentos por Piso</label>
-                  <input type="number" min="1" max="50" name="apartamentos_por_piso" value={info.apartamentos_por_piso} onChange={handleChange} style={inputStyle} required />
+                  <label style={labelStyle}>¿Tiene Piso PH?</label>
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    height: '42px',
+                    padding: '0 12px',
+                    backgroundColor: '#101216',
+                    border: '1px solid #282c37',
+                    borderRadius: '8px',
+                  }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: '#fff', fontSize: '13px', fontWeight: 600, width: '100%', userSelect: 'none' }}>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(info.tiene_ph)}
+                        onChange={(e) => handleEstructuraChange('tiene_ph', e.target.checked)}
+                        style={{ width: '17px', height: '17px', accentColor: 'var(--color-accent, #f97316)', cursor: 'pointer' }}
+                      />
+                      Incluye Penthouse
+                    </label>
+                  </div>
+                  <span style={{ fontSize: '11px', color: '#64748b' }}>Piso superior adicional</span>
+                </div>
+
+                {info.tiene_ph && (
+                  <div>
+                    <label style={labelStyle}>Cant. de PH en ese piso</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="20"
+                      name="total_ph"
+                      value={info.total_ph}
+                      onChange={(e) => handleEstructuraChange('total_ph', parseInt(e.target.value, 10) || 0)}
+                      style={{ ...inputStyle, borderColor: 'var(--color-accent, #f97316)' }}
+                      placeholder="Ej: 2"
+                      required={info.tiene_ph}
+                    />
+                    <span style={{ fontSize: '11px', color: '#64748b' }}>Total departamentos en el PH</span>
+                  </div>
+                )}
+
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <label style={labelStyle}>Total Departamentos</label>
+                    <span style={{ fontSize: '10px', color: 'var(--color-accent, #f97316)', fontWeight: 700 }}>Auto-sumado</span>
+                  </div>
+                  <input
+                    type="number"
+                    min="1"
+                    name="total_apartamentos"
+                    value={info.total_apartamentos}
+                    onChange={handleChange}
+                    style={{ ...inputStyle, fontWeight: 700, borderColor: 'var(--color-accent, #f97316)', backgroundColor: '#131722' }}
+                    required
+                  />
+                  <span style={{ fontSize: '11px', color: '#64748b' }}>Total general del edificio</span>
                 </div>
               </div>
 
-              <div style={{ marginTop: '12px', padding: '10px 14px', borderRadius: '8px', backgroundColor: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(255, 255, 255, 0.06)', display: 'flex', alignItems: 'center', gap: '10px', fontSize: '12px', color: '#94a3b8' }}>
-                <span>💡</span>
-                <span>
-                  Distribución configurada: <strong style={{ color: '#fff' }}>{info.total_pisos || 0} pisos</strong> × <strong style={{ color: '#fff' }}>{info.apartamentos_por_piso || 0} aptos/piso</strong> = <strong style={{ color: '#fff' }}>{(Number(info.total_pisos) || 0) * (Number(info.apartamentos_por_piso) || 0)}</strong> apartamentos estándar
-                  {Number(info.total_apartamentos) > ((Number(info.total_pisos) || 0) * (Number(info.apartamentos_por_piso) || 0)) ? ` (+ ${Number(info.total_apartamentos) - ((Number(info.total_pisos) || 0) * (Number(info.apartamentos_por_piso) || 0))} adicionales / Penthouse)` : ''}.
-                </span>
+              {/* Resumen explicativo de la distribución */}
+              <div style={{
+                marginTop: '16px',
+                padding: '12px 16px',
+                borderRadius: '8px',
+                backgroundColor: 'rgba(255, 255, 255, 0.03)',
+                border: '1px solid rgba(255, 255, 255, 0.07)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                fontSize: '13px',
+                color: '#cbd5e1'
+              }}>
+                <span style={{ fontSize: '20px' }}>🏢</span>
+                <div style={{ lineHeight: 1.5 }}>
+                  <span>
+                    Fórmula de la Torre: <strong style={{ color: '#fff' }}>{info.total_pisos || 0} pisos</strong> × <strong style={{ color: '#fff' }}>{info.apartamentos_por_piso || 0} aptos/piso</strong> = <strong style={{ color: '#fff' }}>{(Number(info.total_pisos) || 0) * (Number(info.apartamentos_por_piso) || 0)} aptos regulares</strong>
+                    {info.tiene_ph ? (
+                      <> + <strong style={{ color: 'var(--color-accent, #f97316)' }}>1 piso PH con {info.total_ph || 0} departamentos</strong> = <strong style={{ color: '#fff', textDecoration: 'underline' }}>{info.total_apartamentos} departamentos en total</strong>.</>
+                    ) : (
+                      <> = <strong style={{ color: '#fff' }}>{info.total_apartamentos} departamentos en total</strong> (sin nivel Penthouse).</>
+                    )}
+                  </span>
+                </div>
               </div>
             </div>
 

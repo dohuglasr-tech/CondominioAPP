@@ -30,17 +30,21 @@ export function obtenerPisoApto(aptoNumero: string, pisoDb?: number): string {
 
 export const ListaMoraResidente: React.FC = () => {
   const { perfil, config } = useAuth()
-  const totalPisos = (config as any)?.total_pisos || 15
+  const totalPisos = (config as any)?.total_pisos ?? 10
+  const tienePh = (config as any)?.tiene_ph ?? true
+  const totalPh = (config as any)?.total_ph ?? 2
 
   const pisosOpciones = useMemo(() => {
     const list: { key: string; label: string }[] = []
     for (let i = 1; i <= totalPisos; i++) {
       list.push({ key: String(i), label: `Piso ${i}` })
     }
-    list.push({ key: 'PH', label: 'PH' })
+    if (tienePh && totalPh > 0) {
+      list.push({ key: 'PH', label: 'PH' })
+    }
     list.push({ key: 'todos', label: 'Todos' })
     return list
-  }, [totalPisos])
+  }, [totalPisos, tienePh, totalPh])
 
   const [deudas, setDeudas] = useState<DeudaMoraItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -90,9 +94,12 @@ export const ListaMoraResidente: React.FC = () => {
 
   // Conteo de deudores por cada piso
   const conteoPorPiso = useMemo(() => {
-    const map: Record<string, number> = {
-      '1': 0, '2': 0, '3': 0, '4': 0, '5': 0,
-      '6': 0, '7': 0, '8': 0, '9': 0, '10': 0, 'PH': 0
+    const map: Record<string, number> = {}
+    for (let i = 1; i <= totalPisos; i++) {
+      map[String(i)] = 0
+    }
+    if (tienePh && totalPh > 0) {
+      map['PH'] = 0
     }
     deudas.forEach(d => {
       const p = obtenerPisoApto(d.apartamento_numero, d.piso)
@@ -101,7 +108,7 @@ export const ListaMoraResidente: React.FC = () => {
       }
     })
     return map
-  }, [deudas])
+  }, [deudas, totalPisos, tienePh, totalPh])
 
   // Estado de búsqueda activa
   const isSearching = busqueda.trim().length > 0

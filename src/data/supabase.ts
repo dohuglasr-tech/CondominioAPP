@@ -54,6 +54,8 @@ export interface ConfigEdificio {
   total_apartamentos: number
   total_pisos?: number | null
   apartamentos_por_piso?: number | null
+  tiene_ph?: boolean | null
+  total_ph?: number | null
   color_primario?: string | null
   tasa_bcv_actual: number
   tasa_bcv_actualizada: string | null
