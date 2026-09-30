@@ -136,7 +136,12 @@ export const AdminRecibosEmitidos: React.FC = () => {
 
       const perfilesMap = new Map<string, any>()
       perfilesRes.data?.forEach(p => {
-        if (p.apartamento_id) perfilesMap.set(p.apartamento_id, p)
+        if (p.apartamento_id) {
+          const exist = perfilesMap.get(p.apartamento_id)
+          if (!exist || (!exist.propietario_email && p.propietario_email)) {
+            perfilesMap.set(p.apartamento_id, p)
+          }
+        }
       })
 
       const recibosCompletos: ReciboEmitido[] = (recibosRes.data || []).map(r => {

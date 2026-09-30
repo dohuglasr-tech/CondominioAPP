@@ -271,7 +271,7 @@ export async function obtenerDeudasMora(): Promise<{ data: DeudaMoraItem[]; erro
         .select('id, numero, piso, propietario_nombre, telefono_contacto'),
       supabase
         .from('perfiles')
-        .select('apartamento_id, nombre_completo, condicion_habitacional, propietario_nombre, telefono')
+        .select('apartamento_id, nombre_completo, condicion_habitacional, propietario_nombre, telefono, propietario_email')
     ])
 
     // Si hubo error grave en la consulta básica de deudas_mora y tampoco hay recibos
@@ -286,7 +286,12 @@ export async function obtenerDeudasMora(): Promise<{ data: DeudaMoraItem[]; erro
 
     const perfilesMap = new Map<string, any>()
     ;(perfilesRes.data || []).forEach(p => {
-      if (p.apartamento_id) perfilesMap.set(p.apartamento_id, p)
+      if (p.apartamento_id) {
+        const exist = perfilesMap.get(p.apartamento_id)
+        if (!exist || (!exist.propietario_email && p.propietario_email)) {
+          perfilesMap.set(p.apartamento_id, p)
+        }
+      }
     })
 
     // Agrupar recibos generados pendientes por apartamento_id
@@ -328,6 +333,7 @@ export async function obtenerDeudasMora(): Promise<{ data: DeudaMoraItem[]; erro
         piso: apto?.piso ?? row.apartamentos?.piso,
         propietario_nombre: propNombre,
         propietario_telefono: propTel,
+        propietario_email: perfil?.propietario_email || apto?.propietario_email || undefined,
         meses_deuda: meses,
         monto_usd: Number(montoUsd.toFixed(2)),
         monto_bs: Number(montoBs.toFixed(2)),
@@ -385,6 +391,7 @@ export async function obtenerDeudasMora(): Promise<{ data: DeudaMoraItem[]; erro
         piso: apto?.piso,
         propietario_nombre: propNombre,
         propietario_telefono: propTel,
+        propietario_email: perfil?.propietario_email || apto?.propietario_email || undefined,
         meses_deuda: mesesDeuda,
         monto_usd: Number(totalUsd.toFixed(2)),
         monto_bs: Number(totalBs.toFixed(2)),

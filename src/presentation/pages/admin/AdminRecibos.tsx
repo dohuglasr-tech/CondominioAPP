@@ -215,20 +215,39 @@ export const AdminRecibos: React.FC = () => {
             ])
 
             const aptoNum = aptoRes.data?.numero || selected?.apartamento?.numero || 'S/N'
-            const emailDestino = perfilRes.data?.propietario_email
+            let emailDestino = perfilRes.data?.propietario_email
+            let nombreDestino = perfilRes.data?.nombre_completo || selected?.residente_nombre || aptoRes.data?.propietario_nombre
+
+            // Si el reportador directo no tiene email, buscar cualquier perfil registrado de ese apartamento
+            if (!emailDestino && pagoDb.apartamento_id) {
+              const { data: perfilApto } = await supabase
+                .from('perfiles')
+                .select('propietario_email, nombre_completo')
+                .eq('apartamento_id', pagoDb.apartamento_id)
+                .not('propietario_email', 'is', null)
+                .limit(1)
+                .maybeSingle()
+
+              if (perfilApto?.propietario_email) {
+                emailDestino = perfilApto.propietario_email
+                if (!nombreDestino && perfilApto.nombre_completo) {
+                  nombreDestino = perfilApto.nombre_completo
+                }
+              }
+            }
 
             if (emailDestino && emailDestino.includes('@')) {
               await despacharEmailPagoAprobado({
                 destinatarioEmail: emailDestino,
                 apartamentoNumero: aptoNum,
-                propietarioNombre: perfilRes.data?.nombre_completo || selected?.residente_nombre,
+                propietarioNombre: nombreDestino,
                 edificioNombre: config?.nombre_edificio,
                 montoUsd: pagoDb.monto_usd || selected?.monto_usd || 0,
                 montoBs: pagoDb.monto_bs || selected?.monto_bs || 0,
                 referencia: pagoDb.referencia || selected?.numero_referencia,
                 fechaPago: pagoDb.fecha_pago || selected?.fecha_pago,
                 bancoOrigen: pagoDb.banco_origen || selected?.banco_origen
-              })
+              }).catch(e => console.warn('[AdminRecibos] Error despachando email pago aprobado:', e))
             }
           } catch (emailErr) {
             console.warn('[AdminRecibos] Error despachando email automático:', emailErr)

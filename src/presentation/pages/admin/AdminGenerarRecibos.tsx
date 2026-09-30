@@ -109,7 +109,12 @@ export const AdminGenerarRecibos: React.FC = () => {
       if (aptosRes.data) {
         const perfilesMap = new Map<string, any>()
         perfilesRes.data?.forEach(p => {
-          if (p.apartamento_id) perfilesMap.set(p.apartamento_id, p)
+          if (p.apartamento_id) {
+            const exist = perfilesMap.get(p.apartamento_id)
+            if (!exist || (!exist.propietario_email && p.propietario_email)) {
+              perfilesMap.set(p.apartamento_id, p)
+            }
+          }
         })
 
         const ordenados = [...aptosRes.data].map(a => {
@@ -245,43 +250,42 @@ export const AdminGenerarRecibos: React.FC = () => {
 
     // 4. Notificar a cada apartamento que tiene un nuevo recibo emitido (in-app y email automático)
     if (ok > 0) {
-      const notifPromises = apartamentos.map(async apto => {
-        // Notificación interna in-app
-        await notificarApartamento({
+      // 4.1 Notificación interna in-app a todos los apartamentos
+      apartamentos.forEach(apto => {
+        notificarApartamento({
           apartamento_id: apto.id,
           tipo: 'recibo_emitido',
           titulo: `Nuevo recibo emitido: ${mesLabel} ${anio}`,
           cuerpo: `Tu recibo de condominio del mes de ${mesLabel} ${anio} ya está disponible. Por favor revisa el monto y realiza tu pago a tiempo.`,
           link: '/recibos',
-        })
-
-        // Notificación por Correo Electrónico (al correo con el que se registró el propietario)
-        const emailDestino = apto.propietario_email
-        if (emailDestino && emailDestino.includes('@')) {
-          const calc = calcularApto(apto)
-          const tasaBcvReal = (config?.tasa_bcv_actual && config.tasa_bcv_actual > 1)
-            ? config.tasa_bcv_actual
-            : (calc.totalUsd > 0 ? parseFloat((calc.totalBs / calc.totalUsd).toFixed(4)) : 859.06)
-
-          await despacharEmailRecibo({
-            destinatarioEmail: emailDestino,
-            apartamentoNumero: apto.numero,
-            propietarioNombre: apto.propietario_nombre,
-            edificioNombre: config?.nombre_edificio,
-            mesLabel,
-            anio,
-            totalUsd: calc.totalUsd,
-            totalBs: calc.totalBs,
-            tasaBcv: tasaBcvReal,
-            alicuotaPct: formatAlicuotaPct(apto.alicuota),
-            bancoNombre: config?.banco,
-            cuentaNumero: config?.cuenta_bancaria,
-            titularNombre: config?.titular_cuenta,
-            cedulaRif: config?.rif
-          }).catch(err => console.warn('[AdminGenerarRecibos] Error despachando email recibo:', err))
-        }
+        }).catch(() => {})
       })
-      await Promise.allSettled(notifPromises)
+
+      // 4.2 Despacho por Correo Electrónico (exclusivamente a propietarios con correo registrado)
+      const aptosConEmail = apartamentos.filter(a => a.propietario_email && a.propietario_email.includes('@'))
+      for (const apto of aptosConEmail) {
+        const calc = calcularApto(apto)
+        const tasaBcvReal = (config?.tasa_bcv_actual && config.tasa_bcv_actual > 1)
+          ? config.tasa_bcv_actual
+          : (calc.totalUsd > 0 ? parseFloat((calc.totalBs / calc.totalUsd).toFixed(4)) : 859.06)
+
+        await despacharEmailRecibo({
+          destinatarioEmail: apto.propietario_email!,
+          apartamentoNumero: apto.numero,
+          propietarioNombre: apto.propietario_nombre,
+          edificioNombre: config?.nombre_edificio,
+          mesLabel,
+          anio,
+          totalUsd: calc.totalUsd,
+          totalBs: calc.totalBs,
+          tasaBcv: tasaBcvReal,
+          alicuotaPct: formatAlicuotaPct(apto.alicuota),
+          bancoNombre: config?.banco,
+          cuentaNumero: config?.cuenta_bancaria,
+          titularNombre: config?.titular_cuenta,
+          cedulaRif: config?.rif
+        }).catch(err => console.warn(`[AdminGenerarRecibos] Error despachando email a Apto. ${apto.numero}:`, err))
+      }
     }
 
     setResultado({ ok, fail }); setEmitiendo(false); setPaso(4)
