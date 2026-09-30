@@ -886,7 +886,7 @@ export const Layout: React.FC = () => {
           background: rgba(0, 0, 0, 0.75);
           backdrop-filter: blur(8px);
           -webkit-backdrop-filter: blur(8px);
-          z-index: 2000;
+          z-index: 100000;
           opacity: 0;
           pointer-events: none;
           transition: opacity 0.28s ease;
@@ -902,7 +902,7 @@ export const Layout: React.FC = () => {
           max-width: 360px;
           background-color: #0c0d10;
           border-right: 1px solid rgba(255, 255, 255, 0.08);
-          z-index: 2001;
+          z-index: 100001;
           transform: translateX(-100%);
           transition: transform 0.32s cubic-bezier(0.16, 1, 0.3, 1);
           display: flex;
@@ -1071,18 +1071,24 @@ export const Layout: React.FC = () => {
           display: none;
           position: fixed;
           bottom: 0; left: 0; right: 0;
+          width: 100%;
           background: rgba(11, 13, 16, 0.96);
           backdrop-filter: blur(24px) saturate(180%);
           -webkit-backdrop-filter: blur(24px) saturate(180%);
           border-top: 1px solid rgba(255, 255, 255, 0.08);
-          box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.7);
-          z-index: 1000;
-          padding-bottom: env(safe-area-inset-bottom, 0px);
-          height: calc(66px + env(safe-area-inset-bottom, 0px));
+          box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.75);
+          z-index: 9999;
+          transform: translate3d(0, 0, 0);
+          -webkit-transform: translate3d(0, 0, 0);
+          will-change: transform;
+          -webkit-backface-visibility: hidden;
+          backface-visibility: hidden;
+          padding-bottom: max(12px, env(safe-area-inset-bottom, 12px));
+          height: calc(64px + max(12px, env(safe-area-inset-bottom, 12px)));
           align-items: center;
           justify-content: space-around;
-          padding-left: 6px;
-          padding-right: 6px;
+          padding-left: 8px;
+          padding-right: 8px;
         }
         .bottom-nav-btn {
           flex: 1; display: flex; flex-direction: column;
@@ -1090,6 +1096,8 @@ export const Layout: React.FC = () => {
           background: transparent; border: none; color: #82828e;
           cursor: pointer; transition: color 0.18s; padding: 6px 0;
           user-select: none;
+          -webkit-user-select: none;
+          -webkit-tap-highlight-color: transparent;
         }
         .bottom-nav-btn.active { color: #f97316; }
         .nav-icon {
@@ -1116,6 +1124,8 @@ export const Layout: React.FC = () => {
           margin-top: -18px;
           outline: none;
           user-select: none;
+          -webkit-user-select: none;
+          -webkit-tap-highlight-color: transparent;
         }
         .center-btn-glow {
           position: absolute;
@@ -1160,17 +1170,44 @@ export const Layout: React.FC = () => {
 
         /* ─── RESPONSIVE RULES ──────────────────────────── */
         @media (max-width: 768px) {
+          .layout-container {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            width: 100%;
+            height: 100%;
+            height: 100dvh;
+            min-height: -webkit-fill-available;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+          }
           .layout-sidebar { display: none; }
           .mobile-top-bar { display: block; }
           .layout-main {
-            padding-top: calc(64px + env(safe-area-inset-top, 0px));
-            padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
-            height: 100vh;
-            height: 100dvh;
+            padding-top: calc(62px + env(safe-area-inset-top, 0px));
+            padding-bottom: calc(88px + max(16px, env(safe-area-inset-bottom, 0px)));
+            height: 100%;
+            flex: 1 1 auto;
+            min-height: 0;
             overflow-y: auto;
+            overflow-x: hidden;
             -webkit-overflow-scrolling: touch;
+            overscroll-behavior-y: contain;
           }
-          .layout-bottom-bar { display: flex; }
+          .layout-bottom-bar {
+            display: flex;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            width: 100%;
+            z-index: 9999;
+            transform: translate3d(0, 0, 0);
+            -webkit-transform: translate3d(0, 0, 0);
+            will-change: transform;
+            -webkit-backface-visibility: hidden;
+            backface-visibility: hidden;
+          }
         }
       `}</style>
     </div>
