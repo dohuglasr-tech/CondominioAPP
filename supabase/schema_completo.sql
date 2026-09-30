@@ -365,6 +365,87 @@ CREATE TABLE IF NOT EXISTS public.visitantes (
 );
 
 -- ────────────────────────────────────────────────────────────
+-- 13.1 ÍNDICES DE RENDIMIENTO Y OPTIMIZACIÓN
+-- ────────────────────────────────────────────────────────────
+CREATE INDEX IF NOT EXISTS idx_recibos_apto_estado ON public.recibos_generados (apartamento_id, estado);
+CREATE INDEX IF NOT EXISTS idx_recibos_mes_facturado ON public.recibos_generados (mes_facturado DESC);
+CREATE INDEX IF NOT EXISTS idx_recibos_estado ON public.recibos_generados (estado) WHERE estado = 'pendiente';
+
+CREATE INDEX IF NOT EXISTS idx_pagos_apto_estado ON public.pagos_reportados (apartamento_id, estado);
+CREATE INDEX IF NOT EXISTS idx_pagos_created_at ON public.pagos_reportados (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_pagos_estado ON public.pagos_reportados (estado) WHERE estado = 'pendiente';
+CREATE INDEX IF NOT EXISTS idx_pagos_reportado_por ON public.pagos_reportados (reportado_por);
+
+CREATE INDEX IF NOT EXISTS idx_gastos_mes_aplicacion ON public.gastos_comunes (mes_aplicacion DESC);
+CREATE INDEX IF NOT EXISTS idx_gastos_created_at ON public.gastos_comunes (created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_perfiles_apartamento_id ON public.perfiles (apartamento_id);
+CREATE INDEX IF NOT EXISTS idx_perfiles_rol ON public.perfiles (rol);
+CREATE INDEX IF NOT EXISTS idx_perfiles_email ON public.perfiles (email);
+CREATE INDEX IF NOT EXISTS idx_perfiles_propietario_email ON public.perfiles (propietario_email);
+
+CREATE INDEX IF NOT EXISTS idx_apartamentos_piso ON public.apartamentos (piso);
+CREATE INDEX IF NOT EXISTS idx_apartamentos_estado ON public.apartamentos (estado);
+
+CREATE INDEX IF NOT EXISTS idx_deudas_mora_tasa_riesgo ON public.deudas_mora (tasa_riesgo, estado);
+CREATE INDEX IF NOT EXISTS idx_cargos_mes_aplicado ON public.cargos_especiales (mes_aplicacion, aplicado);
+CREATE INDEX IF NOT EXISTS idx_cargos_apartamento_id ON public.cargos_especiales (apartamento_id);
+
+CREATE INDEX IF NOT EXISTS idx_auditoria_apto_accion ON public.historial_auditoria (apartamento_id, tipo_accion);
+CREATE INDEX IF NOT EXISTS idx_auditoria_fecha ON public.historial_auditoria (fecha DESC);
+CREATE INDEX IF NOT EXISTS idx_chat_created_at ON public.chat_mensajes (created_at DESC);
+
+-- Procedimiento atómico de conciliación de pagos
+CREATE OR REPLACE FUNCTION public.aprobar_pago_transaccional(
+  p_pago_id UUID,
+  p_notas_admin TEXT DEFAULT NULL
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_pago RECORD;
+  v_apto_id UUID;
+  v_notas_final TEXT;
+BEGIN
+  SELECT * INTO v_pago FROM public.pagos_reportados WHERE id = p_pago_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('success', false, 'error', 'El pago especificado no existe.');
+  END IF;
+
+  v_apto_id := v_pago.apartamento_id;
+  IF v_apto_id IS NULL AND v_pago.reportado_por IS NOT NULL THEN
+    SELECT apartamento_id INTO v_apto_id FROM public.perfiles WHERE id = v_pago.reportado_por;
+  END IF;
+
+  v_notas_final := COALESCE(v_pago.notas_admin, '');
+  IF p_notas_admin IS NOT NULL AND TRIM(p_notas_admin) <> '' THEN
+    IF v_notas_final <> '' THEN
+      v_notas_final := v_notas_final || ' | Nota Admin: ' || TRIM(p_notas_admin);
+    ELSE
+      v_notas_final := 'Nota Admin: ' || TRIM(p_notas_admin);
+    END IF;
+  END IF;
+
+  UPDATE public.pagos_reportados
+  SET estado = 'aprobado', notas_admin = v_notas_final, fecha_revision = NOW(), updated_at = NOW()
+  WHERE id = p_pago_id;
+
+  IF v_apto_id IS NOT NULL THEN
+    UPDATE public.recibos_generados SET estado = 'pagado' WHERE apartamento_id = v_apto_id AND estado = 'pendiente';
+    UPDATE public.deudas_mora SET estado = 'solventado', updated_at = NOW() WHERE apartamento_id = v_apto_id AND estado = 'activo';
+  END IF;
+
+  RETURN jsonb_build_object('success', true, 'pago_id', p_pago_id, 'apartamento_id', v_apto_id, 'estado', 'aprobado');
+EXCEPTION WHEN OTHERS THEN
+  RETURN jsonb_build_object('success', false, 'error', SQLERRM);
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.aprobar_pago_transaccional(UUID, TEXT) TO authenticated, service_role;
+
+-- ────────────────────────────────────────────────────────────
 -- 14. HABILITACIÓN DE ROW LEVEL SECURITY (RLS) Y POLÍTICAS
 -- ────────────────────────────────────────────────────────────
 DO $$
