@@ -225,34 +225,176 @@ export function Login() {
     navigate('/', { replace: true })
   }
 
+  // Detección y scroll para efecto Parallax / Bottom Sheet en pantallas móviles
+  const [isMobile, setIsMobile] = useState(false)
+  const [scrollY, setScrollY] = useState(0)
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 900)
+    handleResize()
+    const handleScroll = () => {
+      if (window.innerWidth < 900) {
+        setScrollY(window.scrollY)
+      }
+    }
+    window.addEventListener('resize', handleResize)
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    return () => {
+      window.removeEventListener('resize', handleResize)
+      window.removeEventListener('scroll', handleScroll)
+    }
+  }, [])
+
+  const scrollToForm = () => {
+    const el = document.getElementById('login-form-sheet')
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth' })
+    }
+  }
+
   return (
-    <div style={{
-      minHeight: '100vh',
-      display: 'flex',
-      backgroundColor: '#0a0d14',
-      fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-      color: '#fff',
-      flexWrap: 'wrap',
-    }}>
-      
+    <div className="login-root-container">
+      {/* Estilos dedicados para el efecto Parallax / Bottom Sheet en móvil */}
+      <style>{`
+        @keyframes bounceDown {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(4px); }
+        }
+
+        .login-root-container {
+          min-height: 100vh;
+          display: flex;
+          background-color: #07090e;
+          font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+          color: #fff;
+          position: relative;
+        }
+
+        /* ── Versión Escritorio (>= 900px): Pantalla dividida 50/50 ── */
+        @media (min-width: 900px) {
+          .login-root-container {
+            flex-direction: row;
+          }
+          .login-hero-wrapper {
+            flex: 1 1 50%;
+            min-height: 100vh;
+            position: relative;
+          }
+          .login-form-wrapper {
+            flex: 1 1 50%;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 40px 24px;
+            background-color: #07090e;
+            box-sizing: border-box;
+          }
+          .login-sheet-handle {
+            display: none !important;
+          }
+        }
+
+        /* ── Versión Teléfono (< 900px): Hero naranja sticky en fondo y Formulario oscuro deslizante ── */
+        @media (max-width: 899px) {
+          .login-root-container {
+            display: block !important;
+            overflow-x: hidden;
+            background-color: #07090e;
+          }
+
+          .login-hero-wrapper {
+            position: sticky !important;
+            top: 0 !important;
+            z-index: 1 !important;
+            width: 100% !important;
+            min-height: 80vh !important;
+            display: flex !important;
+            flex-direction: column !important;
+            will-change: transform, opacity, filter;
+            transform-origin: center top;
+          }
+
+          .login-form-wrapper {
+            position: relative !important;
+            z-index: 10 !important;
+            width: 100% !important;
+            min-height: 100vh !important;
+            background: #07090e !important;
+            border-top-left-radius: 32px !important;
+            border-top-right-radius: 32px !important;
+            box-shadow: 0 -24px 60px rgba(0, 0, 0, 0.9), 0 -1px 0 rgba(255, 255, 255, 0.12) !important;
+            padding: 16px 20px 60px !important;
+            margin-top: -36px !important;
+            box-sizing: border-box !important;
+          }
+
+          .login-sheet-handle {
+            display: flex !important;
+            flex-direction: column;
+            align-items: center;
+            padding: 4px 0 18px;
+            cursor: pointer;
+          }
+
+          .login-sheet-pill-bar {
+            width: 44px;
+            height: 4.5px;
+            border-radius: 9999px;
+            background-color: rgba(255, 255, 255, 0.28);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+            transition: all 0.2s ease;
+          }
+
+          .login-sheet-handle:hover .login-sheet-pill-bar,
+          .login-sheet-handle:active .login-sheet-pill-bar {
+            background-color: #f97316;
+            width: 54px;
+          }
+        }
+      `}</style>
+
       {/* ── PANEL IZQUIERDO: HERO NARANJA CON DATOS Y LOGO DEL EDIFICIO ── */}
-      <AuthHeroPanel config={config} />
+      <div
+        className="login-hero-wrapper"
+        style={isMobile ? {
+          transform: `scale(${Math.max(0.92, 1 - scrollY * 0.0003)})`,
+          opacity: Math.max(0.35, 1 - scrollY * 0.0018),
+          filter: `brightness(${Math.max(0.7, 1 - scrollY * 0.001)})`,
+        } : undefined}
+      >
+        <AuthHeroPanel config={config} onScrollToForm={scrollToForm} />
+      </div>
 
       {/* ── PANEL DERECHO: FORMULARIO DE ACCESO Y TARJETA DE REGISTRO ── */}
-      <div style={{
-        flex: '1 1 50%',
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '40px 24px',
-        backgroundColor: '#07090e',
-        boxSizing: 'border-box',
-      }}>
-        <div style={{ width: '100%', maxWidth: '440px' }}>
+      <div id="login-form-sheet" className="login-form-wrapper">
+        {/* Barra estilo pill en móvil para dar aspecto de tarjeta deslizante */}
+        <div className="login-sheet-handle" onClick={scrollToForm}>
+          <div className="login-sheet-pill-bar" />
+        </div>
+
+        <div style={{ width: '100%', maxWidth: '440px', margin: '0 auto' }}>
           
           {/* Header del formulario */}
           <div style={{ marginBottom: '24px' }}>
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '4px 10px',
+              borderRadius: '9999px',
+              backgroundColor: 'rgba(249, 115, 22, 0.12)',
+              border: '1px solid rgba(249, 115, 22, 0.25)',
+              color: '#f97316',
+              fontSize: '11px',
+              fontWeight: 700,
+              letterSpacing: '0.6px',
+              textTransform: 'uppercase',
+              marginBottom: '10px'
+            }}>
+              <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#f97316' }} />
+              Portal Residente
+            </div>
             <h1 style={{
               fontSize: '28px',
               fontWeight: 800,
@@ -278,7 +420,7 @@ export function Login() {
             border: '1px solid #1e2638',
             borderRadius: '16px',
             padding: '28px',
-            boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
+            boxShadow: '0 16px 40px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06)',
             marginBottom: '16px'
           }}>
             <form onSubmit={handleSubmit}>

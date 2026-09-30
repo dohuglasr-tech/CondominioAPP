@@ -10,9 +10,10 @@ export interface AuthHeroConfig {
 
 interface AuthHeroPanelProps {
   config?: AuthHeroConfig | null
+  onScrollToForm?: () => void
 }
 
-export const AuthHeroPanel: React.FC<AuthHeroPanelProps> = ({ config }) => {
+export const AuthHeroPanel: React.FC<AuthHeroPanelProps> = ({ config, onScrollToForm }) => {
   const nombreEdificio = config?.nombre_edificio || 'Residencias Ocutuy 5'
   const logoUrl = config?.logo_url || null
   const rif = config?.rif || null
@@ -20,11 +21,12 @@ export const AuthHeroPanel: React.FC<AuthHeroPanelProps> = ({ config }) => {
 
   return (
     <div
+      className="auth-hero-panel"
       style={{
-        flex: '1 1 50%',
+        width: '100%',
+        height: '100%',
         minHeight: '100%',
         background: 'linear-gradient(145deg, #f97316 0%, #ea580c 45%, #c2410c 100%)',
-        padding: '52px 48px',
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'space-between',
@@ -34,6 +36,16 @@ export const AuthHeroPanel: React.FC<AuthHeroPanelProps> = ({ config }) => {
         boxSizing: 'border-box',
       }}
     >
+      <style>{`
+        .auth-hero-panel {
+          padding: 52px 48px;
+        }
+        @media (max-width: 899px) {
+          .auth-hero-panel {
+            padding: 34px 20px 48px !important;
+          }
+        }
+      `}</style>
       {/* Círculos decorativos sutiles de fondo */}
       <div style={{
         position: 'absolute',
@@ -244,6 +256,38 @@ export const AuthHeroPanel: React.FC<AuthHeroPanelProps> = ({ config }) => {
         {direccion && (
           <div style={{ marginTop: '2px', opacity: 0.85 }}>
             📍 {direccion}
+          </div>
+        )}
+
+        {/* Botón flotante sutil para deslizar al formulario en móvil */}
+        {onScrollToForm && (
+          <div className="auth-hero-mobile-cta" style={{ marginTop: '24px', textAlign: 'center' }}>
+            <button
+              type="button"
+              onClick={onScrollToForm}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                backgroundColor: 'rgba(0, 0, 0, 0.28)',
+                backdropFilter: 'blur(12px)',
+                WebkitBackdropFilter: 'blur(12px)',
+                border: '1px solid rgba(255, 255, 255, 0.28)',
+                color: '#ffffff',
+                padding: '10px 22px',
+                borderRadius: '9999px',
+                fontSize: '13px',
+                fontWeight: 700,
+                cursor: 'pointer',
+                boxShadow: '0 4px 18px rgba(0,0,0,0.3)',
+                transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+              }}
+            >
+              <span>Deslizar para ingresar</span>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ animation: 'bounceDown 1.8s infinite' }}>
+                <path d="M12 5v14M19 12l-7 7-7-7"/>
+              </svg>
+            </button>
           </div>
         )}
       </div>
