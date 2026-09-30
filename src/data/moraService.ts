@@ -241,6 +241,14 @@ function getLocalMoraCache(): DeudaMoraItem[] {
   return DEUDAS_SEMILLA
 }
 
+export function limpiarCacheMora() {
+  try {
+    localStorage.removeItem(STORAGE_MORA_KEY)
+  } catch (e) {
+    console.warn('[moraService] Error limpiando cache de mora:', e)
+  }
+}
+
 function saveLocalMoraCache(list: DeudaMoraItem[]) {
   try {
     localStorage.setItem(STORAGE_MORA_KEY, JSON.stringify(list))
@@ -248,6 +256,8 @@ function saveLocalMoraCache(list: DeudaMoraItem[]) {
     console.warn('[moraService] Error guardando cache de deudas_mora:', e)
   }
 }
+
+
 
 /**
  * Obtiene todas las deudas y moras unificadas:

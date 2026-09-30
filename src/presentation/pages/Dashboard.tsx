@@ -45,8 +45,10 @@ export function Dashboard() {
   const [moraRecord, setMoraRecord] = useState<DeudaMoraItem | null>(null)
 
   const { rate, loading: loadingRate } = useBcvRate()
+  const tasaValida = rate && rate > 1 ? rate : (config?.tasa_bcv_actual && config.tasa_bcv_actual > 1 ? config.tasa_bcv_actual : 859.06)
   const deudaUsd = reciboPendiente ? Number(reciboPendiente.total_usd) : 0
-  const deudaBs = deudaUsd * (rate || 40)
+  const deudaBs = deudaUsd * tasaValida
+
 
   // Cargar datos del apartamento y alícuota
   const cargarApartamentoInfo = useCallback(async () => {
@@ -117,8 +119,16 @@ export function Dashboard() {
       else setReciboPendiente(null)
 
       // Consultar si está en mora o tiene recibo emitido (<1m Azul o crónico)
-      await obtenerDeudasMora()
-      const mora = buscarMoraPorApto(aptoNumero || apartamentoId)
+      const resMora = await obtenerDeudasMora()
+      const listMora = resMora.data || []
+      const cleanApto = String(aptoNumero || '').trim().toUpperCase().replace(/^APTO\.?\s*/i, '')
+      const mora = listMora.find(m => {
+        const mApto = (m.apartamento_numero || '').trim().toUpperCase().replace(/^APTO\.?\s*/i, '')
+        return (
+          (cleanApto && mApto === cleanApto) ||
+          (apartamentoId && m.apartamento_id === apartamentoId)
+        )
+      }) || null
       setMoraRecord(mora)
     } catch (err) {
       console.warn('[Dashboard] Error cargando datos del residente:', err)

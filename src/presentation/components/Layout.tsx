@@ -83,7 +83,7 @@ const SVG = {
 export const Layout: React.FC = () => {
   const { pathname } = useLocation()
   const navigate = useNavigate()
-  const { signOut, perfil, config } = useAuth()
+  const { signOut, perfil, config, user } = useAuth()
   const [reportarPagoModalOpen, setReportarPagoModalOpen] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
 
@@ -95,7 +95,8 @@ export const Layout: React.FC = () => {
   const aptoNumero     = p?.apartamento?.numero || p?.apartamentos?.numero || p?.apartamento_id || ''
   const apartamentoId  = p?.apartamento_id || p?.apartamento?.id || ''
   const residenteNombre = p?.nombre_completo || 'Propietario Residente'
-  const residenteEmail  = p?.email || (p as any)?.usuario?.email || 'residente@condominio.app'
+  const residenteEmail  = perfil?.propietario_email || user?.email || (p as any)?.propietario_email || (p as any)?.email || ''
+
   
   const residenteInitials = residenteNombre
     .split(' ')
@@ -339,9 +340,11 @@ export const Layout: React.FC = () => {
             <div style={{ color: '#fff', fontSize: '14px', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {residenteNombre}
             </div>
-            <div style={{ color: '#8e8e93', fontSize: '11px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {residenteEmail}
-            </div>
+            {residenteEmail ? (
+              <div style={{ color: '#8e8e93', fontSize: '11px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {residenteEmail}
+              </div>
+            ) : null}
             <div style={{ marginTop: '4px' }}>
               <span style={{
                 fontSize: '10px',

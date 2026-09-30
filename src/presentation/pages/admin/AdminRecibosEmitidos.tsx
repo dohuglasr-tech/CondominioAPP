@@ -199,17 +199,33 @@ export const AdminRecibosEmitidos: React.FC = () => {
         // Si cambió a pagado, enviar automáticamente constancia de solvencia y agradecimiento por email
         if (nuevoEstado === 'pagado') {
           const aptoNum = recibo.apartamento?.numero || 'S/N'
-          const emailDestino = recibo.apartamento?.propietario_email || `apto${aptoNum}@${config?.dominio_email || 'edificio.com'}`
-          despacharEmailPagoAprobado({
-            destinatarioEmail: emailDestino,
-            apartamentoNumero: aptoNum,
-            propietarioNombre: recibo.apartamento?.propietario_nombre,
-            edificioNombre: config?.nombre_edificio,
-            montoUsd: recibo.total_usd,
-            montoBs: recibo.total_bs
-          }).then(res => {
-            if (res.ok) showToast(`✅ Correo de solvencia despachado a Apto. ${aptoNum}`)
-          }).catch(err => console.warn('[AdminRecibosEmitidos] Error despachando email pago aprobado:', err))
+          const dispatchSolvencia = (correo: string) => {
+            despacharEmailPagoAprobado({
+              destinatarioEmail: correo,
+              apartamentoNumero: aptoNum,
+              propietarioNombre: recibo.apartamento?.propietario_nombre,
+              edificioNombre: config?.nombre_edificio,
+              montoUsd: recibo.total_usd,
+              montoBs: recibo.total_bs
+            }).then(res => {
+              if (res.ok) showToast(`✅ Correo de solvencia despachado a ${correo}`)
+            }).catch(err => console.warn('[AdminRecibosEmitidos] Error despachando email pago aprobado:', err))
+          }
+
+          if (recibo.apartamento?.propietario_email && recibo.apartamento.propietario_email.includes('@')) {
+            dispatchSolvencia(recibo.apartamento.propietario_email)
+          } else if (recibo.apartamento_id) {
+            supabase
+              .from('perfiles')
+              .select('propietario_email')
+              .eq('apartamento_id', recibo.apartamento_id)
+              .maybeSingle()
+              .then(({ data }) => {
+                if (data?.propietario_email && data.propietario_email.includes('@')) {
+                  dispatchSolvencia(data.propietario_email)
+                }
+              })
+          }
         }
       }
     } finally {

@@ -3,10 +3,13 @@ import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../../../data/supabase'
 import { useAuth } from '../../../application/contexts/AuthContext'
 import { despacharEmailPagoAprobado } from '../../../data/emailService'
+import { limpiarCacheMora } from '../../../data/moraService'
 import { SkeletonListItem } from '../../components/Skeleton'
 
 interface PagoAdmin {
   id: string
+  apartamento_id?: string
+  reportado_por?: string
   monto_bs: number
   monto_usd: number | null
   banco_origen: string
@@ -16,8 +19,9 @@ interface PagoAdmin {
   fecha_pago?: string | null
   notas_admin?: string | null
   comprobante_url?: string | null
-  apartamento: { numero: string } | null
+  apartamento: { numero: string; id?: string } | null
   residente_nombre?: string | null
+  residente_email?: string | null
 }
 
 const ESTADO_CONFIG: Record<string, { label: string; color: string; icon: string }> = {
@@ -59,17 +63,19 @@ export const AdminRecibos: React.FC = () => {
     try {
       const [pagosRes, aptRes, perfilesRes] = await Promise.all([
         supabase.from('pagos_reportados').select('*').order('created_at', { ascending: false }),
-        supabase.from('apartamentos').select('id, numero'),
-        supabase.from('perfiles').select('id, nombre_completo, apartamento_id')
+        supabase.from('apartamentos').select('id, numero, propietario_nombre, propietario_email'),
+        supabase.from('perfiles').select('id, nombre_completo, apartamento_id, propietario_email')
       ])
 
       if (pagosRes.error) {
         console.warn('[AdminRecibos] Error consultando pagos_reportados:', pagosRes.error.message)
       }
 
-      const aptMap = new Map<string, string>((aptRes.data || []).map((a: any) => [a.id, a.numero]))
-      const perfilMap = new Map<string, { nombre: string; aptoId?: string }>(
-        (perfilesRes.data || []).map((p: any) => [p.id, { nombre: p.nombre_completo, aptoId: p.apartamento_id }])
+      const aptMap = new Map<string, { numero: string; nombre?: string; email?: string }>(
+        (aptRes.data || []).map((a: any) => [a.id, { numero: a.numero, nombre: a.propietario_nombre, email: a.propietario_email }])
+      )
+      const perfilMap = new Map<string, { nombre: string; aptoId?: string; email?: string }>(
+        (perfilesRes.data || []).map((p: any) => [p.id, { nombre: p.nombre_completo, aptoId: p.apartamento_id, email: p.propietario_email }])
       )
 
       if (pagosRes.data) {
@@ -80,17 +86,24 @@ export const AdminRecibos: React.FC = () => {
             if (match) banco = match[1].trim()
           }
 
-          // Resolver número de apartamento
-          let aptoNumero = aptMap.get(r.apartamento_id)
-          if (!aptoNumero && r.reportado_por) {
+          // Resolver número de apartamento y datos
+          let aptoInfo = r.apartamento_id ? aptMap.get(r.apartamento_id) : undefined
+          let finalAptoId = r.apartamento_id
+          if (!aptoInfo && r.reportado_por) {
             const perf = perfilMap.get(r.reportado_por)
-            if (perf?.aptoId) aptoNumero = aptMap.get(perf.aptoId)
+            if (perf?.aptoId) {
+              aptoInfo = aptMap.get(perf.aptoId)
+              if (!finalAptoId) finalAptoId = perf.aptoId
+            }
           }
 
-          const residentName = perfilMap.get(r.reportado_por)?.nombre || 'Residente'
+          const residentName = perfilMap.get(r.reportado_por)?.nombre || aptoInfo?.nombre || 'Residente'
+          const residentEmail = perfilMap.get(r.reportado_por)?.email || aptoInfo?.email || null
 
           return {
             id: r.id,
+            apartamento_id: finalAptoId,
+            reportado_por: r.reportado_por,
             monto_bs: r.monto_bs || 0,
             monto_usd: r.monto_usd || null,
             banco_origen: banco,
@@ -100,8 +113,9 @@ export const AdminRecibos: React.FC = () => {
             fecha_pago: r.fecha_pago,
             notas_admin: r.notas_admin,
             comprobante_url: r.comprobante_url,
-            apartamento: aptoNumero ? { numero: aptoNumero } : null,
+            apartamento: aptoInfo ? { numero: aptoInfo.numero, id: finalAptoId } : null,
             residente_nombre: residentName,
+            residente_email: residentEmail,
           }
         })
         setPagos(mapped)
@@ -193,37 +207,64 @@ export const AdminRecibos: React.FC = () => {
       }
 
       if (accion === 'aprobado') {
-        const { data: pagoDb } = await supabase
+        const { data: pagoDb, error: errPagoDb } = await supabase
           .from('pagos_reportados')
-          .select('id, apartamento_id, reportado_por, monto_bs, monto_usd, referencia, fecha_pago, banco_origen')
+          .select('id, apartamento_id, reportado_por, monto_bs, monto_usd, referencia, fecha_pago, notas_admin, metodo')
           .eq('id', id)
           .maybeSingle()
 
-        if (pagoDb?.apartamento_id) {
-          await supabase.from('recibos_generados')
+        if (errPagoDb) {
+          console.warn('[AdminRecibos] Error obteniendo datos del pago aprobado:', errPagoDb)
+        }
+
+        const aptoId = pagoDb?.apartamento_id || pagoObj?.apartamento_id || (pagoObj?.apartamento as any)?.id
+        const reportadoPorId = pagoDb?.reportado_por || pagoObj?.reportado_por
+
+        if (aptoId) {
+          // 1. Sincronizar recibos_generados: marcar como pagados
+          const { error: errRecibo } = await supabase
+            .from('recibos_generados')
             .update({ estado: 'pagado' })
-            .eq('apartamento_id', pagoDb.apartamento_id)
+            .eq('apartamento_id', aptoId)
             .eq('estado', 'pendiente')
 
-          // Despachar email automático de confirmación de pago y constancia de solvencia
+          if (errRecibo) {
+            console.error('[AdminRecibos] Error marcando recibo como pagado:', errRecibo)
+          }
+
+          // 2. Sincronizar deudas_mora: solventar
+          const { error: errMora } = await supabase
+            .from('deudas_mora')
+            .update({ estado: 'solventado' })
+            .eq('apartamento_id', aptoId)
+            .eq('estado', 'activo')
+
+          if (errMora) {
+            console.warn('[AdminRecibos] Error solventando deudas_mora:', errMora)
+          }
+
+          // 3. Limpiar caché de mora para actualizar inmediatamente todas las vistas
+          limpiarCacheMora()
+
+          // 4. Despachar email automático de confirmación de pago y constancia de solvencia
           try {
             const [aptoRes, perfilRes] = await Promise.all([
-              supabase.from('apartamentos').select('numero').eq('id', pagoDb.apartamento_id).maybeSingle(),
-              pagoDb.reportado_por
-                ? supabase.from('perfiles').select('nombre_completo, propietario_email').eq('id', pagoDb.reportado_por).maybeSingle()
+              supabase.from('apartamentos').select('numero, propietario_nombre, propietario_email').eq('id', aptoId).maybeSingle(),
+              reportadoPorId
+                ? supabase.from('perfiles').select('nombre_completo, propietario_email').eq('id', reportadoPorId).maybeSingle()
                 : Promise.resolve({ data: null })
             ])
 
-            const aptoNum = aptoRes.data?.numero || selected?.apartamento?.numero || 'S/N'
-            let emailDestino = perfilRes.data?.propietario_email
-            let nombreDestino = perfilRes.data?.nombre_completo || selected?.residente_nombre || aptoRes.data?.propietario_nombre
+            const aptoNum = aptoRes.data?.numero || selected?.apartamento?.numero || pagoObj?.apartamento?.numero || 'S/N'
+            let emailDestino = perfilRes.data?.propietario_email || aptoRes.data?.propietario_email || pagoObj?.residente_email
+            let nombreDestino = perfilRes.data?.nombre_completo || aptoRes.data?.propietario_nombre || selected?.residente_nombre || pagoObj?.residente_nombre || `Propietario Apto ${aptoNum}`
 
-            // Si el reportador directo no tiene email, buscar cualquier perfil registrado de ese apartamento
-            if (!emailDestino && pagoDb.apartamento_id) {
+            // Si aún no hay email, buscar en cualquier perfil registrado para ese apartamento
+            if (!emailDestino || !emailDestino.includes('@')) {
               const { data: perfilApto } = await supabase
                 .from('perfiles')
                 .select('propietario_email, nombre_completo')
-                .eq('apartamento_id', pagoDb.apartamento_id)
+                .eq('apartamento_id', aptoId)
                 .not('propietario_email', 'is', null)
                 .limit(1)
                 .maybeSingle()
@@ -236,27 +277,53 @@ export const AdminRecibos: React.FC = () => {
               }
             }
 
+            // Calcular montos finales en Bs y USD
+            let montoFinalBs = Number(pagoDb?.monto_bs ?? selected?.monto_bs ?? pagoObj?.monto_bs ?? 0)
+            let montoFinalUsd = Number(pagoDb?.monto_usd ?? selected?.monto_usd ?? pagoObj?.monto_usd ?? 0)
+
+            if (!montoFinalUsd && montoFinalBs > 0) {
+              const tasa = config?.tasa_bcv_actual && config.tasa_bcv_actual > 1 ? config.tasa_bcv_actual : 859.06
+              montoFinalUsd = Number((montoFinalBs / tasa).toFixed(2))
+            }
+
+            // Extraer banco de origen
+            let bancoFinal = selected?.banco_origen || pagoObj?.banco_origen || 'Transferencia'
+            if (pagoDb?.notas_admin && pagoDb.notas_admin.includes('Banco')) {
+              const match = pagoDb.notas_admin.match(/Banco(?: Origen)?:\s*([^\n,|]+)/i)
+              if (match) bancoFinal = match[1].trim()
+            }
+
             if (emailDestino && emailDestino.includes('@')) {
-              await despacharEmailPagoAprobado({
+              console.log(`[AdminRecibos] Despachando email de agradecimiento y solvencia a: ${emailDestino} (Apto ${aptoNum})`)
+              const emailRes = await despacharEmailPagoAprobado({
                 destinatarioEmail: emailDestino,
                 apartamentoNumero: aptoNum,
                 propietarioNombre: nombreDestino,
-                edificioNombre: config?.nombre_edificio,
-                montoUsd: pagoDb.monto_usd || selected?.monto_usd || 0,
-                montoBs: pagoDb.monto_bs || selected?.monto_bs || 0,
-                referencia: pagoDb.referencia || selected?.numero_referencia,
-                fechaPago: pagoDb.fecha_pago || selected?.fecha_pago,
-                bancoOrigen: pagoDb.banco_origen || selected?.banco_origen
-              }).catch(e => console.warn('[AdminRecibos] Error despachando email pago aprobado:', e))
+                edificioNombre: config?.nombre_edificio || 'Residencias Ocutuy 5',
+                montoUsd: montoFinalUsd,
+                montoBs: montoFinalBs,
+                referencia: pagoDb?.referencia || selected?.numero_referencia || pagoObj?.numero_referencia || 'S/R',
+                fechaPago: pagoDb?.fecha_pago || selected?.fecha_pago || pagoObj?.fecha_pago || new Date().toISOString().slice(0, 10),
+                bancoOrigen: bancoFinal
+              })
+              console.log('[AdminRecibos] Resultado email enviado:', emailRes)
+              if (emailRes.ok) {
+                setToastMsg(`✅ Pago aprobado y correo de solvencia enviado a ${emailDestino}`)
+              } else {
+                setToastMsg(`✅ Pago aprobado y recibo marcado como solvente`)
+              }
+            } else {
+              console.log(`[AdminRecibos] Apto ${aptoNum} no posee correo registrado, se omite envío.`)
+              setToastMsg(`✅ Pago aprobado y recibo marcado como solvente`)
             }
           } catch (emailErr) {
             console.warn('[AdminRecibos] Error despachando email automático:', emailErr)
+            setToastMsg(`✅ Pago aprobado y cuenta solvente`)
           }
         }
       }
 
       setPagos(prev => prev.map(p => (p.id === id ? { ...p, estado: accion, notas_admin: notasFinal } : p)))
-      setToastMsg(accion === 'aprobado' ? '✅ Pago aprobado y correo de solvencia enviado' : '❌ Pago rechazado')
       setTimeout(() => setToastMsg(null), 4000)
     } catch (err: any) {
       console.error('[AdminRecibos] Error en handleAction:', err)
