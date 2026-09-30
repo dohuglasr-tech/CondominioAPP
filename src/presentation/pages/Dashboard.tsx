@@ -5,6 +5,7 @@ import { ReportarPagoModal } from '../components/ReportarPagoModal'
 import { supabase } from '../../data/supabase'
 import { useNavigate } from 'react-router-dom'
 import { buscarMoraPorApto, obtenerDeudasMora, TASA_RIESGO_CONFIG, DeudaMoraItem, TasaRiesgoMora } from '../../data/moraService'
+import { formatAlicuotaPct, getAlicuotaPctNumber } from '../../utils/alicuota'
 
 interface PagoItem {
   id: string
@@ -50,39 +51,35 @@ export function Dashboard() {
   const deudaBs = deudaUsd * tasaValida
 
 
-  // Cargar datos del apartamento y alícuota
+  // Cargar datos del apartamento y alícuota real impuesta por el administrador
   const cargarApartamentoInfo = useCallback(async () => {
     try {
+      let aptData: any = null
       if (apartamentoId) {
-        const { data: aptData } = await supabase
+        const { data } = await supabase
           .from('apartamentos')
           .select('id, numero, alicuota, piso')
           .eq('id', apartamentoId)
           .maybeSingle()
+        aptData = data
+      }
 
-        if (aptData) {
-          if (aptData.alicuota) setAlicuota(Number(aptData.alicuota))
-          const numStr = String(aptData.numero || '').toUpperCase()
-          const pisoNum = Number(aptData.piso || 0)
-          const isPH = numStr.includes('PH') || pisoNum === 15 || Number(aptData.alicuota) > 2.0
-          setEsPenthouse(isPH)
-          if (!aptData.alicuota) setAlicuota(isPH ? 2.59 : 1.59)
-        }
-      } else if (aptoNumero) {
-        const { data: aptData } = await supabase
+      if (!aptData && aptoNumero) {
+        const { data } = await supabase
           .from('apartamentos')
           .select('id, numero, alicuota, piso')
           .eq('numero', aptoNumero)
           .maybeSingle()
+        aptData = data
+      }
 
-        if (aptData) {
-          if (aptData.alicuota) setAlicuota(Number(aptData.alicuota))
-          const numStr = String(aptData.numero || '').toUpperCase()
-          const pisoNum = Number(aptData.piso || 0)
-          const isPH = numStr.includes('PH') || pisoNum === 15 || Number(aptData.alicuota) > 2.0
-          setEsPenthouse(isPH)
-          if (!aptData.alicuota) setAlicuota(isPH ? 2.59 : 1.59)
-        }
+      if (aptData) {
+        const numStr = String(aptData.numero || '').toUpperCase()
+        const pisoNum = Number(aptData.piso || 0)
+        const pct = getAlicuotaPctNumber(aptData.alicuota)
+        const isPH = numStr.includes('PH') || pisoNum === 15 || pct > 2.0
+        setEsPenthouse(isPH)
+        setAlicuota(pct > 0 ? pct : (isPH ? 2.59 : 1.59))
       }
     } catch (err) {
       console.warn('[Dashboard] Error cargando alícuota:', err)
@@ -434,7 +431,7 @@ export function Dashboard() {
                   ALÍCUOTA
                 </div>
                 <div style={{ color: '#f97316', fontSize: '13px', fontWeight: 800 }}>
-                  {alicuota.toFixed(2)}% {esPenthouse ? '(PH)' : ''}
+                  {formatAlicuotaPct(alicuota)} {esPenthouse ? '(PH)' : ''}
                 </div>
               </div>
 
@@ -1049,7 +1046,7 @@ export function Dashboard() {
                   <div>
                     <div style={{ color: '#7e8b9b', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase' }}>ALÍCUOTA</div>
                     <div style={{ color: '#fff', fontSize: '16px', fontWeight: 800, marginTop: '2px' }}>
-                      {alicuota.toFixed(2)}% {esPenthouse ? '(Penthouse)' : '(Estándar)'}
+                      {formatAlicuotaPct(alicuota)} {esPenthouse ? '(Penthouse)' : '(Estándar)'}
                     </div>
                   </div>
 
@@ -1319,7 +1316,7 @@ export function Dashboard() {
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
                     <span style={{ color: '#94a3b8' }}>Alícuota Legal:</span>
-                    <span style={{ color: '#f97316', fontWeight: 700 }}>{alicuota.toFixed(2)}%</span>
+                    <span style={{ color: '#f97316', fontWeight: 700 }}>{formatAlicuotaPct(alicuota)}</span>
                   </div>
                 </div>
               </div>

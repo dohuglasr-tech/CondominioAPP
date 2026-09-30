@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../../data/supabase'
-import { formatAlicuotaPct, parseAlicuotaInput } from '../../../utils/alicuota'
+import { formatAlicuotaPct, parseAlicuotaInput, getAlicuotaDecimal, getAlicuotaPctNumber } from '../../../utils/alicuota'
 
 interface PersonaContacto {
   nombre: string
@@ -131,8 +131,10 @@ export const AdminResidentes: React.FC = () => {
       const listaFormateada: Residente[] = aptosList.map((a: any) => {
         const perfil = perfilPorApto.get(a.id)
         const esAlquilado = perfil?.condicion_habitacional === 'alquilado'
-        const esPh = a.numero?.toUpperCase().includes('PH') || a.piso === 0 || a.piso === 11 || (a.alicuota && a.alicuota > 0.02)
-        const alicuotaNum = Number(a.alicuota) || (esPh ? 0.0259 : 0.0159)
+        const alicuotaPct = getAlicuotaPctNumber(a.alicuota)
+        const esPh = a.numero?.toUpperCase().includes('PH') || a.piso === 0 || a.piso === 11 || alicuotaPct > 2.0
+        const alicuotaDecimal = getAlicuotaDecimal(a.alicuota) || (esPh ? 0.0259 : 0.0159)
+        const pctDisplay = alicuotaPct > 0 ? alicuotaPct : (esPh ? 2.59 : 1.59)
 
         const propNombre = esAlquilado
           ? (perfil?.propietario_nombre || a.propietario_nombre || 'N/D')
@@ -151,8 +153,8 @@ export const AdminResidentes: React.FC = () => {
           apartamento_id: a.id,
           apartamento: a.numero || 'S/N',
           piso: a.piso ?? null,
-          alicuota: alicuotaNum,
-          alicuota_input: (alicuotaNum * 100).toFixed(4).replace(/\.?0+$/, ''),
+          alicuota: alicuotaDecimal,
+          alicuota_input: pctDisplay.toString(),
           es_ph: !!esPh,
           tiene_usuario: !!perfil,
           usuario_id: perfil?.id,
