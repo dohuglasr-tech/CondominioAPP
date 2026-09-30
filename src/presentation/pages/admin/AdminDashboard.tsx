@@ -136,12 +136,12 @@ export const AdminDashboard: React.FC = () => {
           `)
           .order('created_at', { ascending: false }),
         supabase
-          .from('recibos')
-          .select('mes, anio')
-          .order('anio', { ascending: false }),
+          .from('recibos_generados')
+          .select('mes_facturado')
+          .order('mes_facturado', { ascending: false }),
         supabase
-          .from('gastos')
-          .select('monto_usd, mes_gasto')
+          .from('gastos_comunes')
+          .select('monto_usd, monto_bs, mes_aplicacion')
       ])
 
       // Pagos
@@ -150,11 +150,16 @@ export const AdminDashboard: React.FC = () => {
 
       // Gastos del mes
       let totalGastosBs = 0
-      const currentRate = rate || 40
+      const currentRate = rate && rate > 1 ? rate : 859.06
       if (gastosRes.data) {
         gastosRes.data.forEach((g: any) => {
-          if (!g.mes_gasto || g.mes_gasto === mesSeleccionado) {
-            totalGastosBs += Number(g.monto_usd || 0) * currentRate
+          const mesGasto = (g.mes_aplicacion || '').substring(0, 7)
+          if (!mesGasto || mesGasto === mesSeleccionado) {
+            if (g.monto_bs && Number(g.monto_bs) > 0) {
+              totalGastosBs += Number(g.monto_bs)
+            } else {
+              totalGastosBs += Number(g.monto_usd || 0) * currentRate
+            }
           }
         })
       }
@@ -164,9 +169,9 @@ export const AdminDashboard: React.FC = () => {
       const mesesSet = new Set<string>()
       mesesSet.add(mesActualKey)
       ;(recibosRes.data || []).forEach((r: any) => {
-        if (r.mes && r.anio) {
-          const mKey = `${r.anio}-${String(r.mes).padStart(2, '0')}`
-          mesesSet.add(mKey)
+        if (r.mes_facturado) {
+          const mKey = r.mes_facturado.substring(0, 7)
+          if (mKey) mesesSet.add(mKey)
         }
       })
       const mesesArr = Array.from(mesesSet).sort().reverse()
@@ -250,6 +255,8 @@ export const AdminDashboard: React.FC = () => {
     const channel = supabase
       .channel(channelId)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'pagos_reportados' }, () => cargarMetricas())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'gastos_comunes' }, () => cargarMetricas())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'recibos_generados' }, () => cargarMetricas())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'falencias' }, () => cargarMetricas())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'perfiles' }, () => cargarMetricas())
       .subscribe()
