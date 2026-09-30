@@ -17,6 +17,7 @@ import {
   generarMensajeReciboPagado,
   abrirWhatsApp,
 } from '../../utils/whatsappHelper'
+import { obtenerSaldoAFavorApartamento } from '../../data/saldoFavorService'
 
 interface Props {
   onClose?: () => void
@@ -124,6 +125,7 @@ export function RecibosPanel({ onClose }: Props) {
   const [selectedPago, setSelectedPago] = useState<PagoReportado | null>(null)
   const [reportarModalOpen, setReportarModalOpen] = useState(false)
   const [descargandoId, setDescargandoId] = useState<string | null>(null)
+  const [saldoAFavor, setSaldoAFavor] = useState<number>(0)
 
   // ── Cargar información completa del residente ──────────────────────────────
   const cargarDatos = useCallback(async () => {
@@ -161,6 +163,11 @@ export function RecibosPanel({ onClose }: Props) {
       } else if (authConfig) {
         setConfig(authConfig as any)
       }
+
+      // Calcular saldo a favor disponible del apartamento
+      const tasaActual = configRes.data?.tasa_bcv_actual || authConfig?.tasa_bcv_actual || 859.06
+      const sRes = await obtenerSaldoAFavorApartamento(apartamentoId, tasaActual)
+      setSaldoAFavor(sRes.saldo_a_favor_usd)
     } catch (e: any) {
       setError(e.message || 'Error cargando datos de recibos')
     } finally {
@@ -469,6 +476,49 @@ export function RecibosPanel({ onClose }: Props) {
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            {/* Saldo a Favor / Crédito del Apartamento */}
+            {saldoAFavor > 0 && (
+              <div style={{
+                backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                border: '1px solid rgba(34, 197, 94, 0.3)',
+                borderRadius: '16px',
+                padding: '16px 20px',
+                marginBottom: '10px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '14px',
+                boxShadow: '0 4px 16px rgba(0, 0, 0, 0.3)'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{
+                    width: '40px', height: '40px', borderRadius: '12px',
+                    backgroundColor: 'rgba(34, 197, 94, 0.2)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '20px', color: '#4ade80'
+                  }}>
+                    💚
+                  </div>
+                  <div>
+                    <div style={{ color: '#4ade80', fontSize: '13px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                      Saldo a Favor Disponible
+                    </div>
+                    <div style={{ color: '#94a3b8', fontSize: '12px', marginTop: '2px' }}>
+                      Tienes crédito acumulado en tu cuenta. Se deduce automáticamente al cancelar tu recibo.
+                    </div>
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                  <div style={{ color: '#4ade80', fontSize: '18px', fontWeight: 900 }}>
+                    +${fmtUsd(saldoAFavor)} USD
+                  </div>
+                  <div style={{ color: '#86efac', fontSize: '11px', fontWeight: 600 }}>
+                    ≈ Bs. {fmtBs(saldoAFavor * (config?.tasa_bcv_actual || 859.06))}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {recibos.map((recibo) => {
               const { mesLabel, anio } = parseMesFacturado(recibo.mes_facturado)
               const esHistorico = (recibo.mes_facturado || '').slice(0, 7) < '2026-09'
@@ -597,6 +647,30 @@ export function RecibosPanel({ onClose }: Props) {
                       </div>
                     </div>
                   </div>
+
+                  {/* Deducción de Saldo a Favor si aplica en recibo pendiente */}
+                  {!estaPagado && saldoAFavor > 0 && (
+                    <div style={{
+                      backgroundColor: 'rgba(34, 197, 94, 0.08)',
+                      border: '1px dashed rgba(34, 197, 94, 0.35)',
+                      borderRadius: '10px',
+                      padding: '10px 14px',
+                      marginBottom: '14px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      flexWrap: 'wrap',
+                      gap: '8px',
+                      fontSize: '12px'
+                    }}>
+                      <span style={{ color: '#86efac' }}>
+                        💚 Saldo a favor a aplicar: <strong>-${fmtUsd(Math.min(saldoAFavor, recibo.total_usd))} USD</strong>
+                      </span>
+                      <span style={{ color: '#4ade80', fontWeight: 800 }}>
+                        Monto neto a transferir: ${fmtUsd(Math.max(0, recibo.total_usd - saldoAFavor))} USD
+                      </span>
+                    </div>
+                  )}
 
                   {/* Mensaje descriptivo según estado */}
                   <div style={{ marginBottom: '16px' }}>

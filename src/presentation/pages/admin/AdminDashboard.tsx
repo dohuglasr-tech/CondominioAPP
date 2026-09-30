@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useBcvRate } from '../../../data/useBcvRate'
 import { supabase } from '../../../data/supabase'
 import { SkeletonCard } from '../../components/Skeleton'
+import { PublicarAvisoModal } from '../../components/PublicarAvisoModal'
 
 interface StatCardProps {
   icon: string
@@ -110,6 +111,7 @@ export const AdminDashboard: React.FC = () => {
 
   // Ocultar/mostrar saldo
   const [ocultarSaldos, setOcultarSaldos] = useState(false)
+  const [avisoModalOpen, setAvisoModalOpen] = useState(false)
 
   const cargarMetricas = useCallback(async () => {
     try {
@@ -568,6 +570,28 @@ export const AdminDashboard: React.FC = () => {
               </div>
               <span style={{ color: '#d4d4d8', fontSize: '12px', fontWeight: 600 }}>Apartamentos</span>
             </button>
+
+            {/* 7. Avisos a la Comunidad (Rojo/Ámbar) */}
+            <button
+              onClick={() => setAvisoModalOpen(true)}
+              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+            >
+              <div style={{
+                width: '58px',
+                height: '58px',
+                borderRadius: '50%',
+                backgroundColor: '#2d1818',
+                border: '1px solid rgba(239, 68, 68, 0.25)',
+                color: '#f87171',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '20px'
+              }}>
+                📢
+              </div>
+              <span style={{ color: '#d4d4d8', fontSize: '12px', fontWeight: 600 }}>Avisos</span>
+            </button>
           </div>
         </div>
 
@@ -757,6 +781,26 @@ export const AdminDashboard: React.FC = () => {
               }}
             >
               🔄 Actualizar
+            </button>
+
+            <button
+              onClick={() => setAvisoModalOpen(true)}
+              style={{
+                backgroundColor: 'rgba(239, 68, 68, 0.12)',
+                color: '#f87171',
+                border: '1px solid rgba(239, 68, 68, 0.3)',
+                padding: '8px 16px',
+                borderRadius: '10px',
+                fontSize: '13px',
+                fontWeight: 700,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                transition: 'all 0.2s',
+              }}
+            >
+              📢 Publicar Aviso
             </button>
           </div>
         </div>
@@ -963,6 +1007,12 @@ export const AdminDashboard: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* Modal de Publicar / Gestionar Avisos de Comunidad */}
+      <PublicarAvisoModal
+        isOpen={avisoModalOpen}
+        onClose={() => setAvisoModalOpen(false)}
+      />
     </div>
   )
 }

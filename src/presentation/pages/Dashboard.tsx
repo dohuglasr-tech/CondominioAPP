@@ -6,6 +6,8 @@ import { supabase } from '../../data/supabase'
 import { useNavigate } from 'react-router-dom'
 import { obtenerDeudasMora, TASA_RIESGO_CONFIG, DeudaMoraItem, TasaRiesgoMora } from '../../data/moraService'
 import { formatAlicuotaPct, getAlicuotaPctNumber } from '../../utils/alicuota'
+import { AvisoBanner } from '../components/AvisoBanner'
+import { obtenerSaldoAFavorApartamento } from '../../data/saldoFavorService'
 
 interface PagoItem {
   id: string
@@ -44,6 +46,7 @@ export function Dashboard() {
   const [pagosRecientes, setPagosRecientes] = useState<PagoItem[]>([])
   const [reciboPendiente, setReciboPendiente] = useState<{ id: string; total_usd: number; total_bs: number; mes_facturado: string; emitido_at: string } | null>(null)
   const [moraRecord, setMoraRecord] = useState<DeudaMoraItem | null>(null)
+  const [saldoAFavor, setSaldoAFavor] = useState<number>(0)
 
   const { rate, loading: loadingRate } = useBcvRate()
   const tasaValida = rate && rate > 1 ? rate : (config?.tasa_bcv_actual && config.tasa_bcv_actual > 1 ? config.tasa_bcv_actual : 859.06)
@@ -127,10 +130,16 @@ export function Dashboard() {
         )
       }) || null
       setMoraRecord(mora)
+
+      // Consultar saldo a favor (crédito prepagado del apartamento)
+      if (apartamentoId) {
+        const saldoRes = await obtenerSaldoAFavorApartamento(apartamentoId, tasaValida)
+        setSaldoAFavor(saldoRes.saldo_a_favor_usd)
+      }
     } catch (err) {
       console.warn('[Dashboard] Error cargando datos del residente:', err)
     }
-  }, [apartamentoId, aptoNumero])
+  }, [apartamentoId, aptoNumero, tasaValida])
 
   useEffect(() => {
     cargarApartamentoInfo()
@@ -291,6 +300,9 @@ export function Dashboard() {
         {/* ═════════════════════════════════════════════════════════════════ */}
         <div className="resident-mobile-view">
 
+          {/* Cartelera / Barra de Avisos Rápidos (Si hay aviso activo) */}
+          <AvisoBanner />
+
           {/* ── 1. TARJETA PRINCIPAL: ESTADO DE CUENTA / APTO ── */}
           <div style={{
             backgroundColor: '#141519',
@@ -408,6 +420,41 @@ export function Dashboard() {
                 {ocultarSaldos ? '••••' : `≈ $${deudaUsd.toFixed(2)} USD`}
               </span>
             </div>
+
+            {/* Saldo a Favor / Billetera Comunitaria */}
+            {saldoAFavor > 0 && (
+              <div style={{
+                backgroundColor: 'rgba(34, 197, 94, 0.12)',
+                border: '1px solid rgba(34, 197, 94, 0.3)',
+                borderRadius: '14px',
+                padding: '10px 14px',
+                marginBottom: '16px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '10px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '16px' }}>💚</span>
+                  <div>
+                    <div style={{ color: '#4ade80', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      Saldo a Favor Disponible
+                    </div>
+                    <div style={{ color: '#94a3b8', fontSize: '11px' }}>
+                      Se deduce de tu próximo recibo
+                    </div>
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ color: '#4ade80', fontSize: '14px', fontWeight: 800 }}>
+                    {ocultarSaldos ? '••••' : `+$${saldoAFavor.toFixed(2)}`}
+                  </div>
+                  <div style={{ color: '#86efac', fontSize: '10px', fontWeight: 600 }}>
+                    {ocultarSaldos ? '••••' : `≈ Bs. ${(saldoAFavor * tasaValida).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Desglose de 3 Columnas al pie (MES ACTUAL | ALÍCUOTA | TASA BCV) */}
             <div style={{
@@ -780,6 +827,9 @@ export function Dashboard() {
         {/* ═════════════════════════════════════════════════════════════════ */}
         <div className="resident-desktop-view">
 
+          {/* Cartelera / Barra de Avisos Rápidos Desktop */}
+          <AvisoBanner />
+
           {/* Header Superior Desktop */}
           <div style={{
             display: 'flex',
@@ -1033,6 +1083,41 @@ export function Dashboard() {
                     · {mesFacturadoTexto}
                   </span>
                 </div>
+
+                {/* Saldo a Favor Desktop */}
+                {saldoAFavor > 0 && (
+                  <div style={{
+                    backgroundColor: 'rgba(34, 197, 94, 0.12)',
+                    border: '1px solid rgba(34, 197, 94, 0.3)',
+                    borderRadius: '14px',
+                    padding: '12px 18px',
+                    marginTop: '16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '12px'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <span style={{ fontSize: '20px' }}>💚</span>
+                      <div>
+                        <div style={{ color: '#4ade80', fontSize: '12px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                          Saldo a Favor en Cuenta
+                        </div>
+                        <div style={{ color: '#94a3b8', fontSize: '12px' }}>
+                          Dispones de crédito prepagado que se deducirá de tu siguiente facturación.
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ color: '#4ade80', fontSize: '17px', fontWeight: 800 }}>
+                        {ocultarSaldos ? '••••' : `+$${saldoAFavor.toFixed(2)} USD`}
+                      </div>
+                      <div style={{ color: '#86efac', fontSize: '11px', fontWeight: 600 }}>
+                        {ocultarSaldos ? '••••' : `≈ Bs. ${(saldoAFavor * tasaValida).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Desglose Inferior */}
                 <div style={{

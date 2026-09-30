@@ -134,10 +134,8 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
             setNotifs((prev) => [nueva, ...prev].slice(0, 30))
             setNoLeidas((prev) => prev + 1)
 
-            // Notificación del navegador si la app está en segundo plano
-            if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
-              mostrarNotificacionLocal(nueva.titulo, nueva.cuerpo, nueva.link)
-            }
+            // Disparar notificación nativa web / móvil del dispositivo
+            mostrarNotificacionLocal(nueva.titulo, nueva.cuerpo, nueva.link)
           }
         )
         .subscribe()
@@ -390,14 +388,42 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
           <div style={{
             padding: '10px 16px',
             borderTop: '1px solid rgba(255,255,255,0.07)',
-            textAlign: 'center',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '8px'
           }}>
+            {typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default' ? (
+              <button
+                onClick={async () => {
+                  const ok = await registrarPushNotificaciones()
+                  setPushGranted(ok)
+                }}
+                style={{
+                  background: 'rgba(249, 115, 22, 0.12)',
+                  border: '1px solid rgba(249, 115, 22, 0.3)',
+                  color: '#f97316',
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  padding: '4px 8px',
+                  borderRadius: '6px',
+                  cursor: 'pointer'
+                }}
+              >
+                🔔 Activar avisos push
+              </button>
+            ) : (
+              <span style={{ fontSize: '11px', color: '#555' }}>
+                {pushGranted || (typeof Notification !== 'undefined' && Notification.permission === 'granted') ? '✓ Notificaciones activas' : ''}
+              </span>
+            )}
+
             <button
               onClick={() => setOpen(false)}
               style={{
                 background: 'none',
                 border: 'none',
-                color: '#555',
+                color: '#71717a',
                 fontSize: '12px',
                 cursor: 'pointer',
               }}

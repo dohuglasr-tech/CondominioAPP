@@ -10,6 +10,7 @@ import autoTable from 'jspdf-autotable'
 import { SkeletonCard, SkeletonChart, SkeletonTable } from '../../components/Skeleton'
 import { generarMensajeCobroRecibo, generarMensajeReciboPagado, abrirWhatsApp } from '../../../utils/whatsappHelper'
 import { despacharEmailRecibo, despacharEmailPagoAprobado } from '../../../data/emailService'
+import { generarInformeGestionPDF, DatosInformeGestion } from '../../../utils/informeGestionPdfGenerator'
 
 interface ReciboEmitido {
   id: string
@@ -697,6 +698,38 @@ export const AdminRecibosEmitidos: React.FC = () => {
     doc.save(`Informe_Cobranza_${mesLabel}_${anio}.pdf`)
   }
 
+  // ── 7b. Exportar Informe Ejecutivo de Cierre de Gestión en PDF ────────────
+  const descargarInformeEjecutivoGestion = () => {
+    if (!config || recibos.length === 0) return
+    const tasaBcv = recibos[0]?.tasa_bcv || (config?.tasa_bcv_actual && config.tasa_bcv_actual > 1 ? config.tasa_bcv_actual : 859.06)
+
+    const datos: DatosInformeGestion = {
+      nombreEdificio: config.nombre_edificio || 'Condominio Residencial',
+      rifEdificio: config.rif,
+      direccionEdificio: config.direccion,
+      periodoLabel: `${mesLabelActivo} ${esMesHistorico ? '(Gestión Anterior)' : ''}`,
+      totalFacturadoUsd: stats.totalFacturadoUsd,
+      totalRecaudadoUsd: stats.totalCobradoUsd,
+      totalGastosUsd: stats.totalGastosComunesUsd,
+      fondoReservaAcumuladoUsd: stats.fondoReservaUsd,
+      totalMoraUsd: stats.totalMoraUsd,
+      tasaBcv: tasaBcv,
+      gastosPorCategoria: stats.gastosPorCategoria.map(g => ({
+        categoria: g.categoria,
+        cantidad: 1,
+        totalUsd: g.totalUsd,
+        totalBs: g.totalBs,
+        porcentaje: g.pct
+      })),
+      totalApartamentos: recibos.length,
+      apartamentosSolventes: stats.cantSolventes,
+      apartamentosEnMora: stats.cantMorosos,
+    }
+
+    generarInformeGestionPDF(datos)
+    showToast('📑 Informe Ejecutivo descargado correctamente.')
+  }
+
   // ── 8. RETIRAR DEUDA O ELIMINAR EMISIÓN MASIVA (CON AUDITORÍA INMUTABLE) ──
   const handleConfirmarEliminarEmision = async () => {
     if (!mesSeleccionado || recibos.length === 0) return
@@ -923,6 +956,29 @@ export const AdminRecibosEmitidos: React.FC = () => {
             }}
           >
             <span>📊</span> Exportar Informe Mes
+          </button>
+
+          <button
+            onClick={descargarInformeEjecutivoGestion}
+            disabled={recibos.length === 0}
+            style={{
+              backgroundColor: '#0f172a',
+              color: '#38bdf8',
+              border: '1px solid rgba(56, 189, 248, 0.35)',
+              padding: '8px 14px',
+              borderRadius: '10px',
+              fontSize: '13px',
+              fontWeight: 700,
+              cursor: recibos.length === 0 ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: '0 4px 12px rgba(56, 189, 248, 0.15)',
+              transition: 'all 0.2s'
+            }}
+            title="Genera el informe formal en PDF para asamblea de copropietarios o rendición de cuentas anual"
+          >
+            <span>📑</span> Informe Ejecutivo (PDF)
           </button>
 
           <button

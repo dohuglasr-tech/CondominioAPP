@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { reportarPago, subirComprobante } from '../../data/pagosService'
 import { comprimirImagen, ResultadoCompresion } from '../../utils/imageCompressor'
+import { obtenerSaldoAFavorApartamento } from '../../data/saldoFavorService'
 
 const BANCOS_VE = [
   'Banesco', 'Mercantil', 'Provincial', 'Venezuela',
@@ -40,6 +41,7 @@ export function ReportarPagoModal({ apartamentoId, onClose, onSuccess }: Props) 
   const [optimizando, setOptimizando] = useState(false)
   const [statsCompresion, setStatsCompresion] = useState<ResultadoCompresion | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [saldoAFavor, setSaldoAFavor] = useState<number>(0)
 
   const [banco, setBanco] = useState('')
   const [monto, setMonto] = useState('')
@@ -60,6 +62,17 @@ export function ReportarPagoModal({ apartamentoId, onClose, onSuccess }: Props) 
       document.body.style.overscrollBehavior = originalOverscroll
     }
   }, [])
+
+  // Cargar saldo a favor disponible si el residente tiene crédito
+  useEffect(() => {
+    if (apartamentoId) {
+      obtenerSaldoAFavorApartamento(apartamentoId).then((res) => {
+        if (res?.saldo_a_favor_usd > 0) {
+          setSaldoAFavor(res.saldo_a_favor_usd)
+        }
+      }).catch(() => {})
+    }
+  }, [apartamentoId])
 
   // Auto-scroll suave hacia el botón cuando se carga comprobante o termina la compresión
   useEffect(() => {
@@ -383,6 +396,27 @@ export function ReportarPagoModal({ apartamentoId, onClose, onSuccess }: Props) 
 
         <p style={st.title}>Reportar Pago</p>
         <p style={st.subtitle}>Completa los datos de tu transferencia.</p>
+
+        {saldoAFavor > 0 && (
+          <div style={{
+            backgroundColor: 'rgba(34, 197, 94, 0.1)',
+            border: '1px solid rgba(34, 197, 94, 0.3)',
+            borderRadius: '12px',
+            padding: '10px 14px',
+            marginBottom: '18px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            fontSize: '12px',
+            color: '#86efac',
+            lineHeight: 1.4
+          }}>
+            <span style={{ fontSize: '18px' }}>💚</span>
+            <div>
+              <strong>Saldo a favor: ${saldoAFavor.toFixed(2)} USD</strong>. Si estás usando este crédito para pagar, reporta solo la diferencia transferida.
+            </div>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit}>
           {error && (
