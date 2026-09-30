@@ -15,9 +15,10 @@ import {
   guardarDeudaMora,
   eliminarDeudaMora
 } from '../../../data/moraService'
+import { generarMensajeCobroMora, abrirWhatsApp } from '../../../utils/whatsappHelper'
 
 export const AdminMora: React.FC = () => {
-  const { perfil } = useAuth()
+  const { perfil, config } = useAuth()
   const { rate } = useBcvRate()
   const [deudas, setDeudas] = useState<DeudaMoraItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -280,6 +281,34 @@ export const AdminMora: React.FC = () => {
       moradoUsd
     }
   }, [deudas])
+
+  // ── Enviar Notificación / Cobranza de Mora por WhatsApp (1 Clic) ──────────
+  const handleCobrarWhatsApp = (d: DeudaMoraItem) => {
+    const aptoInfo = apartamentos.find(a => a.id === d.apartamento_id || a.numero === d.apartamento_numero)
+    const telefono = d.propietario_telefono || aptoInfo?.telefono_contacto || null
+    const propNombre = d.propietario_nombre || aptoInfo?.propietario_nombre || null
+
+    const msg = generarMensajeCobroMora({
+      edificioNombre: config?.nombre_edificio,
+      apartamentoNumero: d.apartamento_numero,
+      propietarioNombre: propNombre,
+      telefono,
+      mesesMora: d.meses_deuda,
+      montoUsd: d.monto_usd,
+      montoBs: d.monto_bs,
+      tasaBcv: rate || config?.tasa_bcv_actual,
+      accionLegalTitulo: ACCION_LEGAL_CONFIG[d.accion_legal]?.titulo,
+      conceptosDetalle: d.conceptos_detalle,
+      fechaCorte: d.fecha_corte,
+      bancoNombre: config?.banco,
+      cuentaNumero: config?.cuenta_bancaria,
+      titularNombre: config?.titular_cuenta,
+      cedulaRif: config?.rif,
+      telefonoPagoMovil: config?.telefono
+    })
+
+    abrirWhatsApp({ telefono, mensaje: msg })
+  }
 
   return (
     <div style={{ padding: '24px 28px', maxWidth: '1400px', margin: '0 auto', color: '#fff', fontFamily: 'Inter, sans-serif' }}>
@@ -660,6 +689,29 @@ export const AdminMora: React.FC = () => {
                   >
                     <span>{d.tasa_riesgo === 'azul' ? '✉️' : '📜'}</span>
                     <span>{d.tasa_riesgo === 'azul' ? 'Ver Recordatorio de Cobro' : 'Ver Carta / Citación'}</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleCobrarWhatsApp(d)}
+                    style={{
+                      background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.18) 0%, rgba(22, 163, 74, 0.28) 100%)',
+                      border: '1px solid rgba(34, 197, 94, 0.45)',
+                      color: '#4ade80',
+                      padding: '6px 14px',
+                      borderRadius: '8px',
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      boxShadow: '0 2px 10px rgba(34, 197, 94, 0.2)',
+                      transition: 'all 0.15s ease'
+                    }}
+                    title="Enviar cobranza y recordatorio por WhatsApp con 1 solo clic"
+                  >
+                    <span>📲</span>
+                    <span>Cobrar por WhatsApp</span>
                   </button>
                 </div>
 
@@ -1066,7 +1118,27 @@ export const AdminMora: React.FC = () => {
               </p>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '24px', borderTop: '1px solid #eee', paddingTop: '16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '24px', borderTop: '1px solid #eee', paddingTop: '16px', flexWrap: 'wrap' }}>
+              <button
+                onClick={() => handleCobrarWhatsApp(citacionModal)}
+                style={{
+                  background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)',
+                  color: '#fff',
+                  border: 'none',
+                  padding: '9px 18px',
+                  borderRadius: '10px',
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  boxShadow: '0 3px 12px rgba(22, 163, 74, 0.35)'
+                }}
+                title="Enviar esta comunicación formal de mora por WhatsApp"
+              >
+                <span>📲</span> Enviar por WhatsApp
+              </button>
               <button
                 onClick={() => window.print()}
                 style={{

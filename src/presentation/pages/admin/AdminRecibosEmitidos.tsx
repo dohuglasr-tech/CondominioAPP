@@ -7,6 +7,7 @@ import { compararApartamentos, formatAlicuotaPct } from '../../../utils/alicuota
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { SkeletonCard, SkeletonChart, SkeletonTable } from '../../components/Skeleton'
+import { generarMensajeCobroRecibo, generarMensajeReciboPagado, abrirWhatsApp } from '../../../utils/whatsappHelper'
 
 interface ReciboEmitido {
   id: string
@@ -381,6 +382,48 @@ export const AdminRecibosEmitidos: React.FC = () => {
     )
 
     doc.save(`Recibo_Apto${r.apartamento?.numero}_${mesLabel}${anio}.pdf`)
+  }
+
+  // ── 6.1 Enviar Notificación o Cobranza por WhatsApp (1 Clic) ─────────────
+  const handleWhatsAppRecibo = (r: ReciboEmitido) => {
+    const [anioStr, mesNumStr] = (r.mes_facturado || '').split('-')
+    const anio = parseInt(anioStr) || 2026
+    const mesIndex = (parseInt(mesNumStr) || 1) - 1
+    const mesLabel = MESES[mesIndex] || 'Mes'
+    const tel = r.apartamento?.telefono_contacto || null
+
+    if (r.estado === 'pagado') {
+      const msg = generarMensajeReciboPagado({
+        edificioNombre: config?.nombre_edificio,
+        apartamentoNumero: r.apartamento?.numero || 'S/N',
+        propietarioNombre: r.apartamento?.propietario_nombre,
+        telefono: tel,
+        mesLabel,
+        anio,
+        totalUsd: r.total_usd,
+        totalBs: r.total_bs
+      })
+      abrirWhatsApp({ telefono: tel, mensaje: msg })
+    } else {
+      const msg = generarMensajeCobroRecibo({
+        edificioNombre: config?.nombre_edificio,
+        apartamentoNumero: r.apartamento?.numero || 'S/N',
+        propietarioNombre: r.apartamento?.propietario_nombre,
+        telefono: tel,
+        mesLabel,
+        anio,
+        totalUsd: r.total_usd,
+        totalBs: r.total_bs,
+        tasaBcv: r.tasa_bcv || config?.tasa_bcv_actual || 1,
+        alicuotaPct: formatAlicuotaPct(r.alicuota),
+        bancoNombre: config?.banco,
+        cuentaNumero: config?.cuenta_bancaria,
+        titularNombre: config?.titular_cuenta,
+        cedulaRif: config?.rif,
+        telefonoPagoMovil: tel
+      })
+      abrirWhatsApp({ telefono: tel, mensaje: msg })
+    }
   }
 
   // ── 7. Exportar Reporte Resumen Ejecutivo del Mes en PDF ──────────────────
@@ -1131,6 +1174,26 @@ export const AdminRecibosEmitidos: React.FC = () => {
                               </button>
 
                               <button
+                                onClick={() => handleWhatsAppRecibo(r)}
+                                style={{
+                                  backgroundColor: 'rgba(34, 197, 94, 0.16)',
+                                  color: '#22c55e',
+                                  border: '1px solid rgba(34, 197, 94, 0.35)',
+                                  padding: '5px 9px',
+                                  borderRadius: '6px',
+                                  fontSize: '11px',
+                                  cursor: 'pointer',
+                                  fontWeight: 700,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '4px'
+                                }}
+                                title={isPagado ? "Compartir solvencia por WhatsApp" : "Enviar cobranza con datos de pago por WhatsApp (1 clic)"}
+                              >
+                                <span>📲</span> {isPagado ? 'Solvencia' : 'WhatsApp'}
+                              </button>
+
+                              <button
                                 onClick={() => setReciboModal(r)}
                                 style={{
                                   backgroundColor: '#141414', color: '#888', border: '1px solid #262626',
@@ -1298,6 +1361,17 @@ export const AdminRecibosEmitidos: React.FC = () => {
                   }}
                 >
                   Cerrar
+                </button>
+                <button
+                  onClick={() => handleWhatsAppRecibo(reciboModal)}
+                  style={{
+                    backgroundColor: '#16a34a', color: '#fff', border: 'none',
+                    padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: 700,
+                    display: 'flex', alignItems: 'center', gap: '6px'
+                  }}
+                  title="Enviar por WhatsApp con 1 clic"
+                >
+                  <span>📲</span> {reciboModal.estado === 'pagado' ? 'Solvencia WhatsApp' : 'Enviar por WhatsApp'}
                 </button>
                 <button
                   onClick={() => descargarPDFReciboEmitido(reciboModal)}

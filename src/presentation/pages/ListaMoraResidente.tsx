@@ -7,9 +7,10 @@ import {
   ACCION_LEGAL_CONFIG,
   obtenerDeudasMora
 } from '../../data/moraService'
+import { generarMensajeCobroMora, abrirWhatsApp } from '../../utils/whatsappHelper'
 
 export const ListaMoraResidente: React.FC = () => {
-  const { perfil } = useAuth()
+  const { perfil, config } = useAuth()
   const [deudas, setDeudas] = useState<DeudaMoraItem[]>([])
   const [loading, setLoading] = useState(true)
   const [filtroRiesgo, setFiltroRiesgo] = useState<string>('todos')
@@ -80,6 +81,30 @@ export const ListaMoraResidente: React.FC = () => {
 
     return { totalAptos: deudas.length, totalUsd, totalBs, azul, amarillo, rojo, morado }
   }, [deudas])
+
+  // ── Compartir o Enviar Deuda por WhatsApp ─────────────────────────────────
+  const handleCompartirWhatsApp = (d: DeudaMoraItem) => {
+    const msg = generarMensajeCobroMora({
+      edificioNombre: config?.nombre_edificio,
+      apartamentoNumero: d.apartamento_numero,
+      propietarioNombre: d.propietario_nombre,
+      telefono: d.propietario_telefono,
+      mesesMora: d.meses_deuda,
+      montoUsd: d.monto_usd,
+      montoBs: d.monto_bs,
+      tasaBcv: config?.tasa_bcv_actual,
+      accionLegalTitulo: ACCION_LEGAL_CONFIG[d.accion_legal]?.titulo,
+      conceptosDetalle: d.conceptos_detalle,
+      fechaCorte: d.fecha_corte,
+      bancoNombre: config?.banco,
+      cuentaNumero: config?.cuenta_bancaria,
+      titularNombre: config?.titular_cuenta,
+      cedulaRif: config?.rif,
+      telefonoPagoMovil: config?.telefono
+    })
+
+    abrirWhatsApp({ telefono: d.propietario_telefono, mensaje: msg })
+  }
 
   return (
     <div style={{ padding: '24px 20px', maxWidth: '1000px', margin: '0 auto', color: '#fff', fontFamily: 'Inter, sans-serif' }}>
@@ -174,20 +199,46 @@ export const ListaMoraResidente: React.FC = () => {
             </div>
           </div>
 
-          <button
-            onClick={() => setModalPagoOpen(true)}
-            style={{
-              background: miDeuda.tasa_riesgo === 'azul'
-                ? 'linear-gradient(135deg, #3b82f6 0%, #2563eb 60%, #1d4ed8 100%)'
-                : 'linear-gradient(135deg, #fb923c 0%, #f97316 60%, #ea580c 100%)',
-              color: '#fff', border: 'none', borderRadius: '12px', padding: '12px 22px',
-              fontSize: '13px', fontWeight: 800, cursor: 'pointer',
-              boxShadow: miDeuda.tasa_riesgo === 'azul' ? '0 4px 15px rgba(37, 99, 235, 0.4)' : '0 4px 15px rgba(249, 115, 22, 0.4)',
-              whiteSpace: 'nowrap'
-            }}
-          >
-            💳 Reportar Pago / Regularizar
-          </button>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={() => handleCompartirWhatsApp(miDeuda)}
+              style={{
+                background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.2) 0%, rgba(22, 163, 74, 0.3) 100%)',
+                border: '1px solid rgba(34, 197, 94, 0.45)',
+                color: '#4ade80',
+                borderRadius: '12px',
+                padding: '12px 18px',
+                fontSize: '13px',
+                fontWeight: 700,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                boxShadow: '0 2px 10px rgba(34, 197, 94, 0.2)',
+                whiteSpace: 'nowrap'
+              }}
+              title="Enviar o compartir por WhatsApp con saldo, tasa BCV y cuentas"
+            >
+              <span>📲</span>
+              <span>Enviar por WhatsApp</span>
+            </button>
+
+            <button
+              onClick={() => setModalPagoOpen(true)}
+              style={{
+                background: miDeuda.tasa_riesgo === 'azul'
+                  ? 'linear-gradient(135deg, #3b82f6 0%, #2563eb 60%, #1d4ed8 100%)'
+                  : 'linear-gradient(135deg, #fb923c 0%, #f97316 60%, #ea580c 100%)',
+                color: '#fff', border: 'none', borderRadius: '12px', padding: '12px 22px',
+                fontSize: '13px', fontWeight: 800, cursor: 'pointer',
+                boxShadow: miDeuda.tasa_riesgo === 'azul' ? '0 4px 15px rgba(37, 99, 235, 0.4)' : '0 4px 15px rgba(249, 115, 22, 0.4)',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              💳 Reportar Pago / Regularizar
+            </button>
+          </div>
         </div>
       )}
 
@@ -416,9 +467,36 @@ export const ListaMoraResidente: React.FC = () => {
                     {d.conceptos_detalle || 'Cuotas de condominio ordinarias impagas'}
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#d8b4fe', fontWeight: 600 }}>
-                    <span>{accion.icono}</span>
-                    <span>{accion.titulo}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#d8b4fe', fontWeight: 600 }}>
+                      <span>{accion.icono}</span>
+                      <span>{accion.titulo}</span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleCompartirWhatsApp(d)
+                      }}
+                      style={{
+                        background: 'rgba(34, 197, 94, 0.15)',
+                        border: '1px solid rgba(34, 197, 94, 0.35)',
+                        color: '#4ade80',
+                        borderRadius: '6px',
+                        padding: '4px 10px',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        transition: 'all 0.15s ease'
+                      }}
+                      title="Enviar detalles por WhatsApp con 1 solo clic"
+                    >
+                      <span>📲</span> WhatsApp
+                    </button>
                   </div>
                 </div>
               </div>

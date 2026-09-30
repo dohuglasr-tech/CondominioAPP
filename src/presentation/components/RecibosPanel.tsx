@@ -12,6 +12,11 @@ import {
   ReciboPagoInfo,
 } from '../../utils/reciboPdfGenerator'
 import { formatAlicuotaPct } from '../../utils/alicuota'
+import {
+  generarMensajeCobroRecibo,
+  generarMensajeReciboPagado,
+  abrirWhatsApp,
+} from '../../utils/whatsappHelper'
 
 interface Props {
   onClose?: () => void
@@ -262,6 +267,42 @@ export function RecibosPanel({ onClose }: Props) {
       alert('Hubo un error al compilar el PDF del recibo.')
     } finally {
       setDescargandoId(null)
+    }
+  }
+
+  // ── Compartir Recibo o Constancia por WhatsApp ─────────────────────────────
+  const handleCompartirWhatsApp = (recibo: ReciboGenerado) => {
+    const { mesLabel, anio } = parseMesFacturado(recibo.mes_facturado)
+    const estaPagado = recibo.estado === 'pagado' || pagos.some(p => p.estado === 'aprobado')
+
+    if (estaPagado) {
+      const msg = generarMensajeReciboPagado({
+        edificioNombre: config?.nombre_edificio || authConfig?.nombre_edificio,
+        apartamentoNumero: aptoNumero,
+        propietarioNombre,
+        mesLabel,
+        anio,
+        totalUsd: recibo.total_usd,
+        totalBs: recibo.total_bs,
+      })
+      abrirWhatsApp({ mensaje: msg })
+    } else {
+      const msg = generarMensajeCobroRecibo({
+        edificioNombre: config?.nombre_edificio || authConfig?.nombre_edificio,
+        apartamentoNumero: aptoNumero,
+        propietarioNombre,
+        mesLabel,
+        anio,
+        totalUsd: recibo.total_usd,
+        totalBs: recibo.total_bs,
+        tasaBcv: recibo.tasa_bcv || config?.tasa_bcv_actual || authConfig?.tasa_bcv_actual || 1,
+        alicuotaPct: formatAlicuotaPct(recibo.alicuota),
+        bancoNombre: config?.banco || authConfig?.banco || 'Banco Bicentenario',
+        cuentaNumero: config?.cuenta_bancaria || authConfig?.cuenta_bancaria || '0175-0525-4100-7575-1351',
+        titularNombre: config?.titular_cuenta || authConfig?.titular_cuenta || 'Zoraya Almeida',
+        cedulaRif: config?.rif || authConfig?.rif || 'V-6089037',
+      })
+      abrirWhatsApp({ mensaje: msg })
     }
   }
 
@@ -603,6 +644,31 @@ export function RecibosPanel({ onClose }: Props) {
                           ? 'Descargar Recibo Oficial (PDF)'
                           : 'Descargar Aviso de Cobro (PDF)'}
                       </span>
+                    </button>
+
+                    {/* Botón Verde Enviar / Compartir por WhatsApp */}
+                    <button
+                      type="button"
+                      onClick={() => handleCompartirWhatsApp(recibo)}
+                      style={{
+                        background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.2) 0%, rgba(22, 163, 74, 0.3) 100%)',
+                        border: '1px solid rgba(34, 197, 94, 0.5)',
+                        color: '#4ade80',
+                        borderRadius: '10px',
+                        padding: '9px 16px',
+                        fontSize: '12px',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        boxShadow: '0 2px 10px rgba(34, 197, 94, 0.25)',
+                        transition: 'all 0.2s ease'
+                      }}
+                      title="Enviar recibo con datos de pago por WhatsApp con 1 solo clic"
+                    >
+                      <span>📲</span>
+                      <span>{estaPagado ? 'Compartir Solvencia WhatsApp' : 'Enviar por WhatsApp'}</span>
                     </button>
 
                     {/* Si está pendiente, botón para reportar pago */}
