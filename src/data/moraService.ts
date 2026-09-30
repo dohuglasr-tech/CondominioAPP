@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { appCache } from './cacheService'
 
 export type TasaRiesgoMora = 'azul' | 'amarillo' | 'rojo' | 'morado'
 
@@ -244,6 +245,7 @@ function getLocalMoraCache(): DeudaMoraItem[] {
 export function limpiarCacheMora() {
   try {
     localStorage.removeItem(STORAGE_MORA_KEY)
+    appCache.invalidateTags(['mora'])
   } catch (e) {
     console.warn('[moraService] Error limpiando cache de mora:', e)
   }
@@ -257,22 +259,25 @@ function saveLocalMoraCache(list: DeudaMoraItem[]) {
   }
 }
 
-
-
 /**
  * Obtiene todas las deudas y moras unificadas:
  * 1. Consulta `deudas_mora` (deudas anteriores montadas manualmente / crónicas).
  * 2. Consulta `recibos_generados` donde `estado = 'pendiente'`.
  * 3. Si un apartamento SOLO debe el recibo emitido este mes (< 1 mes), se clasifica como AZUL.
  * 4. Si tiene deudas crónicas anteriores o más de 1 recibo vencido, se categoriza según los meses (Amarillo 3m, Rojo 4-6m, Morado >6m).
+ *
+ * Utiliza appCache (3 min TTL, deduplicación y tags) para acelerar la carga en 0 ms.
  */
-export async function obtenerDeudasMora(): Promise<{ data: DeudaMoraItem[]; error: string | null; fromDb: boolean }> {
-  try {
-    const [dmRes, recibosRes, aptosRes, perfilesRes] = await Promise.all([
-      supabase
-        .from('deudas_mora')
-        .select('*, apartamentos(id, numero, piso, propietario_nombre, telefono_contacto)'),
-      supabase
+export async function obtenerDeudasMora(forceRefresh = false): Promise<{ data: DeudaMoraItem[]; error: string | null; fromDb: boolean }> {
+  return appCache.fetch(
+    'deudas_mora_unificadas',
+    async () => {
+      try {
+        const [dmRes, recibosRes, aptosRes, perfilesRes] = await Promise.all([
+          supabase
+            .from('deudas_mora')
+            .select('*, apartamentos(id, numero, piso, propietario_nombre, telefono_contacto)'),
+          supabase
         .from('recibos_generados')
         .select('id, apartamento_id, mes_facturado, total_usd, total_bs, estado, emitido_at')
         .eq('estado', 'pendiente'),
@@ -444,6 +449,9 @@ export async function obtenerDeudasMora(): Promise<{ data: DeudaMoraItem[]; erro
     console.warn('[moraService] Excepción obteniendo deudas:', err)
     return { data: getLocalMoraCache(), error: null, fromDb: false }
   }
+    },
+    { ttlMs: 3 * 60 * 1000, tags: ['mora'], forceRefresh }
+  )
 }
 
 export async function guardarDeudaMora(item: Partial<DeudaMoraItem>): Promise<{ data: DeudaMoraItem | null; error: string | null }> {
@@ -518,6 +526,9 @@ export async function guardarDeudaMora(item: Partial<DeudaMoraItem>): Promise<{ 
       }
     }
 
+    // Invalidar inmediatamente la caché de mora
+    appCache.invalidateTags(['mora', 'recibos'])
+
     return { data: nuevoItem, error: null }
   } catch (err: any) {
     return { data: null, error: err.message || 'Error guardando registro de mora' }
@@ -532,6 +543,10 @@ export async function eliminarDeudaMora(id: string): Promise<{ success: boolean;
     if (!id.startsWith('mora-')) {
       await supabase.from('deudas_mora').delete().eq('id', id)
     }
+
+    // Invalidar inmediatamente la caché de mora
+    appCache.invalidateTags(['mora', 'recibos'])
+
     return { success: true, error: null }
   } catch (err: any) {
     return { success: false, error: err.message || 'Error eliminando registro' }

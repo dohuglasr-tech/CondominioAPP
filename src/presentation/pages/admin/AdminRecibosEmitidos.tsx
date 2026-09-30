@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../../../data/supabase'
+import { appCache } from '../../../data/cacheService'
 import { useAuth } from '../../../application/contexts/AuthContext'
 import { registrarEventoAuditoria } from '../../../data/auditoriaService'
 import { generarPDFRecibo, ReciboAptoData, ReciboGastoData, ReciboCargoData, ReciboConfigData } from '../../../utils/reciboPdfGenerator'
@@ -212,6 +213,7 @@ export const AdminRecibosEmitidos: React.FC = () => {
         showToast(`❌ Error: ${error.message}`)
       } else {
         setRecibos(prev => prev.map(r => r.id === recibo.id ? { ...r, estado: nuevoEstado } : r))
+        appCache.invalidateTags(['recibos', 'saldos', 'mora'])
         showToast(`✅ Recibo Apto ${recibo.apartamento?.numero} marcado como ${nuevoEstado.toUpperCase()}`)
 
         // Auditoría automática para modificaciones de recibos históricos
@@ -285,6 +287,7 @@ export const AdminRecibosEmitidos: React.FC = () => {
       }
 
       setRecibos(prev => prev.map(r => ({ ...r, estado: nuevoEstado })))
+      appCache.invalidateTags(['recibos', 'saldos', 'mora'])
       showToast(`✅ Todos los recibos de ${mesLabelActivo} marcados como ${nuevoEstado === 'pagado' ? 'PAGADOS' : 'EN MORA'}`)
 
       // Registrar auditoría del cambio masivo
@@ -796,6 +799,8 @@ export const AdminRecibosEmitidos: React.FC = () => {
       setRecibos([])
       setMesSeleccionado(nuevosMeses.length > 0 ? nuevosMeses[0] : '')
 
+      appCache.invalidateTags(['recibos', 'saldos', 'mora'])
+
       setModalEliminarEmisionOpen(false)
       setMotivoEliminarEmision('')
       setPalabraConfirmacion('')
@@ -850,6 +855,7 @@ export const AdminRecibosEmitidos: React.FC = () => {
 
       // 3. Actualizar estado local
       setRecibos(prev => prev.filter(item => item.id !== r.id))
+      appCache.invalidateTags(['recibos', 'saldos', 'mora'])
       setModalEliminarReciboOpen(false)
       setReciboParaEliminar(null)
       setMotivoEliminarRecibo('')

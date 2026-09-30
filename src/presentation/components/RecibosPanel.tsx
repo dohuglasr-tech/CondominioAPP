@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useAuth } from '../../application/contexts/AuthContext'
 import { supabase } from '../../data/supabase'
+import { appCache } from '../../data/cacheService'
 import { useNavigate } from 'react-router-dom'
 import { ReportarPagoModal } from './ReportarPagoModal'
 import {
@@ -127,8 +128,8 @@ export function RecibosPanel({ onClose }: Props) {
   const [descargandoId, setDescargandoId] = useState<string | null>(null)
   const [saldoAFavor, setSaldoAFavor] = useState<number>(0)
 
-  // ── Cargar información completa del residente ──────────────────────────────
-  const cargarDatos = useCallback(async () => {
+  // ── Cargar información completa del residente con Caché ──────────────────────────────
+  const cargarDatos = useCallback(async (forceRefresh = false) => {
     if (!apartamentoId) {
       setLoading(false)
       return
@@ -136,28 +137,41 @@ export function RecibosPanel({ onClose }: Props) {
 
     try {
       setError(null)
-      const [recibosRes, pagosRes, configRes] = await Promise.all([
-        supabase
-          .from('recibos_generados')
-          .select('*')
-          .eq('apartamento_id', apartamentoId)
-          .order('mes_facturado', { ascending: false }),
-        supabase
-          .from('pagos_reportados')
-          .select('*')
-          .eq('apartamento_id', apartamentoId)
-          .order('created_at', { ascending: false }),
+      const [recibosData, pagosData, configRes] = await Promise.all([
+        appCache.fetch(
+          `residente_recibos_${apartamentoId}`,
+          async () => {
+            const { data, error } = await supabase
+              .from('recibos_generados')
+              .select('*')
+              .eq('apartamento_id', apartamentoId)
+              .order('mes_facturado', { ascending: false })
+            if (error) console.warn('[RecibosPanel] Error recibos:', error.message)
+            return (data || []) as ReciboGenerado[]
+          },
+          { ttlMs: 3 * 60 * 1000, tags: ['recibos', `recibo_${apartamentoId}`], forceRefresh }
+        ),
+        appCache.fetch(
+          `residente_pagos_${apartamentoId}`,
+          async () => {
+            const { data, error } = await supabase
+              .from('pagos_reportados')
+              .select('*')
+              .eq('apartamento_id', apartamentoId)
+              .order('created_at', { ascending: false })
+            if (error) console.warn('[RecibosPanel] Error pagos:', error.message)
+            return (data || []) as PagoReportado[]
+          },
+          { ttlMs: 3 * 60 * 1000, tags: ['pagos', `pago_${apartamentoId}`], forceRefresh }
+        ),
         supabase
           .from('configuracion_edificio')
           .select('*')
           .maybeSingle(),
       ])
 
-      if (recibosRes.error) console.warn('[RecibosPanel] Error recibos:', recibosRes.error.message)
-      if (pagosRes.error) console.warn('[RecibosPanel] Error pagos:', pagosRes.error.message)
-
-      setRecibos(recibosRes.data || [])
-      setPagos(pagosRes.data || [])
+      setRecibos(recibosData)
+      setPagos(pagosData)
       if (configRes.data) {
         setConfig(configRes.data)
       } else if (authConfig) {
@@ -187,12 +201,18 @@ export function RecibosPanel({ onClose }: Props) {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'recibos_generados', filter: `apartamento_id=eq.${apartamentoId}` },
-        () => cargarDatos()
+        () => {
+          appCache.invalidateTags(['recibos', 'saldos', `recibo_${apartamentoId}`])
+          cargarDatos(true)
+        }
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'pagos_reportados', filter: `apartamento_id=eq.${apartamentoId}` },
-        () => cargarDatos()
+        () => {
+          appCache.invalidateTags(['pagos', 'saldos', `pago_${apartamentoId}`])
+          cargarDatos(true)
+        }
       )
       .subscribe()
 

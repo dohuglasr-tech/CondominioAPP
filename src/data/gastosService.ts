@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-
+import { appCache } from './cacheService'
 import { comprimirImagen } from '../utils/imageCompressor'
 
 export interface ComprobantesGasto {
@@ -123,41 +123,53 @@ export async function subirComprobanteGasto(
 }
 
 /**
- * Obtiene los gastos comunes del mes indicado (o del mes actual si no se indica).
+ * Obtiene los gastos comunes del mes indicado (o del mes actual si no se indica) con caché de 5 min.
  */
-export async function obtenerGastosMes(mes?: string): Promise<{ data: GastoComun[]; total_usd: number; error: string | null }> {
+export async function obtenerGastosMes(mes?: string, forceRefresh = false): Promise<{ data: GastoComun[]; total_usd: number; error: string | null }> {
   // Si no se pasa mes, usar primer día del mes actual
   const fecha = mes ?? new Date().toISOString().slice(0, 7) + '-01'
 
-  const { data, error } = await supabase
-    .from('gastos_comunes')
-    .select('*')
-    .eq('mes_aplicacion', fecha)
-    .order('created_at', { ascending: true })
+  return appCache.fetch(
+    `gastos_mes_${fecha}`,
+    async () => {
+      const { data, error } = await supabase
+        .from('gastos_comunes')
+        .select('*')
+        .eq('mes_aplicacion', fecha)
+        .order('created_at', { ascending: true })
 
-  if (error) {
-    console.error('[GastosService] Error:', error.message)
-    return { data: [], total_usd: 0, error: 'No se pudieron cargar los gastos.' }
-  }
+      if (error) {
+        console.error('[GastosService] Error:', error.message)
+        return { data: [], total_usd: 0, error: 'No se pudieron cargar los gastos.' }
+      }
 
-  const gastos = data ?? []
-  const total = gastos.reduce((sum, g) => sum + Number(g.monto_usd), 0)
+      const gastos = data ?? []
+      const total = gastos.reduce((sum, g) => sum + Number(g.monto_usd), 0)
 
-  return { data: gastos, total_usd: total, error: null }
+      return { data: gastos, total_usd: total, error: null }
+    },
+    { ttlMs: 5 * 60 * 1000, tags: ['gastos'], forceRefresh }
+  )
 }
 
 /**
- * Obtiene los meses disponibles que tienen gastos registrados.
+ * Obtiene los meses disponibles que tienen gastos registrados con caché de 10 min.
  */
-export async function obtenerMesesDisponibles(): Promise<string[]> {
-  const { data } = await supabase
-    .from('gastos_comunes')
-    .select('mes_aplicacion')
-    .order('mes_aplicacion', { ascending: false })
+export async function obtenerMesesDisponibles(forceRefresh = false): Promise<string[]> {
+  return appCache.fetch(
+    'gastos_meses_disponibles',
+    async () => {
+      const { data } = await supabase
+        .from('gastos_comunes')
+        .select('mes_aplicacion')
+        .order('mes_aplicacion', { ascending: false })
 
-  if (!data) return []
+      if (!data) return []
 
-  // Deduplicate
-  const meses = [...new Set(data.map(d => d.mes_aplicacion))]
-  return meses
+      // Deduplicate
+      const meses = [...new Set(data.map(d => d.mes_aplicacion))]
+      return meses
+    },
+    { ttlMs: 10 * 60 * 1000, tags: ['gastos'], forceRefresh }
+  )
 }

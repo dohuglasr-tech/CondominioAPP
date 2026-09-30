@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../../data/supabase'
+import { appCache } from '../../../data/cacheService'
 import { formatAlicuotaPct, parseAlicuotaInput, getAlicuotaDecimal, getAlicuotaPctNumber } from '../../../utils/alicuota'
 import { useAuth } from '../../../application/contexts/AuthContext'
 import { useBcvRate } from '../../../data/useBcvRate'
@@ -244,6 +245,8 @@ export const AdminResidentes: React.FC = () => {
         estado: 'habitado'
       }).eq('id', selected.apartamento_id)
 
+      appCache.invalidateTags(['apartamentos', 'residentes', 'pagos', 'saldos'])
+
       setDeleteMessage({
         type: 'success',
         text: `El usuario del Apto ${selected.apartamento} fue eliminado. El apartamento se mantiene disponible en el edificio.`,
@@ -316,6 +319,8 @@ export const AdminResidentes: React.FC = () => {
         type: 'success',
         text: `Datos del Apto ${form.apartamento} actualizados exitosamente (Alícuota: ${formatAlicuotaPct(alicuotaDecimal)}).`
       })
+
+      appCache.invalidateTags(['apartamentos', 'residentes', 'saldos'])
 
       setEditMode(false)
       await cargarResidentes()

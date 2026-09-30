@@ -3,6 +3,7 @@ import { useAuth } from '../../application/contexts/AuthContext'
 import { useBcvRate } from '../../data/useBcvRate'
 import { ReportarPagoModal } from '../components/ReportarPagoModal'
 import { supabase } from '../../data/supabase'
+import { appCache } from '../../data/cacheService'
 import { useNavigate } from 'react-router-dom'
 import { obtenerDeudasMora, TASA_RIESGO_CONFIG, DeudaMoraItem, TasaRiesgoMora } from '../../data/moraService'
 import { formatAlicuotaPct, getAlicuotaPctNumber } from '../../utils/alicuota'
@@ -55,26 +56,33 @@ export function Dashboard() {
 
 
   // Cargar datos del apartamento y alícuota real impuesta por el administrador
-  const cargarApartamentoInfo = useCallback(async () => {
+  const cargarApartamentoInfo = useCallback(async (forceRefresh = false) => {
     try {
-      let aptData: any = null
-      if (apartamentoId) {
-        const { data } = await supabase
-          .from('apartamentos')
-          .select('id, numero, alicuota, piso')
-          .eq('id', apartamentoId)
-          .maybeSingle()
-        aptData = data
-      }
+      const aptKey = apartamentoId ? `apto_id_${apartamentoId}` : `apto_num_${aptoNumero}`
+      const aptData = await appCache.fetch(
+        aptKey,
+        async () => {
+          if (apartamentoId) {
+            const { data } = await supabase
+              .from('apartamentos')
+              .select('id, numero, alicuota, piso')
+              .eq('id', apartamentoId)
+              .maybeSingle()
+            if (data) return data
+          }
 
-      if (!aptData && aptoNumero) {
-        const { data } = await supabase
-          .from('apartamentos')
-          .select('id, numero, alicuota, piso')
-          .eq('numero', aptoNumero)
-          .maybeSingle()
-        aptData = data
-      }
+          if (aptoNumero) {
+            const { data } = await supabase
+              .from('apartamentos')
+              .select('id, numero, alicuota, piso')
+              .eq('numero', aptoNumero)
+              .maybeSingle()
+            return data
+          }
+          return null
+        },
+        { ttlMs: 15 * 60 * 1000, tags: ['apartamentos'], forceRefresh }
+      )
 
       if (aptData) {
         const numStr = String(aptData.numero || '').toUpperCase()
@@ -90,36 +98,53 @@ export function Dashboard() {
   }, [apartamentoId, aptoNumero])
 
   // Cargar pagos, recibos y moras
-  const cargarDatosResidente = useCallback(async () => {
+  const cargarDatosResidente = useCallback(async (forceRefresh = false) => {
     if (!apartamentoId && !aptoNumero) {
       return
     }
 
     try {
+      const targetKey = apartamentoId || aptoNumero
 
-      const queryPagos = apartamentoId
-        ? supabase.from('pagos_reportados').select('*').eq('apartamento_id', apartamentoId).order('created_at', { ascending: false }).limit(5)
-        : supabase.from('pagos_reportados').select('*').order('created_at', { ascending: false }).limit(5)
-
-      const queryRecibos = apartamentoId
-        ? supabase.from('recibos_generados').select('id, total_usd, total_bs, mes_facturado, estado, emitido_at').eq('apartamento_id', apartamentoId).eq('estado', 'pendiente').order('mes_facturado', { ascending: false }).limit(1).maybeSingle()
-        : Promise.resolve({ data: null, error: null } as any)
-
-      const [pagoRes, reciboRes] = await Promise.all([
-        queryPagos,
-        queryRecibos
+      const [listPagos, reciboPend] = await Promise.all([
+        appCache.fetch(
+          `dashboard_pagos_${targetKey}`,
+          async () => {
+            const queryPagos = apartamentoId
+              ? supabase.from('pagos_reportados').select('*').eq('apartamento_id', apartamentoId).order('created_at', { ascending: false }).limit(5)
+              : supabase.from('pagos_reportados').select('*').order('created_at', { ascending: false }).limit(5)
+            const { data } = await queryPagos
+            return (data || []) as PagoItem[]
+          },
+          { ttlMs: 3 * 60 * 1000, tags: ['pagos'], forceRefresh }
+        ),
+        appCache.fetch(
+          `dashboard_recibo_${targetKey}`,
+          async () => {
+            if (!apartamentoId) return null
+            const { data } = await supabase
+              .from('recibos_generados')
+              .select('id, total_usd, total_bs, mes_facturado, estado, emitido_at')
+              .eq('apartamento_id', apartamentoId)
+              .eq('estado', 'pendiente')
+              .order('mes_facturado', { ascending: false })
+              .limit(1)
+              .maybeSingle()
+            return data
+          },
+          { ttlMs: 3 * 60 * 1000, tags: ['recibos'], forceRefresh }
+        )
       ])
 
-      const listPagos = (pagoRes.data || []) as PagoItem[]
       setPagosRecientes(listPagos)
       if (listPagos.length > 0) setUltimoPago(listPagos[0])
       else setUltimoPago(null)
 
-      if (reciboRes.data) setReciboPendiente(reciboRes.data)
+      if (reciboPend) setReciboPendiente(reciboPend)
       else setReciboPendiente(null)
 
       // Consultar si está en mora o tiene recibo emitido (<1m Azul o crónico)
-      const resMora = await obtenerDeudasMora()
+      const resMora = await obtenerDeudasMora(forceRefresh)
       const listMora = resMora.data || []
       const cleanApto = String(aptoNumero || '').trim().toUpperCase().replace(/^APTO\.?\s*/i, '')
       const mora = listMora.find(m => {
@@ -133,7 +158,7 @@ export function Dashboard() {
 
       // Consultar saldo a favor (crédito prepagado del apartamento)
       if (apartamentoId) {
-        const saldoRes = await obtenerSaldoAFavorApartamento(apartamentoId, tasaValida)
+        const saldoRes = await obtenerSaldoAFavorApartamento(apartamentoId, tasaValida, forceRefresh)
         setSaldoAFavor(saldoRes.saldo_a_favor_usd)
       }
     } catch (err) {
@@ -154,12 +179,18 @@ export function Dashboard() {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'pagos_reportados', filter: `apartamento_id=eq.${apartamentoId}` },
-        () => cargarDatosResidente()
+        () => {
+          appCache.invalidateTags(['pagos', 'saldos', 'recibos', 'mora'])
+          cargarDatosResidente(true)
+        }
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'recibos_generados', filter: `apartamento_id=eq.${apartamentoId}` },
-        () => cargarDatosResidente()
+        () => {
+          appCache.invalidateTags(['recibos', 'saldos', 'mora'])
+          cargarDatosResidente(true)
+        }
       )
       .subscribe()
 

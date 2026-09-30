@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useBcvRate } from '../../../data/useBcvRate'
 import { supabase } from '../../../data/supabase'
+import { appCache } from '../../../data/cacheService'
 import { SkeletonCard } from '../../components/Skeleton'
 import { PublicarAvisoModal } from '../../components/PublicarAvisoModal'
 
@@ -113,48 +114,52 @@ export const AdminDashboard: React.FC = () => {
   const [ocultarSaldos, setOcultarSaldos] = useState(false)
   const [avisoModalOpen, setAvisoModalOpen] = useState(false)
 
-  const cargarMetricas = useCallback(async () => {
+  const cargarMetricas = useCallback(async (forceRefresh = false) => {
     try {
-      // 1. Apartamentos
-      const { count: aptCount } = await supabase
-        .from('apartamentos')
-        .select('*', { count: 'exact', head: true })
-      if (aptCount !== null) setApartamentosCount(aptCount)
+      const data = await appCache.fetch(
+        'admin_dashboard_metricas',
+        async () => {
+          const [aptRes, pagosRes, recibosRes, gastosRes, falRes, propRes] = await Promise.all([
+            supabase.from('apartamentos').select('*', { count: 'exact', head: true }),
+            supabase.from('pagos_reportados').select(`
+              id,
+              monto_bs,
+              referencia,
+              estado,
+              created_at,
+              fecha_pago,
+              notas_admin,
+              apartamento:apartamento_id ( numero ),
+              residente:reportado_por ( nombre_completo )
+            `).order('created_at', { ascending: false }),
+            supabase.from('recibos_generados').select('mes_facturado').order('mes_facturado', { ascending: false }),
+            supabase.from('gastos_comunes').select('monto_usd, monto_bs, mes_aplicacion'),
+            supabase.from('falencias').select('*', { count: 'exact', head: true }),
+            supabase.from('propuestas').select('*', { count: 'exact', head: true }).eq('estado', 'activa')
+          ])
 
-      // 2. Pagos reportados, Recibos emitidos y Gastos
-      const [pagosRes, recibosRes, gastosRes] = await Promise.all([
-        supabase
-          .from('pagos_reportados')
-          .select(`
-            id,
-            monto_bs,
-            referencia,
-            estado,
-            created_at,
-            fecha_pago,
-            notas_admin,
-            apartamento:apartamento_id ( numero ),
-            residente:reportado_por ( nombre_completo )
-          `)
-          .order('created_at', { ascending: false }),
-        supabase
-          .from('recibos_generados')
-          .select('mes_facturado')
-          .order('mes_facturado', { ascending: false }),
-        supabase
-          .from('gastos_comunes')
-          .select('monto_usd, monto_bs, mes_aplicacion')
-      ])
+          return {
+            aptCount: aptRes.count ?? 0,
+            pagosList: pagosRes.data || [],
+            recibosList: recibosRes.data || [],
+            gastosList: gastosRes.data || [],
+            falCount: falRes.count ?? 0,
+            propCount: propRes.count ?? 0,
+          }
+        },
+        { ttlMs: 2 * 60 * 1000, tags: ['apartamentos', 'pagos', 'recibos', 'gastos', 'falencias'], forceRefresh }
+      )
 
-      // Pagos
-      const pagosList = pagosRes.data || []
-      setTodosLosPagos(pagosList)
+      setApartamentosCount(data.aptCount)
+      setReportesAbiertos(data.falCount)
+      setPropuestasActivas(data.propCount)
+      setTodosLosPagos(data.pagosList)
 
       // Gastos del mes
       let totalGastosBs = 0
       const currentRate = rate && rate > 1 ? rate : 859.06
-      if (gastosRes.data) {
-        gastosRes.data.forEach((g: any) => {
+      if (data.gastosList) {
+        data.gastosList.forEach((g: any) => {
           const mesGasto = (g.mes_aplicacion || '').substring(0, 7)
           if (!mesGasto || mesGasto === mesSeleccionado) {
             if (g.monto_bs && Number(g.monto_bs) > 0) {
@@ -170,7 +175,7 @@ export const AdminDashboard: React.FC = () => {
       // Meses disponibles
       const mesesSet = new Set<string>()
       mesesSet.add(mesActualKey)
-      ;(recibosRes.data || []).forEach((r: any) => {
+      ;(data.recibosList || []).forEach((r: any) => {
         if (r.mes_facturado) {
           const mKey = r.mes_facturado.substring(0, 7)
           if (mKey) mesesSet.add(mKey)
@@ -180,7 +185,7 @@ export const AdminDashboard: React.FC = () => {
       setMesesDisponibles(mesesArr)
 
       // Actividad reciente
-      const itemsPagos: ActividadItem[] = pagosList.slice(0, 6).map((p: any) => ({
+      const itemsPagos: ActividadItem[] = data.pagosList.slice(0, 6).map((p: any) => ({
         id: p.id,
         tipo: 'pago',
         titulo: `Pago Apto ${p.apartamento?.numero || 'S/N'}`,
@@ -191,19 +196,6 @@ export const AdminDashboard: React.FC = () => {
         rawDate: p.created_at
       }))
       setActividad(itemsPagos)
-
-      // 3. Reportes / Falencias
-      const { count: falCount } = await supabase
-        .from('falencias')
-        .select('*', { count: 'exact', head: true })
-      if (falCount !== null) setReportesAbiertos(falCount)
-
-      // 4. Propuestas activas
-      const { count: propCount } = await supabase
-        .from('propuestas')
-        .select('*', { count: 'exact', head: true })
-        .eq('estado', 'activa')
-      if (propCount !== null) setPropuestasActivas(propCount)
 
     } catch (err) {
       console.error('[AdminDashboard] Error cargando métricas:', err)
@@ -256,11 +248,26 @@ export const AdminDashboard: React.FC = () => {
     const channelId = `admin_dashboard_${Math.random().toString(36).slice(2, 7)}`
     const channel = supabase
       .channel(channelId)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'pagos_reportados' }, () => cargarMetricas())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'gastos_comunes' }, () => cargarMetricas())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'recibos_generados' }, () => cargarMetricas())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'falencias' }, () => cargarMetricas())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'perfiles' }, () => cargarMetricas())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pagos_reportados' }, () => {
+        appCache.invalidateTags(['pagos', 'saldos', 'recibos', 'mora'])
+        cargarMetricas(true)
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'gastos_comunes' }, () => {
+        appCache.invalidateTags(['gastos', 'recibos'])
+        cargarMetricas(true)
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'recibos_generados' }, () => {
+        appCache.invalidateTags(['recibos', 'saldos', 'mora'])
+        cargarMetricas(true)
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'falencias' }, () => {
+        appCache.invalidateTags(['falencias'])
+        cargarMetricas(true)
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'perfiles' }, () => {
+        appCache.invalidateTags(['residentes', 'apartamentos'])
+        cargarMetricas(true)
+      })
       .subscribe()
 
     return () => {
@@ -765,7 +772,7 @@ export const AdminDashboard: React.FC = () => {
             )}
 
             <button
-              onClick={cargarMetricas}
+              onClick={() => cargarMetricas(true)}
               style={{
                 backgroundColor: '#1a1a1a',
                 color: '#fff',

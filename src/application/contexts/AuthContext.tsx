@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import { Session, User } from '@supabase/supabase-js'
 import { supabase, Perfil, ConfigEdificio, Rol } from '../../data/supabase'
+import { appCache } from '../../data/cacheService'
 
 // ── Tipos del contexto ────────────────────────────────────────────
 interface AuthContextType {
@@ -47,17 +48,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     sessionStorage.removeItem('condominio_is_recovery')
   }
 
-  // ── Cargar configuración del edificio ────────────────────────
-  const cargarConfig = useCallback(async () => {
-    const { data } = await supabase
-      .from('configuracion_edificio')
-      .select('*')
-      .single()
-    if (data) {
-      if (!data.tasa_bcv_actual || data.tasa_bcv_actual <= 1) {
-        data.tasa_bcv_actual = 859.06
+  // ── Cargar configuración del edificio con caché (30 min TTL) ──
+  const cargarConfig = useCallback(async (forceRefresh = false) => {
+    try {
+      const data = await appCache.fetch<ConfigEdificio | null>(
+        'configuracion_edificio',
+        async () => {
+          const { data } = await supabase
+            .from('configuracion_edificio')
+            .select('*')
+            .single()
+          if (data) {
+            if (!data.tasa_bcv_actual || data.tasa_bcv_actual <= 1) {
+              data.tasa_bcv_actual = 859.06
+            }
+          }
+          return data ?? null
+        },
+        { ttlMs: 30 * 60 * 1000, tags: ['config'], forceRefresh, persistSession: true }
+      )
+      if (data) {
+        setConfig(data)
       }
-      setConfig(data)
+    } catch (e) {
+      console.warn('[Auth] Error cargando config con caché:', e)
     }
   }, [])
 
@@ -108,11 +122,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [user, cargarPerfil])
 
   const refreshConfig = useCallback(async () => {
-    await cargarConfig()
+    await cargarConfig(true)
   }, [cargarConfig])
 
-  // ── Inicializar sesión al montar ──────────────────────────────
+  // ── Inicializar sesión y Realtime Sync al montar ───────────────
   useEffect(() => {
+    appCache.initRealtimeSync(supabase)
     cargarConfig()
 
     supabase.auth.getSession().then(({ data: { session } }) => {

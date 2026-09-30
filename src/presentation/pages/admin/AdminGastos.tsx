@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../../../data/supabase'
+import { appCache } from '../../../data/cacheService'
 import {
   parseComprobantesGasto,
   serializeComprobantesGasto,
@@ -111,17 +112,30 @@ export const AdminGastos: React.FC = () => {
   const [showModal, setShowModal]   = useState(false)
 
   // ── Cargar gastos ─────────────────────────────────────────────────────
-  const cargarGastos = useCallback(async () => {
+  const cargarGastos = useCallback(async (forceRefresh = false) => {
     setLoading(true)
     const desde = `${filtroMes}-01`
     const [aniof, mesf] = filtroMes.split('-').map(Number)
     const hasta = new Date(aniof, mesf, 0).toISOString().slice(0, 10)
-    const { data } = await supabase
-      .from('gastos_comunes').select('*')
-      .gte('mes_aplicacion', desde).lte('mes_aplicacion', hasta)
-      .order('created_at', { ascending: false })
-    if (data) setGastos(data)
-    setLoading(false)
+    try {
+      const data = await appCache.fetch(
+        `admin_gastos_${filtroMes}`,
+        async () => {
+          const { data, error } = await supabase
+            .from('gastos_comunes').select('*')
+            .gte('mes_aplicacion', desde).lte('mes_aplicacion', hasta)
+            .order('created_at', { ascending: false })
+          if (error) throw error
+          return data || []
+        },
+        { ttlMs: 3 * 60 * 1000, tags: ['gastos'], forceRefresh }
+      )
+      setGastos(data)
+    } catch (err: any) {
+      console.warn('[AdminGastos] Error cargando gastos:', err)
+    } finally {
+      setLoading(false)
+    }
   }, [filtroMes])
 
   useEffect(() => { cargarGastos() }, [cargarGastos])
@@ -182,6 +196,7 @@ export const AdminGastos: React.FC = () => {
       alert('Error: ' + error.message)
     } else if (data) {
       setGastos(prev => [data, ...prev])
+      appCache.invalidateTags(['gastos', 'recibos'])
       setForm(EMPTY_FORM)
       setFacturaFile(null)
       setFacturaPreview(null)
@@ -316,6 +331,7 @@ export const AdminGastos: React.FC = () => {
     if (error) { alert('Error al editar: ' + error.message) }
     else if (data) {
       setGastos(prev => prev.map(x => x.id === g.id ? data : x))
+      appCache.invalidateTags(['gastos', 'recibos'])
       cancelarEdicion()
     }
     setGuardandoEdit(false)
@@ -326,6 +342,7 @@ export const AdminGastos: React.FC = () => {
     if (!confirm('¿Eliminar este gasto? Esta acción no se puede deshacer.')) return
     await supabase.from('gastos_comunes').delete().eq('id', id)
     setGastos(prev => prev.filter(g => g.id !== id))
+    appCache.invalidateTags(['gastos', 'recibos'])
   }
 
   // ── Totales ──────────────────────────────────────────────────────────
@@ -367,7 +384,7 @@ export const AdminGastos: React.FC = () => {
         <div style={{ display:'flex', gap:'8px' }}>
           <input type="month" value={filtroMes} onChange={e => setFiltroMes(e.target.value)}
             style={{ backgroundColor:'#141414', border:'1px solid #2a2a2a', color:'#fff', padding:'10px 12px', borderRadius:'10px', fontSize:'13px', outline:'none' }} />
-          <button onClick={cargarGastos}
+          <button onClick={() => cargarGastos(true)}
             style={{ backgroundColor:'#1e1e1e', color:'#ccc', border:'1px solid #2a2a2a', padding:'10px 14px', borderRadius:'10px', cursor:'pointer', fontSize:'13px', fontWeight:600 }}>
             🔄
           </button>

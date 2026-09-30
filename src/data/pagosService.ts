@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { appCache } from './cacheService'
 
 export interface ReportePagoPayload {
   apartamento_id: string
@@ -72,6 +73,9 @@ export async function reportarPago(payload: ReportePagoPayload): Promise<{ error
       console.error('[PagosService] Error insertando pago:', error)
       return { error: error.message || 'No se pudo registrar el pago. Intenta de nuevo.' }
     }
+
+    // Invalidar inmediatamente caché de pagos, saldos, recibos y mora para refresco en tiempo real
+    appCache.invalidateTags(['pagos', 'saldos', 'recibos', 'mora'])
 
     return { error: null }
   } catch (err: any) {

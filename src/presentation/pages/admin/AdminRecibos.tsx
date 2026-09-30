@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../../../data/supabase'
+import { appCache } from '../../../data/cacheService'
 import { useAuth } from '../../../application/contexts/AuthContext'
 import { despacharEmailPagoAprobado } from '../../../data/emailService'
 import { limpiarCacheMora } from '../../../data/moraService'
@@ -57,76 +58,81 @@ export const AdminRecibos: React.FC = () => {
     setSearchParams(nuevoFiltro === 'todos' ? {} : { filtro: nuevoFiltro })
   }
 
-  // ── Cargar pagos reales desde Supabase ───────────────────────
-  const cargarPagos = useCallback(async () => {
+  // ── Cargar pagos reales desde Supabase con Caché ───────────────────────
+  const cargarPagos = useCallback(async (forceRefresh = false) => {
     setLoading(true)
     try {
-      const [pagosRes, aptRes, perfilesRes] = await Promise.all([
-        supabase.from('pagos_reportados').select('*').order('created_at', { ascending: false }),
-        supabase.from('apartamentos').select('id, numero, propietario_nombre'),
-        supabase.from('perfiles').select('id, nombre_completo, apartamento_id, propietario_email')
-      ])
+      const mapped = await appCache.fetch(
+        'admin_pagos_lista',
+        async () => {
+          const [pagosRes, aptRes, perfilesRes] = await Promise.all([
+            supabase.from('pagos_reportados').select('*').order('created_at', { ascending: false }),
+            supabase.from('apartamentos').select('id, numero, propietario_nombre'),
+            supabase.from('perfiles').select('id, nombre_completo, apartamento_id, propietario_email')
+          ])
 
-      if (pagosRes.error) {
-        console.warn('[AdminRecibos] Error consultando pagos_reportados:', pagosRes.error.message)
-      }
-      if (aptRes.error) {
-        console.warn('[AdminRecibos] Error consultando apartamentos:', aptRes.error.message)
-      }
-
-      const aptMap = new Map<string, { numero: string; nombre?: string }>(
-        (aptRes.data || []).map((a: any) => [a.id, { numero: a.numero, nombre: a.propietario_nombre }])
-      )
-      const perfilMap = new Map<string, { nombre: string; aptoId?: string; email?: string }>(
-        (perfilesRes.data || []).map((p: any) => [p.id, { nombre: p.nombre_completo, aptoId: p.apartamento_id, email: p.propietario_email }])
-      )
-
-      if (pagosRes.data) {
-        const mapped: PagoAdmin[] = pagosRes.data.map((r: any) => {
-          let banco = 'Transferencia'
-          if (r.notas_admin && r.notas_admin.includes('Banco')) {
-            const match = r.notas_admin.match(/Banco(?: Origen)?:\s*([^\n,|]+)/i)
-            if (match) banco = match[1].trim()
+          if (pagosRes.error) {
+            console.warn('[AdminRecibos] Error consultando pagos_reportados:', pagosRes.error.message)
+          }
+          if (aptRes.error) {
+            console.warn('[AdminRecibos] Error consultando apartamentos:', aptRes.error.message)
           }
 
-          // Resolver número de apartamento y datos
-          let aptoInfo = r.apartamento_id ? aptMap.get(r.apartamento_id) : undefined
-          let finalAptoId = r.apartamento_id
-          if (!aptoInfo && r.reportado_por) {
-            const perf = perfilMap.get(r.reportado_por)
-            if (perf?.aptoId) {
-              aptoInfo = aptMap.get(perf.aptoId)
-              if (!finalAptoId) finalAptoId = perf.aptoId
+          const aptMap = new Map<string, { numero: string; nombre?: string }>(
+            (aptRes.data || []).map((a: any) => [a.id, { numero: a.numero, nombre: a.propietario_nombre }])
+          )
+          const perfilMap = new Map<string, { nombre: string; aptoId?: string; email?: string }>(
+            (perfilesRes.data || []).map((p: any) => [p.id, { nombre: p.nombre_completo, aptoId: p.apartamento_id, email: p.propietario_email }])
+          )
+
+          if (!pagosRes.data) return []
+
+          return pagosRes.data.map((r: any) => {
+            let banco = 'Transferencia'
+            if (r.notas_admin && r.notas_admin.includes('Banco')) {
+              const match = r.notas_admin.match(/Banco(?: Origen)?:\s*([^\n,|]+)/i)
+              if (match) banco = match[1].trim()
             }
-          }
 
-          const residentName = perfilMap.get(r.reportado_por)?.nombre || aptoInfo?.nombre || 'Residente'
-          const residentEmail = perfilMap.get(r.reportado_por)?.email || null
+            // Resolver número de apartamento y datos
+            let aptoInfo = r.apartamento_id ? aptMap.get(r.apartamento_id) : undefined
+            let finalAptoId = r.apartamento_id
+            if (!aptoInfo && r.reportado_por) {
+              const perf = perfilMap.get(r.reportado_por)
+              if (perf?.aptoId) {
+                aptoInfo = aptMap.get(perf.aptoId)
+                if (!finalAptoId) finalAptoId = perf.aptoId
+              }
+            }
 
-          return {
-            id: r.id,
-            apartamento_id: finalAptoId,
-            reportado_por: r.reportado_por,
-            monto_bs: r.monto_bs || 0,
-            monto_usd: r.monto_usd || null,
-            banco_origen: banco,
-            numero_referencia: r.referencia || 'S/R',
-            estado: (r.estado as any) || 'pendiente',
-            created_at: r.created_at,
-            fecha_pago: r.fecha_pago,
-            notas_admin: r.notas_admin,
-            comprobante_url: r.comprobante_url,
-            apartamento: aptoInfo ? { numero: aptoInfo.numero, id: finalAptoId } : null,
-            residente_nombre: residentName,
-            residente_email: residentEmail,
-          }
-        })
-        setPagos(mapped)
-      } else {
-        setPagos([])
-      }
+            const residentName = perfilMap.get(r.reportado_por)?.nombre || aptoInfo?.nombre || 'Residente'
+            const residentEmail = perfilMap.get(r.reportado_por)?.email || null
+
+            return {
+              id: r.id,
+              apartamento_id: finalAptoId,
+              reportado_por: r.reportado_por,
+              monto_bs: r.monto_bs || 0,
+              monto_usd: r.monto_usd || null,
+              banco_origen: banco,
+              numero_referencia: r.referencia || 'S/R',
+              estado: (r.estado as any) || 'pendiente',
+              created_at: r.created_at,
+              fecha_pago: r.fecha_pago,
+              notas_admin: r.notas_admin,
+              comprobante_url: r.comprobante_url,
+              apartamento: aptoInfo ? { numero: aptoInfo.numero, id: finalAptoId } : null,
+              residente_nombre: residentName,
+              residente_email: residentEmail,
+            }
+          })
+        },
+        { ttlMs: 2 * 60 * 1000, tags: ['pagos', 'apartamentos'], forceRefresh }
+      )
+      setPagos(mapped)
     } catch (err: any) {
       console.error('[AdminRecibos] Excepción al cargar pagos:', err)
+      setPagos([])
     } finally {
       setLoading(false)
     }
@@ -144,13 +150,15 @@ export const AdminRecibos: React.FC = () => {
         { event: '*', schema: 'public', table: 'pagos_reportados' },
         (payload) => {
           console.log('[AdminRecibos] Cambio recibido en tiempo real:', payload)
+          appCache.invalidateTags(['pagos', 'saldos', 'recibos', 'mora'])
           if (payload.eventType === 'INSERT') {
             setToastMsg('🔔 ¡Nuevo pago recibido! Se ha actualizado la lista.')
             setTimeout(() => setToastMsg(null), 5000)
           }
-          cargarPagos()
+          cargarPagos(true)
         }
       )
+      .subscribe()
       .subscribe()
 
     return () => {
@@ -359,7 +367,8 @@ export const AdminRecibos: React.FC = () => {
         }
 
         setPagos(prev => prev.map(p => (p.id === id ? { ...p, estado: accion, notas_admin: notasFinal } : p)))
-      setTimeout(() => setToastMsg(null), 4000)
+        appCache.invalidateTags(['pagos', 'recibos', 'saldos', 'mora'])
+        setTimeout(() => setToastMsg(null), 4000)
     } catch (err: any) {
       console.error('[AdminRecibos] Error en handleAction:', err)
     } finally {
@@ -421,7 +430,7 @@ export const AdminRecibos: React.FC = () => {
           </p>
         </div>
         <button
-          onClick={cargarPagos}
+          onClick={() => cargarPagos(true)}
           style={{
             backgroundColor: '#1e1e1e',
             color: '#fff',
