@@ -10,22 +10,38 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ logoUrl, buildingNam
   const [phase, setPhase] = useState<'enter' | 'visible' | 'exit'>('enter')
 
   useEffect(() => {
-    const t1 = setTimeout(() => setPhase('visible'), 100)
-    const t2 = setTimeout(() => setPhase('exit'), 2200)
-    const t3 = setTimeout(() => onDone(), 2800)
+    // Si ya se mostró en esta sesión, salir de inmediato para acelerar la carga
+    try {
+      if (sessionStorage.getItem('splash_viewed') === 'true') {
+        onDone()
+        return
+      }
+      sessionStorage.setItem('splash_viewed', 'true')
+    } catch {
+      // Ignorar si sessionStorage no está disponible
+    }
+
+    const t1 = setTimeout(() => setPhase('visible'), 50)
+    const t2 = setTimeout(() => setPhase('exit'), 1800)
+    const t3 = setTimeout(() => onDone(), 2200)
     return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3) }
   }, [onDone])
 
   const name = buildingName || 'Mi Edificio'
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 9999,
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: 'radial-gradient(ellipse at 50% 40%, #1a0a00 0%, #0a0a0a 70%)',
-      transition: 'opacity 0.6s cubic-bezier(0.4,0,0.2,1)',
-      opacity: phase === 'exit' ? 0 : 1,
-    }}>
+    <div
+      onClick={onDone}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 9999,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: 'radial-gradient(ellipse at 50% 40%, #1a0a00 0%, #0a0a0a 70%)',
+        transition: 'opacity 0.4s cubic-bezier(0.4,0,0.2,1)',
+        opacity: phase === 'exit' ? 0 : 1,
+        pointerEvents: phase === 'exit' ? 'none' : 'auto',
+        cursor: 'pointer'
+      }}
+    >
       <style>{`
         @keyframes splash-pulse {
           0%, 100% { transform: scale(1); opacity: 1; }

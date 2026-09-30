@@ -34,12 +34,155 @@ import { ListaMoraResidente } from './presentation/pages/ListaMoraResidente'
 import { JuntaCondominioResidente } from './presentation/pages/JuntaCondominioResidente'
 import { Register } from './presentation/pages/Register'
 
+// ── Error Boundary para prevenir pantalla en negro ante errores imprevistos ──
+interface ErrorBoundaryState {
+  hasError: boolean
+  error: Error | null
+}
+
+export class ErrorBoundary extends React.Component<{ children: React.ReactNode }, ErrorBoundaryState> {
+  state: ErrorBoundaryState = { hasError: false, error: null }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error }
+  }
+
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error('[ErrorBoundary] Error capturado:', error, info)
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{
+          minHeight: '100vh',
+          backgroundColor: '#070b14',
+          color: '#ffffff',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '24px',
+          textAlign: 'center',
+          fontFamily: 'Inter, system-ui, sans-serif'
+        }}>
+          <div style={{ fontSize: '42px', marginBottom: '16px' }}>⚠️</div>
+          <h2 style={{ fontSize: '20px', fontWeight: 800, margin: '0 0 8px', color: '#f87171' }}>
+            Hubo un problema al cargar la pantalla
+          </h2>
+          <p style={{ color: '#94a3b8', fontSize: '13px', maxWidth: '380px', margin: '0 0 20px', lineHeight: 1.5 }}>
+            {this.state.error?.message || 'Error inesperado al inicializar componentes.'}
+          </p>
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <button
+              onClick={() => {
+                this.setState({ hasError: false, error: null })
+                window.location.reload()
+              }}
+              style={{
+                backgroundColor: '#f97316',
+                color: '#fff',
+                border: 'none',
+                padding: '10px 18px',
+                borderRadius: '10px',
+                fontSize: '13px',
+                fontWeight: 700,
+                cursor: 'pointer'
+              }}
+            >
+              Reintentar
+            </button>
+            <button
+              onClick={() => {
+                this.setState({ hasError: false, error: null })
+                window.location.href = '/'
+              }}
+              style={{
+                backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                color: '#fff',
+                border: '1px solid rgba(255, 255, 255, 0.2)',
+                padding: '10px 18px',
+                borderRadius: '10px',
+                fontSize: '13px',
+                fontWeight: 700,
+                cursor: 'pointer'
+              }}
+            >
+              Ir al Inicio
+            </button>
+          </div>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
 // ── Protege rutas privadas ────────────────────────────────────────
 const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
-  const { session, loading, needsPasswordChange, needsProfileSetup } = useAuth()
+  const { session, perfil, loading, needsPasswordChange, needsProfileSetup, isAdmin, refreshPerfil, signOut } = useAuth()
 
   if (loading) return <Loader />
   if (!session) return <Navigate to="/login" replace />
+  // Si terminó de cargar pero el perfil no se pudo recuperar, mostrar opción de reintento/salir
+  if (perfil === null) {
+    return (
+      <div style={{
+        minHeight: '100dvh',
+        backgroundColor: '#070b14',
+        color: '#ffffff',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '24px',
+        textAlign: 'center',
+        fontFamily: 'Inter, system-ui, sans-serif'
+      }}>
+        <div style={{ fontSize: '40px', marginBottom: '16px' }}>🏢</div>
+        <h2 style={{ fontSize: '18px', fontWeight: 800, margin: '0 0 8px', color: '#fff' }}>
+          Sincronizando información...
+        </h2>
+        <p style={{ color: '#94a3b8', fontSize: '13px', maxWidth: '340px', margin: '0 0 20px', lineHeight: 1.5 }}>
+          Estamos conectando con tu perfil. Si tarda más de lo habitual, presiona reintentar o vuelve a iniciar sesión.
+        </p>
+        <div style={{ display: 'flex', gap: '12px' }}>
+          <button
+            onClick={() => refreshPerfil()}
+            style={{
+              backgroundColor: '#f97316',
+              color: '#fff',
+              border: 'none',
+              padding: '10px 18px',
+              borderRadius: '10px',
+              fontSize: '13px',
+              fontWeight: 700,
+              cursor: 'pointer'
+            }}
+          >
+            Reintentar
+          </button>
+          <button
+            onClick={() => signOut()}
+            style={{
+              backgroundColor: 'rgba(255, 255, 255, 0.08)',
+              color: '#fff',
+              border: '1px solid rgba(255, 255, 255, 0.2)',
+              padding: '10px 18px',
+              borderRadius: '10px',
+              fontSize: '13px',
+              fontWeight: 700,
+              cursor: 'pointer'
+            }}
+          >
+            Cerrar sesión
+          </button>
+        </div>
+      </div>
+    )
+  }
+  // Si el usuario autenticado tiene rol de administrador, redirigir a su panel
+  if (isAdmin) return <Navigate to="/admin" replace />
   if (needsPasswordChange) return <Navigate to="/cambiar-password" replace />
   if (needsProfileSetup) return <Navigate to="/completar-perfil" replace />
 
@@ -166,11 +309,13 @@ function AppShell() {
 
 export function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <AppShell />
-      </BrowserRouter>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <BrowserRouter>
+          <AppShell />
+        </BrowserRouter>
+      </AuthProvider>
+    </ErrorBoundary>
   )
 }
 

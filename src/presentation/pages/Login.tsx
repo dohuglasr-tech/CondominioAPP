@@ -16,8 +16,14 @@ export function Login() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   
-  const { signIn, config } = useAuth()
+  const { signIn, config, session, isAdmin } = useAuth()
   const nombreEdificio = config?.nombre_edificio || 'Residencias Ocutuy 5'
+
+  React.useEffect(() => {
+    if (session) {
+      navigate(isAdmin ? '/admin' : '/', { replace: true })
+    }
+  }, [session, isAdmin, navigate])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -32,7 +38,7 @@ export function Login() {
       setError(signInError)
       setLoading(false)
     } else {
-      navigate('/')
+      navigate('/', { replace: true })
     }
   }
 

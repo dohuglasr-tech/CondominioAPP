@@ -65,14 +65,21 @@ const COLORES: Record<string, string> = {
 }
 
 function formatRelativo(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime()
-  const min = Math.floor(diff / 60000)
-  if (min < 1) return 'ahora'
-  if (min < 60) return `hace ${min}m`
-  const h = Math.floor(min / 60)
-  if (h < 24) return `hace ${h}h`
-  const d = Math.floor(h / 24)
-  return `hace ${d}d`
+  try {
+    if (!dateStr) return 'reciente'
+    const t = new Date(dateStr).getTime()
+    if (isNaN(t)) return 'reciente'
+    const diff = Date.now() - t
+    const min = Math.floor(diff / 60000)
+    if (min < 1) return 'ahora'
+    if (min < 60) return `hace ${min}m`
+    const h = Math.floor(min / 60)
+    if (h < 24) return `hace ${h}h`
+    const d = Math.floor(h / 24)
+    return `hace ${d}d`
+  } catch {
+    return 'reciente'
+  }
 }
 
 export const NotificationBell: React.FC<NotificationBellProps> = ({
@@ -89,12 +96,16 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
   // ── Cargar notificaciones ─────────────────────────────────────────────────
   const cargar = useCallback(async () => {
     if (!apartamentoId) return
-    const [items, count] = await Promise.all([
-      obtenerNotificaciones(apartamentoId, 30),
-      contarNoLeidas(apartamentoId),
-    ])
-    setNotifs(items)
-    setNoLeidas(count)
+    try {
+      const [items, count] = await Promise.all([
+        obtenerNotificaciones(apartamentoId, 30),
+        contarNoLeidas(apartamentoId),
+      ])
+      setNotifs(items)
+      setNoLeidas(count)
+    } catch (err) {
+      console.warn('[NotificationBell] Error cargando:', err)
+    }
   }, [apartamentoId])
 
   useEffect(() => {
@@ -105,30 +116,39 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
   useEffect(() => {
     if (!apartamentoId) return
 
-    const channel = supabase
-      .channel(`notif_${apartamentoId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'notificaciones',
-          filter: `apartamento_id=eq.${apartamentoId}`,
-        },
-        (payload) => {
-          const nueva = payload.new as Notificacion
-          setNotifs((prev) => [nueva, ...prev].slice(0, 30))
-          setNoLeidas((prev) => prev + 1)
+    let channel: any = null
+    try {
+      channel = supabase
+        .channel(`notif_${apartamentoId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'notificaciones',
+            filter: `apartamento_id=eq.${apartamentoId}`,
+          },
+          (payload) => {
+            const nueva = payload.new as Notificacion
+            setNotifs((prev) => [nueva, ...prev].slice(0, 30))
+            setNoLeidas((prev) => prev + 1)
 
-          // Notificación del navegador si la app está en segundo plano
-          if (document.visibilityState === 'hidden') {
-            mostrarNotificacionLocal(nueva.titulo, nueva.cuerpo, nueva.link)
+            // Notificación del navegador si la app está en segundo plano
+            if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+              mostrarNotificacionLocal(nueva.titulo, nueva.cuerpo, nueva.link)
+            }
           }
-        }
-      )
-      .subscribe()
+        )
+        .subscribe()
+    } catch (e) {
+      console.warn('[NotificationBell] Error suscribiendo a canal realtime:', e)
+    }
 
-    return () => { supabase.removeChannel(channel) }
+    return () => {
+      if (channel) {
+        try { supabase.removeChannel(channel) } catch {}
+      }
+    }
   }, [apartamentoId])
 
   // ── Cerrar al hacer clic fuera ────────────────────────────────────────────
@@ -145,9 +165,14 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
   // ── Solicitar permisos de push al abrir la campanita por primera vez ───────
   const handleOpen = async () => {
     setOpen((v) => !v)
-    if (!pushGranted && Notification.permission !== 'granted') {
-      const ok = await registrarPushNotificaciones()
-      setPushGranted(ok)
+    try {
+      const hasNotification = typeof window !== 'undefined' && 'Notification' in window && typeof Notification !== 'undefined'
+      if (!pushGranted && hasNotification && Notification.permission !== 'granted') {
+        const ok = await registrarPushNotificaciones()
+        setPushGranted(ok)
+      }
+    } catch (e) {
+      console.warn('[NotificationBell] Error al pedir permisos push:', e)
     }
   }
 

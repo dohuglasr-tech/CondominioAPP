@@ -3,12 +3,14 @@
 -- Ejecutar en: Supabase → SQL Editor → Run
 -- ==============================================================================
 
+-- Limpiar si ya existe una versión incompleta
+DROP TABLE IF EXISTS public.notificaciones CASCADE;
+
 -- 1. Tabla principal de notificaciones
-CREATE TABLE IF NOT EXISTS public.notificaciones (
+CREATE TABLE public.notificaciones (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  -- A quién va dirigida (null = a todos los residentes)
+  -- A quién va dirigida (por apartamento)
   apartamento_id  UUID REFERENCES public.apartamentos(id) ON DELETE CASCADE,
-  perfil_id       UUID REFERENCES public.perfiles(id) ON DELETE CASCADE,
   -- Tipo de evento
   tipo            TEXT NOT NULL, -- 'recibo_emitido' | 'mora' | 'chat' | 'pago_aprobado' | 'pago_rechazado' | 'aviso'
   titulo          TEXT NOT NULL,
@@ -22,38 +24,34 @@ CREATE TABLE IF NOT EXISTS public.notificaciones (
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Índice para consultas rápidas por residente (no leídas)
-CREATE INDEX IF NOT EXISTS idx_notificaciones_perfil_leida
-  ON public.notificaciones (perfil_id, leida, created_at DESC);
-
-CREATE INDEX IF NOT EXISTS idx_notificaciones_apto_leida
+-- Índice para consultas rápidas por apartamento (no leídas)
+CREATE INDEX idx_notificaciones_apto_leida
   ON public.notificaciones (apartamento_id, leida, created_at DESC);
 
--- 2. RLS — residentes solo ven sus propias notificaciones
+-- 2. RLS
 ALTER TABLE public.notificaciones ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "notif_select" ON public.notificaciones;
 DROP POLICY IF EXISTS "notif_insert" ON public.notificaciones;
 DROP POLICY IF EXISTS "notif_update" ON public.notificaciones;
 
--- Leer: solo las propias (o las globales sin perfil_id = para todos)
+-- Leer: cualquier usuario autenticado ve las de su apartamento
 CREATE POLICY "notif_select" ON public.notificaciones
   FOR SELECT USING (true);
 
--- Insertar: usuarios autenticados (el admin inserta para todos)
+-- Insertar: solo usuarios autenticados (el admin inserta para todos)
 CREATE POLICY "notif_insert" ON public.notificaciones
   FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
 
--- Actualizar (marcar como leída): solo el propio usuario
+-- Actualizar (marcar como leída): el residente del apartamento
 CREATE POLICY "notif_update" ON public.notificaciones
   FOR UPDATE USING (
-    perfil_id = auth.uid()
-    OR apartamento_id IN (
+    apartamento_id IN (
       SELECT apartamento_id FROM public.perfiles WHERE id = auth.uid()
     )
   );
 
--- 3. Habilitar Realtime para push instantáneo
+-- 3. Habilitar Realtime para notificaciones instantáneas
 ALTER TABLE public.notificaciones REPLICA IDENTITY FULL;
 
 DO $$
@@ -67,4 +65,4 @@ BEGIN
 END $$;
 
 -- Verificar
-SELECT 'Tabla notificaciones creada y Realtime habilitado ✅' AS resultado;
+SELECT 'Tabla notificaciones creada y Realtime habilitado' AS resultado;

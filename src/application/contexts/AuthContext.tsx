@@ -44,23 +44,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // ── Cargar perfil del usuario ─────────────────────────────────
   const cargarPerfil = useCallback(async (userId: string) => {
-    const { data, error } = await supabase
-      .from('perfiles')
-      .select('*, apartamento:apartamento_id(numero)')
-      .eq('id', userId)
-      .single()
-
-    if (error) {
-      console.error('[Auth] Error cargando perfil:', error.message)
-      return
-    }
-    if (data) {
-      setPerfil(data)
-      // Registrar último acceso
-      await supabase
+    try {
+      const { data, error } = await supabase
         .from('perfiles')
-        .update({ ultimo_acceso: new Date().toISOString() })
+        .select('*, apartamento:apartamento_id(numero)')
         .eq('id', userId)
+        .single()
+
+      if (error) {
+        console.error('[Auth] Error cargando perfil con join:', error.message)
+        // Fallback robusto sin join
+        const { data: fallbackData } = await supabase
+          .from('perfiles')
+          .select('*')
+          .eq('id', userId)
+          .single()
+        if (fallbackData) {
+          setPerfil(fallbackData)
+        }
+        return
+      }
+      if (data) {
+        setPerfil(data)
+        // Registrar último acceso de forma asíncrona no bloqueante
+        supabase
+          .from('perfiles')
+          .update({ ultimo_acceso: new Date().toISOString() })
+          .eq('id', userId)
+          .then(() => {})
+          .catch(() => {})
+      }
+    } catch (e) {
+      console.warn('[Auth] Excepción en cargarPerfil:', e)
     }
   }, [])
 
@@ -104,13 +119,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // ── Login: email + contraseña ──────────────────────────
   const signIn = async (email: string, password: string): Promise<{ error: string | null }> => {
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password })
+      const cleanEmail = email.trim()
+      const { data, error } = await supabase.auth.signInWithPassword({ email: cleanEmail, password })
 
       if (error) {
         if (error.message.includes('Invalid login credentials')) {
           return { error: 'Correo electrónico o contraseña incorrectos.' }
         }
         return { error: error.message }
+      }
+
+      if (data?.session) {
+        setSession(data.session)
+        setUser(data.user)
+        if (data.user) {
+          await cargarPerfil(data.user.id)
+        }
       }
 
       return { error: null }

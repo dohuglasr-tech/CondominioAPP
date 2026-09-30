@@ -119,13 +119,13 @@ export async function marcarTodasLeidas(apartamento_id: string) {
 
 // ── Registrar Service Worker y pedir permisos de push ──────────────────────
 export async function registrarPushNotificaciones(): Promise<boolean> {
-  if (!('serviceWorker' in navigator) || !('Notification' in window)) {
+  if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('Notification' in window) || typeof Notification === 'undefined') {
     return false
   }
 
   try {
     // Registrar el service worker
-    const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' })
+    await navigator.serviceWorker.register('/sw.js', { scope: '/' })
     await navigator.serviceWorker.ready
 
     // Pedir permiso al usuario
@@ -140,22 +140,32 @@ export async function registrarPushNotificaciones(): Promise<boolean> {
 // ── Mostrar notificación local (in-browser, sin servidor) ──────────────────
 // Útil para notificaciones en tiempo real via Realtime cuando la app está abierta
 export function mostrarNotificacionLocal(titulo: string, cuerpo: string, link = '/') {
+  if (typeof window === 'undefined' || !('Notification' in window) || typeof Notification === 'undefined') {
+    return
+  }
   if (Notification.permission !== 'granted') return
 
-  const n = new Notification(titulo, {
-    body: cuerpo,
-    icon: '/icons/icon-192x192.png',
-    badge: '/icons/icon-72x72.png',
-    tag: 'condominio-local',
-    requireInteraction: false,
-  })
+  try {
+    const n = new Notification(titulo, {
+      body: cuerpo,
+      icon: '/icons/icon-192x192.png',
+      badge: '/icons/icon-72x72.png',
+      tag: 'condominio-local',
+      requireInteraction: false,
+    })
 
-  n.onclick = () => {
-    window.focus()
-    window.location.href = link
-    n.close()
+    n.onclick = () => {
+      window.focus()
+      window.location.href = link
+      n.close()
+    }
+
+    // Auto-cerrar tras 6 segundos
+    setTimeout(() => {
+      try { n.close() } catch {}
+    }, 6000)
+  } catch (e) {
+    console.warn('[Notificaciones] No se pudo mostrar notificación nativa:', e)
   }
-
-  // Auto-cerrar tras 6 segundos
-  setTimeout(() => n.close(), 6000)
 }
+

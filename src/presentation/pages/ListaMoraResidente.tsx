@@ -136,15 +136,20 @@ export const ListaMoraResidente: React.FC = () => {
                     ? `Tu Apartamento (Apto ${miDeuda.apartamento_numero}) tiene el Recibo del Mes al Cobro`
                     : `Tu Apartamento (Apto ${miDeuda.apartamento_numero}) figura en la Lista de Mora`}
                 </span>
-                <span style={{
-                  fontSize: '11px', fontWeight: 800,
-                  color: TASA_RIESGO_CONFIG[miDeuda.tasa_riesgo].color,
-                  background: TASA_RIESGO_CONFIG[miDeuda.tasa_riesgo].bg,
-                  border: `1px solid ${TASA_RIESGO_CONFIG[miDeuda.tasa_riesgo].border}`,
-                  padding: '2px 8px', borderRadius: '999px'
-                }}>
-                  {TASA_RIESGO_CONFIG[miDeuda.tasa_riesgo].badgeText}
-                </span>
+                {(() => {
+                  const miCfg = TASA_RIESGO_CONFIG[miDeuda.tasa_riesgo] || TASA_RIESGO_CONFIG.azul
+                  return (
+                    <span style={{
+                      fontSize: '11px', fontWeight: 800,
+                      color: miCfg.color,
+                      background: miCfg.bg,
+                      border: `1px solid ${miCfg.border}`,
+                      padding: '2px 8px', borderRadius: '999px'
+                    }}>
+                      {miCfg.badgeText}
+                    </span>
+                  )
+                })()}
               </div>
               <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#e2e8f0' }}>
                 {miDeuda.tasa_riesgo === 'azul' ? (
@@ -328,8 +333,8 @@ export const ListaMoraResidente: React.FC = () => {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {deudasFiltradas.map(d => {
-            const cfg = TASA_RIESGO_CONFIG[d.tasa_riesgo]
-            const accion = ACCION_LEGAL_CONFIG[d.accion_legal]
+            const cfg = TASA_RIESGO_CONFIG[d.tasa_riesgo] || TASA_RIESGO_CONFIG.azul
+            const accion = ACCION_LEGAL_CONFIG[d.accion_legal] || ACCION_LEGAL_CONFIG.ninguna
             const esMiApto =
               miAptoNumero && d.apartamento_numero.trim().toUpperCase() === String(miAptoNumero).trim().toUpperCase()
 

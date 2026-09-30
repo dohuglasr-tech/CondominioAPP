@@ -51,7 +51,7 @@ export const AdminLogin: React.FC = () => {
       }
 
       // 3. Es administrador verificado → redirigir al panel
-      window.location.href = '/admin'
+      navigate('/admin', { replace: true })
 
     } catch {
       setError('Error de conexión. Intenta nuevamente.')

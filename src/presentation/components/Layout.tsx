@@ -616,7 +616,8 @@ export const Layout: React.FC = () => {
         .layout-container {
           display: flex;
           height: 100vh;
-          width: 100vw;
+          height: 100dvh;
+          width: 100%;
           background-color: #090a0d;
           font-family: 'Inter', sans-serif;
           overflow: hidden;
@@ -1048,7 +1049,12 @@ export const Layout: React.FC = () => {
 
         /* ─── MAIN ──────────────────────────────────────── */
         .layout-main {
-          flex: 1; height: 100vh; overflow-y: auto; position: relative;
+          flex: 1;
+          height: 100vh;
+          height: 100dvh;
+          overflow-y: auto;
+          -webkit-overflow-scrolling: touch;
+          position: relative;
           background-color: #090a0d;
         }
         .page-transition {
@@ -1160,6 +1166,9 @@ export const Layout: React.FC = () => {
             padding-top: calc(64px + env(safe-area-inset-top, 0px));
             padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
             height: 100vh;
+            height: 100dvh;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
           }
           .layout-bottom-bar { display: flex; }
         }

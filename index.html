@@ -11,6 +11,36 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
     <title>Torre 5 — Condominio</title>
+    <script>
+      window.addEventListener('error', function(e) {
+        console.error('Captured window error:', e);
+        var b = document.getElementById('ios-safari-error-box');
+        if (!b) {
+          b = document.createElement('div');
+          b.id = 'ios-safari-error-box';
+          b.style.cssText = 'position:fixed;top:0;left:0;right:0;max-height:60vh;overflow:auto;background:#991b1b;color:#fff;z-index:9999999;padding:14px;font-size:12px;font-family:monospace;white-space:pre-wrap;border-bottom:2px solid #f87171;box-shadow:0 8px 30px rgba(0,0,0,0.8);';
+          var closeBtn = document.createElement('button');
+          closeBtn.innerText = 'Cerrar ✕';
+          closeBtn.style.cssText = 'float:right;background:#fff;color:#000;border:none;padding:4px 8px;border-radius:4px;font-weight:bold;cursor:pointer;';
+          closeBtn.onclick = function() { b.remove(); };
+          b.appendChild(closeBtn);
+          var title = document.createElement('div');
+          title.innerHTML = '<strong>⚠️ Error detectado en Safari:</strong><br>';
+          b.appendChild(title);
+          var m = document.createElement('div');
+          m.id = 'ios-safari-error-text';
+          b.appendChild(m);
+          document.body ? document.body.appendChild(b) : document.addEventListener('DOMContentLoaded', function() { document.body.appendChild(b); });
+        }
+        var mEl = document.getElementById('ios-safari-error-text');
+        if (mEl) {
+          mEl.innerText += '\n' + (e.message || e.error || e.toString()) + ' at ' + (e.filename || '') + ':' + (e.lineno || '');
+        }
+      });
+      window.addEventListener('unhandledrejection', function(e) {
+        console.error('Unhandled rejection:', e.reason);
+      });
+    </script>
   </head>
   <body>
     <div id="root"></div>

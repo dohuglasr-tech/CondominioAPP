@@ -18,6 +18,13 @@ interface PagoItem {
   banco_destino?: string
 }
 
+const getTasaConfig = (tasa?: string) => {
+  if (tasa && TASA_RIESGO_CONFIG[tasa as TasaRiesgoMora]) {
+    return TASA_RIESGO_CONFIG[tasa as TasaRiesgoMora]
+  }
+  return TASA_RIESGO_CONFIG.azul
+}
+
 export function Dashboard() {
   const { perfil } = useAuth()
   const navigate = useNavigate()
@@ -440,22 +447,24 @@ export function Dashboard() {
                   Pago en Proceso de Conciliación
                 </div>
                 <div style={{ color: '#cbd5e1', fontSize: '11px', marginTop: '2px', lineHeight: 1.3 }}>
-                  Reportaste Bs. {ultimoPago.monto_bs.toLocaleString('es-VE', { minimumFractionDigits: 2 })} (Ref: <strong>{ultimoPago.referencia}</strong>). Será validado por la administración.
+                  Reportaste Bs. {(Number(ultimoPago.monto_bs) || 0).toLocaleString('es-VE', { minimumFractionDigits: 2 })} (Ref: <strong>{ultimoPago.referencia}</strong>). Será validado por la administración.
                 </div>
               </div>
             </div>
           )}
 
           {/* ── ALERTA DE RECIBO / MORA (Si el apartamento figura en la lista) ── */}
-          {moraRecord && (
+          {moraRecord && (() => {
+            const tasaCfg = getTasaConfig(moraRecord.tasa_riesgo)
+            return (
             <div style={{
               background: moraRecord.tasa_riesgo === 'azul'
                 ? 'linear-gradient(135deg, rgba(59, 130, 246, 0.16) 0%, rgba(37, 99, 235, 0.16) 100%)'
                 : 'linear-gradient(135deg, rgba(168, 85, 247, 0.16) 0%, rgba(239, 68, 68, 0.16) 100%)',
-              border: `2px solid ${TASA_RIESGO_CONFIG[moraRecord.tasa_riesgo].color}`,
+              border: `2px solid ${tasaCfg.color}`,
               borderRadius: '20px',
               padding: '16px',
-              boxShadow: `0 8px 24px rgba(0, 0, 0, 0.5), 0 0 16px ${TASA_RIESGO_CONFIG[moraRecord.tasa_riesgo].color}25`
+              boxShadow: `0 8px 24px rgba(0, 0, 0, 0.5), 0 0 16px ${tasaCfg.color}25`
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
                 <span style={{ fontSize: '20px' }}>{moraRecord.tasa_riesgo === 'azul' ? '🔵' : '⚠️'}</span>
@@ -466,12 +475,12 @@ export function Dashboard() {
                 </span>
                 <span style={{
                   fontSize: '10px', fontWeight: 800,
-                  color: TASA_RIESGO_CONFIG[moraRecord.tasa_riesgo].color,
-                  background: TASA_RIESGO_CONFIG[moraRecord.tasa_riesgo].bg,
-                  border: `1px solid ${TASA_RIESGO_CONFIG[moraRecord.tasa_riesgo].border}`,
+                  color: tasaCfg.color,
+                  background: tasaCfg.bg,
+                  border: `1px solid ${tasaCfg.border}`,
                   padding: '2px 6px', borderRadius: '999px', marginLeft: 'auto'
                 }}>
-                  {TASA_RIESGO_CONFIG[moraRecord.tasa_riesgo].badgeText}
+                  {tasaCfg.badgeText}
                 </span>
               </div>
               <p style={{ margin: '0 0 12px 0', fontSize: '11px', color: '#cbd5e1', lineHeight: 1.3 }}>
@@ -523,7 +532,8 @@ export function Dashboard() {
                 </button>
               </div>
             </div>
-          )}
+            )
+          })()}
 
           {/* ── 2. SECCIÓN: ACCIONES RÁPIDAS DE RESIDENTE (BOTONES CIRCULARES) ── */}
           <div>
@@ -833,19 +843,21 @@ export function Dashboard() {
           </div>
 
           {/* ALERTA DE MORA / RECIBO DESKTOP (Si aplica) */}
-          {moraRecord && (
+          {moraRecord && (() => {
+            const tasaCfg = getTasaConfig(moraRecord.tasa_riesgo)
+            return (
             <div style={{
               background: moraRecord.tasa_riesgo === 'azul'
                 ? 'linear-gradient(135deg, rgba(59, 130, 246, 0.16) 0%, rgba(37, 99, 235, 0.16) 100%)'
                 : 'linear-gradient(135deg, rgba(168, 85, 247, 0.16) 0%, rgba(239, 68, 68, 0.16) 100%)',
-              border: `2px solid ${TASA_RIESGO_CONFIG[moraRecord.tasa_riesgo].color}`,
+              border: `2px solid ${tasaCfg.color}`,
               borderRadius: '20px',
               padding: '18px 24px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
               marginBottom: '24px',
-              boxShadow: `0 8px 30px rgba(0, 0, 0, 0.5), 0 0 16px ${TASA_RIESGO_CONFIG[moraRecord.tasa_riesgo].color}25`
+              boxShadow: `0 8px 30px rgba(0, 0, 0, 0.5), 0 0 16px ${tasaCfg.color}25`
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
                 <span style={{ fontSize: '32px' }}>{moraRecord.tasa_riesgo === 'azul' ? '🔵' : '⚠️'}</span>
@@ -858,12 +870,12 @@ export function Dashboard() {
                     </span>
                     <span style={{
                       fontSize: '11px', fontWeight: 800,
-                      color: TASA_RIESGO_CONFIG[moraRecord.tasa_riesgo].color,
-                      background: TASA_RIESGO_CONFIG[moraRecord.tasa_riesgo].bg,
-                      border: `1px solid ${TASA_RIESGO_CONFIG[moraRecord.tasa_riesgo].border}`,
+                      color: tasaCfg.color,
+                      background: tasaCfg.bg,
+                      border: `1px solid ${tasaCfg.border}`,
                       padding: '2px 8px', borderRadius: '999px'
                     }}>
-                      {TASA_RIESGO_CONFIG[moraRecord.tasa_riesgo].badgeText}
+                      {tasaCfg.badgeText}
                     </span>
                   </div>
                   <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#cbd5e1' }}>
@@ -916,7 +928,8 @@ export function Dashboard() {
                 </button>
               </div>
             </div>
-          )}
+            )
+          })()}
 
           {/* Bento Grid Desktop (7 cols principal / 5 cols lateral) */}
           <div className="bento-desktop-grid">

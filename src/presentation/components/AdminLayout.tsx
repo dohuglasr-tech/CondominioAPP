@@ -187,7 +187,7 @@ export const AdminLayout: React.FC = () => {
     <div className="admin-layout-container">
       <style>{`
         .admin-layout-container {
-          display: flex; height: 100vh; background-color: #090a0d; font-family: Inter, sans-serif;
+          display: flex; height: 100vh; height: 100dvh; background-color: #090a0d; font-family: Inter, sans-serif;
         }
         .admin-sidebar {
           width: 240px; flex-shrink: 0; background: linear-gradient(180deg, #121620 0%, #0a0d13 100%);
@@ -195,7 +195,7 @@ export const AdminLayout: React.FC = () => {
           padding: 24px 0;
         }
         .admin-main {
-          flex: 1; overflow-y: auto; background-color: #090a0d;
+          flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; background-color: #090a0d;
         }
         
         /* MOBILE TOP BAR */
@@ -407,6 +407,10 @@ export const AdminLayout: React.FC = () => {
           .admin-main {
             padding-top: calc(64px + env(safe-area-inset-top, 0px));
             padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+            height: 100vh;
+            height: 100dvh;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
           }
         }
       `}</style>
