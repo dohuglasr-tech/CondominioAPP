@@ -27,7 +27,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ logoUrl, buildingNam
     return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3) }
   }, [onDone])
 
-  const name = buildingName || 'Mi Edificio'
+  const name = buildingName || 'Domus Condominio'
 
   return (
     <div

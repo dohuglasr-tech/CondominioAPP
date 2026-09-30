@@ -1,7 +1,7 @@
 {
-  "name": "Condominio.app.ve",
-  "short_name": "Condominio.app.ve",
-  "description": "Sistema de gestión y pagos de condominio - Condominio.app.ve",
+  "name": "Domus Condominio",
+  "short_name": "Domus",
+  "description": "Sistema de gestión y pagos de condominio - Domus Condominio",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
