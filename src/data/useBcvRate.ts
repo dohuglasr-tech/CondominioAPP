@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { supabase } from './supabase'
 
 interface BcvRate {
   rate: number
@@ -20,40 +21,50 @@ export function useBcvRate() {
 
     const fetchRate = async () => {
       try {
-        // Intentamos primero con una API que raspa directamente la página del BCV para mayor precisión
-        const res = await fetch('https://pydolarvenezuela-api.vercel.app/api/v1/dollar/page?page=bcv')
-        if (!res.ok) throw new Error('Error de red')
+        // 1. Consultar API oficial de DolarAPI (estable y con CORS habilitado)
+        const res = await fetch('https://ve.dolarapi.com/v1/dolares/oficial', {
+          headers: { 'Accept': 'application/json' },
+        })
         
-        const json = await res.json()
-        
-        // Formato de pydolarvenezuela
-        if (mounted && json && json.monitors && json.monitors.usd) {
-          setData({
-            rate: json.monitors.usd.price,
-            lastUpdate: json.monitors.usd.last_update || new Date().toISOString(),
-            loading: false,
-            error: null
-          })
-        }
-      } catch (err: any) {
-        // Fallback a DolarAPI si falla la primera
-        try {
-          const resFallback = await fetch('https://ve.dolarapi.com/v1/dolares/oficial')
-          const jsonFallback = await resFallback.json()
-          
-          if (mounted && jsonFallback && jsonFallback.promedio) {
+        if (res.ok) {
+          const json = await res.json()
+          const tasa = Number(json?.promedio ?? json?.precio ?? json?.venta)
+          if (mounted && tasa && !isNaN(tasa) && tasa > 0) {
             setData({
-              rate: jsonFallback.promedio,
-              lastUpdate: jsonFallback.fechaActualizacion || new Date().toISOString(),
+              rate: tasa,
+              lastUpdate: json.fechaActualizacion || new Date().toISOString(),
               loading: false,
               error: null
             })
-          }
-        } catch (fallbackErr: any) {
-          if (mounted) {
-            setData(prev => ({ ...prev, loading: false, error: fallbackErr.message }))
+            return
           }
         }
+      } catch (err) {
+        // Silencioso: intentamos fallback a la base de datos de Supabase
+      }
+
+      // 2. Fallback: Consultar la última tasa guardada en Supabase por la administración
+      try {
+        const { data: configData } = await supabase
+          .from('configuracion_edificio')
+          .select('tasa_bcv_actual, tasa_bcv_actualizada')
+          .single()
+
+        if (mounted && configData?.tasa_bcv_actual) {
+          setData({
+            rate: Number(configData.tasa_bcv_actual),
+            lastUpdate: configData.tasa_bcv_actualizada || new Date().toISOString(),
+            loading: false,
+            error: null
+          })
+          return
+        }
+      } catch {
+        // Continuar a fallback estático
+      }
+
+      if (mounted) {
+        setData(prev => ({ ...prev, loading: false }))
       }
     }
 

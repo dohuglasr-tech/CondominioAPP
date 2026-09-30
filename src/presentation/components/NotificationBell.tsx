@@ -112,14 +112,15 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
     cargar()
   }, [cargar])
 
-  // ── Suscripción Realtime ──────────────────────────────────────────────────
+  // ── Suscripción Realtime (canal único por instancia para evitar colisiones) ──
   useEffect(() => {
     if (!apartamentoId) return
 
     let channel: any = null
     try {
+      const channelId = `notif_${apartamentoId}_${Math.random().toString(36).slice(2, 7)}`
       channel = supabase
-        .channel(`notif_${apartamentoId}`)
+        .channel(channelId)
         .on(
           'postgres_changes',
           {
