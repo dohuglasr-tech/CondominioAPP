@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../application/contexts/AuthContext'
 import { ReportarPagoModal } from './ReportarPagoModal'
+import { NotificationBell } from './NotificationBell'
 
 // ── Minimalist SVG Line Icons monocolor stroke delgado ──────────────────
 const SVG = {
@@ -169,6 +170,10 @@ export const Layout: React.FC = () => {
               {aptoNumero ? `Apto ${aptoNumero}` : 'Residente'}
             </span>
           </div>
+          {/* Campanita en sidebar */}
+          <div onClick={(e) => e.stopPropagation()}>
+            <NotificationBell apartamentoId={apartamentoId || null} iconColor="#a1a1aa" />
+          </div>
         </div>
 
         {/* Botón Destacado de Reportar Pago en Sidebar */}
@@ -258,8 +263,11 @@ export const Layout: React.FC = () => {
             </div>
           </div>
 
-          {/* Derecha: Acceso rápido a Chat y Avatar del Residente */}
+          {/* Derecha: Campanita de Notificaciones + Chat + Avatar */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {/* Notificaciones */}
+            <NotificationBell apartamentoId={apartamentoId || null} iconColor="#a1a1aa" />
+
             <button
               className="mobile-header-action-btn"
               onClick={() => navigate('/chat')}

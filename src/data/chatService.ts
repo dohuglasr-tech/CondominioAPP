@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { notificarTodos } from './notificacionesService'
 
 export interface ChatMensaje {
   id: string
@@ -381,6 +382,16 @@ export async function enviarMensajeDesdeAdmin(
     })
   } catch (bcErr) {
     console.warn('[ChatService] Error transmitiendo broadcast admin:', bcErr)
+  }
+
+  // Si es anuncio oficial, notificar a todos los residentes
+  if (esAnuncio) {
+    notificarTodos({
+      tipo: 'aviso',
+      titulo: '📣 Nuevo anuncio de la Administración',
+      cuerpo: contenidoLimpio.length > 120 ? contenidoLimpio.slice(0, 117) + '...' : contenidoLimpio,
+      link: '/chat',
+    }).catch(() => {/* fire and forget */})
   }
 
   return { data: nuevoMensaje, error: null }

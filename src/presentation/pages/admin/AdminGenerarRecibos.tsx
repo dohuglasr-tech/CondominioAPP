@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../../../data/supabase'
+import { notificarApartamento } from '../../../data/notificacionesService'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { getAlicuotaDecimal, formatAlicuotaPct, compararApartamentos } from '../../../utils/alicuota'
@@ -500,6 +501,20 @@ export const AdminGenerarRecibos: React.FC = () => {
 
     if (cargos.length > 0) {
       await supabase.from('cargos_especiales').update({ aplicado: true }).in('id', cargos.map(c => c.id))
+    }
+
+    // 4. Notificar a cada apartamento que tiene un nuevo recibo emitido
+    if (ok > 0) {
+      const notifPromises = apartamentos.map(apto =>
+        notificarApartamento({
+          apartamento_id: apto.id,
+          tipo: 'recibo_emitido',
+          titulo: `Nuevo recibo emitido: ${mesLabel} ${anio}`,
+          cuerpo: `Tu recibo de condominio del mes de ${mesLabel} ${anio} ya está disponible. Por favor revisa el monto y realiza tu pago a tiempo.`,
+          link: '/recibos',
+        })
+      )
+      await Promise.allSettled(notifPromises)
     }
 
     setResultado({ ok, fail }); setEmitiendo(false); setPaso(4)
