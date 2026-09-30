@@ -8,6 +8,7 @@ import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { SkeletonCard, SkeletonChart, SkeletonTable } from '../../components/Skeleton'
 import { generarMensajeCobroRecibo, generarMensajeReciboPagado, abrirWhatsApp } from '../../../utils/whatsappHelper'
+import { despacharEmailRecibo, despacharEmailPagoAprobado } from '../../../data/emailService'
 
 interface ReciboEmitido {
   id: string
@@ -36,6 +37,7 @@ interface ReciboEmitido {
     piso: number | null
     alicuota: number
     propietario_nombre: string | null
+    propietario_email?: string | null
     telefono_contacto: string | null
   }
 }
@@ -44,6 +46,7 @@ interface ConfigEdificio {
   nombre_edificio: string
   rif: string | null
   direccion: string | null
+  dominio_email?: string | null
   email_contacto: string | null
   banco: string | null
   cuenta_bancaria: string | null
@@ -125,7 +128,7 @@ export const AdminRecibosEmitidos: React.FC = () => {
       const [recibosRes, aptosRes, perfilesRes] = await Promise.all([
         supabase.from('recibos_generados').select('*').eq('mes_facturado', mesSeleccionado),
         supabase.from('apartamentos').select('id, numero, piso, alicuota, propietario_nombre, telefono_contacto'),
-        supabase.from('perfiles').select('id, apartamento_id, nombre_completo, condicion_habitacional, propietario_nombre, telefono')
+        supabase.from('perfiles').select('id, apartamento_id, nombre_completo, condicion_habitacional, propietario_nombre, telefono, propietario_email')
       ])
 
       const aptosMap = new Map<string, any>()
@@ -145,6 +148,7 @@ export const AdminRecibosEmitidos: React.FC = () => {
           : (perfil?.nombre_completo || aptoBase?.propietario_nombre || null)
 
         const telefono = perfil?.telefono || aptoBase?.telefono_contacto || null
+        const email = perfil?.propietario_email || null
 
         return {
           ...r,
@@ -153,6 +157,7 @@ export const AdminRecibosEmitidos: React.FC = () => {
             piso: aptoBase?.piso ?? null,
             alicuota: aptoBase?.alicuota || r.alicuota,
             propietario_nombre: propNombre,
+            propietario_email: email,
             telefono_contacto: telefono
           }
         }
@@ -185,6 +190,22 @@ export const AdminRecibosEmitidos: React.FC = () => {
       } else {
         setRecibos(prev => prev.map(r => r.id === recibo.id ? { ...r, estado: nuevoEstado } : r))
         showToast(`✅ Recibo Apto ${recibo.apartamento?.numero} marcado como ${nuevoEstado.toUpperCase()}`)
+
+        // Si cambió a pagado, enviar automáticamente constancia de solvencia y agradecimiento por email
+        if (nuevoEstado === 'pagado') {
+          const aptoNum = recibo.apartamento?.numero || 'S/N'
+          const emailDestino = recibo.apartamento?.propietario_email || `apto${aptoNum}@${config?.dominio_email || 'edificio.com'}`
+          despacharEmailPagoAprobado({
+            destinatarioEmail: emailDestino,
+            apartamentoNumero: aptoNum,
+            propietarioNombre: recibo.apartamento?.propietario_nombre,
+            edificioNombre: config?.nombre_edificio,
+            montoUsd: recibo.total_usd,
+            montoBs: recibo.total_bs
+          }).then(res => {
+            if (res.ok) showToast(`✅ Correo de solvencia despachado a Apto. ${aptoNum}`)
+          }).catch(err => console.warn('[AdminRecibosEmitidos] Error despachando email pago aprobado:', err))
+        }
       }
     } finally {
       setCambiandoEstadoId(null)
@@ -423,6 +444,64 @@ export const AdminRecibosEmitidos: React.FC = () => {
         telefonoPagoMovil: tel
       })
       abrirWhatsApp({ telefono: tel, mensaje: msg })
+    }
+  }
+
+  // ── 6.2 Enviar Notificación o Constancia por Correo Electrónico ───────────
+  const [enviandoEmailId, setEnviandoEmailId] = useState<string | null>(null)
+  const handleEmailRecibo = async (r: ReciboEmitido) => {
+    const [anioStr, mesNumStr] = (r.mes_facturado || '').split('-')
+    const anio = parseInt(anioStr) || 2026
+    const mesIndex = (parseInt(mesNumStr) || 1) - 1
+    const mesLabel = MESES[mesIndex] || 'Mes'
+    const aptoNum = r.apartamento?.numero || 'S/N'
+    const emailDestino = r.apartamento?.propietario_email || `apto${aptoNum}@${config?.dominio_email || 'edificio.com'}`
+
+    setEnviandoEmailId(r.id)
+    try {
+      if (r.estado === 'pagado') {
+        const res = await despacharEmailPagoAprobado({
+          destinatarioEmail: emailDestino,
+          apartamentoNumero: aptoNum,
+          propietarioNombre: r.apartamento?.propietario_nombre,
+          edificioNombre: config?.nombre_edificio,
+          mesLabel,
+          anio,
+          montoUsd: r.total_usd,
+          montoBs: r.total_bs
+        })
+        if (res.ok) {
+          showToast(`✅ Correo de solvencia enviado a ${emailDestino}`)
+        } else {
+          showToast(`⚠️ No se pudo enviar el correo: ${res.error || 'Error desconocido'}`)
+        }
+      } else {
+        const res = await despacharEmailRecibo({
+          destinatarioEmail: emailDestino,
+          apartamentoNumero: aptoNum,
+          propietarioNombre: r.apartamento?.propietario_nombre,
+          edificioNombre: config?.nombre_edificio,
+          mesLabel,
+          anio,
+          totalUsd: r.total_usd,
+          totalBs: r.total_bs,
+          tasaBcv: r.tasa_bcv || config?.tasa_bcv_actual || 1,
+          alicuotaPct: formatAlicuotaPct(r.alicuota),
+          bancoNombre: config?.banco,
+          cuentaNumero: config?.cuenta_bancaria,
+          titularNombre: config?.titular_cuenta,
+          cedulaRif: config?.rif
+        })
+        if (res.ok) {
+          showToast(`✅ Aviso de cobro enviado por correo a ${emailDestino}`)
+        } else {
+          showToast(`⚠️ No se pudo enviar el correo: ${res.error || 'Error desconocido'}`)
+        }
+      }
+    } catch (err: any) {
+      showToast(`❌ Error enviando correo: ${err.message}`)
+    } finally {
+      setEnviandoEmailId(null)
     }
   }
 
@@ -1194,6 +1273,28 @@ export const AdminRecibosEmitidos: React.FC = () => {
                               </button>
 
                               <button
+                                onClick={() => handleEmailRecibo(r)}
+                                disabled={enviandoEmailId === r.id}
+                                style={{
+                                  backgroundColor: 'rgba(59, 130, 246, 0.16)',
+                                  color: '#60a5fa',
+                                  border: '1px solid rgba(59, 130, 246, 0.35)',
+                                  padding: '5px 9px',
+                                  borderRadius: '6px',
+                                  fontSize: '11px',
+                                  cursor: enviandoEmailId === r.id ? 'wait' : 'pointer',
+                                  fontWeight: 700,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  opacity: enviandoEmailId === r.id ? 0.6 : 1
+                                }}
+                                title="Enviar aviso de cobro o recibo por correo electrónico al residente"
+                              >
+                                <span>📧</span> {enviandoEmailId === r.id ? '...' : 'Email'}
+                              </button>
+
+                              <button
                                 onClick={() => setReciboModal(r)}
                                 style={{
                                   backgroundColor: '#141414', color: '#888', border: '1px solid #262626',
@@ -1372,6 +1473,19 @@ export const AdminRecibosEmitidos: React.FC = () => {
                   title="Enviar por WhatsApp con 1 clic"
                 >
                   <span>📲</span> {reciboModal.estado === 'pagado' ? 'Solvencia WhatsApp' : 'Enviar por WhatsApp'}
+                </button>
+                <button
+                  onClick={() => handleEmailRecibo(reciboModal)}
+                  disabled={enviandoEmailId === reciboModal.id}
+                  style={{
+                    backgroundColor: '#2563eb', color: '#fff', border: 'none',
+                    padding: '8px 16px', borderRadius: '8px', cursor: enviandoEmailId === reciboModal.id ? 'wait' : 'pointer',
+                    fontSize: '12px', fontWeight: 700,
+                    display: 'flex', alignItems: 'center', gap: '6px'
+                  }}
+                  title="Enviar por correo electrónico al residente"
+                >
+                  <span>📧</span> {enviandoEmailId === reciboModal.id ? 'Enviando...' : (reciboModal.estado === 'pagado' ? 'Enviar Solvencia Email' : 'Enviar por Correo')}
                 </button>
                 <button
                   onClick={() => descargarPDFReciboEmitido(reciboModal)}

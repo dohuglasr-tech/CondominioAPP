@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../../../data/supabase'
+import { useAuth } from '../../../application/contexts/AuthContext'
+import { despacharEmailPagoAprobado } from '../../../data/emailService'
 import { SkeletonListItem } from '../../components/Skeleton'
 
 interface PagoAdmin {
@@ -25,6 +27,7 @@ const ESTADO_CONFIG: Record<string, { label: string; color: string; icon: string
 }
 
 export const AdminRecibos: React.FC = () => {
+  const { config } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
   const initialFilter = searchParams.get('filtro') || 'todos'
 
@@ -190,17 +193,49 @@ export const AdminRecibos: React.FC = () => {
       }
 
       if (accion === 'aprobado') {
-        const { data: pagoDb } = await supabase.from('pagos_reportados').select('apartamento_id').eq('id', id).maybeSingle()
+        const { data: pagoDb } = await supabase
+          .from('pagos_reportados')
+          .select('id, apartamento_id, reportado_por, monto_bs, monto_usd, referencia, fecha_pago, banco_origen')
+          .eq('id', id)
+          .maybeSingle()
+
         if (pagoDb?.apartamento_id) {
           await supabase.from('recibos_generados')
             .update({ estado: 'pagado' })
             .eq('apartamento_id', pagoDb.apartamento_id)
             .eq('estado', 'pendiente')
+
+          // Despachar email automático de confirmación de pago y constancia de solvencia
+          try {
+            const [aptoRes, perfilRes] = await Promise.all([
+              supabase.from('apartamentos').select('numero').eq('id', pagoDb.apartamento_id).maybeSingle(),
+              pagoDb.reportado_por
+                ? supabase.from('perfiles').select('nombre_completo, propietario_email').eq('id', pagoDb.reportado_por).maybeSingle()
+                : Promise.resolve({ data: null })
+            ])
+
+            const aptoNum = aptoRes.data?.numero || selected?.apartamento?.numero || 'S/N'
+            const emailDestino = perfilRes.data?.propietario_email || (selected as any)?.email || `apto${aptoNum}@${config?.dominio_email || 'edificio.com'}`
+
+            await despacharEmailPagoAprobado({
+              destinatarioEmail: emailDestino,
+              apartamentoNumero: aptoNum,
+              propietarioNombre: perfilRes.data?.nombre_completo || selected?.residente_nombre,
+              edificioNombre: config?.nombre_edificio,
+              montoUsd: pagoDb.monto_usd || selected?.monto_usd || 0,
+              montoBs: pagoDb.monto_bs || selected?.monto_bs || 0,
+              referencia: pagoDb.referencia || selected?.numero_referencia,
+              fechaPago: pagoDb.fecha_pago || selected?.fecha_pago,
+              bancoOrigen: pagoDb.banco_origen || selected?.banco_origen
+            })
+          } catch (emailErr) {
+            console.warn('[AdminRecibos] Error despachando email automático:', emailErr)
+          }
         }
       }
 
       setPagos(prev => prev.map(p => (p.id === id ? { ...p, estado: accion, notas_admin: notasFinal } : p)))
-      setToastMsg(accion === 'aprobado' ? '✅ Pago aprobado exitosamente' : '❌ Pago rechazado')
+      setToastMsg(accion === 'aprobado' ? '✅ Pago aprobado y correo de solvencia enviado' : '❌ Pago rechazado')
       setTimeout(() => setToastMsg(null), 4000)
     } catch (err: any) {
       console.error('[AdminRecibos] Error en handleAction:', err)

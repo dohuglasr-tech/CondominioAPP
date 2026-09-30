@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../../../data/supabase'
 import { notificarApartamento } from '../../../data/notificacionesService'
+import { despacharEmailRecibo } from '../../../data/emailService'
 import { getAlicuotaDecimal, formatAlicuotaPct, compararApartamentos } from '../../../utils/alicuota'
 import { generarPDFRecibo } from '../../../utils/reciboPdfGenerator'
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 interface Apartamento {
   id: string; numero: string; piso: number | null
-  alicuota: number; propietario_nombre: string | null; metros_cuadrados: number | null
+  alicuota: number; propietario_nombre: string | null; propietario_email?: string | null; metros_cuadrados: number | null
 }
 interface GastoComun {
   id: string; descripcion: string; categoria: string; tipo: string
@@ -20,7 +21,7 @@ interface CargoEspecial {
 }
 interface ConfigEdificio {
   nombre_edificio: string; rif: string | null; direccion: string | null
-  email_contacto: string | null; banco: string | null
+  email_contacto: string | null; dominio_email?: string | null; banco: string | null
   cuenta_bancaria: string | null; titular_cuenta: string | null
   tasa_bcv_actual: number
 }
@@ -101,7 +102,7 @@ export const AdminGenerarRecibos: React.FC = () => {
         supabase.from('apartamentos')
           .select('id, numero, piso, alicuota, propietario_nombre, metros_cuadrados'),
         supabase.from('perfiles')
-          .select('id, apartamento_id, nombre_completo, condicion_habitacional, propietario_nombre'),
+          .select('id, apartamento_id, nombre_completo, condicion_habitacional, propietario_nombre, propietario_email'),
       ])
       if (configRes.data) setConfig(configRes.data)
       if (gastosRes.data) setGastos(gastosRes.data)
@@ -116,10 +117,12 @@ export const AdminGenerarRecibos: React.FC = () => {
           const nombre = (perfil?.condicion_habitacional === 'alquilado' && perfil?.propietario_nombre)
             ? perfil.propietario_nombre
             : (perfil?.nombre_completo || a.propietario_nombre || null)
+          const email = perfil?.propietario_email || null
 
           return {
             ...a,
-            propietario_nombre: nombre
+            propietario_nombre: nombre,
+            propietario_email: email
           }
         }).sort((a, b) => compararApartamentos(a.numero, b.numero))
 
@@ -240,17 +243,39 @@ export const AdminGenerarRecibos: React.FC = () => {
       await supabase.from('cargos_especiales').update({ aplicado: true }).in('id', cargos.map(c => c.id))
     }
 
-    // 4. Notificar a cada apartamento que tiene un nuevo recibo emitido
+    // 4. Notificar a cada apartamento que tiene un nuevo recibo emitido (in-app y email automático)
     if (ok > 0) {
-      const notifPromises = apartamentos.map(apto =>
-        notificarApartamento({
+      const notifPromises = apartamentos.map(async apto => {
+        // Notificación interna in-app
+        await notificarApartamento({
           apartamento_id: apto.id,
           tipo: 'recibo_emitido',
           titulo: `Nuevo recibo emitido: ${mesLabel} ${anio}`,
           cuerpo: `Tu recibo de condominio del mes de ${mesLabel} ${anio} ya está disponible. Por favor revisa el monto y realiza tu pago a tiempo.`,
           link: '/recibos',
         })
-      )
+
+        // Notificación por Correo Electrónico
+        const calc = calcularApto(apto)
+        const emailDestino = apto.propietario_email || `apto${apto.numero}@${config?.dominio_email || 'edificio.com'}`
+
+        await despacharEmailRecibo({
+          destinatarioEmail: emailDestino,
+          apartamentoNumero: apto.numero,
+          propietarioNombre: apto.propietario_nombre,
+          edificioNombre: config?.nombre_edificio,
+          mesLabel,
+          anio,
+          totalUsd: calc.totalUsd,
+          totalBs: calc.totalBs,
+          tasaBcv: config?.tasa_bcv_actual || 1,
+          alicuotaPct: formatAlicuotaPct(apto.alicuota),
+          bancoNombre: config?.banco,
+          cuentaNumero: config?.cuenta_bancaria,
+          titularNombre: config?.titular_cuenta,
+          cedulaRif: config?.rif
+        }).catch(err => console.warn('[AdminGenerarRecibos] Error despachando email recibo:', err))
+      })
       await Promise.allSettled(notifPromises)
     }
 

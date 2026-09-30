@@ -16,13 +16,14 @@ import {
   eliminarDeudaMora
 } from '../../../data/moraService'
 import { generarMensajeCobroMora, abrirWhatsApp } from '../../../utils/whatsappHelper'
+import { despacharEmailRecordatorioMora, esElegibleRecordatorio3Dias } from '../../../data/emailService'
 
 export const AdminMora: React.FC = () => {
   const { perfil, config } = useAuth()
   const { rate } = useBcvRate()
   const [deudas, setDeudas] = useState<DeudaMoraItem[]>([])
   const [loading, setLoading] = useState(true)
-  const [apartamentos, setApartamentos] = useState<Array<{ id: string; numero: string; piso: number; propietario_nombre?: string; telefono_contacto?: string }>>([])
+  const [apartamentos, setApartamentos] = useState<Array<{ id: string; numero: string; piso: number; propietario_nombre?: string; telefono_contacto?: string; propietario_email?: string }>>([])
   const [filtroRiesgo, setFiltroRiesgo] = useState<string>('todos')
   const [busqueda, setBusqueda] = useState('')
   const [modalAbierto, setModalAbierto] = useState(false)
@@ -56,12 +57,29 @@ export const AdminMora: React.FC = () => {
   const cargarDatos = useCallback(async () => {
     setLoading(true)
     try {
-      const [moraRes, aptosRes] = await Promise.all([
+      const [moraRes, aptosRes, perfilesRes] = await Promise.all([
         obtenerDeudasMora(),
-        supabase.from('apartamentos').select('id, numero, piso, propietario_nombre, telefono_contacto').order('numero', { ascending: true })
+        supabase.from('apartamentos').select('id, numero, piso, propietario_nombre, telefono_contacto').order('numero', { ascending: true }),
+        supabase.from('perfiles').select('apartamento_id, nombre_completo, propietario_nombre, propietario_email, telefono')
       ])
       setDeudas(moraRes.data || [])
-      if (aptosRes.data) setApartamentos(aptosRes.data)
+      if (aptosRes.data) {
+        const perfilesMap = new Map<string, any>()
+        perfilesRes.data?.forEach(p => {
+          if (p.apartamento_id) perfilesMap.set(p.apartamento_id, p)
+        })
+
+        const aptosConEmail = aptosRes.data.map(a => {
+          const perf = perfilesMap.get(a.id)
+          return {
+            ...a,
+            propietario_email: perf?.propietario_email || null,
+            propietario_nombre: a.propietario_nombre || perf?.propietario_nombre || perf?.nombre_completo || null,
+            telefono_contacto: a.telefono_contacto || perf?.telefono || null
+          }
+        })
+        setApartamentos(aptosConEmail)
+      }
     } catch (err) {
       console.warn('[AdminMora] Error cargando datos de mora:', err)
     } finally {
@@ -310,6 +328,98 @@ export const AdminMora: React.FC = () => {
     abrirWhatsApp({ telefono, mensaje: msg })
   }
 
+  // ── Enviar Recordatorio de Impago por Correo (Cada 3 días) ───────────────
+  const [enviandoEmailAptoId, setEnviandoEmailAptoId] = useState<string | null>(null)
+  const [despachandoEmails, setDespachandoEmails] = useState(false)
+
+  const handleEnviarEmailMora = async (d: DeudaMoraItem, forzar: boolean = false) => {
+    const aptoInfo = apartamentos.find(a => a.id === d.apartamento_id || a.numero === d.apartamento_numero)
+    const emailDestino = aptoInfo?.propietario_email || (d as any).email || `apto${d.apartamento_numero}@${config?.dominio_email || 'edificio.com'}`
+
+    setEnviandoEmailAptoId(d.id)
+    try {
+      const res = await despacharEmailRecordatorioMora({
+        destinatarioEmail: emailDestino,
+        apartamentoId: d.apartamento_id,
+        apartamentoNumero: d.apartamento_numero,
+        propietarioNombre: d.propietario_nombre || aptoInfo?.propietario_nombre,
+        edificioNombre: config?.nombre_edificio,
+        mesesMora: d.meses_deuda,
+        montoUsd: d.monto_usd,
+        montoBs: d.monto_bs,
+        tasaBcv: rate || config?.tasa_bcv_actual,
+        accionLegalTitulo: ACCION_LEGAL_CONFIG[d.accion_legal]?.titulo,
+        conceptosDetalle: d.conceptos_detalle,
+        fechaCorte: d.fecha_corte,
+        bancoNombre: config?.banco,
+        cuentaNumero: config?.cuenta_bancaria,
+        titularNombre: config?.titular_cuenta,
+        cedulaRif: config?.rif
+      }, forzar)
+
+      if (res.omitidoPorFrecuencia) {
+        showToast(`ℹ️ Apto. ${d.apartamento_numero}: Ya recibió recordatorio hace menos de 3 días.`)
+      } else if (res.ok) {
+        showToast(`✅ Recordatorio enviado por correo a Apto. ${d.apartamento_numero} (${emailDestino})`)
+      } else {
+        showToast(`⚠️ No se pudo enviar el correo: ${res.error}`)
+      }
+    } catch (err: any) {
+      showToast(`❌ Error enviando correo: ${err.message}`)
+    } finally {
+      setEnviandoEmailAptoId(null)
+    }
+  }
+
+  // Despacho masivo automático para todos los elegibles (cada 3 días)
+  const elegiblesRecordatorio = useMemo(() => {
+    return deudas.filter(d => esElegibleRecordatorio3Dias(d.apartamento_id || d.apartamento_numero))
+  }, [deudas, toastMsg])
+
+  const handleDespacharRecordatoriosLote = async () => {
+    if (elegiblesRecordatorio.length === 0) {
+      showToast('ℹ️ Todos los apartamentos en mora ya recibieron su recordatorio en los últimos 3 días.')
+      return
+    }
+
+    setDespachandoEmails(true)
+    let enviados = 0
+    try {
+      for (const d of elegiblesRecordatorio) {
+        const aptoInfo = apartamentos.find(a => a.id === d.apartamento_id || a.numero === d.apartamento_numero)
+        const emailDestino = aptoInfo?.propietario_email || (d as any).email || `apto${d.apartamento_numero}@${config?.dominio_email || 'edificio.com'}`
+
+        const res = await despacharEmailRecordatorioMora({
+          destinatarioEmail: emailDestino,
+          apartamentoId: d.apartamento_id,
+          apartamentoNumero: d.apartamento_numero,
+          propietarioNombre: d.propietario_nombre || aptoInfo?.propietario_nombre,
+          edificioNombre: config?.nombre_edificio,
+          mesesMora: d.meses_deuda,
+          montoUsd: d.monto_usd,
+          montoBs: d.monto_bs,
+          tasaBcv: rate || config?.tasa_bcv_actual,
+          accionLegalTitulo: ACCION_LEGAL_CONFIG[d.accion_legal]?.titulo,
+          conceptosDetalle: d.conceptos_detalle,
+          fechaCorte: d.fecha_corte,
+          bancoNombre: config?.banco,
+          cuentaNumero: config?.cuenta_bancaria,
+          titularNombre: config?.titular_cuenta,
+          cedulaRif: config?.rif
+        }, false)
+
+        if (res.ok && !res.omitidoPorFrecuencia) {
+          enviados++
+        }
+      }
+      showToast(`⚡ Se despacharon ${enviados} recordatorios de impago por correo exitosamente (Regla 3 días).`)
+    } catch (err: any) {
+      showToast(`❌ Error en despacho masivo: ${err.message}`)
+    } finally {
+      setDespachandoEmails(false)
+    }
+  }
+
   return (
     <div style={{ padding: '24px 28px', maxWidth: '1400px', margin: '0 auto', color: '#fff', fontFamily: 'Inter, sans-serif' }}>
       {/* Toast Notification */}
@@ -339,21 +449,42 @@ export const AdminMora: React.FC = () => {
           </p>
         </div>
 
-        <button
-          onClick={abrirModalNuevo}
-          style={{
-            background: 'linear-gradient(135deg, #a855f7 0%, #9333ea 55%, #7e22ce 100%)',
-            color: '#fff', border: '1px solid rgba(255, 255, 255, 0.2)',
-            borderRadius: '14px', padding: '12px 24px', fontSize: '14px', fontWeight: 700,
-            cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px',
-            boxShadow: '0 4px 20px rgba(168, 85, 247, 0.35)', transition: 'all 0.2s'
-          }}
-          onMouseOver={e => e.currentTarget.style.transform = 'translateY(-2px)'}
-          onMouseOut={e => e.currentTarget.style.transform = 'translateY(0)'}
-        >
-          <span>➕</span>
-          <span>Montar Deuda Anterior de Apartamento</span>
-        </button>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          <button
+            onClick={handleDespacharRecordatoriosLote}
+            disabled={despachandoEmails || elegiblesRecordatorio.length === 0}
+            style={{
+              background: 'linear-gradient(135deg, #e11d48 0%, #be123c 100%)',
+              color: '#fff', border: '1px solid rgba(255, 255, 255, 0.2)',
+              borderRadius: '14px', padding: '12px 20px', fontSize: '13px', fontWeight: 700,
+              cursor: elegiblesRecordatorio.length === 0 ? 'not-allowed' : 'pointer',
+              display: 'flex', alignItems: 'center', gap: '8px',
+              boxShadow: '0 4px 16px rgba(225, 29, 72, 0.35)',
+              opacity: elegiblesRecordatorio.length === 0 ? 0.6 : 1,
+              transition: 'all 0.2s'
+            }}
+            title="Envía automáticamente un correo a cada apartamento moroso que no haya recibido recordatorio en los últimos 3 días"
+          >
+            <span>⚡</span>
+            <span>{despachandoEmails ? 'Despachando Correos...' : `Enviar Recordatorios Cada 3 Días (${elegiblesRecordatorio.length} pendientes)`}</span>
+          </button>
+
+          <button
+            onClick={abrirModalNuevo}
+            style={{
+              background: 'linear-gradient(135deg, #a855f7 0%, #9333ea 55%, #7e22ce 100%)',
+              color: '#fff', border: '1px solid rgba(255, 255, 255, 0.2)',
+              borderRadius: '14px', padding: '12px 24px', fontSize: '14px', fontWeight: 700,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px',
+              boxShadow: '0 4px 20px rgba(168, 85, 247, 0.35)', transition: 'all 0.2s'
+            }}
+            onMouseOver={e => e.currentTarget.style.transform = 'translateY(-2px)'}
+            onMouseOut={e => e.currentTarget.style.transform = 'translateY(0)'}
+          >
+            <span>➕</span>
+            <span>Montar Deuda Anterior de Apartamento</span>
+          </button>
+        </div>
       </div>
 
       {/* STAT CARDS — TASAS DE RIESGO */}
@@ -712,6 +843,30 @@ export const AdminMora: React.FC = () => {
                   >
                     <span>📲</span>
                     <span>Cobrar por WhatsApp</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleEnviarEmailMora(d)}
+                    disabled={enviandoEmailAptoId === d.id}
+                    style={{
+                      background: 'rgba(59, 130, 246, 0.16)',
+                      border: '1px solid rgba(59, 130, 246, 0.4)',
+                      color: '#60a5fa',
+                      padding: '6px 14px',
+                      borderRadius: '8px',
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      cursor: enviandoEmailAptoId === d.id ? 'wait' : 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      opacity: enviandoEmailAptoId === d.id ? 0.6 : 1,
+                      transition: 'all 0.15s ease'
+                    }}
+                    title="Enviar recordatorio formal por correo electrónico al copropietario"
+                  >
+                    <span>📧</span>
+                    <span>{enviandoEmailAptoId === d.id ? 'Enviando...' : 'Recordatorio Email'}</span>
                   </button>
                 </div>
 
@@ -1119,6 +1274,26 @@ export const AdminMora: React.FC = () => {
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '24px', borderTop: '1px solid #eee', paddingTop: '16px', flexWrap: 'wrap' }}>
+              <button
+                onClick={() => handleEnviarEmailMora(citacionModal, true)}
+                style={{
+                  background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+                  color: '#fff',
+                  border: 'none',
+                  padding: '9px 18px',
+                  borderRadius: '10px',
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  boxShadow: '0 3px 12px rgba(37, 99, 235, 0.35)'
+                }}
+                title="Enviar esta comunicación de mora por correo electrónico"
+              >
+                <span>📧</span> Enviar por Correo
+              </button>
               <button
                 onClick={() => handleCobrarWhatsApp(citacionModal)}
                 style={{
