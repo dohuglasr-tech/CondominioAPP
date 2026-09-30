@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from
 import { AuthProvider, useAuth } from './application/contexts/AuthContext'
 import { Loader } from './presentation/components/Loader'
 import { SplashScreen } from './presentation/components/SplashScreen'
+import { InstallAppPrompt } from './presentation/components/InstallAppPrompt'
 import { Login } from './presentation/pages/Login'
 import { ChangePassword } from './presentation/pages/ChangePassword'
 import { ResetPassword } from './presentation/pages/ResetPassword'
@@ -261,6 +262,7 @@ function AppShell() {
           onDone={handleSplashDone}
         />
       )}
+      {splashDone && <InstallAppPrompt />}
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />

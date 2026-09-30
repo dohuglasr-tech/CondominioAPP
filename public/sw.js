@@ -13,6 +13,14 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(clients.claim())
 })
 
+// ── Fetch handler (Requerido para elegibilidad de instalación PWA en Chrome/Android) ──
+self.addEventListener('fetch', (event) => {
+  if (event.request.method !== 'GET') return
+  event.respondWith(
+    fetch(event.request).catch(() => caches.match(event.request))
+  )
+})
+
 // ── Recibir push desde el servidor ─────────────────────────────────────────
 self.addEventListener('push', (event) => {
   let data = {
