@@ -373,10 +373,10 @@ export const AdminLayout: React.FC = () => {
         }
 
         .offcanvas-circle-icon.active {
-          background: linear-gradient(135deg, #fb923c 0%, #ea580c 100%) !important;
+          background: var(--color-brand-gradient, linear-gradient(135deg, #fb923c 0%, #ea580c 100%)) !important;
           border: none !important;
           color: #fff !important;
-          box-shadow: 0 4px 18px rgba(249, 115, 22, 0.5) !important;
+          box-shadow: var(--color-brand-shadow, 0 4px 18px rgba(249, 115, 22, 0.5)) !important;
         }
 
         .offcanvas-label {
@@ -393,7 +393,7 @@ export const AdminLayout: React.FC = () => {
           -webkit-box-orient: vertical;
         }
         .offcanvas-label.active {
-          color: #f97316;
+          color: var(--color-accent, #f97316);
           font-weight: 700;
         }
 
@@ -468,11 +468,11 @@ export const AdminLayout: React.FC = () => {
                 width: '34px',
                 height: '34px',
                 borderRadius: '50%',
-                background: 'linear-gradient(135deg, #fb923c 0%, #ea580c 100%)',
+                background: 'var(--color-brand-gradient, linear-gradient(135deg, #fb923c 0%, #ea580c 100%))',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                boxShadow: '0 2px 10px rgba(249, 115, 22, 0.4)',
+                boxShadow: 'var(--color-brand-shadow, 0 2px 10px rgba(249, 115, 22, 0.4))',
                 overflow: 'hidden'
               }}>
                 {edificioLogo ? (
@@ -491,7 +491,7 @@ export const AdminLayout: React.FC = () => {
                 <span style={{ color: '#fff', fontSize: '13px', fontWeight: 800, letterSpacing: '0.4px', lineHeight: 1.1 }}>
                   {edificioNombre.toUpperCase()}
                 </span>
-                <span style={{ color: '#f97316', fontSize: '9px', fontWeight: 700, letterSpacing: '0.6px' }}>
+                <span style={{ color: 'var(--color-accent, #f97316)', fontSize: '9px', fontWeight: 700, letterSpacing: '0.6px' }}>
                   PANEL ADMINISTRADOR
                 </span>
               </div>

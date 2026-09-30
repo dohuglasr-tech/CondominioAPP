@@ -1,4 +1,5 @@
 import React from 'react'
+import { generateThemePalette } from '../../utils/themeManager'
 
 export interface AuthHeroConfig {
   nombre_edificio?: string | null
@@ -6,6 +7,7 @@ export interface AuthHeroConfig {
   direccion?: string | null
   logo_url?: string | null
   telefono?: string | null
+  color_primario?: string | null
 }
 
 interface AuthHeroPanelProps {
@@ -18,6 +20,9 @@ export const AuthHeroPanel: React.FC<AuthHeroPanelProps> = ({ config, onScrollTo
   const logoUrl = config?.logo_url || null
   const rif = config?.rif || null
   const direccion = config?.direccion || null
+  const heroBg = config?.color_primario
+    ? generateThemePalette(config.color_primario).heroGradient
+    : 'var(--color-brand-hero, linear-gradient(145deg, #f97316 0%, #ea580c 45%, #c2410c 100%))'
 
   return (
     <div
@@ -26,7 +31,7 @@ export const AuthHeroPanel: React.FC<AuthHeroPanelProps> = ({ config, onScrollTo
         width: '100%',
         height: '100%',
         minHeight: '100%',
-        background: 'linear-gradient(145deg, #f97316 0%, #ea580c 45%, #c2410c 100%)',
+        background: heroBg,
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'space-between',

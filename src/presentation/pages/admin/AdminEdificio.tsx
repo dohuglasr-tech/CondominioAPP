@@ -11,6 +11,7 @@ import {
   eliminarMiembroJunta,
   formatWhatsappUrl
 } from '../../../data/juntaService'
+import { PRESET_THEME_COLORS, applyTheme, generateThemePalette } from '../../../utils/themeManager'
 
 export const AdminEdificio: React.FC = () => {
   const { config, refreshConfig } = useAuth()
@@ -24,6 +25,9 @@ export const AdminEdificio: React.FC = () => {
     rif: '',
     direccion: '',
     total_apartamentos: 62,
+    total_pisos: 15,
+    apartamentos_por_piso: 4,
+    color_primario: '#f97316',
     telefono: '',
     email_contacto: '',
     banco: '',
@@ -63,6 +67,9 @@ export const AdminEdificio: React.FC = () => {
         rif: config.rif || '',
         direccion: config.direccion || '',
         total_apartamentos: config.total_apartamentos || 62,
+        total_pisos: (config as any).total_pisos ?? 15,
+        apartamentos_por_piso: (config as any).apartamentos_por_piso ?? 4,
+        color_primario: (config as any).color_primario || '#f97316',
         telefono: config.telefono || '',
         email_contacto: config.email_contacto || '',
         banco: config.banco || '',
@@ -70,6 +77,9 @@ export const AdminEdificio: React.FC = () => {
         titular_cuenta: config.titular_cuenta || '',
       })
       if (config.logo_url) setLogoPreview(config.logo_url)
+      if ((config as any).color_primario) {
+        applyTheme((config as any).color_primario)
+      }
     }
   }, [config])
 
@@ -92,6 +102,11 @@ export const AdminEdificio: React.FC = () => {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setInfo(prev => ({ ...prev, [e.target.name]: e.target.value }))
+  }
+
+  const handleColorChange = (newColor: string) => {
+    setInfo(prev => ({ ...prev, color_primario: newColor }))
+    applyTheme(newColor)
   }
 
   const processImageFile = async (file: File) => {
@@ -166,7 +181,10 @@ export const AdminEdificio: React.FC = () => {
         nombre_edificio: info.nombre_edificio,
         rif: info.rif,
         direccion: info.direccion,
-        total_apartamentos: Number(info.total_apartamentos),
+        total_apartamentos: Number(info.total_apartamentos) || 62,
+        total_pisos: Number(info.total_pisos) || 15,
+        apartamentos_por_piso: Number(info.apartamentos_por_piso) || 4,
+        color_primario: info.color_primario || '#f97316',
         telefono: info.telefono,
         email_contacto: info.email_contacto,
         banco: info.banco,
@@ -203,8 +221,9 @@ export const AdminEdificio: React.FC = () => {
       if (logo_url) setLogoPreview(logo_url)
       setLogoFile(null)
 
+      applyTheme(info.color_primario)
       await refreshConfig()
-      setSuccessMsg('✅ Información del edificio actualizada correctamente.')
+      setSuccessMsg('✅ Información del edificio y tema visual actualizados correctamente.')
     } catch (err: any) {
       setErrorMsg('Error al guardar: ' + (err.message || 'Intenta de nuevo.'))
     } finally {
@@ -436,13 +455,121 @@ export const AdminEdificio: React.FC = () => {
               </div>
             </div>
 
-            <div style={groupStyle}>
-              <label style={labelStyle}>Cantidad de Apartamentos</label>
-              <input type="number" name="total_apartamentos" value={info.total_apartamentos} onChange={handleChange} style={inputStyle} required />
+            {/* Parámetros Estructurales del Edificio / Torre */}
+            <div style={{ marginTop: '24px', marginBottom: '24px', backgroundColor: '#181a20', border: '1px solid #282c37', borderRadius: '12px', padding: '18px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+                <span style={{ fontSize: '18px' }}>📐</span>
+                <div>
+                  <h4 style={{ color: '#fff', fontSize: '15px', fontWeight: 700, margin: 0 }}>Estructura y Pisos de la Torre</h4>
+                  <p style={{ color: '#94a3b8', fontSize: '12px', margin: '2px 0 0' }}>Configura la cantidad de pisos y la distribución estándar por piso de tu condominio.</p>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px' }}>
+                <div>
+                  <label style={labelStyle}>Total de Apartamentos</label>
+                  <input type="number" min="1" name="total_apartamentos" value={info.total_apartamentos} onChange={handleChange} style={inputStyle} required />
+                </div>
+                <div>
+                  <label style={labelStyle}>Número de Pisos</label>
+                  <input type="number" min="1" max="100" name="total_pisos" value={info.total_pisos} onChange={handleChange} style={inputStyle} required />
+                </div>
+                <div>
+                  <label style={labelStyle}>Apartamentos por Piso</label>
+                  <input type="number" min="1" max="50" name="apartamentos_por_piso" value={info.apartamentos_por_piso} onChange={handleChange} style={inputStyle} required />
+                </div>
+              </div>
+
+              <div style={{ marginTop: '12px', padding: '10px 14px', borderRadius: '8px', backgroundColor: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(255, 255, 255, 0.06)', display: 'flex', alignItems: 'center', gap: '10px', fontSize: '12px', color: '#94a3b8' }}>
+                <span>💡</span>
+                <span>
+                  Distribución configurada: <strong style={{ color: '#fff' }}>{info.total_pisos || 0} pisos</strong> × <strong style={{ color: '#fff' }}>{info.apartamentos_por_piso || 0} aptos/piso</strong> = <strong style={{ color: '#fff' }}>{(Number(info.total_pisos) || 0) * (Number(info.apartamentos_por_piso) || 0)}</strong> apartamentos estándar
+                  {Number(info.total_apartamentos) > ((Number(info.total_pisos) || 0) * (Number(info.apartamentos_por_piso) || 0)) ? ` (+ ${Number(info.total_apartamentos) - ((Number(info.total_pisos) || 0) * (Number(info.apartamentos_por_piso) || 0))} adicionales / Penthouse)` : ''}.
+                </span>
+              </div>
+            </div>
+
+            {/* Identidad de Color y Tema Principal */}
+            <div style={{ marginTop: '24px', marginBottom: '28px', backgroundColor: '#181a20', border: '1px solid #282c37', borderRadius: '12px', padding: '18px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+                <span style={{ fontSize: '18px' }}>🎨</span>
+                <div>
+                  <h4 style={{ color: '#fff', fontSize: '15px', fontWeight: 700, margin: 0 }}>Color de Marca del Edificio</h4>
+                  <p style={{ color: '#94a3b8', fontSize: '12px', margin: '2px 0 0' }}>Elige el color temático principal. Toda la interfaz (botones, degradados y paneles de Residentes y Administrador) se adaptará automáticamente.</p>
+                </div>
+              </div>
+
+              {/* Selector de Presets */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(135px, 1fr))', gap: '8px', marginBottom: '16px' }}>
+                {PRESET_THEME_COLORS.map(c => {
+                  const isSelected = (info.color_primario || '#f97316').toLowerCase() === c.hex.toLowerCase()
+                  return (
+                    <button
+                      key={c.hex}
+                      type="button"
+                      onClick={() => handleColorChange(c.hex)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        padding: '8px 10px',
+                        borderRadius: '8px',
+                        backgroundColor: isSelected ? 'rgba(255, 255, 255, 0.12)' : '#101216',
+                        border: isSelected ? `2px solid ${c.hex}` : '1px solid #282c37',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      <span style={{ width: '16px', height: '16px', borderRadius: '50%', backgroundColor: c.hex, boxShadow: `0 0 8px ${c.hex}60`, flexShrink: 0 }} />
+                      <span style={{ fontSize: '12px', color: isSelected ? '#fff' : '#cbd5e1', fontWeight: isSelected ? 700 : 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {c.name}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+
+              {/* Selector libre con ColorPicker */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap', padding: '12px', backgroundColor: '#101216', borderRadius: '8px', border: '1px solid #282c37' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input
+                    type="color"
+                    value={info.color_primario || '#f97316'}
+                    onChange={(e) => handleColorChange(e.target.value)}
+                    style={{ width: '38px', height: '38px', padding: 0, border: 'none', borderRadius: '8px', cursor: 'pointer', backgroundColor: 'transparent' }}
+                  />
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11px', color: '#888', textTransform: 'uppercase' }}>Color personalizado</label>
+                    <input
+                      type="text"
+                      value={info.color_primario || '#f97316'}
+                      onChange={(e) => handleColorChange(e.target.value)}
+                      placeholder="#f97316"
+                      style={{ backgroundColor: 'transparent', border: 'none', color: '#fff', fontSize: '13px', fontWeight: 700, width: '80px', outline: 'none' }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span style={{ fontSize: '12px', color: '#888' }}>Vista previa en vivo:</span>
+                  <div style={{
+                    padding: '8px 16px',
+                    borderRadius: '8px',
+                    background: generateThemePalette(info.color_primario).gradient,
+                    color: '#fff',
+                    fontSize: '12.5px',
+                    fontWeight: 700,
+                    boxShadow: generateThemePalette(info.color_primario).shadow
+                  }}>
+                    Botón de ejemplo
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* Datos Bancarios */}
-            <h3 style={{ color: '#f97316', fontSize: '16px', marginTop: '32px', marginBottom: '16px', borderBottom: '1px solid #2a2a2a', paddingBottom: '8px' }}>
+            <h3 style={{ color: 'var(--color-accent, #f97316)', fontSize: '16px', marginTop: '32px', marginBottom: '16px', borderBottom: '1px solid #2a2a2a', paddingBottom: '8px' }}>
               Datos Bancarios (Para transferencias de recibos)
             </h3>
             <div className="admin-grid-2">
@@ -462,12 +589,19 @@ export const AdminEdificio: React.FC = () => {
 
             <div style={{ marginTop: '32px', display: 'flex', justifyContent: 'flex-end' }}>
               <button type="submit" disabled={saving} style={{
-                backgroundColor: saving ? '#a3520a' : '#f97316', color: '#fff', border: 'none',
-                padding: '12px 28px', borderRadius: '8px', fontSize: '14px',
-                fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer',
-                opacity: saving ? 0.7 : 1, transition: 'all 0.2s',
+                background: 'var(--color-brand-gradient, linear-gradient(135deg, #f97316 0%, #ea580c 100%))',
+                color: '#fff',
+                border: 'none',
+                padding: '12px 28px',
+                borderRadius: '8px',
+                fontSize: '14px',
+                fontWeight: 700,
+                cursor: saving ? 'not-allowed' : 'pointer',
+                opacity: saving ? 0.7 : 1,
+                boxShadow: 'var(--color-brand-shadow, 0 4px 18px rgba(249, 115, 22, 0.4))',
+                transition: 'all 0.2s',
               }}>
-                {saving ? '⏳ Guardando...' : '💾 Guardar Cambios'}
+                {saving ? '⏳ Guardando cambios...' : '💾 Guardar Configuración'}
               </button>
             </div>
           </form>

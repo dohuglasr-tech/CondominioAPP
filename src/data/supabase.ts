@@ -52,6 +52,9 @@ export interface ConfigEdificio {
   nombre_edificio: string
   dominio_email: string
   total_apartamentos: number
+  total_pisos?: number | null
+  apartamentos_por_piso?: number | null
+  color_primario?: string | null
   tasa_bcv_actual: number
   tasa_bcv_actualizada: string | null
   logo_url: string | null

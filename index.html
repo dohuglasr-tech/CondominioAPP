@@ -19,6 +19,16 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
     <title>Domus Condominio</title>
     <script>
+      (function() {
+        try {
+          var c = localStorage.getItem('domus_primary_color');
+          if (c) {
+            document.documentElement.style.setProperty('--color-accent', c);
+          }
+        } catch(e) {}
+      })();
+    </script>
+    <script>
       window.addEventListener('error', function(e) {
         console.error('Captured window error:', e);
         var b = document.getElementById('ios-safari-error-box');

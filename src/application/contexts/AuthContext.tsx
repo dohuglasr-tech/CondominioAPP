@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState, useCallback } fr
 import { Session, User } from '@supabase/supabase-js'
 import { supabase, Perfil, ConfigEdificio, Rol } from '../../data/supabase'
 import { appCache } from '../../data/cacheService'
+import { applyTheme } from '../../utils/themeManager'
 
 // ── Tipos del contexto ────────────────────────────────────────────
 interface AuthContextType {
@@ -69,9 +70,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       )
       if (data) {
         setConfig(data)
+        applyTheme(data.color_primario)
+      } else {
+        applyTheme()
       }
     } catch (e) {
       console.warn('[Auth] Error cargando config con caché:', e)
+      applyTheme()
     }
   }, [])
 

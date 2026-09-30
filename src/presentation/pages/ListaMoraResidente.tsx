@@ -28,23 +28,20 @@ export function obtenerPisoApto(aptoNumero: string, pisoDb?: number): string {
   return '1'
 }
 
-const PISOS_OPCIONES: { key: string; label: string }[] = [
-  { key: '1', label: 'Piso 1' },
-  { key: '2', label: 'Piso 2' },
-  { key: '3', label: 'Piso 3' },
-  { key: '4', label: 'Piso 4' },
-  { key: '5', label: 'Piso 5' },
-  { key: '6', label: 'Piso 6' },
-  { key: '7', label: 'Piso 7' },
-  { key: '8', label: 'Piso 8' },
-  { key: '9', label: 'Piso 9' },
-  { key: '10', label: 'Piso 10' },
-  { key: 'PH', label: 'PH' },
-  { key: 'todos', label: 'Todos' }
-]
-
 export const ListaMoraResidente: React.FC = () => {
-  const { perfil } = useAuth()
+  const { perfil, config } = useAuth()
+  const totalPisos = (config as any)?.total_pisos || 15
+
+  const pisosOpciones = useMemo(() => {
+    const list: { key: string; label: string }[] = []
+    for (let i = 1; i <= totalPisos; i++) {
+      list.push({ key: String(i), label: `Piso ${i}` })
+    }
+    list.push({ key: 'PH', label: 'PH' })
+    list.push({ key: 'todos', label: 'Todos' })
+    return list
+  }, [totalPisos])
+
   const [deudas, setDeudas] = useState<DeudaMoraItem[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -503,7 +500,7 @@ export const ListaMoraResidente: React.FC = () => {
           msOverflowStyle: 'none',
           WebkitOverflowScrolling: 'touch'
         }}>
-          {PISOS_OPCIONES.map(p => {
+          {pisosOpciones.map(p => {
             const active = filtroPiso === p.key
             const count = p.key === 'todos' ? deudas.length : (conteoPorPiso[p.key] || 0)
             const esMiPiso = miPiso === p.key
@@ -607,7 +604,7 @@ export const ListaMoraResidente: React.FC = () => {
         }}>
           <span style={{ fontWeight: 700, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '6px' }}>
             <span>🏢</span>
-            {filtroPiso === 'PH' ? 'Penthouse (PH)' : filtroPiso === 'todos' ? 'Todos los Pisos (Torre 5)' : `Piso ${filtroPiso}`}
+            {filtroPiso === 'PH' ? 'Penthouse (PH)' : filtroPiso === 'todos' ? `Todos los Pisos (${config?.nombre_edificio || 'Edificio'})` : `Piso ${filtroPiso}`}
             <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 500 }}>
               ({deudasFiltradas.length} {deudasFiltradas.length === 1 ? 'apartamento' : 'apartamentos'})
             </span>
