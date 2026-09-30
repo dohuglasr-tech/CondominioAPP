@@ -23,3 +23,4 @@ pnpm-debug.log*
 android/
 ios/
 node_modules
+*.xlsx
