@@ -1,7 +1,16 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useAuth } from '../../application/contexts/AuthContext'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { AuthHeroPanel } from '../components/AuthHeroPanel'
+import {
+  isBiometricsSupported,
+  isBiometricsEnrolled,
+  getEnrolledBiometricEmail,
+  enrollBiometrics,
+  authenticateWithBiometrics,
+  disableBiometrics,
+  BiometricSupport,
+} from '../../utils/biometricAuth'
 
 export function Login() {
   const navigate = useNavigate()
@@ -15,31 +24,136 @@ export function Login() {
   const [registeredSuccess] = useState(!!state?.registered)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // ── Estados para Autenticación Biométrica (Face ID / Huella) ──
+  const [bioSupport, setBioSupport] = useState<BiometricSupport>({
+    supported: false,
+    label: 'Face ID / Huella',
+    type: 'biometric',
+  })
+  const [isBioEnrolled, setIsBioEnrolled] = useState(false)
+  const [bioEnrolledEmail, setBioEnrolledEmail] = useState<string | null>(null)
+  const [bioLoading, setBioLoading] = useState(false)
+  const [bioSuccessMessage, setBioSuccessMessage] = useState<string | null>(null)
+  const [enableBiometricOnLogin, setEnableBiometricOnLogin] = useState(true)
   
   const { signIn, config, session, isAdmin } = useAuth()
   const nombreEdificio = config?.nombre_edificio || 'Residencias Ocutuy 5'
 
-  React.useEffect(() => {
+  // Redirigir si ya existe sesión activa
+  useEffect(() => {
     if (session) {
       navigate(isAdmin ? '/admin' : '/', { replace: true })
     }
   }, [session, isAdmin, navigate])
 
+  // Cargar email recordado y disponibilidad biométrica
+  useEffect(() => {
+    const savedEmail = localStorage.getItem('condominio_saved_email')
+    const savedRemember = localStorage.getItem('condominio_remember_me')
+    if (!state?.email && savedEmail) {
+      setEmail(savedEmail)
+    }
+    if (savedRemember !== null) {
+      setRememberMe(savedRemember === 'true')
+    }
+
+    // Verificar compatibilidad y si ya se enroló biometría
+    isBiometricsSupported().then((support) => {
+      setBioSupport(support)
+    })
+
+    const enrolled = isBiometricsEnrolled()
+    setIsBioEnrolled(enrolled)
+    if (enrolled) {
+      setBioEnrolledEmail(getEnrolledBiometricEmail())
+    }
+  }, [state?.email])
+
+  // ── Iniciar sesión rápido con Face ID / Huella ───────────────────
+  const handleBiometricLogin = async () => {
+    setError(null)
+    setBioLoading(true)
+    setBioSuccessMessage(`Escaneando ${bioSupport.label}...`)
+
+    try {
+      const res = await authenticateWithBiometrics()
+      if (!res.success || !res.email || !res.password) {
+        setBioLoading(false)
+        setBioSuccessMessage(null)
+        if (res.error) {
+          setError(res.error)
+        }
+        return
+      }
+
+      // Colocar los datos automáticamente en el formulario
+      setEmail(res.email)
+      setPassword(res.password)
+      setBioSuccessMessage(`¡${bioSupport.label} verificado con éxito! Iniciando sesión...`)
+
+      // Iniciar sesión con Supabase automáticamente
+      const { error: signInError } = await signIn(res.email, res.password)
+      if (signInError) {
+        setError(signInError)
+        setBioLoading(false)
+        setBioSuccessMessage(null)
+      } else {
+        navigate('/', { replace: true })
+      }
+    } catch (err: any) {
+      setBioLoading(false)
+      setBioSuccessMessage(null)
+      setError(err?.message || 'Error durante la verificación biométrica.')
+    }
+  }
+
+  // ── Desvincular biometría de este dispositivo ────────────────────
+  const handleUnlinkBiometrics = () => {
+    if (window.confirm(`¿Deseas desvincular ${bioSupport.label} de este dispositivo?`)) {
+      disableBiometrics()
+      setIsBioEnrolled(false)
+      setBioEnrolledEmail(null)
+      setPassword('')
+    }
+  }
+
+  // ── Envío normal de credenciales ────────────────────────────────
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!email || !password) return
 
     setLoading(true)
     setError(null)
+    const cleanEmail = email.trim()
 
-    const { error: signInError } = await signIn(email, password)
+    // 1. Guardar o remover email según 'Recordar sesión'
+    if (rememberMe) {
+      localStorage.setItem('condominio_saved_email', cleanEmail)
+      localStorage.setItem('condominio_remember_me', 'true')
+    } else {
+      localStorage.removeItem('condominio_saved_email')
+      localStorage.setItem('condominio_remember_me', 'false')
+    }
+
+    const { error: signInError } = await signIn(cleanEmail, password)
     
     if (signInError) {
       setError(signInError)
       setLoading(false)
-    } else {
-      navigate('/', { replace: true })
+      return
     }
+
+    // 2. Si el usuario activó biometría y el equipo es compatible y aún no está enrolado
+    if (bioSupport.supported && enableBiometricOnLogin && !isBioEnrolled) {
+      try {
+        await enrollBiometrics(cleanEmail, password)
+      } catch (e) {
+        console.warn('No se pudo enrolar biometría tras login:', e)
+      }
+    }
+
+    navigate('/', { replace: true })
   }
 
   return (
@@ -117,6 +231,23 @@ export function Login() {
                 </div>
               )}
 
+              {bioSuccessMessage && (
+                <div style={{
+                  backgroundColor: '#10b98118',
+                  color: '#10b981',
+                  border: '1px solid #10b98140',
+                  padding: '12px 14px',
+                  borderRadius: '10px',
+                  fontSize: '13px',
+                  marginBottom: '18px',
+                  lineHeight: 1.4,
+                  textAlign: 'center',
+                  fontWeight: 600,
+                }}>
+                  ✨ {bioSuccessMessage}
+                </div>
+              )}
+
               {error && (
                 <div style={{
                   backgroundColor: 'rgba(239, 68, 68, 0.12)',
@@ -130,6 +261,98 @@ export function Login() {
                   fontWeight: 500
                 }}>
                   {error}
+                </div>
+              )}
+
+              {/* ── BOTÓN Y TARJETA DE ACCESO RÁPIDO CON FACE ID / HUELLA ── */}
+              {isBioEnrolled && (
+                <div style={{
+                  marginBottom: '22px',
+                  padding: '16px',
+                  backgroundColor: 'rgba(249, 115, 22, 0.08)',
+                  border: '1.5px solid rgba(249, 115, 22, 0.35)',
+                  borderRadius: '12px',
+                  textAlign: 'center',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '6px' }}>
+                    <span style={{ fontSize: '22px' }}>
+                      {bioSupport.type === 'face' ? '🪪' : '👆'}
+                    </span>
+                    <span style={{ fontSize: '15px', fontWeight: 800, color: '#f97316' }}>
+                      Acceso rápido con {bioSupport.label}
+                    </span>
+                  </div>
+
+                  <p style={{ fontSize: '12px', color: '#94a3b8', margin: '0 0 12px', lineHeight: 1.3 }}>
+                    {bioEnrolledEmail ? `Cuenta vinculada: ${bioEnrolledEmail}` : 'Inicia sesión al instante sin escribir tu contraseña'}
+                  </p>
+
+                  <button
+                    type="button"
+                    onClick={handleBiometricLogin}
+                    disabled={bioLoading || loading}
+                    style={{
+                      width: '100%',
+                      backgroundColor: '#f97316',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: '9px',
+                      padding: '12px 16px',
+                      fontSize: '14px',
+                      fontWeight: 800,
+                      cursor: bioLoading || loading ? 'not-allowed' : 'pointer',
+                      boxShadow: '0 4px 14px rgba(249, 115, 22, 0.35)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                      transition: 'all 0.2s',
+                    }}
+                    onMouseOver={(e) => {
+                      if (!bioLoading && !loading) e.currentTarget.style.backgroundColor = '#ea580c'
+                    }}
+                    onMouseOut={(e) => {
+                      if (!bioLoading && !loading) e.currentTarget.style.backgroundColor = '#f97316'
+                    }}
+                  >
+                    {bioLoading ? (
+                      <>
+                        <span className="spinner spinner--sm"></span>
+                        <span>Verificando {bioSupport.label}...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>{bioSupport.type === 'face' ? '🪪' : '👆'}</span>
+                        <span>Iniciar con {bioSupport.label}</span>
+                      </>
+                    )}
+                  </button>
+
+                  <div style={{ marginTop: '10px' }}>
+                    <span
+                      onClick={handleUnlinkBiometrics}
+                      style={{
+                        fontSize: '11.5px',
+                        color: '#64748b',
+                        cursor: 'pointer',
+                        textDecoration: 'underline',
+                        transition: 'color 0.2s'
+                      }}
+                      onMouseOver={(e) => (e.target as HTMLElement).style.color = '#ef4444'}
+                      onMouseOut={(e) => (e.target as HTMLElement).style.color = '#64748b'}
+                    >
+                      Desvincular {bioSupport.label} de este dispositivo
+                    </span>
+                  </div>
+
+                  {/* Separador */}
+                  <div style={{ display: 'flex', alignItems: 'center', margin: '18px 0 4px', gap: '10px' }}>
+                    <div style={{ flex: 1, height: '1px', backgroundColor: '#1e2638' }} />
+                    <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      O escribe tu contraseña
+                    </span>
+                    <div style={{ flex: 1, height: '1px', backgroundColor: '#1e2638' }} />
+                  </div>
                 </div>
               )}
 
@@ -152,10 +375,11 @@ export function Login() {
                 <input
                   id="email"
                   type="email"
+                  autoComplete="username webauthn"
                   placeholder="correo@ejemplo.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  disabled={loading}
+                  disabled={loading || bioLoading}
                   required
                   style={{
                     width: '100%',
@@ -210,10 +434,11 @@ export function Login() {
                   <input
                     id="password"
                     type={showPassword ? 'text' : 'password'}
+                    autoComplete="current-password"
                     placeholder="Contraseña"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    disabled={loading}
+                    disabled={loading || bioLoading}
                     required
                     style={{
                       width: '100%',
@@ -254,24 +479,42 @@ export function Login() {
                 </div>
               </div>
 
-              {/* Recordarme */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '22px' }}>
-                <input
-                  id="remember"
-                  type="checkbox"
-                  checked={rememberMe}
-                  onChange={(e) => setRememberMe(e.target.checked)}
-                  style={{ accentColor: '#f97316', cursor: 'pointer', width: '15px', height: '15px' }}
-                />
-                <label htmlFor="remember" style={{ fontSize: '12.5px', color: '#94a3b8', cursor: 'pointer' }}>
-                  Recordar sesión en este dispositivo
-                </label>
+              {/* Opciones: Recordar sesión y Biometría */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '22px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input
+                    id="remember"
+                    type="checkbox"
+                    checked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
+                    style={{ accentColor: '#f97316', cursor: 'pointer', width: '15px', height: '15px' }}
+                  />
+                  <label htmlFor="remember" style={{ fontSize: '12.5px', color: '#cbd5e1', cursor: 'pointer' }}>
+                    Recordar sesión en este dispositivo
+                  </label>
+                </div>
+
+                {bioSupport.supported && !isBioEnrolled && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input
+                      id="enableBio"
+                      type="checkbox"
+                      checked={enableBiometricOnLogin}
+                      onChange={(e) => setEnableBiometricOnLogin(e.target.checked)}
+                      style={{ accentColor: '#f97316', cursor: 'pointer', width: '15px', height: '15px' }}
+                    />
+                    <label htmlFor="enableBio" style={{ fontSize: '12.5px', color: '#f97316', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span>{bioSupport.type === 'face' ? '🪪' : '👆'}</span>
+                      <span>Activar acceso rápido con {bioSupport.label} al entrar</span>
+                    </label>
+                  </div>
+                )}
               </div>
 
               {/* Botón Iniciar Sesión Naranja */}
               <button
                 type="submit"
-                disabled={loading || !email || !password}
+                disabled={loading || bioLoading || !email || !password}
                 style={{
                   width: '100%',
                   backgroundColor: '#f97316',
@@ -281,8 +524,8 @@ export function Login() {
                   padding: '13px',
                   fontSize: '14.5px',
                   fontWeight: 800,
-                  cursor: loading || !email || !password ? 'not-allowed' : 'pointer',
-                  opacity: loading || !email || !password ? 0.7 : 1,
+                  cursor: loading || bioLoading || !email || !password ? 'not-allowed' : 'pointer',
+                  opacity: loading || bioLoading || !email || !password ? 0.7 : 1,
                   boxShadow: '0 4px 18px rgba(249, 115, 22, 0.4)',
                   transition: 'all 0.2s ease',
                   display: 'flex',
@@ -290,10 +533,10 @@ export function Login() {
                   alignItems: 'center',
                 }}
                 onMouseOver={(e) => {
-                  if (!loading && email && password) e.currentTarget.style.backgroundColor = '#ea580c'
+                  if (!loading && !bioLoading && email && password) e.currentTarget.style.backgroundColor = '#ea580c'
                 }}
                 onMouseOut={(e) => {
-                  if (!loading && email && password) e.currentTarget.style.backgroundColor = '#f97316'
+                  if (!loading && !bioLoading && email && password) e.currentTarget.style.backgroundColor = '#f97316'
                 }}
               >
                 {loading ? <span className="spinner spinner--sm"></span> : 'Iniciar Sesión'}

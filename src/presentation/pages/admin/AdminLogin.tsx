@@ -6,18 +6,36 @@ export const AdminLogin: React.FC = () => {
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [rememberMe, setRememberMe] = useState(true)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+
+  // Cargar correo recordado al montar
+  React.useEffect(() => {
+    const saved = localStorage.getItem('condominio_saved_admin_email')
+    if (saved) {
+      setEmail(saved)
+    }
+  }, [])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError('')
 
+    const cleanEmail = email.trim()
+
+    // Guardar o limpiar email recordado
+    if (rememberMe) {
+      localStorage.setItem('condominio_saved_admin_email', cleanEmail)
+    } else {
+      localStorage.removeItem('condominio_saved_admin_email')
+    }
+
     try {
       // 1. Autenticar con Supabase Auth real
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
+        email: cleanEmail,
         password,
       })
 
@@ -84,21 +102,36 @@ export const AdminLogin: React.FC = () => {
             <label style={{ display: 'block', color: '#888', fontSize: '13px', marginBottom: '8px' }}>Correo de Administrador</label>
             <input
               type="email" required
+              autoComplete="username"
               value={email}
               onChange={e => setEmail(e.target.value)}
               placeholder="admin@torre5.com"
-              style={{ width: '100%', backgroundColor: '#0a0a0a', border: '1px solid #2a2a2a', color: '#fff', padding: '12px', borderRadius: '8px', fontSize: '14px' }}
+              style={{ width: '100%', backgroundColor: '#0a0a0a', border: '1px solid #2a2a2a', color: '#fff', padding: '12px', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box' }}
             />
           </div>
-          <div style={{ marginBottom: '28px' }}>
+          <div style={{ marginBottom: '20px' }}>
             <label style={{ display: 'block', color: '#888', fontSize: '13px', marginBottom: '8px' }}>Contraseña</label>
             <input
               type="password" required
+              autoComplete="current-password"
               value={password}
               onChange={e => setPassword(e.target.value)}
               placeholder="••••••••"
-              style={{ width: '100%', backgroundColor: '#0a0a0a', border: '1px solid #2a2a2a', color: '#fff', padding: '12px', borderRadius: '8px', fontSize: '14px' }}
+              style={{ width: '100%', backgroundColor: '#0a0a0a', border: '1px solid #2a2a2a', color: '#fff', padding: '12px', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box' }}
             />
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '24px' }}>
+            <input
+              id="adminRemember"
+              type="checkbox"
+              checked={rememberMe}
+              onChange={(e) => setRememberMe(e.target.checked)}
+              style={{ accentColor: '#f97316', cursor: 'pointer', width: '15px', height: '15px' }}
+            />
+            <label htmlFor="adminRemember" style={{ fontSize: '12.5px', color: '#94a3b8', cursor: 'pointer' }}>
+              Recordar en este dispositivo
+            </label>
           </div>
 
           {error && (
