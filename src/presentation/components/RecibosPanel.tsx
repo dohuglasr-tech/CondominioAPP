@@ -1,453 +1,876 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { useAuth } from '../../application/contexts/AuthContext'
-import { obtenerPagos, Pago } from '../../data/recibosService'
 import { supabase } from '../../data/supabase'
 import { useNavigate } from 'react-router-dom'
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
+import { ReportarPagoModal } from './ReportarPagoModal'
+import {
+  generarPDFRecibo,
+  ReciboAptoData,
+  ReciboGastoData,
+  ReciboCargoData,
+  ReciboConfigData,
+  ReciboPagoInfo,
+} from '../../utils/reciboPdfGenerator'
+import { formatAlicuotaPct } from '../../utils/alicuota'
 
 interface Props {
-  onClose: () => void
+  onClose?: () => void
 }
 
-const ESTADO_CONFIG: Record<string, { label: string; color: string; icon: string }> = {
-  pendiente: { label: 'Pendiente',  color: '#f59e0b', icon: '⏳' },
-  aprobado:  { label: 'Aprobado',   color: '#10b981', icon: '✅' },
-  rechazado: { label: 'Rechazado',  color: '#ef4444', icon: '❌' },
+interface ReciboGenerado {
+  id: string
+  apartamento_id: string
+  mes_facturado: string
+  tasa_bcv: number
+  total_gastos_usd: number
+  alicuota: number
+  subtotal_usd: number
+  fondo_reserva_pct: number
+  fondo_reserva_usd: number
+  cargos_extra_usd: number
+  total_usd: number
+  total_bs: number
+  estado: 'pendiente' | 'pagado'
+  data_json: {
+    gastos?: Array<{ descripcion: string; monto_usd: number; monto_bs: number; categoria?: string }>
+    cargos_especiales?: Array<{ tipo: string; descripcion: string; monto_usd: number; monto_bs?: number }>
+    fondo_reserva_pct?: number
+    notas_residentes?: string
+  } | null
+  emitido_at: string
+}
+
+interface PagoReportado {
+  id: string
+  apartamento_id: string
+  monto_usd: number
+  monto_bs: number
+  tasa_bcv: number
+  metodo_pago: string
+  referencia: string
+  banco_origen: string
+  banco_destino?: string
+  fecha_pago: string
+  comprobante_url?: string
+  estado: 'pendiente' | 'aprobado' | 'rechazado'
+  notas_admin?: string
+  created_at: string
+}
+
+interface ConfigEdificio {
+  nombre_edificio: string
+  rif: string | null
+  direccion: string | null
+  email_contacto: string | null
+  banco: string | null
+  cuenta_bancaria: string | null
+  titular_cuenta: string | null
+  tasa_bcv_actual: number
+}
+
+const MESES = [
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+]
+
+function parseMesFacturado(mesStr: string): { mesLabel: string; anio: number } {
+  if (!mesStr) return { mesLabel: 'Mes Actual', anio: new Date().getFullYear() }
+  const clean = mesStr.substring(0, 7)
+  const [anioStr, mesNumStr] = clean.split('-')
+  const anio = parseInt(anioStr) || new Date().getFullYear()
+  const mesIndex = (parseInt(mesNumStr) || 1) - 1
+  return { mesLabel: MESES[mesIndex] || 'Mes', anio }
+}
+
+function fmtBs(n: number): string {
+  return (Number(n) || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+function fmtUsd(n: number): string {
+  return (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 function formatFecha(iso: string): string {
-  const d = new Date(iso)
-  return d.toLocaleDateString('es-VE', { day: '2-digit', month: 'short', year: 'numeric' })
-}
-
-function formatBs(n: number): string {
-  return n.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  try {
+    const d = new Date(iso)
+    if (isNaN(d.getTime())) return iso
+    return d.toLocaleDateString('es-VE', { day: '2-digit', month: 'short', year: 'numeric' })
+  } catch {
+    return iso
+  }
 }
 
 export function RecibosPanel({ onClose }: Props) {
-  const { perfil } = useAuth()
-  const apartamentoId = perfil?.apartamento_id ?? ''
+  const { perfil, config: authConfig } = useAuth()
+  const navigate = useNavigate()
 
-  const [pagos, setPagos] = useState<Pago[]>([])
+  const p = perfil as any
+  const apartamentoId = perfil?.apartamento_id ?? ''
+  const aptoNumero = p?.apartamento?.numero || p?.apartamentos?.numero || perfil?.apartamento_id || ''
+  const propietarioNombre = p?.nombre_completo || perfil?.nombre || 'Propietario Residente'
+
+  const [activeTab, setActiveTab] = useState<'recibos' | 'pagos'>('recibos')
+  const [recibos, setRecibos] = useState<ReciboGenerado[]>([])
+  const [pagos, setPagos] = useState<PagoReportado[]>([])
+  const [config, setConfig] = useState<ConfigEdificio | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  
-  const navigate = useNavigate()
-  const [closing, setClosing] = useState(false)
-  const [selectedPago, setSelectedPago] = useState<Pago | null>(null)
+  const [expandedReciboId, setExpandedReciboId] = useState<string | null>(null)
+  const [selectedPago, setSelectedPago] = useState<PagoReportado | null>(null)
+  const [reportarModalOpen, setReportarModalOpen] = useState(false)
+  const [descargandoId, setDescargandoId] = useState<string | null>(null)
 
-  const handleClose = useCallback(() => {
-    setClosing(true)
-    setTimeout(() => onClose(), 250)
-  }, [onClose])
-
-  const cargarPagos = useCallback(async () => {
+  // ── Cargar información completa del residente ──────────────────────────────
+  const cargarDatos = useCallback(async () => {
     if (!apartamentoId) {
-      setPagos([])
       setLoading(false)
       return
     }
 
     try {
-      const { data, error: err } = await obtenerPagos(apartamentoId)
-      if (err) {
-        setError(err)
-      } else {
-        setPagos(data || [])
+      setError(null)
+      const [recibosRes, pagosRes, configRes] = await Promise.all([
+        supabase
+          .from('recibos_generados')
+          .select('*')
+          .eq('apartamento_id', apartamentoId)
+          .order('mes_facturado', { ascending: false }),
+        supabase
+          .from('pagos_reportados')
+          .select('*')
+          .eq('apartamento_id', apartamentoId)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('configuracion_edificio')
+          .select('*')
+          .maybeSingle(),
+      ])
+
+      if (recibosRes.error) console.warn('[RecibosPanel] Error recibos:', recibosRes.error.message)
+      if (pagosRes.error) console.warn('[RecibosPanel] Error pagos:', pagosRes.error.message)
+
+      setRecibos(recibosRes.data || [])
+      setPagos(pagosRes.data || [])
+      if (configRes.data) {
+        setConfig(configRes.data)
+      } else if (authConfig) {
+        setConfig(authConfig as any)
       }
     } catch (e: any) {
-      setError(e.message || 'Error cargando pagos')
+      setError(e.message || 'Error cargando datos de recibos')
     } finally {
       setLoading(false)
     }
-  }, [apartamentoId])
+  }, [apartamentoId, authConfig])
 
   useEffect(() => {
-    cargarPagos()
+    cargarDatos()
 
     if (!apartamentoId) return
 
-    // ── Suscripción en Tiempo Real para el apartamento del residente ──
+    // ── Suscripción Realtime dual (recibos_generados y pagos_reportados) ──
     const channel = supabase
-      .channel(`residente_pagos_${apartamentoId}`)
+      .channel(`residente_recibos_channel_${apartamentoId}`)
       .on(
         'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'pagos_reportados',
-          filter: `apartamento_id=eq.${apartamentoId}`,
-        },
-        (payload) => {
-          console.log('[RecibosPanel] Actualización de pago en tiempo real:', payload)
-          cargarPagos()
-        }
+        { event: '*', schema: 'public', table: 'recibos_generados', filter: `apartamento_id=eq.${apartamentoId}` },
+        () => cargarDatos()
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'pagos_reportados', filter: `apartamento_id=eq.${apartamentoId}` },
+        () => cargarDatos()
       )
       .subscribe()
 
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [apartamentoId, cargarPagos])
+  }, [apartamentoId, cargarDatos])
 
-  const generarPDFRecibo = (pago: Pago) => {
-    const doc = new jsPDF();
-    
-    // Configuración de Colores
-    const cAccent = [249, 115, 22]; // Naranja
-    const cDark = [30, 30, 30];     // Oscuro
-    const cGray = [100, 100, 100];  // Gris oscuro
-    
-    // HEADER BANNER
-    doc.setFillColor(cDark[0], cDark[1], cDark[2]);
-    doc.rect(0, 0, 210, 35, "F");
-    
-    doc.setTextColor(cAccent[0], cAccent[1], cAccent[2]);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(22);
-    doc.text("RECIBO DE CONDOMINIO", 105, 16, { align: "center" });
+  // ── Generar y descargar el PDF oficial ─────────────────────────────────────
+  // Es exactamente el mismo formato visual y contable que previsualiza el condominio.
+  // Si está pagado y aprobado, se le estampa la certificación de solvencia y el talón validado.
+  const handleDescargarPDF = async (recibo: ReciboGenerado) => {
+    setDescargandoId(recibo.id)
+    try {
+      const { mesLabel, anio } = parseMesFacturado(recibo.mes_facturado)
 
-    doc.setTextColor(200, 200, 200);
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
-    doc.text("CORREO: juntacondominioocutuy5@gmail.com   |   RIF: J-296749485", 105, 24, { align: "center" });
-    doc.text("URBANIZACION CASA BLANCA RESIDENCIAS OCUTUY '5'", 105, 30, { align: "center" });
-    
-    // CAJA DE INFORMACIÓN DEL PROPIETARIO
-    doc.setDrawColor(cAccent[0], cAccent[1], cAccent[2]);
-    doc.setLineWidth(0.5);
-    doc.line(14, 42, 196, 42);
+      const aptoData: ReciboAptoData = {
+        id: apartamentoId,
+        numero: aptoNumero || 'S/N',
+        alicuota: recibo.alicuota || (p?.apartamento?.alicuota) || 0.0159,
+        propietario_nombre: propietarioNombre,
+      }
 
-    doc.setTextColor(40, 40, 40);
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "bold");
-    doc.text("PROPIETARIO:", 14, 50);
-    doc.setFont("helvetica", "normal");
-    doc.text(perfil?.nombre || "Residente", 45, 50);
+      const gastos: ReciboGastoData[] = (recibo.data_json?.gastos || []).map(g => ({
+        descripcion: g.descripcion,
+        monto_usd: Number(g.monto_usd) || 0,
+        monto_bs: Number(g.monto_bs) || 0,
+        categoria: g.categoria,
+      }))
 
-    doc.setFont("helvetica", "bold");
-    doc.text("ALÍCUOTA:", 135, 50);
-    doc.setFont("helvetica", "normal");
-    doc.text("1.59%", 160, 50);
+      const cargos: ReciboCargoData[] = (recibo.data_json?.cargos_especiales || []).map(c => ({
+        tipo: c.tipo,
+        descripcion: c.descripcion,
+        monto_usd: Number(c.monto_usd) || 0,
+        monto_bs: Number(c.monto_bs) || 0,
+      }))
 
-    doc.setFont("helvetica", "bold");
-    doc.text("MES/AÑO:", 135, 56);
-    doc.setFont("helvetica", "normal");
-    doc.text("SEPTIEMBRE 2026", 160, 56);
+      const configData: ReciboConfigData = {
+        nombre_edificio: config?.nombre_edificio || 'RESIDENCIAS OCUTUY 5',
+        rif: config?.rif || 'J-296749485',
+        direccion: config?.direccion || 'URBANIZACIÓN CASA BLANCA, RESIDENCIAS OCUTUY 5',
+        email_contacto: config?.email_contacto || 'juntacondominioocutuy5@gmail.com',
+        banco: config?.banco,
+        cuenta_bancaria: config?.cuenta_bancaria,
+        titular_cuenta: config?.titular_cuenta,
+        tasa_bcv_actual: recibo.tasa_bcv || config?.tasa_bcv_actual || 1,
+      }
 
-    doc.setDrawColor(200, 200, 200);
-    doc.line(14, 62, 196, 62);
+      // Si está pagado o hay un pago aprobado para este apartamento
+      const pagoAprobado = pagos.find(p => p.estado === 'aprobado')
+      const estaPagado = recibo.estado === 'pagado' || !!pagoAprobado
 
-    // TABLA DE GASTOS COMUNES
-    const bodyGastos = [
-      ['Limpieza del Edificio', '1.000,00', '1,25'],
-      ['Bono de alimentacion y colaboracion en limpieza...', '77.137,00', '96,28'],
-      ['Mantenimiento de Ascensor 08-2026', '41.997,50', '52,42'],
-      ['Administracion Guardias y Comision bancaria', '8.140,57', '10,16'],
-      ['Copias Recibos de Condominio 08-2026', '7.980,00', '9,96'],
-      ['CORPOELEC MES 08-2026', '50.347,84', '62,84'],
-      ['Hidrocapital Agosto 2026', '34.442,57', '42,99'],
-      ['Instalacion de Lamparas', '26.132,05', '32,62'],
-      ['Arreglo de frenos Ascensor', '14.932,60', '18,64'],
-      ['Reparacion porton, graduacion y rolineras', '46.264,20', '57,75'],
-      ['Compra Materiales Limpieza', '7.130,00', '8,90'],
-      ['Mano de obra arreglo platabanda y filtraciones', '76.117,02', '95,01']
-    ];
+      const pagoInfo: ReciboPagoInfo | undefined = estaPagado
+        ? {
+            estado: 'pagado',
+            fecha_pago: pagoAprobado?.fecha_pago || pagoAprobado?.created_at,
+            banco: pagoAprobado?.banco_origen || config?.banco || 'Bicentenario',
+            referencia: pagoAprobado?.referencia || 'VALIDADO',
+            monto_bs: pagoAprobado?.monto_bs || recibo.total_bs,
+            monto_usd: pagoAprobado?.monto_usd || recibo.total_usd,
+          }
+        : undefined
 
-    autoTable(doc, {
-      startY: 68,
-      headStyles: { fillColor: cDark, textColor: [255,255,255], fontStyle: 'bold', halign: 'center' },
-      columnStyles: {
-        0: { cellWidth: 122 },
-        1: { halign: 'right', cellWidth: 30 },
-        2: { halign: 'right', cellWidth: 30 }
-      },
-      head: [['DETALLES DE GASTOS COMUNES', 'BOLÍVARES', 'DÓLAR $']],
-      body: bodyGastos,
-      alternateRowStyles: { fillColor: [250, 250, 250] },
-    });
+      const doc = generarPDFRecibo(
+        aptoData,
+        gastos,
+        cargos,
+        configData,
+        recibo.fondo_reserva_pct || 10,
+        mesLabel,
+        anio,
+        recibo.data_json?.notas_residentes,
+        pagoInfo
+      )
 
-    const finalY = (doc as any).lastAutoTable.finalY;
-
-    // TOTALES
-    autoTable(doc, {
-      startY: finalY,
-      theme: 'plain',
-      columnStyles: {
-        0: { cellWidth: 122, halign: 'right', fontStyle: 'bold' },
-        1: { halign: 'right', cellWidth: 30 },
-        2: { halign: 'right', cellWidth: 30 }
-      },
-      body: [
-        ['SUB TOTAL', '500.451,34', '624,65'],
-        ['FONDO DE RESERVA', '150.135,40', '187,40'],
-        ['TOTAL', '650.586,74', '812,05']
-      ]
-    });
-
-    const totalesY = (doc as any).lastAutoTable.finalY;
-
-    // TOTAL A PAGAR (ALICUOTA APLICADA)
-    autoTable(doc, {
-      startY: totalesY,
-      theme: 'grid',
-      headStyles: { fillColor: cAccent, textColor: [255,255,255], halign: 'right' },
-      columnStyles: {
-        0: { cellWidth: 122, halign: 'right', fontStyle: 'bold', textColor: cAccent },
-        1: { halign: 'right', cellWidth: 30, fontStyle: 'bold' },
-        2: { halign: 'right', cellWidth: 30, fontStyle: 'bold' }
-      },
-      body: [
-        ['TOTAL A PAGAR (1.59%)', '10.344,33', '12,91']
-      ]
-    });
-
-    const alertY = (doc as any).lastAutoTable.finalY + 5;
-
-    // BANNER ALERTA
-    doc.setFillColor(254, 240, 138); // Amarillo claro
-    doc.rect(14, alertY, 182, 10, "F");
-    doc.setTextColor(202, 138, 4); // Amarillo oscuro/naranja
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(11);
-    doc.text("ATENCION: PAGAR 12,91 $ ANCLADO AL $ BCV DEL DIA DE SU PAGO", 105, alertY + 6.5, { align: "center" });
-
-    // NOTAS Y BANCOS
-    doc.setFontSize(8);
-    doc.setTextColor(100, 100, 100);
-    const notasY = alertY + 16;
-    doc.setFont("helvetica", "bold");
-    doc.text("NOTAS Y DATOS DE PAGO:", 14, notasY);
-    doc.setFont("helvetica", "normal");
-    
-    const notasText = "DEPOSITAR CUENTA CORRIENTE NRO 0175-0525-4100-7575-1351 BANCO BICENTENARIO A NOMBRE ZORAYA ALMEIDA CEDULA V-6089037. VERIFICAR QUE SE REALICE LA TRANSACCION.\n\nVECINOS FAVOR NO LANZAR BOTELLAS, VIDRIOS POR EL BAJANTE ES PELIGROSO. FAVOR REVISAR SUS FILTRACIONES Y AIRES ACONDICIONADOS.";
-    
-    doc.text(notasText, 14, notasY + 5, { maxWidth: 180 });
-    
-    doc.save(`Recibo_Condominio_Ocutuy5.pdf`);
-  };
-
-  const st = {
-    overlay: {
-      width: '100%', height: '100%',
-      backgroundColor: '#0a0a0a',
-      display: 'flex', flexDirection: 'column' as const,
-      padding: '20px',
-    },
-    panel: {
-      flex: 1,
-      backgroundColor: '#1c1c1c',
-      border: '1px solid #2a2a2a',
-      borderRadius: '20px',
-      padding: '0',
-      width: '100%',
-      fontFamily: "'Inter', sans-serif",
-      position: 'relative' as const,
-      display: 'flex',
-      flexDirection: 'column' as const,
-      overflow: 'hidden',
-    },
-    header: {
-      padding: '28px 28px 20px 28px',
-      borderBottom: '1px solid #2a2a2a',
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      flexShrink: 0,
-    },
-    title: { color: '#fff', fontSize: '20px', fontWeight: 700 },
-    closeBtn: {
-      background: '#2a2a2a', border: 'none', color: '#666',
-      width: '34px', height: '34px', borderRadius: '50%',
-      cursor: 'pointer', fontSize: '14px',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      transition: 'all 0.2s',
-    },
-    body: {
-      flex: 1,
-      overflowY: 'auto' as const,
-      padding: '16px 28px 28px 28px',
-    },
-    card: {
-      backgroundColor: '#141414',
-      border: '1px solid #2a2a2a',
-      borderRadius: '14px',
-      padding: '18px 20px',
-      marginBottom: '10px',
-      cursor: 'pointer',
-      transition: 'transform 0.2s cubic-bezier(0.16,1,0.3,1), border-color 0.2s, background-color 0.2s',
-    },
-    row: {
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-    },
-    badge: (color: string): React.CSSProperties => ({
-      display: 'inline-flex', alignItems: 'center', gap: '4px',
-      backgroundColor: `${color}18`, border: `1px solid ${color}30`,
-      color, fontSize: '11px', fontWeight: 700,
-      padding: '4px 10px', borderRadius: '999px',
-    }),
-    empty: {
-      textAlign: 'center' as const,
-      padding: '48px 20px',
-      color: '#666',
-    },
-    // Detalle expandido
-    detail: {
-      backgroundColor: '#111',
-      border: '1px solid #2a2a2a',
-      borderRadius: '14px',
-      padding: '20px',
-      marginTop: '8px',
-    },
-    detailRow: {
-      display: 'flex',
-      justifyContent: 'space-between',
-      padding: '8px 0',
-      borderBottom: '1px solid #1e1e1e',
-      fontSize: '13px',
-    },
+      doc.save(`Recibo_Apto${aptoNumero}_${mesLabel}${anio}.pdf`)
+    } catch (err) {
+      console.error('[RecibosPanel] Error al generar PDF:', err)
+      alert('Hubo un error al compilar el PDF del recibo.')
+    } finally {
+      setDescargandoId(null)
+    }
   }
 
-  return (
-    <div style={st.overlay}>
-      <div style={st.panel}>
-        {/* Acento superior naranja */}
-        <div style={{
-          position: 'absolute', top: 0, left: '20px', right: '20px', height: '3px',
-          background: 'linear-gradient(90deg, transparent, #f97316, transparent)',
-          borderRadius: '0 0 4px 4px',
-        }} />
+  // Comprobar si hay pagos pendientes en revisión
+  const pagoEnRevision = pagos.find(p => p.estado === 'pendiente')
 
-        {/* HEADER */}
-        <div style={st.header}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <button
-              onClick={() => navigate('/')}
-              style={{
-                background: 'transparent', border: 'none', color: '#888',
-                fontSize: '24px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                padding: 0
-              }}
-            >
-              ←
-            </button>
-            <h2 style={st.title}>Mis Recibos</h2>
+  return (
+    <div style={{
+      width: '100%',
+      minHeight: '100%',
+      backgroundColor: '#090a0d',
+      padding: '24px 16px 80px',
+      maxWidth: '1000px',
+      margin: '0 auto',
+      fontFamily: "'Inter', sans-serif",
+      boxSizing: 'border-box'
+    }}>
+      {/* ── HEADER SUPERIOR ──────────────────────────────────────────────── */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: '20px',
+        paddingBottom: '16px',
+        borderBottom: '1px solid rgba(255, 255, 255, 0.08)'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <button
+            onClick={() => onClose ? onClose() : navigate('/')}
+            style={{
+              background: 'rgba(255, 255, 255, 0.06)',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              color: '#cbd5e1',
+              width: '36px', height: '36px',
+              borderRadius: '10px',
+              cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '18px',
+              transition: 'background 0.2s'
+            }}
+          >
+            ←
+          </button>
+          <div>
+            <h1 style={{ color: '#fff', fontSize: '20px', fontWeight: 800, margin: 0, letterSpacing: '0.2px' }}>
+              Mis Recibos y Pagos
+            </h1>
+            <p style={{ color: '#94a3b8', fontSize: '12px', margin: '3px 0 0' }}>
+              Apartamento {aptoNumero || '—'} · {propietarioNombre}
+            </p>
           </div>
         </div>
 
-        {/* BODY */}
-        <div style={st.body}>
-          {loading ? (
-            <div style={st.empty}>
-              <div className="spinner" style={{ margin: '0 auto 12px auto' }}></div>
-              <p style={{ fontSize: '13px' }}>Cargando recibos...</p>
-            </div>
-          ) : error ? (
-            <div style={st.empty}>
-              <p style={{ fontSize: '28px', marginBottom: '8px' }}>⚠️</p>
-              <p style={{ fontSize: '13px', color: '#fca5a5' }}>{error}</p>
-            </div>
-          ) : pagos.length === 0 ? (
-            <div style={st.empty}>
-              <p style={{ fontSize: '32px', marginBottom: '12px' }}>📭</p>
-              <p style={{ fontSize: '15px', fontWeight: 600, color: '#888', marginBottom: '4px' }}>
-                Aún no has reportado pagos
-              </p>
-              <p style={{ fontSize: '13px' }}>
-                Cuando reportes un pago, aparecerá aquí con su estado.
-              </p>
-            </div>
-          ) : (
-            <div className="stagger-children">
-              {pagos.map((pago) => {
-                const cfg = ESTADO_CONFIG[pago.estado] || ESTADO_CONFIG.pendiente
-                const isSelected = selectedPago?.id === pago.id
+        <button
+          onClick={() => setReportarModalOpen(true)}
+          style={{
+            background: 'linear-gradient(135deg, #fb923c 0%, #ea580c 100%)',
+            color: '#fff',
+            border: 'none',
+            borderRadius: '10px',
+            padding: '9px 16px',
+            fontSize: '13px',
+            fontWeight: 800,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            boxShadow: '0 4px 14px rgba(234, 88, 12, 0.4)'
+          }}
+        >
+          <span>💳</span>
+          <span>Reportar Pago</span>
+        </button>
+      </div>
 
-                return (
-                  <div key={pago.id}>
-                    <div
+      {/* ── SELECTOR DE PESTAÑAS (SEGMENTED CONTROL) ─────────────────────── */}
+      <div style={{
+        display: 'flex',
+        background: 'rgba(255, 255, 255, 0.04)',
+        padding: '4px',
+        borderRadius: '12px',
+        border: '1px solid rgba(255, 255, 255, 0.08)',
+        marginBottom: '20px'
+      }}>
+        <button
+          onClick={() => setActiveTab('recibos')}
+          style={{
+            flex: 1,
+            padding: '10px',
+            borderRadius: '9px',
+            border: 'none',
+            cursor: 'pointer',
+            fontSize: '13px',
+            fontWeight: 700,
+            transition: 'all 0.2s',
+            background: activeTab === 'recibos' ? '#f97316' : 'transparent',
+            color: activeTab === 'recibos' ? '#fff' : '#94a3b8',
+            boxShadow: activeTab === 'recibos' ? '0 2px 8px rgba(249, 115, 22, 0.4)' : 'none'
+          }}
+        >
+          📄 Recibos de Condominio ({recibos.length})
+        </button>
+        <button
+          onClick={() => setActiveTab('pagos')}
+          style={{
+            flex: 1,
+            padding: '10px',
+            borderRadius: '9px',
+            border: 'none',
+            cursor: 'pointer',
+            fontSize: '13px',
+            fontWeight: 700,
+            transition: 'all 0.2s',
+            background: activeTab === 'pagos' ? '#f97316' : 'transparent',
+            color: activeTab === 'pagos' ? '#fff' : '#94a3b8',
+            boxShadow: activeTab === 'pagos' ? '0 2px 8px rgba(249, 115, 22, 0.4)' : 'none'
+          }}
+        >
+          💳 Historial de Pagos ({pagos.length})
+        </button>
+      </div>
+
+      {/* ── CONTENIDO PRINCIPAL ──────────────────────────────────────────── */}
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: '60px 20px', color: '#94a3b8' }}>
+          <div style={{
+            width: '32px', height: '32px', border: '3px solid rgba(249, 115, 22, 0.2)',
+            borderTopColor: '#f97316', borderRadius: '50%', animation: 'spin 0.8s linear infinite',
+            margin: '0 auto 16px'
+          }} />
+          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+          <p style={{ fontSize: '13px', margin: 0 }}>Cargando información oficial...</p>
+        </div>
+      ) : error ? (
+        <div style={{
+          background: 'rgba(239, 68, 68, 0.1)',
+          border: '1px solid rgba(239, 68, 68, 0.25)',
+          borderRadius: '14px',
+          padding: '24px',
+          textAlign: 'center',
+          color: '#f87171'
+        }}>
+          <p style={{ fontSize: '30px', margin: '0 0 10px' }}>⚠️</p>
+          <p style={{ fontSize: '14px', margin: 0 }}>{error}</p>
+        </div>
+      ) : activeTab === 'recibos' ? (
+        /* ── PESTAÑA 1: RECIBOS DE CONDOMINIO ────────────────────────────── */
+        recibos.length === 0 ? (
+          <div style={{
+            background: 'rgba(255, 255, 255, 0.02)',
+            border: '1px solid rgba(255, 255, 255, 0.06)',
+            borderRadius: '16px',
+            padding: '48px 24px',
+            textAlign: 'center'
+          }}>
+            <span style={{ fontSize: '42px', display: 'block', marginBottom: '14px' }}>📭</span>
+            <h3 style={{ color: '#fff', fontSize: '16px', fontWeight: 700, margin: '0 0 6px' }}>
+              No hay recibos emitidos aún
+            </h3>
+            <p style={{ color: '#94a3b8', fontSize: '13px', margin: 0, maxWidth: '400px', marginInline: 'auto' }}>
+              La administración del condominio aún no ha emitido el recibo para tu apartamento. En cuanto se emita, lo verás reflejado aquí con su desglose exacto.
+            </p>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            {recibos.map((recibo) => {
+              const { mesLabel, anio } = parseMesFacturado(recibo.mes_facturado)
+              const estaPagado = recibo.estado === 'pagado' || pagos.some(p => p.estado === 'aprobado')
+              const enRevision = !estaPagado && !!pagoEnRevision
+              const isExpanded = expandedReciboId === recibo.id
+
+              const gastos = recibo.data_json?.gastos || []
+              const cargos = recibo.data_json?.cargos_especiales || []
+
+              return (
+                <div
+                  key={recibo.id}
+                  style={{
+                    background: 'linear-gradient(180deg, #131720 0%, #0c0f15 100%)',
+                    border: estaPagado
+                      ? '1px solid rgba(34, 197, 94, 0.35)'
+                      : enRevision
+                      ? '1px solid rgba(245, 158, 11, 0.35)'
+                      : '1px solid rgba(249, 115, 22, 0.35)',
+                    borderLeftWidth: '5px',
+                    borderLeftColor: estaPagado ? '#22c55e' : enRevision ? '#f59e0b' : '#f97316',
+                    borderRadius: '16px',
+                    padding: '20px',
+                    boxShadow: '0 4px 20px rgba(0, 0, 0, 0.35)',
+                    transition: 'border-color 0.2s'
+                  }}
+                >
+                  {/* Encabezado del Recibo */}
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: '10px'
+                  }}>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '18px' }}>📄</span>
+                        <h2 style={{ color: '#fff', fontSize: '17px', fontWeight: 800, margin: 0 }}>
+                          Recibo {mesLabel} {anio}
+                        </h2>
+                      </div>
+                      <p style={{ color: '#94a3b8', fontSize: '11px', margin: '4px 0 0' }}>
+                        Emitido el {formatFecha(recibo.emitido_at || recibo.mes_facturado)} · Tasa BCV: {fmtBs(recibo.tasa_bcv)} Bs/$
+                      </p>
+                    </div>
+
+                    {/* Badge de Estado */}
+                    <div>
+                      {estaPagado ? (
+                        <span style={{
+                          display: 'inline-flex', alignItems: 'center', gap: '5px',
+                          background: 'rgba(34, 197, 94, 0.15)', color: '#22c55e',
+                          border: '1px solid rgba(34, 197, 94, 0.3)',
+                          padding: '4px 10px', borderRadius: '999px',
+                          fontSize: '11px', fontWeight: 800
+                        }}>
+                          ✓ Pagado y Solvente
+                        </span>
+                      ) : enRevision ? (
+                        <span style={{
+                          display: 'inline-flex', alignItems: 'center', gap: '5px',
+                          background: 'rgba(245, 158, 11, 0.15)', color: '#fbbf24',
+                          border: '1px solid rgba(245, 158, 11, 0.3)',
+                          padding: '4px 10px', borderRadius: '999px',
+                          fontSize: '11px', fontWeight: 800
+                        }}>
+                          ⏳ Pago en Revisión
+                        </span>
+                      ) : (
+                        <span style={{
+                          display: 'inline-flex', alignItems: 'center', gap: '5px',
+                          background: 'rgba(239, 68, 68, 0.15)', color: '#f87171',
+                          border: '1px solid rgba(239, 68, 68, 0.3)',
+                          padding: '4px 10px', borderRadius: '999px',
+                          fontSize: '11px', fontWeight: 800
+                        }}>
+                          ⚠️ Pendiente de Pago
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Montos y Alícuota */}
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                    gap: '12px',
+                    margin: '16px 0',
+                    padding: '12px 14px',
+                    background: 'rgba(255, 255, 255, 0.03)',
+                    borderRadius: '12px',
+                    border: '1px solid rgba(255, 255, 255, 0.05)'
+                  }}>
+                    <div>
+                      <span style={{ color: '#82828e', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase' }}>
+                        Total Cuota ($ USD)
+                      </span>
+                      <div style={{ color: '#fff', fontSize: '18px', fontWeight: 800, marginTop: '2px' }}>
+                        ${fmtUsd(recibo.total_usd)}
+                      </div>
+                    </div>
+                    <div>
+                      <span style={{ color: '#82828e', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase' }}>
+                        Total Cuota (Bs)
+                      </span>
+                      <div style={{ color: '#38bdf8', fontSize: '16px', fontWeight: 800, marginTop: '2px' }}>
+                        Bs. {fmtBs(recibo.total_bs)}
+                      </div>
+                    </div>
+                    <div>
+                      <span style={{ color: '#82828e', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase' }}>
+                        Alícuota Aplicada
+                      </span>
+                      <div style={{ color: '#f97316', fontSize: '14px', fontWeight: 800, marginTop: '2px' }}>
+                        {formatAlicuotaPct(recibo.alicuota)}
+                      </div>
+                    </div>
+                    <div>
+                      <span style={{ color: '#82828e', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase' }}>
+                        Fondo Reserva
+                      </span>
+                      <div style={{ color: '#cbd5e1', fontSize: '14px', fontWeight: 700, marginTop: '2px' }}>
+                        {recibo.fondo_reserva_pct}%
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Mensaje descriptivo según estado */}
+                  <div style={{ marginBottom: '16px' }}>
+                    {estaPagado ? (
+                      <p style={{ margin: 0, fontSize: '12px', color: '#86efac', lineHeight: 1.4 }}>
+                        ✓ Pago conciliado por la administración. Tu recibo oficial con sello de solvencia está listo para descargar.
+                      </p>
+                    ) : enRevision ? (
+                      <p style={{ margin: 0, fontSize: '12px', color: '#fde047', lineHeight: 1.4 }}>
+                        ⏳ Tienes un pago reportado (Ref: <strong>{pagoEnRevision?.referencia}</strong>) en proceso de conciliación. Al ser aprobado por el administrador, se habilitará la constancia de pago con solvencia.
+                      </p>
+                    ) : (
+                      <p style={{ margin: 0, fontSize: '12px', color: '#cbd5e1', lineHeight: 1.4 }}>
+                        Tienes este recibo al cobro. Realiza tu pago mediante transferencia o pago móvil y repórtalo para mantener la solvencia de tu apartamento.
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Botones de Acción */}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                    {/* Botón Descargar PDF Oficial: es el mismo del admin */}
+                    <button
+                      onClick={() => handleDescargarPDF(recibo)}
+                      disabled={descargandoId === recibo.id}
                       style={{
-                        ...st.card,
-                        borderColor: isSelected ? '#3a3a3a' : '#2a2a2a',
+                        background: estaPagado
+                          ? 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)'
+                          : 'rgba(255, 255, 255, 0.08)',
+                        border: estaPagado ? 'none' : '1px solid rgba(255, 255, 255, 0.16)',
+                        color: '#fff',
+                        borderRadius: '10px',
+                        padding: '9px 16px',
+                        fontSize: '12px',
+                        fontWeight: 700,
+                        cursor: descargandoId === recibo.id ? 'wait' : 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        boxShadow: estaPagado ? '0 3px 12px rgba(34, 197, 94, 0.35)' : 'none'
                       }}
-                      className="card-interactive"
-                      onClick={() => setSelectedPago(isSelected ? null : pago)}
                     >
-                      <div style={st.row}>
-                        <div>
-                          <p style={{ color: '#fff', fontSize: '16px', fontWeight: 700 }}>
-                            Bs. {formatBs(pago.monto_bs)}
-                          </p>
-                          <p style={{ color: '#666', fontSize: '12px', marginTop: '4px' }}>
-                            {formatFecha(pago.created_at)} · {pago.banco_origen}
-                          </p>
+                      <span>📥</span>
+                      <span>
+                        {descargandoId === recibo.id
+                          ? 'Generando PDF...'
+                          : estaPagado
+                          ? 'Descargar Recibo Oficial (PDF)'
+                          : 'Descargar Aviso de Cobro (PDF)'}
+                      </span>
+                    </button>
+
+                    {/* Si está pendiente, botón para reportar pago */}
+                    {!estaPagado && !enRevision && (
+                      <button
+                        onClick={() => setReportarModalOpen(true)}
+                        style={{
+                          background: 'linear-gradient(135deg, #fb923c 0%, #ea580c 100%)',
+                          border: 'none',
+                          color: '#fff',
+                          borderRadius: '10px',
+                          padding: '9px 16px',
+                          fontSize: '12px',
+                          fontWeight: 800,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          boxShadow: '0 3px 12px rgba(234, 88, 12, 0.4)'
+                        }}
+                      >
+                        <span>💳</span>
+                        <span>Reportar Pago</span>
+                      </button>
+                    )}
+
+                    {/* Ver detalle y desglose de gastos */}
+                    <button
+                      onClick={() => setExpandedReciboId(isExpanded ? null : recibo.id)}
+                      style={{
+                        background: 'transparent',
+                        border: '1px solid rgba(255, 255, 255, 0.12)',
+                        color: '#94a3b8',
+                        borderRadius: '10px',
+                        padding: '9px 14px',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        marginLeft: 'auto'
+                      }}
+                    >
+                      {isExpanded ? 'Ocultar Desglose ▲' : 'Ver Desglose de Gastos ▼'}
+                    </button>
+                  </div>
+
+                  {/* Desglose Expandido (Gastos Comunes del Edificio) */}
+                  {isExpanded && (
+                    <div style={{
+                      marginTop: '16px',
+                      paddingTop: '16px',
+                      borderTop: '1px solid rgba(255, 255, 255, 0.08)'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                        <span style={{ color: '#f97316', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase' }}>
+                          Gastos Comunes del Edificio ({gastos.length})
+                        </span>
+                        <span style={{ color: '#64748b', fontSize: '11px' }}>
+                          Total Edificio: ${fmtUsd(recibo.total_gastos_usd)}
+                        </span>
+                      </div>
+
+                      {gastos.length === 0 ? (
+                        <p style={{ color: '#64748b', fontSize: '12px', margin: 0 }}>
+                          No hay gastos detallados registrados en este recibo.
+                        </p>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          {gastos.map((g, idx) => (
+                            <div
+                              key={idx}
+                              style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                padding: '6px 10px',
+                                background: idx % 2 === 0 ? 'rgba(255, 255, 255, 0.02)' : 'transparent',
+                                borderRadius: '6px',
+                                fontSize: '12px'
+                              }}
+                            >
+                              <span style={{ color: '#cbd5e1' }}>{g.descripcion}</span>
+                              <div style={{ display: 'flex', gap: '12px', textAlign: 'right' }}>
+                                <span style={{ color: '#38bdf8' }}>Bs. {fmtBs(g.monto_bs)}</span>
+                                <span style={{ color: '#fff', fontWeight: 700 }}>${fmtUsd(g.monto_usd)}</span>
+                              </div>
+                            </div>
+                          ))}
                         </div>
-                        <div style={st.badge(cfg.color)}>
-                          {cfg.icon} {cfg.label}
+                      )}
+
+                      {cargos.length > 0 && (
+                        <div style={{ marginTop: '12px' }}>
+                          <span style={{ color: '#ef4444', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase' }}>
+                            Cargos Especiales de tu Apartamento
+                          </span>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '6px' }}>
+                            {cargos.map((c, idx) => (
+                              <div
+                                key={idx}
+                                style={{
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  alignItems: 'center',
+                                  padding: '6px 10px',
+                                  background: 'rgba(239, 68, 68, 0.05)',
+                                  borderRadius: '6px',
+                                  fontSize: '12px'
+                                }}
+                              >
+                                <span style={{ color: '#fca5a5' }}>{c.descripcion} ({c.tipo})</span>
+                                <span style={{ color: '#ef4444', fontWeight: 700 }}>${fmtUsd(c.monto_usd)}</span>
+                              </div>
+                            ))}
+                          </div>
                         </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )
+      ) : (
+        /* ── PESTAÑA 2: HISTORIAL DE PAGOS REPORTADOS ──────────────────────── */
+        pagos.length === 0 ? (
+          <div style={{
+            background: 'rgba(255, 255, 255, 0.02)',
+            border: '1px solid rgba(255, 255, 255, 0.06)',
+            borderRadius: '16px',
+            padding: '48px 24px',
+            textAlign: 'center'
+          }}>
+            <span style={{ fontSize: '42px', display: 'block', marginBottom: '14px' }}>💳</span>
+            <h3 style={{ color: '#fff', fontSize: '16px', fontWeight: 700, margin: '0 0 6px' }}>
+              No has reportado pagos aún
+            </h3>
+            <p style={{ color: '#94a3b8', fontSize: '13px', margin: '0 0 18px', maxWidth: '380px', marginInline: 'auto' }}>
+              Cuando realices tu transferencia o pago móvil, repórtalo aquí para que la administración lo valide.
+            </p>
+            <button
+              onClick={() => setReportarModalOpen(true)}
+              style={{
+                background: 'linear-gradient(135deg, #fb923c 0%, #ea580c 100%)',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '10px',
+                padding: '10px 20px',
+                fontSize: '13px',
+                fontWeight: 800,
+                cursor: 'pointer'
+              }}
+            >
+              Reportar Mi Primer Pago
+            </button>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {pagos.map((pago) => {
+              const isSelected = selectedPago?.id === pago.id
+
+              const estadoColor = pago.estado === 'aprobado'
+                ? '#22c55e'
+                : pago.estado === 'rechazado'
+                ? '#ef4444'
+                : '#f59e0b'
+
+              const estadoLabel = pago.estado === 'aprobado'
+                ? '✅ Aprobado'
+                : pago.estado === 'rechazado'
+                ? '❌ Rechazado'
+                : '⏳ En Revisión'
+
+              return (
+                <div
+                  key={pago.id}
+                  style={{
+                    background: 'linear-gradient(180deg, #131720 0%, #0c0f15 100%)',
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                    borderRadius: '14px',
+                    padding: '16px 18px',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s'
+                  }}
+                  onClick={() => setSelectedPago(isSelected ? null : pago)}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <div style={{ color: '#fff', fontSize: '16px', fontWeight: 800 }}>
+                        Bs. {fmtBs(pago.monto_bs)}
+                        {pago.monto_usd ? (
+                          <span style={{ color: '#94a3b8', fontSize: '13px', fontWeight: 600, marginLeft: '6px' }}>
+                            (${fmtUsd(pago.monto_usd)} USD)
+                          </span>
+                        ) : null}
+                      </div>
+                      <div style={{ color: '#64748b', fontSize: '12px', marginTop: '3px' }}>
+                        {formatFecha(pago.fecha_pago || pago.created_at)} · {pago.banco_origen || 'Transferencia'} · Ref: {pago.referencia}
                       </div>
                     </div>
 
-                    {/* Detalle expandido */}
-                    {isSelected && (
-                      <div style={st.detail} className="animate-slide-up">
-                        <div style={st.detailRow}>
-                          <span style={{ color: '#888' }}>Referencia</span>
-                          <span style={{ color: '#fff', fontFamily: 'monospace', fontWeight: 600 }}>
-                            {pago.numero_referencia}
-                          </span>
-                        </div>
-                        <div style={st.detailRow}>
-                          <span style={{ color: '#888' }}>Banco</span>
-                          <span style={{ color: '#fff' }}>{pago.banco_origen}</span>
-                        </div>
-                        <div style={st.detailRow}>
-                          <span style={{ color: '#888' }}>Estado</span>
-                          <span style={{ color: cfg.color, fontWeight: 600 }}>{cfg.label}</span>
-                        </div>
-                        {pago.nota_admin && (
-                          <div style={{ ...st.detailRow, borderBottom: 'none', flexDirection: 'column', gap: '4px' }}>
-                            <span style={{ color: '#888' }}>Nota del administrador</span>
-                            <span style={{ color: '#fca5a5', fontSize: '12px' }}>{pago.nota_admin}</span>
-                          </div>
-                        )}
-                        {/* BOTÓN DESCARGAR PDF */}
-                        <button
-                          onClick={() => generarPDFRecibo(pago)}
-                          style={{
-                            marginTop: '16px',
-                            width: '100%',
-                            backgroundColor: '#2a2a2a',
-                            color: '#fff',
-                            border: '1px solid #333',
-                            borderRadius: '10px',
-                            padding: '12px',
-                            fontSize: '13px',
-                            fontWeight: 700,
-                            cursor: 'pointer',
-                            display: 'flex',
-                            justifyContent: 'center',
-                            alignItems: 'center',
-                            gap: '8px',
-                            transition: 'all 0.2s'
-                          }}
-                          onMouseOver={(e) => { e.currentTarget.style.backgroundColor = '#f97316'; e.currentTarget.style.borderColor = '#ea580c' }}
-                          onMouseOut={(e) => { e.currentTarget.style.backgroundColor = '#2a2a2a'; e.currentTarget.style.borderColor = '#333' }}
-                        >
-                          📄 Descargar Recibo Digital (PDF)
-                        </button>
-                      </div>
-                    )}
+                    <span style={{
+                      background: `${estadoColor}18`,
+                      color: estadoColor,
+                      border: `1px solid ${estadoColor}30`,
+                      padding: '4px 10px',
+                      borderRadius: '999px',
+                      fontSize: '11px',
+                      fontWeight: 800
+                    }}>
+                      {estadoLabel}
+                    </span>
                   </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
-      </div>
+
+                  {/* Detalle expandido del pago */}
+                  {isSelected && (
+                    <div style={{
+                      marginTop: '14px',
+                      paddingTop: '12px',
+                      borderTop: '1px solid rgba(255, 255, 255, 0.06)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '8px',
+                      fontSize: '12px'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: '#82828e' }}>Número de Referencia</span>
+                        <span style={{ color: '#fff', fontFamily: 'monospace', fontWeight: 700 }}>{pago.referencia}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: '#82828e' }}>Método de Pago</span>
+                        <span style={{ color: '#cbd5e1' }}>{pago.metodo_pago || 'Transferencia / Pago Móvil'}</span>
+                      </div>
+                      {pago.banco_destino && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ color: '#82828e' }}>Banco Destino (Condominio)</span>
+                          <span style={{ color: '#cbd5e1' }}>{pago.banco_destino}</span>
+                        </div>
+                      )}
+                      {pago.notas_admin && (
+                        <div style={{
+                          background: pago.estado === 'aprobado' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                          padding: '8px 12px',
+                          borderRadius: '8px',
+                          color: pago.estado === 'aprobado' ? '#86efac' : '#fca5a5'
+                        }}>
+                          <strong>Nota de administración:</strong> {pago.notas_admin}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )
+      )}
+
+      {/* ── MODAL REPORTAR PAGO ──────────────────────────────────────────── */}
+      {reportarModalOpen && (
+        <ReportarPagoModal
+          apartamentoId={apartamentoId}
+          onClose={() => setReportarModalOpen(false)}
+          onSuccess={() => {
+            setReportarModalOpen(false)
+            cargarDatos()
+          }}
+        />
+      )}
     </div>
   )
 }

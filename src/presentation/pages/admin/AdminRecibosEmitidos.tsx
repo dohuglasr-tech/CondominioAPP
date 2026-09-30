@@ -376,7 +376,8 @@ export const AdminRecibosEmitidos: React.FC = () => {
       r.fondo_reserva_pct || 10,
       mesLabel,
       anio,
-      r.data_json?.notas_residentes
+      r.data_json?.notas_residentes,
+      r.estado === 'pagado' ? { estado: 'pagado', monto_bs: r.total_bs, monto_usd: r.total_usd } : undefined
     )
 
     doc.save(`Recibo_Apto${r.apartamento?.numero}_${mesLabel}${anio}.pdf`)

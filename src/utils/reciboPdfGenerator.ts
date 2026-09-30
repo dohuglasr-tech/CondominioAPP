@@ -36,6 +36,16 @@ export interface ReciboConfigData {
   tasa_bcv_actual?: number
 }
 
+export interface ReciboPagoInfo {
+  estado: 'pendiente' | 'pagado'
+  fecha_pago?: string | null
+  banco?: string | null
+  referencia?: string | null
+  monto_bs?: number | null
+  monto_usd?: number | null
+  metodo_pago?: string | null
+}
+
 const TIPO_CARGO_LABELS: Record<string, string> = {
   multa: '⚠️ Multa',
   deuda_atrasada: '🔴 Deuda Atrasada',
@@ -64,6 +74,7 @@ export function generarPDFRecibo(
   mesLabel: string,
   anio: number,
   notasResidentes?: string,
+  pagoInfo?: ReciboPagoInfo,
 ): jsPDF {
   const doc = new jsPDF({ format: 'a4', unit: 'mm' })
   const cDark:   [number,number,number] = [15, 23, 42]     // Slate 900
@@ -111,6 +122,16 @@ export function generarPDFRecibo(
   doc.setFontSize(16)
   doc.setTextColor(255, 255, 255)
   doc.text('RECIBO DE CONDOMINIO', 18, 21)
+
+  // Sello opcional si está pagado y solvente
+  if (pagoInfo?.estado === 'pagado') {
+    doc.setFillColor(34, 197, 94)
+    doc.roundedRect(95, 12, 44, 7, 2, 2, 'F')
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(7.5)
+    doc.setTextColor(255, 255, 255)
+    doc.text('✓ PAGADO Y SOLVENTE', 117, 16.8, { align: 'center' })
+  }
 
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(7.5)
@@ -242,19 +263,33 @@ export function generarPDFRecibo(
     }
   })
 
-  // ── 6. BANNER DE ADVERTENCIA (Formato Imagen 2) ──
+  // ── 6. BANNER DE ADVERTENCIA O SOLVENCIA (Formato Imagen 2) ──
   let currentY = (doc as any).lastAutoTable.finalY + 2.5
-  doc.setFillColor(254, 243, 199)
-  doc.setDrawColor(245, 158, 11)
-  doc.setLineWidth(0.4)
-  doc.rect(12, currentY, 186, 7, 'FD')
-  doc.setTextColor(146, 64, 14)
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(7.5)
-  doc.text(
-    `***** ATENCIÓN: PAGAR  ${fmtUsd(totalUsd)}  $  ANCLADO AL $ BCV DEL DÍA DE SU PAGO *****`,
-    105, currentY + 4.7, { align: 'center' }
-  )
+  if (pagoInfo?.estado === 'pagado') {
+    doc.setFillColor(220, 252, 231)
+    doc.setDrawColor(34, 197, 94)
+    doc.setLineWidth(0.4)
+    doc.rect(12, currentY, 186, 7, 'FD')
+    doc.setTextColor(22, 101, 52)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(7.5)
+    doc.text(
+      `✓ RECIBO PAGADO Y VALIDADO POR LA ADMINISTRACIÓN — CONSTANCIA DE SOLVENCIA`,
+      105, currentY + 4.7, { align: 'center' }
+    )
+  } else {
+    doc.setFillColor(254, 243, 199)
+    doc.setDrawColor(245, 158, 11)
+    doc.setLineWidth(0.4)
+    doc.rect(12, currentY, 186, 7, 'FD')
+    doc.setTextColor(146, 64, 14)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(7.5)
+    doc.text(
+      `***** ATENCIÓN: PAGAR  ${fmtUsd(totalUsd)}  $  ANCLADO AL $ BCV DEL DÍA DE SU PAGO *****`,
+      105, currentY + 4.7, { align: 'center' }
+    )
+  }
 
   // ── 7. NOTAS PARA LOS RESIDENTES (Editable por el Admin) ──
   currentY += 9.5
@@ -292,24 +327,47 @@ export function generarPDFRecibo(
   doc.setTextColor(51, 65, 85)
   doc.text('TALÓN DE CONTROL DE PAGO (REGISTRO DEL RESIDENTE / ADMINISTRACIÓN)', 105, currentY + 3, { align: 'center' })
 
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(6.5)
-  doc.setTextColor(71, 85, 105)
+  if (pagoInfo?.estado === 'pagado') {
+    let sy = currentY + 7.5
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(6.5)
+    doc.setTextColor(22, 101, 52)
+    doc.text('PAGADO: SÍ (VALIDADO EN SISTEMA)', 16, sy)
+    doc.setTextColor(71, 85, 105)
+    doc.setFont('helvetica', 'normal')
+    const fStr = pagoInfo.fecha_pago ? new Date(pagoInfo.fecha_pago).toLocaleDateString('es-VE') : 'Validado'
+    doc.text(`FECHA: ${fStr}`, 110, sy)
+    
+    sy += 4.2
+    doc.text(`BANCO: ${pagoInfo.banco || config.banco || 'Bicentenario / Transferencia'}`, 16, sy)
 
-  let sy = currentY + 7.5
-  doc.text('PAGADO: ___________________________', 16, sy)
-  doc.text('FECHA: ____________________________', 110, sy)
-  
-  sy += 4.2
-  doc.text('BANCO: __________________________________________________________________________', 16, sy)
+    sy += 4.2
+    doc.text(`MONTO: ${fmtBs(pagoInfo.monto_bs || totalBs)} Bs  ($ ${fmtUsd(pagoInfo.monto_usd || totalUsd)})`, 16, sy)
+    doc.text(`DÓLAR DEL DÍA: ${config.tasa_bcv_actual ? `${config.tasa_bcv_actual.toFixed(2)} Bs/$` : 'Tasa BCV'}`, 110, sy)
 
-  sy += 4.2
-  doc.text('MONTO: ____________________________', 16, sy)
-  doc.text('DÓLAR DEL DÍA: _____________________', 110, sy)
+    sy += 4.2
+    doc.text(`REFERENCIA: ${pagoInfo.referencia || 'VALIDADO'}`, 16, sy)
+    doc.text(`CTA: ${config.cuenta_bancaria || '0175-0525-4100-7575-1351'}`, 110, sy)
+  } else {
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(6.5)
+    doc.setTextColor(71, 85, 105)
 
-  sy += 4.2
-  doc.text('REFERENCIA: ________________________', 16, sy)
-  doc.text('CTA: ______________________________', 110, sy)
+    let sy = currentY + 7.5
+    doc.text('PAGADO: ___________________________', 16, sy)
+    doc.text('FECHA: ____________________________', 110, sy)
+    
+    sy += 4.2
+    doc.text('BANCO: __________________________________________________________________________', 16, sy)
+
+    sy += 4.2
+    doc.text('MONTO: ____________________________', 16, sy)
+    doc.text('DÓLAR DEL DÍA: _____________________', 110, sy)
+
+    sy += 4.2
+    doc.text('REFERENCIA: ________________________', 16, sy)
+    doc.text('CTA: ______________________________', 110, sy)
+  }
 
   // ── 9. FOOTER ──
   doc.setFontSize(6)
