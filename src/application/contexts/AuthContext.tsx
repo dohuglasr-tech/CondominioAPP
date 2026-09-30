@@ -43,7 +43,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   // ── Cargar perfil del usuario ─────────────────────────────────
-  const cargarPerfil = useCallback(async (userId: string) => {
+  const cargarPerfil = useCallback(async (userId: string, userEmail?: string) => {
     try {
       const { data, error } = await supabase
         .from('perfiles')
@@ -66,10 +66,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       if (data) {
         setPerfil(data)
-        // Registrar último acceso de forma asíncrona no bloqueante
+        // Registrar último acceso y sincronizar email oficial con el que se registró el propietario
+        const updatePayload: Record<string, any> = { ultimo_acceso: new Date().toISOString() }
+        if (userEmail && (!data.propietario_email || data.propietario_email !== userEmail) && data.condicion_habitacional !== 'alquilado') {
+          updatePayload.propietario_email = userEmail
+          data.propietario_email = userEmail
+        }
+
         supabase
           .from('perfiles')
-          .update({ ultimo_acceso: new Date().toISOString() })
+          .update(updatePayload)
           .eq('id', userId)
           .then(() => {}, () => {})
       }
@@ -79,7 +85,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const refreshPerfil = useCallback(async () => {
-    if (user) await cargarPerfil(user.id)
+    if (user) await cargarPerfil(user.id, user.email)
   }, [user, cargarPerfil])
 
   const refreshConfig = useCallback(async () => {
@@ -94,7 +100,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSession(session)
       setUser(session?.user ?? null)
       if (session?.user) {
-        cargarPerfil(session.user.id).finally(() => setLoading(false))
+        cargarPerfil(session.user.id, session.user.email).finally(() => setLoading(false))
       } else {
         setLoading(false)
       }
@@ -105,7 +111,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setSession(newSession)
         setUser(newSession?.user ?? null)
         if (newSession?.user) {
-          await cargarPerfil(newSession.user.id)
+          await cargarPerfil(newSession.user.id, newSession.user.email)
         } else {
           setPerfil(null)
         }

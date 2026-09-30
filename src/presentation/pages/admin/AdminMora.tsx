@@ -334,7 +334,12 @@ export const AdminMora: React.FC = () => {
 
   const handleEnviarEmailMora = async (d: DeudaMoraItem, forzar: boolean = false) => {
     const aptoInfo = apartamentos.find(a => a.id === d.apartamento_id || a.numero === d.apartamento_numero)
-    const emailDestino = aptoInfo?.propietario_email || (d as any).email || `apto${d.apartamento_numero}@${config?.dominio_email || 'edificio.com'}`
+    const emailDestino = d.propietario_email || aptoInfo?.propietario_email
+
+    if (!emailDestino || !emailDestino.includes('@')) {
+      showToast(`⚠️ El Apto. ${d.apartamento_numero} aún no tiene un correo de propietario registrado.`)
+      return
+    }
 
     setEnviandoEmailAptoId(d.id)
     try {
@@ -360,7 +365,7 @@ export const AdminMora: React.FC = () => {
       if (res.omitidoPorFrecuencia) {
         showToast(`ℹ️ Apto. ${d.apartamento_numero}: Ya recibió recordatorio hace menos de 3 días.`)
       } else if (res.ok) {
-        showToast(`✅ Recordatorio enviado por correo a Apto. ${d.apartamento_numero} (${emailDestino})`)
+        showToast(`✅ Recordatorio enviado al correo del propietario (${emailDestino})`)
       } else {
         showToast(`⚠️ No se pudo enviar el correo: ${res.error}`)
       }
@@ -387,7 +392,11 @@ export const AdminMora: React.FC = () => {
     try {
       for (const d of elegiblesRecordatorio) {
         const aptoInfo = apartamentos.find(a => a.id === d.apartamento_id || a.numero === d.apartamento_numero)
-        const emailDestino = aptoInfo?.propietario_email || (d as any).email || `apto${d.apartamento_numero}@${config?.dominio_email || 'edificio.com'}`
+        const emailDestino = d.propietario_email || aptoInfo?.propietario_email
+
+        if (!emailDestino || !emailDestino.includes('@')) {
+          continue // Solo se envía a propietarios con correo registrado
+        }
 
         const res = await despacharEmailRecordatorioMora({
           destinatarioEmail: emailDestino,

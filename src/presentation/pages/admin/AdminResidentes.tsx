@@ -278,6 +278,7 @@ export const AdminResidentes: React.FC = () => {
         } else {
           payloadPerfil.nombre_completo = form.propietario.nombre
           payloadPerfil.telefono = form.propietario.telefono
+          payloadPerfil.propietario_email = form.propietario.email
         }
 
         const { error: perfErr } = await supabase

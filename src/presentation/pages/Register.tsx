@@ -250,6 +250,12 @@ export function Register() {
           if (form.propietario_email.trim()) {
             payload.propietario_email = form.propietario_email.trim()
           }
+        } else {
+          // Si es propietario ('propio'), el correo con el que se registra ES el email del propietario
+          payload.propietario_nombre = form.nombre_completo.trim()
+          payload.propietario_cedula = form.cedula.trim()
+          payload.propietario_telefono = form.telefono.trim()
+          payload.propietario_email = form.email.trim()
         }
 
         const { error: upsertErr } = await supabase

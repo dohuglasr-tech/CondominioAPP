@@ -455,7 +455,12 @@ export const AdminRecibosEmitidos: React.FC = () => {
     const mesIndex = (parseInt(mesNumStr) || 1) - 1
     const mesLabel = MESES[mesIndex] || 'Mes'
     const aptoNum = r.apartamento?.numero || 'S/N'
-    const emailDestino = r.apartamento?.propietario_email || `apto${aptoNum}@${config?.dominio_email || 'edificio.com'}`
+    const emailDestino = r.apartamento?.propietario_email
+
+    if (!emailDestino || !emailDestino.includes('@')) {
+      showToast(`⚠️ El Apto. ${aptoNum} aún no tiene un correo de propietario registrado en su cuenta.`)
+      return
+    }
 
     setEnviandoEmailId(r.id)
     try {
@@ -471,7 +476,7 @@ export const AdminRecibosEmitidos: React.FC = () => {
           montoBs: r.total_bs
         })
         if (res.ok) {
-          showToast(`✅ Correo de solvencia enviado a ${emailDestino}`)
+          showToast(`✅ Constancia de solvencia enviada al correo del propietario (${emailDestino})`)
         } else {
           showToast(`⚠️ No se pudo enviar el correo: ${res.error || 'Error desconocido'}`)
         }
@@ -493,7 +498,7 @@ export const AdminRecibosEmitidos: React.FC = () => {
           cedulaRif: config?.rif
         })
         if (res.ok) {
-          showToast(`✅ Aviso de cobro enviado por correo a ${emailDestino}`)
+          showToast(`✅ Aviso de cobro enviado al correo del propietario (${emailDestino})`)
         } else {
           showToast(`⚠️ No se pudo enviar el correo: ${res.error || 'Error desconocido'}`)
         }

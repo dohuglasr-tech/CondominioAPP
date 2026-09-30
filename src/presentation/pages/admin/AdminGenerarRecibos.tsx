@@ -255,26 +255,27 @@ export const AdminGenerarRecibos: React.FC = () => {
           link: '/recibos',
         })
 
-        // Notificación por Correo Electrónico
-        const calc = calcularApto(apto)
-        const emailDestino = apto.propietario_email || `apto${apto.numero}@${config?.dominio_email || 'edificio.com'}`
-
-        await despacharEmailRecibo({
-          destinatarioEmail: emailDestino,
-          apartamentoNumero: apto.numero,
-          propietarioNombre: apto.propietario_nombre,
-          edificioNombre: config?.nombre_edificio,
-          mesLabel,
-          anio,
-          totalUsd: calc.totalUsd,
-          totalBs: calc.totalBs,
-          tasaBcv: config?.tasa_bcv_actual || 1,
-          alicuotaPct: formatAlicuotaPct(apto.alicuota),
-          bancoNombre: config?.banco,
-          cuentaNumero: config?.cuenta_bancaria,
-          titularNombre: config?.titular_cuenta,
-          cedulaRif: config?.rif
-        }).catch(err => console.warn('[AdminGenerarRecibos] Error despachando email recibo:', err))
+        // Notificación por Correo Electrónico (al correo con el que se registró el propietario)
+        const emailDestino = apto.propietario_email
+        if (emailDestino && emailDestino.includes('@')) {
+          const calc = calcularApto(apto)
+          await despacharEmailRecibo({
+            destinatarioEmail: emailDestino,
+            apartamentoNumero: apto.numero,
+            propietarioNombre: apto.propietario_nombre,
+            edificioNombre: config?.nombre_edificio,
+            mesLabel,
+            anio,
+            totalUsd: calc.totalUsd,
+            totalBs: calc.totalBs,
+            tasaBcv: config?.tasa_bcv_actual || 1,
+            alicuotaPct: formatAlicuotaPct(apto.alicuota),
+            bancoNombre: config?.banco,
+            cuentaNumero: config?.cuenta_bancaria,
+            titularNombre: config?.titular_cuenta,
+            cedulaRif: config?.rif
+          }).catch(err => console.warn('[AdminGenerarRecibos] Error despachando email recibo:', err))
+        }
       })
       await Promise.allSettled(notifPromises)
     }

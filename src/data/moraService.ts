@@ -20,6 +20,7 @@ export interface DeudaMoraItem {
   propietario_nombre?: string
   propietario_cedula?: string
   propietario_telefono?: string
+  propietario_email?: string
   meses_deuda: number
   monto_usd: number
   monto_bs: number

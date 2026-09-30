@@ -215,19 +215,21 @@ export const AdminRecibos: React.FC = () => {
             ])
 
             const aptoNum = aptoRes.data?.numero || selected?.apartamento?.numero || 'S/N'
-            const emailDestino = perfilRes.data?.propietario_email || (selected as any)?.email || `apto${aptoNum}@${config?.dominio_email || 'edificio.com'}`
+            const emailDestino = perfilRes.data?.propietario_email
 
-            await despacharEmailPagoAprobado({
-              destinatarioEmail: emailDestino,
-              apartamentoNumero: aptoNum,
-              propietarioNombre: perfilRes.data?.nombre_completo || selected?.residente_nombre,
-              edificioNombre: config?.nombre_edificio,
-              montoUsd: pagoDb.monto_usd || selected?.monto_usd || 0,
-              montoBs: pagoDb.monto_bs || selected?.monto_bs || 0,
-              referencia: pagoDb.referencia || selected?.numero_referencia,
-              fechaPago: pagoDb.fecha_pago || selected?.fecha_pago,
-              bancoOrigen: pagoDb.banco_origen || selected?.banco_origen
-            })
+            if (emailDestino && emailDestino.includes('@')) {
+              await despacharEmailPagoAprobado({
+                destinatarioEmail: emailDestino,
+                apartamentoNumero: aptoNum,
+                propietarioNombre: perfilRes.data?.nombre_completo || selected?.residente_nombre,
+                edificioNombre: config?.nombre_edificio,
+                montoUsd: pagoDb.monto_usd || selected?.monto_usd || 0,
+                montoBs: pagoDb.monto_bs || selected?.monto_bs || 0,
+                referencia: pagoDb.referencia || selected?.numero_referencia,
+                fechaPago: pagoDb.fecha_pago || selected?.fecha_pago,
+                bancoOrigen: pagoDb.banco_origen || selected?.banco_origen
+              })
+            }
           } catch (emailErr) {
             console.warn('[AdminRecibos] Error despachando email automático:', emailErr)
           }
