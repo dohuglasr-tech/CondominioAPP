@@ -12,6 +12,28 @@ import {
   BiometricSupport,
 } from '../../utils/biometricAuth'
 
+const FingerprintIcon = ({ size = 20, color = '#f97316' }: { size?: number; color?: string }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke={color}
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    style={{ flexShrink: 0 }}
+  >
+    <path d="M12 10a2 2 0 0 0-2 2c0 1.02-.1 2.51-.26 4" />
+    <path d="M14 13.12c0 2.38 0 6.38-1 8.88" />
+    <path d="M17.29 21.02c.12-.6.43-2.3.5-3.02" />
+    <path d="M2 12a10 10 0 0 1 18-6" />
+    <path d="M2 16h.01" />
+    <path d="M21.8 16c.2-2 .131-5.354 0-6" />
+    <path d="M9 6.8a6 6 0 0 1 9 5.2c0 .47 0 1.17-.02 2" />
+  </svg>
+)
+
 export function Login() {
   const navigate = useNavigate()
   const location = useLocation()
@@ -264,97 +286,7 @@ export function Login() {
                 </div>
               )}
 
-              {/* ── BOTÓN Y TARJETA DE ACCESO RÁPIDO CON FACE ID / HUELLA ── */}
-              {isBioEnrolled && (
-                <div style={{
-                  marginBottom: '22px',
-                  padding: '16px',
-                  backgroundColor: 'rgba(249, 115, 22, 0.08)',
-                  border: '1.5px solid rgba(249, 115, 22, 0.35)',
-                  borderRadius: '12px',
-                  textAlign: 'center',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '6px' }}>
-                    <span style={{ fontSize: '22px' }}>
-                      {bioSupport.type === 'face' ? '🪪' : '👆'}
-                    </span>
-                    <span style={{ fontSize: '15px', fontWeight: 800, color: '#f97316' }}>
-                      Acceso rápido con {bioSupport.label}
-                    </span>
-                  </div>
 
-                  <p style={{ fontSize: '12px', color: '#94a3b8', margin: '0 0 12px', lineHeight: 1.3 }}>
-                    {bioEnrolledEmail ? `Cuenta vinculada: ${bioEnrolledEmail}` : 'Inicia sesión al instante sin escribir tu contraseña'}
-                  </p>
-
-                  <button
-                    type="button"
-                    onClick={handleBiometricLogin}
-                    disabled={bioLoading || loading}
-                    style={{
-                      width: '100%',
-                      backgroundColor: '#f97316',
-                      color: '#ffffff',
-                      border: 'none',
-                      borderRadius: '9px',
-                      padding: '12px 16px',
-                      fontSize: '14px',
-                      fontWeight: 800,
-                      cursor: bioLoading || loading ? 'not-allowed' : 'pointer',
-                      boxShadow: '0 4px 14px rgba(249, 115, 22, 0.35)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '8px',
-                      transition: 'all 0.2s',
-                    }}
-                    onMouseOver={(e) => {
-                      if (!bioLoading && !loading) e.currentTarget.style.backgroundColor = '#ea580c'
-                    }}
-                    onMouseOut={(e) => {
-                      if (!bioLoading && !loading) e.currentTarget.style.backgroundColor = '#f97316'
-                    }}
-                  >
-                    {bioLoading ? (
-                      <>
-                        <span className="spinner spinner--sm"></span>
-                        <span>Verificando {bioSupport.label}...</span>
-                      </>
-                    ) : (
-                      <>
-                        <span>{bioSupport.type === 'face' ? '🪪' : '👆'}</span>
-                        <span>Iniciar con {bioSupport.label}</span>
-                      </>
-                    )}
-                  </button>
-
-                  <div style={{ marginTop: '10px' }}>
-                    <span
-                      onClick={handleUnlinkBiometrics}
-                      style={{
-                        fontSize: '11.5px',
-                        color: '#64748b',
-                        cursor: 'pointer',
-                        textDecoration: 'underline',
-                        transition: 'color 0.2s'
-                      }}
-                      onMouseOver={(e) => (e.target as HTMLElement).style.color = '#ef4444'}
-                      onMouseOut={(e) => (e.target as HTMLElement).style.color = '#64748b'}
-                    >
-                      Desvincular {bioSupport.label} de este dispositivo
-                    </span>
-                  </div>
-
-                  {/* Separador */}
-                  <div style={{ display: 'flex', alignItems: 'center', margin: '18px 0 4px', gap: '10px' }}>
-                    <div style={{ flex: 1, height: '1px', backgroundColor: '#1e2638' }} />
-                    <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                      O escribe tu contraseña
-                    </span>
-                    <div style={{ flex: 1, height: '1px', backgroundColor: '#1e2638' }} />
-                  </div>
-                </div>
-              )}
 
               {/* Campo Email */}
               <div style={{ marginBottom: '16px' }}>
@@ -503,9 +435,9 @@ export function Login() {
                       onChange={(e) => setEnableBiometricOnLogin(e.target.checked)}
                       style={{ accentColor: '#f97316', cursor: 'pointer', width: '15px', height: '15px' }}
                     />
-                    <label htmlFor="enableBio" style={{ fontSize: '12.5px', color: '#f97316', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span>{bioSupport.type === 'face' ? '🪪' : '👆'}</span>
-                      <span>Activar acceso rápido con {bioSupport.label} al entrar</span>
+                    <label htmlFor="enableBio" style={{ fontSize: '12px', color: '#94a3b8', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <FingerprintIcon size={14} color="#f97316" />
+                      <span>Autorizar acceso rápido con huella dactilar / Face ID</span>
                     </label>
                   </div>
                 )}
@@ -541,6 +473,77 @@ export function Login() {
               >
                 {loading ? <span className="spinner spinner--sm"></span> : 'Iniciar Sesión'}
               </button>
+
+              {/* ── BOTÓN MINIMALISTA DE ACCESO CON HUELLA DACTILAR (SOLO SI EL USUARIO YA AUTORIZÓ) ── */}
+              {isBioEnrolled && (
+                <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', width: '100%', marginBottom: '14px', gap: '10px' }}>
+                    <div style={{ flex: 1, height: '1px', backgroundColor: '#1e2638' }} />
+                    <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.6px', fontWeight: 600 }}>
+                      o ingresa con
+                    </span>
+                    <div style={{ flex: 1, height: '1px', backgroundColor: '#1e2638' }} />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleBiometricLogin}
+                    disabled={bioLoading || loading}
+                    title="Ingresar con Huella dactilar o Face ID"
+                    style={{
+                      width: '100%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '10px',
+                      padding: '11px 16px',
+                      backgroundColor: '#0a0d14',
+                      border: '1px solid #232d42',
+                      borderRadius: '10px',
+                      color: '#f97316',
+                      fontSize: '13.5px',
+                      fontWeight: 700,
+                      cursor: bioLoading || loading ? 'not-allowed' : 'pointer',
+                      transition: 'all 0.2s ease',
+                      boxSizing: 'border-box',
+                    }}
+                    onMouseOver={(e) => {
+                      if (!bioLoading && !loading) {
+                        e.currentTarget.style.borderColor = '#f97316'
+                        e.currentTarget.style.backgroundColor = 'rgba(249, 115, 22, 0.08)'
+                      }
+                    }}
+                    onMouseOut={(e) => {
+                      if (!bioLoading && !loading) {
+                        e.currentTarget.style.borderColor = '#232d42'
+                        e.currentTarget.style.backgroundColor = '#0a0d14'
+                      }
+                    }}
+                  >
+                    <FingerprintIcon size={20} color="#f97316" />
+                    <span>{bioLoading ? 'Verificando huella...' : 'Acceso con Huella / Face ID'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleUnlinkBiometrics}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#475569',
+                      fontSize: '11px',
+                      marginTop: '8px',
+                      cursor: 'pointer',
+                      padding: '2px 6px',
+                      transition: 'color 0.2s',
+                    }}
+                    onMouseOver={(e) => (e.target as HTMLElement).style.color = '#ef4444'}
+                    onMouseOut={(e) => (e.target as HTMLElement).style.color = '#475569'}
+                  >
+                    Desvincular huella de este equipo
+                  </button>
+                </div>
+              )}
             </form>
 
             {/* Descarga App Android (APK) */}
