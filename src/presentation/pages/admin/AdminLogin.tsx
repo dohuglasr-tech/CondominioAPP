@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../../../data/supabase'
 import { useAuth } from '../../../application/contexts/AuthContext'
 import { applyTheme } from '../../../utils/themeManager'
 
 export const AdminLogin: React.FC = () => {
   const navigate = useNavigate()
+  const location = useLocation()
   const { config } = useAuth()
 
   const [email, setEmail] = useState('')
@@ -14,6 +15,8 @@ export const AdminLogin: React.FC = () => {
   const [rememberMe, setRememberMe] = useState(true)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+
+  const sesionExpiradaInactividad = new URLSearchParams(location.search).get('inactivo') === '1'
 
   const nombreEdificio = config?.nombre_edificio || 'Domus Condominio'
   const logoUrl = config?.logo_url || null
@@ -308,6 +311,29 @@ export const AdminLogin: React.FC = () => {
                 Recordar en este equipo
               </label>
             </div>
+
+            {/* Aviso de Inactividad */}
+            {sesionExpiradaInactividad && !error && (
+              <div style={{
+                backgroundColor: 'rgba(249, 115, 22, 0.12)',
+                border: '1px solid rgba(249, 115, 22, 0.35)',
+                color: '#fed7aa',
+                padding: '11px 14px',
+                borderRadius: '10px',
+                fontSize: '13px',
+                marginBottom: '18px',
+                lineHeight: 1.4,
+                textAlign: 'center',
+                fontWeight: 500,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px'
+              }}>
+                <span>⏱️</span>
+                <span>Tu sesión se cerró automáticamente por 3 minutos de inactividad por tu seguridad.</span>
+              </div>
+            )}
 
             {/* Alerta de Error */}
             {error && (

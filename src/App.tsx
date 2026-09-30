@@ -35,6 +35,7 @@ import { AdminHistorial } from './presentation/pages/admin/AdminHistorial'
 import { ListaMoraResidente } from './presentation/pages/ListaMoraResidente'
 import { JuntaCondominioResidente } from './presentation/pages/JuntaCondominioResidente'
 import { Register } from './presentation/pages/Register'
+import { InactivityManager } from './presentation/components/InactivityManager'
 
 // ── Error Boundary para prevenir pantalla en negro ante errores imprevistos ──
 interface ErrorBoundaryState {
@@ -255,6 +256,7 @@ function AppShell() {
 
   return (
     <>
+      <InactivityManager />
       {!splashDone && (
         <SplashScreen
           logoUrl={config?.logo_url}

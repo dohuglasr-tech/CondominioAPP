@@ -39,6 +39,24 @@ const CATEGORIAS = [
   'administracion','conserjeria','servicios_externos','reparaciones',
 ]
 const TIPOS = ['ordinario','extraordinario','fondo_reserva']
+
+export const CATEGORIA_INFO: Record<string, { label: string; icon: string; color: string }> = {
+  agua: { label: 'Agua', icon: '💧', color: '#38bdf8' },
+  luz: { label: 'Luz / Electricidad', icon: '⚡', color: '#facc15' },
+  gas: { label: 'Gas', icon: '🔥', color: '#f97316' },
+  espacios_comunes: { label: 'Áreas Comunes', icon: '🌳', color: '#4ade80' },
+  imprevistos: { label: 'Imprevistos', icon: '🚨', color: '#f87171' },
+  administracion: { label: 'Administración', icon: '🏢', color: '#a78bfa' },
+  conserjeria: { label: 'Conserjería', icon: '🧹', color: '#fb923c' },
+  servicios_externos: { label: 'Serv. Externos', icon: '🛠️', color: '#94a3b8' },
+  reparaciones: { label: 'Reparaciones', icon: '🔧', color: '#fbbf24' },
+}
+
+export const TIPO_INFO: Record<string, { label: string; color: string }> = {
+  ordinario: { label: 'Ordinario', color: '#4ade80' },
+  extraordinario: { label: 'Extraordinario', color: '#c084fc' },
+  fondo_reserva: { label: 'Fondo Reserva', color: '#facc15' },
+}
 const MESES = [
   'Enero','Febrero','Marzo','Abril','Mayo','Junio',
   'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre',
@@ -351,41 +369,239 @@ export const AdminGastos: React.FC = () => {
 
   // ─── RENDER ────────────────────────────────────────────────────────────
   return (
-    <div style={{ padding: '32px' }}>
+    <div className="admin-gastos-page">
+      <style>{`
+        .admin-gastos-page {
+          padding: 32px;
+          box-sizing: border-box;
+          max-width: 1200px;
+          margin: 0 auto;
+        }
+        .gastos-header-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          margin-bottom: 24px;
+          gap: 14px;
+          flex-wrap: wrap;
+        }
+        .gastos-summary-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+          gap: 12px;
+          margin-bottom: 20px;
+        }
+        .gastos-filter-bar {
+          display: flex;
+          gap: 8px;
+          align-items: center;
+          flex-wrap: wrap;
+        }
+        .gasto-card-main {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+        .gasto-amounts-pill {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          background-color: #0b0e14;
+          border: 1px solid #1a2333;
+          border-radius: 12px;
+          padding: 12px 14px;
+          flex-wrap: wrap;
+          gap: 10px;
+        }
+        .gasto-actions-footer {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          flex-wrap: wrap;
+          margin-top: 4px;
+        }
+        .form-grid-2 {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 12px;
+          margin-bottom: 12px;
+        }
+        @media (max-width: 640px) {
+          .admin-gastos-page {
+            padding: 16px 12px !important;
+          }
+          .gastos-header-row {
+            flex-direction: column;
+            gap: 12px;
+          }
+          .gastos-header-btn {
+            width: 100% !important;
+            justify-content: center;
+            padding: 12px !important;
+          }
+          .gastos-summary-grid {
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+          }
+          .gastos-filter-bar {
+            width: 100%;
+          }
+          .gastos-filter-bar input[type="month"] {
+            flex: 1;
+          }
+          .gasto-amounts-pill {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 10px;
+          }
+          .gasto-actions-footer {
+            display: grid;
+            grid-template-columns: 1fr 1fr auto;
+            gap: 8px;
+            width: 100%;
+          }
+          .gasto-actions-footer button {
+            justify-content: center;
+            text-align: center;
+            padding: 10px 8px !important;
+          }
+          .form-grid-2 {
+            grid-template-columns: 1fr !important;
+          }
+        }
+        @media (max-width: 480px) {
+          .gastos-summary-grid {
+            grid-template-columns: 1fr;
+          }
+        }
+      `}</style>
 
       {/* Header */}
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:'24px', flexWrap:'wrap', gap:'12px' }}>
+      <div className="gastos-header-row">
         <div>
-          <h1 style={{ color:'#fff', fontSize:'24px', fontWeight:800, margin:0 }}>💸 Gestión de Gastos</h1>
-          <p style={{ color:'#666', fontSize:'14px', marginTop:'4px' }}>
-            Registra los egresos del mes con su monto en $ y Bs. — se usan para calcular los recibos
+          <h1 style={{ color:'#fff', fontSize:'22px', fontWeight:800, margin:0, letterSpacing: '-0.3px' }}>💸 Gestión de Gastos</h1>
+          <p style={{ color:'#888', fontSize:'13px', marginTop:'4px', marginBottom: 0 }}>
+            Registra y supervisa los egresos del condominio en divisas y bolívares.
           </p>
         </div>
-        <button onClick={() => { setShowForm(!showForm); setForm(EMPTY_FORM) }}
-          style={{ backgroundColor: showForm ? '#2a2a2a' : '#f97316', color:'#fff', border:'none', padding:'10px 20px', borderRadius:'10px', cursor:'pointer', fontWeight:700, fontSize:'14px' }}>
+        <button
+          className="gastos-header-btn"
+          onClick={() => { setShowForm(!showForm); setForm(EMPTY_FORM) }}
+          style={{
+            backgroundColor: showForm ? '#2a2a2a' : 'var(--color-accent, #f97316)',
+            color:'#fff',
+            border:'none',
+            padding:'11px 22px',
+            borderRadius:'10px',
+            cursor:'pointer',
+            fontWeight:700,
+            fontSize:'14px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            boxShadow: showForm ? 'none' : '0 4px 14px var(--color-brand-shadow, rgba(249,115,22,0.35))'
+          }}
+        >
           {showForm ? '✕ Cancelar' : '+ Nuevo Gasto'}
         </button>
       </div>
 
-      {/* Barra totales + filtro */}
-      <div style={{ display:'flex', gap:'12px', marginBottom:'20px', flexWrap:'wrap', alignItems:'center' }}>
-        <div style={{ display:'flex', gap:'20px', flex:1, ...cardS, flexWrap:'wrap', alignItems:'center' }}>
-          <div style={{ display:'flex', gap:'8px', alignItems:'center' }}>
-            <span style={{ color:'#555', fontSize:'12px', fontWeight:600 }}>TOTAL MES (USD):</span>
-            <span style={{ color:'#f97316', fontWeight:800, fontSize:'18px' }}>$ {fmtUsd(totalUsd)}</span>
+      {/* Tarjetas KPI de Totales */}
+      <div className="gastos-summary-grid">
+        <div style={{ ...cardS, padding: '16px 18px', display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <div style={{
+            width: '42px',
+            height: '42px',
+            borderRadius: '12px',
+            backgroundColor: 'rgba(249, 115, 22, 0.12)',
+            border: '1px solid rgba(249, 115, 22, 0.25)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '20px',
+            flexShrink: 0
+          }}>
+            💵
           </div>
-          <div style={{ width:'1px', backgroundColor:'#2a2a2a', height:'28px', flexShrink:0 }} />
-          <div style={{ display:'flex', gap:'8px', alignItems:'center' }}>
-            <span style={{ color:'#555', fontSize:'12px', fontWeight:600 }}>TOTAL MES (Bs):</span>
-            <span style={{ color:'#10b981', fontWeight:800, fontSize:'18px' }}>Bs. {fmtBs(totalBs)}</span>
+          <div>
+            <span style={{ color: '#888', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block' }}>
+              Total Mes (USD)
+            </span>
+            <span style={{ color: 'var(--color-accent, #f97316)', fontWeight: 800, fontSize: '19px' }}>
+              $ {fmtUsd(totalUsd)}
+            </span>
           </div>
-          <span style={{ color:'#3a3a3a', fontSize:'12px', marginLeft:'auto' }}>{gastos.length} gasto{gastos.length !== 1 ? 's' : ''}</span>
         </div>
-        <div style={{ display:'flex', gap:'8px' }}>
-          <input type="month" value={filtroMes} onChange={e => setFiltroMes(e.target.value)}
-            style={{ backgroundColor:'#141414', border:'1px solid #2a2a2a', color:'#fff', padding:'10px 12px', borderRadius:'10px', fontSize:'13px', outline:'none' }} />
-          <button onClick={() => cargarGastos(true)}
-            style={{ backgroundColor:'#1e1e1e', color:'#ccc', border:'1px solid #2a2a2a', padding:'10px 14px', borderRadius:'10px', cursor:'pointer', fontSize:'13px', fontWeight:600 }}>
+
+        <div style={{ ...cardS, padding: '16px 18px', display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <div style={{
+            width: '42px',
+            height: '42px',
+            borderRadius: '12px',
+            backgroundColor: 'rgba(16, 185, 129, 0.12)',
+            border: '1px solid rgba(16, 185, 129, 0.25)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '20px',
+            flexShrink: 0
+          }}>
+            🇻🇪
+          </div>
+          <div>
+            <span style={{ color: '#888', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block' }}>
+              Total Mes (Bs)
+            </span>
+            <span style={{ color: '#10b981', fontWeight: 800, fontSize: '19px' }}>
+              Bs. {fmtBs(totalBs)}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Barra de Filtro y Mes */}
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: '20px',
+        gap: '10px',
+        flexWrap: 'wrap'
+      }}>
+        <span style={{ color: '#888', fontSize: '13px', fontWeight: 600 }}>
+          {gastos.length} {gastos.length === 1 ? 'gasto registrado' : 'gastos registrados'}
+        </span>
+
+        <div className="gastos-filter-bar">
+          <input
+            type="month"
+            value={filtroMes}
+            onChange={e => setFiltroMes(e.target.value)}
+            style={{
+              backgroundColor: '#141414',
+              border: '1px solid #2a2a2a',
+              color: '#fff',
+              padding: '9px 12px',
+              borderRadius: '10px',
+              fontSize: '13px',
+              outline: 'none',
+              cursor: 'pointer'
+            }}
+          />
+          <button
+            onClick={() => cargarGastos(true)}
+            title="Recargar gastos"
+            style={{
+              backgroundColor: '#1e1e1e',
+              color: '#ccc',
+              border: '1px solid #2a2a2a',
+              padding: '9px 13px',
+              borderRadius: '10px',
+              cursor: 'pointer',
+              fontSize: '13px',
+              fontWeight: 600
+            }}
+          >
             🔄
           </button>
         </div>
@@ -395,7 +611,7 @@ export const AdminGastos: React.FC = () => {
       {showForm && (
         <form onSubmit={handleSubmit} style={{ ...cardS, marginBottom:'24px', borderColor:'rgba(249,115,22,0.3)' }}>
           <div style={{ display:'flex', alignItems:'center', gap:'10px', marginBottom:'20px' }}>
-            <div style={{ width:'4px', height:'22px', backgroundColor:'#f97316', borderRadius:'2px' }} />
+            <div style={{ width:'4px', height:'22px', backgroundColor:'var(--color-accent, #f97316)', borderRadius:'2px' }} />
             <h3 style={{ color:'#fff', margin:0, fontSize:'15px', fontWeight:700 }}>Registrar Nuevo Gasto</h3>
           </div>
           <FormFields
@@ -411,14 +627,26 @@ export const AdminGastos: React.FC = () => {
             setTransferenciaPreview={setTransferenciaPreview}
           />
           <button type="submit" disabled={guardando}
-            style={{ backgroundColor:'#f97316', color:'#fff', border:'none', padding:'12px 28px', borderRadius:'10px', cursor:'pointer', fontWeight:700, fontSize:'14px', opacity: guardando ? 0.7 : 1, marginTop:'16px' }}>
+            style={{
+              background: 'var(--color-brand-gradient, linear-gradient(135deg, #f97316 0%, #ea580c 100%))',
+              color: '#fff',
+              border: 'none',
+              padding: '12px 28px',
+              borderRadius: '10px',
+              cursor: 'pointer',
+              fontWeight: 700,
+              fontSize: '14px',
+              opacity: guardando ? 0.7 : 1,
+              marginTop: '16px',
+              boxShadow: 'var(--color-brand-shadow, 0 4px 14px rgba(249,115,22,0.35))'
+            }}>
             {guardando ? '⏳ Guardando y subiendo comprobantes...' : '💾 Guardar Gasto'}
           </button>
         </form>
       )}
 
       {/* Lista de gastos */}
-      <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
+      <div style={{ display:'flex', flexDirection:'column', gap:'12px' }}>
         {loading ? (
           <p style={{ color:'#555', textAlign:'center', padding:'40px' }}>Cargando gastos...</p>
         ) : gastos.length === 0 ? (
@@ -432,35 +660,138 @@ export const AdminGastos: React.FC = () => {
             const isEdit = editandoId === g.id
             const clics  = clicsEditar[g.id] || 0
             const comp   = parseComprobantesGasto(g.factura_url)
+            const catInfo = CATEGORIA_INFO[g.categoria] || { label: g.categoria, icon: '📦', color: '#94a3b8' }
+            const tipoInfo = TIPO_INFO[g.tipo] || { label: g.tipo, color: '#94a3b8' }
 
             return (
               <div key={g.id} style={{
                 ...cardS,
-                borderColor: isEdit ? 'rgba(234,179,8,0.5)' : isExp ? 'rgba(249,115,22,0.25)' : '#1e1e1e',
-                transition: 'border-color 0.2s',
+                padding: '16px',
+                borderColor: isEdit ? 'rgba(234,179,8,0.5)' : isExp ? 'rgba(249,115,22,0.35)' : '#1e1e1e',
+                boxShadow: isExp ? '0 8px 24px rgba(0,0,0,0.4)' : 'none',
+                transition: 'all 0.2s ease',
               }}>
 
-                {/* ── Fila principal ── */}
-                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:'10px' }}>
-                  <div style={{ flex:1 }}>
-                    <div style={{ display:'flex', alignItems:'center', gap:'8px', flexWrap:'wrap' }}>
-                      <p style={{ color:'#fff', fontSize:'14px', fontWeight:600, margin:0 }}>{g.descripcion}</p>
-                      {(g.veces_editado || 0) > 0 && (
-                        <span style={{ backgroundColor:'#f59e0b18', color:'#f59e0b', border:'1px solid #f59e0b30', padding:'1px 7px', borderRadius:'6px', fontSize:'10px', fontWeight:800 }}>
-                          ✏️ Editado {g.veces_editado}x
-                        </span>
-                      )}
+                {/* ── Fila principal estructurada para móvil y desktop ── */}
+                <div className="gasto-card-main">
+                  {/* Fila Superior: Icono de categoría + Descripción + Badges */}
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', flex: 1, minWidth: 0 }}>
+                      {/* Icono Avatar de Categoría */}
+                      <div style={{
+                        width: '40px',
+                        height: '40px',
+                        borderRadius: '12px',
+                        backgroundColor: `${catInfo.color}15`,
+                        border: `1px solid ${catInfo.color}35`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '20px',
+                        flexShrink: 0
+                      }}>
+                        {catInfo.icon}
+                      </div>
+
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          <h3 style={{
+                            color: '#fff',
+                            fontSize: '15px',
+                            fontWeight: 700,
+                            margin: 0,
+                            wordBreak: 'break-word',
+                            lineHeight: 1.3
+                          }}>
+                            {g.descripcion}
+                          </h3>
+                          {(g.veces_editado || 0) > 0 && (
+                            <span style={{
+                              backgroundColor: '#f59e0b18',
+                              color: '#f59e0b',
+                              border: '1px solid #f59e0b35',
+                              padding: '1px 7px',
+                              borderRadius: '6px',
+                              fontSize: '10.5px',
+                              fontWeight: 800
+                            }}>
+                              ✏️ {g.veces_editado}x
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Chips de Categoría, Tipo y Mes */}
+                        <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+                          <span style={{
+                            color: catInfo.color,
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            backgroundColor: `${catInfo.color}15`,
+                            border: `1px solid ${catInfo.color}30`,
+                            padding: '2px 8px',
+                            borderRadius: '6px'
+                          }}>
+                            {catInfo.label}
+                          </span>
+                          <span style={{
+                            color: tipoInfo.color,
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            backgroundColor: `${tipoInfo.color}15`,
+                            border: `1px solid ${tipoInfo.color}30`,
+                            padding: '2px 8px',
+                            borderRadius: '6px'
+                          }}>
+                            {tipoInfo.label}
+                          </span>
+                          <span style={{ color: '#888', fontSize: '11px' }}>
+                            📅 {mesNombre(g.mes_aplicacion.slice(0,7))} {g.mes_aplicacion.slice(0,4)}
+                          </span>
+                          {g.fecha_pago && (
+                            <span style={{ color: '#888', fontSize: '11px' }}>
+                              · Pago: {new Date(g.fecha_pago+'T12:00:00').toLocaleDateString('es-VE')}
+                            </span>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                    <div style={{ display:'flex', gap:'6px', marginTop:'4px', flexWrap:'wrap', alignItems:'center' }}>
-                      <span style={{ color:'#555', fontSize:'11px', backgroundColor:'#0f0f0f', border:'1px solid #1e1e1e', padding:'1px 6px', borderRadius:'4px' }}>{g.categoria}</span>
-                      <span style={{ color:'#555', fontSize:'11px', backgroundColor:'#0f0f0f', border:'1px solid #1e1e1e', padding:'1px 6px', borderRadius:'4px' }}>{g.tipo}</span>
-                      <span style={{ color:'#555', fontSize:'11px' }}>{mesNombre(g.mes_aplicacion.slice(0,7))} {g.mes_aplicacion.slice(0,4)}</span>
-                      {g.fecha_pago && <span style={{ color:'#555', fontSize:'11px' }}>· Pago: {new Date(g.fecha_pago+'T12:00:00').toLocaleDateString('es-VE')}</span>}
+                  </div>
+
+                  {/* Caja Financiera de Montos (Mobile Fintech Pill) */}
+                  <div className="gasto-amounts-pill">
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                      <span style={{ color: '#888', fontSize: '10.5px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                        Monto Registrado
+                      </span>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', flexWrap: 'wrap' }}>
+                        <span style={{ color: 'var(--color-accent, #f97316)', fontWeight: 800, fontSize: '18px' }}>
+                          $ {fmtUsd(g.monto_usd)}
+                        </span>
+                        <span style={{ color: '#10b981', fontWeight: 700, fontSize: '14px' }}>
+                          ≈ Bs. {fmtBs(g.monto_bs)}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Comprobantes visuales rápidos */}
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
                       {comp.factura_url && (
                         <button
                           type="button"
                           onClick={(e) => { e.stopPropagation(); setModalGasto(g); setModalTipo('factura'); setShowModal(true) }}
-                          style={{ backgroundColor:'#f9731618', color:'#f97316', border:'1px solid #f9731630', padding:'1px 7px', borderRadius:'4px', fontSize:'11px', fontWeight:700, cursor:'pointer' }}
+                          style={{
+                            backgroundColor: 'rgba(249, 115, 22, 0.12)',
+                            color: 'var(--color-accent, #f97316)',
+                            border: '1px solid rgba(249, 115, 22, 0.3)',
+                            padding: '6px 11px',
+                            borderRadius: '8px',
+                            fontSize: '11.5px',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}
                         >
                           📄 Factura
                         </button>
@@ -469,7 +800,19 @@ export const AdminGastos: React.FC = () => {
                         <button
                           type="button"
                           onClick={(e) => { e.stopPropagation(); setModalGasto(g); setModalTipo('transferencia'); setShowModal(true) }}
-                          style={{ backgroundColor:'#10b98118', color:'#10b981', border:'1px solid #10b98130', padding:'1px 7px', borderRadius:'4px', fontSize:'11px', fontWeight:700, cursor:'pointer' }}
+                          style={{
+                            backgroundColor: 'rgba(16, 185, 129, 0.12)',
+                            color: '#10b981',
+                            border: '1px solid rgba(16, 185, 129, 0.3)',
+                            padding: '6px 11px',
+                            borderRadius: '8px',
+                            fontSize: '11.5px',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}
                         >
                           💳 Transferencia
                         </button>
@@ -477,22 +820,63 @@ export const AdminGastos: React.FC = () => {
                     </div>
                   </div>
 
-                  <div style={{ display:'flex', alignItems:'center', gap:'12px' }}>
-                    <div style={{ textAlign:'right' }}>
-                      <div style={{ color:'#f97316', fontWeight:800, fontSize:'15px' }}>$ {fmtUsd(g.monto_usd)}</div>
-                      <div style={{ color:'#10b981', fontWeight:700, fontSize:'13px' }}>Bs. {fmtBs(g.monto_bs)}</div>
-                    </div>
-                    <button onClick={() => setExpandido(isExp ? null : g.id)}
-                      style={{ background:'transparent', border:'1px solid #2a2a2a', color:'#888', cursor:'pointer', fontSize:'11px', padding:'5px 10px', borderRadius:'6px', fontWeight:600 }}>
-                      {isExp ? '▲' : '▼'}
-                    </button>
-                    <button onClick={() => iniciarEdicion(g)}
-                      style={{ backgroundColor:'#1e293b', color:'#60a5fa', border:'1px solid #1e40af30', padding:'5px 12px', borderRadius:'6px', cursor:'pointer', fontSize:'12px', fontWeight:700 }}>
+                  {/* Barra de Acciones Táctil */}
+                  <div className="gasto-actions-footer">
+                    <button
+                      type="button"
+                      onClick={() => iniciarEdicion(g)}
+                      style={{
+                        backgroundColor: '#1e293b',
+                        color: '#60a5fa',
+                        border: '1px solid rgba(96, 165, 250, 0.25)',
+                        padding: '8px 14px',
+                        borderRadius: '8px',
+                        cursor: 'pointer',
+                        fontSize: '12.5px',
+                        fontWeight: 700,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                      }}
+                    >
                       ✏️ Editar
                     </button>
-                    <button onClick={() => handleDelete(g.id)}
-                      style={{ background:'transparent', border:'none', color:'#3a3a3a', cursor:'pointer', fontSize:'16px', padding:'4px' }}
-                      title="Eliminar">
+
+                    <button
+                      type="button"
+                      onClick={() => setExpandido(isExp ? null : g.id)}
+                      style={{
+                        background: 'transparent',
+                        border: '1px solid #2a2a2a',
+                        color: isExp ? '#fff' : '#94a3b8',
+                        cursor: 'pointer',
+                        fontSize: '12px',
+                        padding: '8px 12px',
+                        borderRadius: '8px',
+                        fontWeight: 600,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                      }}
+                    >
+                      <span>{isExp ? 'Ocultar info' : 'Ver detalle'}</span>
+                      <span>{isExp ? '▲' : '▼'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(g.id)}
+                      style={{
+                        background: 'rgba(239, 68, 68, 0.08)',
+                        border: '1px solid rgba(239, 68, 68, 0.2)',
+                        color: '#ef4444',
+                        cursor: 'pointer',
+                        fontSize: '14px',
+                        padding: '8px 12px',
+                        borderRadius: '8px'
+                      }}
+                      title="Eliminar gasto"
+                    >
                       🗑️
                     </button>
                   </div>
@@ -741,13 +1125,27 @@ const FormFields: React.FC<FormFieldsProps> = ({
         <div>
           <label style={lS}>Categoría</label>
           <select style={iS} value={form.categoria} onChange={e => setForm(f => ({ ...f, categoria: e.target.value }))}>
-            {CATEGORIAS.map(c => <option key={c} value={c}>{c}</option>)}
+            {CATEGORIAS.map(c => {
+              const item = CATEGORIA_INFO[c]
+              return (
+                <option key={c} value={c}>
+                  {item ? `${item.icon} ${item.label}` : c}
+                </option>
+              )
+            })}
           </select>
         </div>
         <div>
           <label style={lS}>Tipo</label>
           <select style={iS} value={form.tipo} onChange={e => setForm(f => ({ ...f, tipo: e.target.value }))}>
-            {TIPOS.map(t => <option key={t} value={t}>{t}</option>)}
+            {TIPOS.map(t => {
+              const item = TIPO_INFO[t]
+              return (
+                <option key={t} value={t}>
+                  {item ? item.label : t}
+                </option>
+              )
+            })}
           </select>
         </div>
         <div>
@@ -757,11 +1155,11 @@ const FormFields: React.FC<FormFieldsProps> = ({
       </div>
 
       {/* Montos */}
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px', marginBottom:'12px' }}>
+      <div className="form-grid-2">
         <div>
           <label style={lS}>Monto en USD $ *</label>
           <input required type="number" step="0.01" min="0"
-            style={{ ...iS, borderColor:'#f97316', color:'#f97316', fontWeight:700 }}
+            style={{ ...iS, borderColor:'var(--color-accent, #f97316)', color:'var(--color-accent, #f97316)', fontWeight:700 }}
             value={form.monto_usd}
             onChange={e => setForm(f => ({ ...f, monto_usd: e.target.value }))}
             placeholder="0.00" />
@@ -778,11 +1176,11 @@ const FormFields: React.FC<FormFieldsProps> = ({
 
       {/* Separador Transferencia */}
       <div style={{ borderTop:'1px solid #1e1e1e', margin:'14px 0', paddingTop:'12px' }}>
-        <p style={{ color:'#444', fontSize:'11px', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.5px', margin:'0 0 10px' }}>Datos de la Transferencia</p>
+        <p style={{ color:'#888', fontSize:'11px', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.5px', margin:'0 0 10px' }}>Datos de la Transferencia</p>
       </div>
 
       {/* Fecha + Referencia */}
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px', marginBottom:'12px' }}>
+      <div className="form-grid-2">
         <div>
           <label style={lS}>Fecha de Pago</label>
           <input type="date" style={iS} value={form.fecha_pago}
@@ -797,7 +1195,7 @@ const FormFields: React.FC<FormFieldsProps> = ({
       </div>
 
       {/* Pagado por + Autorizado por */}
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px', marginBottom:'12px' }}>
+      <div className="form-grid-2">
         <div>
           <label style={lS}>Persona que realizó el pago</label>
           <input style={iS} value={form.pagado_por}
