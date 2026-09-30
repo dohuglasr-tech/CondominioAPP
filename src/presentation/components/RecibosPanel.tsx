@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useAuth } from '../../application/contexts/AuthContext'
 import { supabase } from '../../data/supabase'
 import { appCache } from '../../data/cacheService'
@@ -140,6 +140,27 @@ export function RecibosPanel({ onClose }: Props) {
   const [reportarModalOpen, setReportarModalOpen] = useState(false)
   const [descargandoId, setDescargandoId] = useState<string | null>(null)
   const [saldoAFavor, setSaldoAFavor] = useState<number>(0)
+  const [filtroAnio, setFiltroAnio] = useState<string>('todos')
+  const [filtroMes, setFiltroMes] = useState<string>('todos')
+
+  const aniosDisponibles = useMemo(() => {
+    const set = new Set<string>()
+    recibos.forEach(r => {
+      const y = (r.mes_facturado || '').substring(0, 4)
+      if (y) set.add(y)
+    })
+    return Array.from(set).sort((a, b) => b.localeCompare(a))
+  }, [recibos])
+
+  const recibosFiltrados = useMemo(() => {
+    return recibos.filter(r => {
+      const y = (r.mes_facturado || '').substring(0, 4)
+      const m = (r.mes_facturado || '').substring(5, 7)
+      if (filtroAnio !== 'todos' && y !== filtroAnio) return false
+      if (filtroMes !== 'todos' && m !== filtroMes) return false
+      return true
+    })
+  }, [recibos, filtroAnio, filtroMes])
 
   // ── Cargar información completa del residente con Caché ──────────────────────────────
   const cargarDatos = useCallback(async (forceRefresh = false) => {
@@ -567,7 +588,147 @@ export function RecibosPanel({ onClose }: Props) {
               </div>
             )}
 
-            {recibos.map((recibo) => {
+            {/* Barra de Filtros por Año y por Mes */}
+            <div style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '10px',
+              padding: '12px 16px',
+              background: 'rgba(255, 255, 255, 0.03)',
+              borderRadius: '14px',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              marginBottom: '10px'
+            }}>
+              {/* Pestañas de Años */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
+                <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', marginRight: '4px' }}>
+                  Año:
+                </span>
+                {aniosDisponibles.map(anio => (
+                  <button
+                    key={anio}
+                    onClick={() => setFiltroAnio(anio)}
+                    style={{
+                      background: filtroAnio === anio
+                        ? anio === '2025'
+                          ? 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)'
+                          : 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)'
+                        : 'rgba(255, 255, 255, 0.06)',
+                      color: filtroAnio === anio ? '#fff' : '#cbd5e1',
+                      border: 'none',
+                      padding: '6px 14px',
+                      borderRadius: '8px',
+                      fontSize: '12px',
+                      fontWeight: filtroAnio === anio ? 800 : 600,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    <span>{anio === '2025' ? '🏛️' : '📅'}</span>
+                    <span>{anio === '2025' ? '2025 (Histórico)' : anio}</span>
+                  </button>
+                ))}
+                <button
+                  onClick={() => setFiltroAnio('todos')}
+                  style={{
+                    background: filtroAnio === 'todos' ? 'rgba(255, 255, 255, 0.18)' : 'rgba(255, 255, 255, 0.04)',
+                    color: filtroAnio === 'todos' ? '#fff' : '#94a3b8',
+                    border: 'none',
+                    padding: '6px 12px',
+                    borderRadius: '8px',
+                    fontSize: '12px',
+                    fontWeight: filtroAnio === 'todos' ? 700 : 500,
+                    cursor: 'pointer'
+                  }}
+                >
+                  Todos
+                </button>
+              </div>
+
+              {/* Selector de Mes */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>
+                  Mes:
+                </span>
+                <select
+                  value={filtroMes}
+                  onChange={e => setFiltroMes(e.target.value)}
+                  style={{
+                    background: '#131720',
+                    border: '1px solid rgba(255, 255, 255, 0.15)',
+                    color: '#fff',
+                    padding: '6px 12px',
+                    borderRadius: '8px',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    cursor: 'pointer'
+                  }}
+                >
+                  <option value="todos">Todos los meses</option>
+                  <option value="01">Enero</option>
+                  <option value="02">Febrero</option>
+                  <option value="03">Marzo</option>
+                  <option value="04">Abril</option>
+                  <option value="05">Mayo</option>
+                  <option value="06">Junio</option>
+                  <option value="07">Julio</option>
+                  <option value="08">Agosto</option>
+                  <option value="09">Septiembre</option>
+                  <option value="10">Octubre</option>
+                  <option value="11">Noviembre</option>
+                  <option value="12">Diciembre</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Banner específico si se visualiza el Archivo Histórico 2025 */}
+            {filtroAnio === '2025' && (
+              <div style={{
+                backgroundColor: 'rgba(59, 130, 246, 0.08)',
+                border: '1px solid rgba(59, 130, 246, 0.25)',
+                borderRadius: '14px',
+                padding: '14px 18px',
+                marginBottom: '10px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px'
+              }}>
+                <span style={{ fontSize: '24px' }}>🏛️</span>
+                <div>
+                  <div style={{ color: '#93c5fd', fontWeight: 800, fontSize: '13px' }}>
+                    Archivo Histórico — Gestión 2025 (Administración Pasada)
+                  </div>
+                  <div style={{ color: '#94a3b8', fontSize: '11.5px', marginTop: '2px', lineHeight: 1.4 }}>
+                    Recibos digitalizados para consulta y desglose de gastos. No generan deudas activas ni pagos en la plataforma actual.
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {recibosFiltrados.length === 0 ? (
+              <div style={{
+                textAlign: 'center',
+                padding: '40px 20px',
+                background: 'rgba(255, 255, 255, 0.02)',
+                borderRadius: '16px',
+                border: '1px dashed rgba(255, 255, 255, 0.1)',
+                margin: '10px 0'
+              }}>
+                <div style={{ fontSize: '32px', marginBottom: '8px' }}>📂</div>
+                <div style={{ color: '#fff', fontSize: '14px', fontWeight: 700 }}>
+                  No hay recibos para los filtros seleccionados
+                </div>
+                <div style={{ color: '#94a3b8', fontSize: '12px', marginTop: '4px' }}>
+                  Prueba cambiando el año o mes en los filtros superiores.
+                </div>
+              </div>
+            ) : (
+              recibosFiltrados.map((recibo) => {
               const { mesLabel, anio } = parseMesFacturado(recibo.mes_facturado)
               const esHistorico = (recibo.mes_facturado || '').slice(0, 7) < '2026-09'
               const esHistorico2025 = (recibo.mes_facturado || '').startsWith('2025') || Boolean(recibo.data_json?.es_historico_2025)
@@ -1010,7 +1171,7 @@ export function RecibosPanel({ onClose }: Props) {
                   )}
                 </div>
               )
-            })}
+            }))}
           </div>
         )
       ) : (
