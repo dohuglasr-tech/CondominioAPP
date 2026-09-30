@@ -1,7 +1,7 @@
 {
-  "name": "Residencias Ocutuy 5",
-  "short_name": "Condominio",
-  "description": "Sistema de gestión y pagos de condominio - Torre 5",
+  "name": "Condominio.app.ve",
+  "short_name": "Condominio.app.ve",
+  "description": "Sistema de gestión y pagos de condominio - Condominio.app.ve",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
