@@ -6,8 +6,9 @@ import { AuthHeroPanel } from '../components/AuthHeroPanel'
 
 export const ResetPassword: React.FC = () => {
   const navigate = useNavigate()
-  const { config, refreshPerfil } = useAuth()
+  const { config, refreshPerfil, clearPasswordRecovery } = useAuth()
 
+  // Estados para formulario de nueva contraseña
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -19,26 +20,52 @@ export const ResetPassword: React.FC = () => {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
 
-  // ── Verificar si el enlace de recuperación es válido ─────────────
+  // Estados para solicitud de nuevo enlace o código OTP
+  const [resendEmail, setResendEmail] = useState('')
+  const [resendLoading, setResendLoading] = useState(false)
+  const [resendSuccess, setResendSuccess] = useState(false)
+  const [resendError, setResendError] = useState<string | null>(null)
+
+  // Estado para verificar con código de 6 dígitos
+  const [showOtpInput, setShowOtpInput] = useState(false)
+  const [otpCode, setOtpCode] = useState('')
+  const [otpEmail, setOtpEmail] = useState('')
+  const [otpLoading, setOtpLoading] = useState(false)
+  const [otpError, setOtpError] = useState<string | null>(null)
+
+  // ── 1. Verificar si hay sesión de recuperación válida ─────────────
   useEffect(() => {
     let mounted = true
 
     const verifySession = async () => {
       try {
-        // 1. Extraer tokens del hash de la URL si existen
+        // A. Revisar si hay tokens en el hash de la URL (#access_token=...&type=recovery)
         if (window.location.hash) {
           const hash = window.location.hash.substring(1)
           const params = new URLSearchParams(hash)
           const accessToken = params.get('access_token')
           const refreshToken = params.get('refresh_token')
-          const type = params.get('type')
+          const errorCode = params.get('error_code')
 
           if (accessToken && refreshToken) {
-            const { error: sessionErr } = await supabase.auth.setSession({
+            const { data: setRes, error: sessionErr } = await supabase.auth.setSession({
               access_token: accessToken,
               refresh_token: refreshToken,
             })
-            if (!sessionErr && mounted) {
+            if (!sessionErr && setRes?.session && mounted) {
+              sessionStorage.setItem('condominio_is_recovery', 'true')
+              setHasValidSession(true)
+              setCheckingSession(false)
+              return
+            }
+          }
+
+          // Si vino un error en el hash (ej: otp_expired porque ya fue consumido el token),
+          // verificar si en el navegador ya quedó guardada la sesión activa
+          if (errorCode) {
+            const { data: { session } } = await supabase.auth.getSession()
+            if (session && mounted) {
+              sessionStorage.setItem('condominio_is_recovery', 'true')
               setHasValidSession(true)
               setCheckingSession(false)
               return
@@ -46,7 +73,7 @@ export const ResetPassword: React.FC = () => {
           }
         }
 
-        // 2. Extraer código PKCE si vino por query params (?code=...)
+        // B. Extraer código PKCE si vino por query params (?code=...)
         const queryParams = new URLSearchParams(window.location.search)
         const code = queryParams.get('code')
         if (code) {
@@ -58,7 +85,7 @@ export const ResetPassword: React.FC = () => {
           }
         }
 
-        // 3. Verificar si ya hay sesión activa
+        // C. Verificar si ya hay una sesión activa de Supabase
         const { data: { session } } = await supabase.auth.getSession()
         if (session && mounted) {
           setHasValidSession(true)
@@ -72,9 +99,9 @@ export const ResetPassword: React.FC = () => {
 
     verifySession()
 
-    // 4. Escuchar eventos de recuperación de contraseña de Supabase Auth
+    // D. Escuchar eventos de autenticación
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'PASSWORD_RECOVERY' || (session && event === 'SIGNED_IN')) {
+      if (event === 'PASSWORD_RECOVERY' || (session && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED'))) {
         if (mounted) {
           setHasValidSession(true)
           setCheckingSession(false)
@@ -88,7 +115,7 @@ export const ResetPassword: React.FC = () => {
     }
   }, [])
 
-  // ── Enviar nueva contraseña ───────────────────────────────────────
+  // ── 2. Guardar nueva contraseña ───────────────────────────────────
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
@@ -99,7 +126,7 @@ export const ResetPassword: React.FC = () => {
     }
 
     if (password.length < 6) {
-      setError('La contraseña debe tener un mínimo de 6 caracteres.')
+      setError('La contraseña debe tener al menos 6 caracteres.')
       return
     }
 
@@ -116,12 +143,12 @@ export const ResetPassword: React.FC = () => {
       })
 
       if (updateErr) {
-        setError(updateErr.message || 'No se pudo actualizar la contraseña. El enlace puede haber caducado.')
+        setError(updateErr.message || 'No se pudo actualizar la contraseña. Por favor solicita un nuevo enlace.')
         setLoading(false)
         return
       }
 
-      // Marcar perfil como clave cambiada y activa en la base de datos
+      // Marcar perfil como activo y clave cambiada
       if (data?.user?.id) {
         await supabase
           .from('perfiles')
@@ -134,14 +161,87 @@ export const ResetPassword: React.FC = () => {
         await refreshPerfil?.()
       }
 
+      clearPasswordRecovery?.()
+      sessionStorage.removeItem('condominio_is_recovery')
+
       setSuccess(true)
       setTimeout(() => {
         navigate('/', { replace: true })
-      }, 2500)
+      }, 2000)
     } catch (err: any) {
       setError(err?.message || 'Error inesperado al guardar la contraseña.')
     } finally {
       setLoading(false)
+    }
+  }
+
+  // ── 3. Reenviar enlace de recuperación ───────────────────────────
+  const handleResendLink = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const clean = resendEmail.trim().toLowerCase()
+    if (!clean || !clean.includes('@')) {
+      setResendError('Por favor ingresa un correo electrónico válido.')
+      return
+    }
+
+    setResendLoading(true)
+    setResendError(null)
+
+    try {
+      const redirectUrl = `${window.location.origin}/reset-password`
+      const { error: resetErr } = await supabase.auth.resetPasswordForEmail(clean, {
+        redirectTo: redirectUrl,
+      })
+
+      if (resetErr) {
+        setResendError(resetErr.message || 'No se pudo enviar el correo de recuperación.')
+        setResendLoading(false)
+        return
+      }
+
+      setResendSuccess(true)
+    } catch (err: any) {
+      setResendError(err?.message || 'Error inesperado al enviar el enlace.')
+    } finally {
+      setResendLoading(false)
+    }
+  }
+
+  // ── 4. Validar código de 6 dígitos recibido por correo ────────────
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const cleanMail = otpEmail.trim().toLowerCase()
+    const cleanCode = otpCode.trim()
+
+    if (!cleanMail || !cleanCode) {
+      setOtpError('Por favor ingresa tu correo y el código recibido.')
+      return
+    }
+
+    setOtpLoading(true)
+    setOtpError(null)
+
+    try {
+      const { data, error: otpErr } = await supabase.auth.verifyOtp({
+        email: cleanMail,
+        token: cleanCode,
+        type: 'recovery',
+      })
+
+      if (otpErr) {
+        setOtpError(otpErr.message || 'Código incorrecto o expirado.')
+        setOtpLoading(false)
+        return
+      }
+
+      if (data?.session) {
+        sessionStorage.setItem('condominio_is_recovery', 'true')
+        setHasValidSession(true)
+      }
+    } catch (err: any) {
+      setOtpError(err?.message || 'Error verificando el código.')
+    } finally {
+      setOtpLoading(false)
     }
   }
 
@@ -179,7 +279,7 @@ export const ResetPassword: React.FC = () => {
               letterSpacing: '-0.5px',
               color: '#ffffff'
             }}>
-              Nueva Contraseña
+              Establecer Contraseña
             </h1>
             <p style={{
               fontSize: '13.5px',
@@ -187,7 +287,7 @@ export const ResetPassword: React.FC = () => {
               margin: 0,
               lineHeight: 1.4
             }}>
-              Establece una contraseña segura para acceder a tu cuenta.
+              Crea tu nueva clave para acceder a tu cuenta de condominio.
             </p>
           </div>
 
@@ -205,7 +305,7 @@ export const ResetPassword: React.FC = () => {
               <div style={{ textAlign: 'center', padding: '30px 0' }}>
                 <div style={{ fontSize: '32px', marginBottom: '12px' }}>🔄</div>
                 <p style={{ color: '#94a3b8', fontSize: '13.5px', margin: 0 }}>
-                  Validando enlace de recuperación...
+                  Comprobando enlace de seguridad...
                 </p>
               </div>
             ) : success ? (
@@ -225,57 +325,275 @@ export const ResetPassword: React.FC = () => {
                   ✅
                 </div>
                 <h3 style={{ fontSize: '18px', fontWeight: 800, color: '#fff', margin: '0 0 8px' }}>
-                  ¡Contraseña actualizada!
+                  ¡Contraseña actualizada con éxito!
                 </h3>
                 <p style={{ color: '#94a3b8', fontSize: '13px', lineHeight: 1.5, margin: '0 0 20px' }}>
-                  Tu nueva clave ha sido guardada exitosamente. Estamos redirigiéndote a tu portal...
+                  Tu nueva clave ha sido guardada. Estamos ingresando a tu cuenta...
                 </p>
                 <div style={{ display: 'flex', justifyContent: 'center' }}>
                   <div className="spinner spinner--sm"></div>
                 </div>
               </div>
             ) : !hasValidSession ? (
-              <div style={{ textAlign: 'center', padding: '16px 0' }}>
-                <div style={{
-                  width: '60px',
-                  height: '60px',
-                  borderRadius: '20px',
-                  backgroundColor: 'rgba(239, 68, 68, 0.15)',
-                  color: '#ef4444',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '28px',
-                  marginBottom: '16px'
-                }}>
-                  ⚠️
+              /* CASO: Enlace expirado o sin sesión activa */
+              <div>
+                <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+                  <div style={{
+                    width: '54px',
+                    height: '54px',
+                    borderRadius: '16px',
+                    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '26px',
+                    marginBottom: '12px'
+                  }}>
+                    ⚠️
+                  </div>
+                  <h3 style={{ fontSize: '18px', fontWeight: 800, color: '#fff', margin: '0 0 6px' }}>
+                    El enlace expiró o ya fue utilizado
+                  </h3>
+                  <p style={{ color: '#94a3b8', fontSize: '12.5px', lineHeight: 1.5, margin: 0 }}>
+                    Por seguridad, los enlaces de recuperación solo funcionan una vez. Puedes solicitar uno nuevo o ingresar tu código a continuación:
+                  </p>
                 </div>
-                <h3 style={{ fontSize: '18px', fontWeight: 800, color: '#fff', margin: '0 0 8px' }}>
-                  Enlace inválido o expirado
-                </h3>
-                <p style={{ color: '#94a3b8', fontSize: '13px', lineHeight: 1.5, margin: '0 0 24px' }}>
-                  Por razones de seguridad, los enlaces de recuperación tienen un tiempo de validez limitado o ya fueron utilizados.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => navigate('/login')}
-                  style={{
-                    width: '100%',
-                    backgroundColor: '#f97316',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: '10px',
-                    padding: '13px',
-                    fontSize: '14px',
-                    fontWeight: 700,
-                    cursor: 'pointer'
-                  }}
-                >
-                  Solicitar un nuevo enlace en el Login
-                </button>
+
+                {/* Alternar entre solicitar nuevo enlace o ingresar código */}
+                <div style={{ display: 'flex', gap: '6px', marginBottom: '18px', backgroundColor: '#0a0d14', padding: '4px', borderRadius: '10px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowOtpInput(false)}
+                    style={{
+                      flex: 1,
+                      padding: '8px',
+                      borderRadius: '8px',
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      border: 'none',
+                      cursor: 'pointer',
+                      backgroundColor: !showOtpInput ? '#f97316' : 'transparent',
+                      color: !showOtpInput ? '#fff' : '#888',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    Nuevo Enlace
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowOtpInput(true)}
+                    style={{
+                      flex: 1,
+                      padding: '8px',
+                      borderRadius: '8px',
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      border: 'none',
+                      cursor: 'pointer',
+                      backgroundColor: showOtpInput ? '#f97316' : 'transparent',
+                      color: showOtpInput ? '#fff' : '#888',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    Tengo un Código OTP
+                  </button>
+                </div>
+
+                {!showOtpInput ? (
+                  /* Formulario de reenvío de enlace */
+                  resendSuccess ? (
+                    <div style={{
+                      backgroundColor: 'rgba(16, 185, 129, 0.12)',
+                      border: '1px solid rgba(16, 185, 129, 0.3)',
+                      borderRadius: '10px',
+                      padding: '16px',
+                      color: '#34d399',
+                      fontSize: '13px',
+                      textAlign: 'center',
+                      lineHeight: 1.4
+                    }}>
+                      <div style={{ fontSize: '24px', marginBottom: '6px' }}>✉️</div>
+                      <strong>¡Nuevo enlace enviado!</strong>
+                      <p style={{ margin: '6px 0 0', color: '#94a3b8', fontSize: '12px' }}>
+                        Revisa la bandeja de entrada o spam de <strong>{resendEmail}</strong> y ábrelo directamente.
+                      </p>
+                    </div>
+                  ) : (
+                    <form onSubmit={handleResendLink}>
+                      {resendError && (
+                        <div style={{
+                          backgroundColor: 'rgba(239, 68, 68, 0.12)',
+                          border: '1px solid rgba(239, 68, 68, 0.3)',
+                          color: '#fca5a5',
+                          padding: '10px',
+                          borderRadius: '8px',
+                          fontSize: '12px',
+                          marginBottom: '14px',
+                          textAlign: 'center'
+                        }}>
+                          {resendError}
+                        </div>
+                      )}
+
+                      <div style={{ marginBottom: '16px' }}>
+                        <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#cbd5e1', marginBottom: '6px', textTransform: 'uppercase' }}>
+                          Tu Correo Electrónico
+                        </label>
+                        <input
+                          type="email"
+                          required
+                          placeholder="correo@ejemplo.com"
+                          value={resendEmail}
+                          onChange={(e) => setResendEmail(e.target.value)}
+                          disabled={resendLoading}
+                          style={{
+                            width: '100%',
+                            backgroundColor: '#0a0d14',
+                            border: '1px solid #232d42',
+                            borderRadius: '10px',
+                            padding: '12px 14px',
+                            color: '#fff',
+                            fontSize: '14px',
+                            outline: 'none',
+                            boxSizing: 'border-box'
+                          }}
+                        />
+                      </div>
+
+                      <button
+                        type="submit"
+                        disabled={resendLoading || !resendEmail}
+                        style={{
+                          width: '100%',
+                          backgroundColor: '#f97316',
+                          color: '#fff',
+                          border: 'none',
+                          borderRadius: '10px',
+                          padding: '12px',
+                          fontSize: '14px',
+                          fontWeight: 700,
+                          cursor: resendLoading || !resendEmail ? 'not-allowed' : 'pointer',
+                          opacity: resendLoading || !resendEmail ? 0.7 : 1,
+                          boxShadow: '0 4px 18px rgba(249, 115, 22, 0.35)'
+                        }}
+                      >
+                        {resendLoading ? 'Enviando...' : 'Enviar nuevo enlace 🚀'}
+                      </button>
+                    </form>
+                  )
+                ) : (
+                  /* Formulario de código de 6 dígitos */
+                  <form onSubmit={handleVerifyOtp}>
+                    {otpError && (
+                      <div style={{
+                        backgroundColor: 'rgba(239, 68, 68, 0.12)',
+                        border: '1px solid rgba(239, 68, 68, 0.3)',
+                        color: '#fca5a5',
+                        padding: '10px',
+                        borderRadius: '8px',
+                        fontSize: '12px',
+                        marginBottom: '14px',
+                        textAlign: 'center'
+                      }}>
+                        {otpError}
+                      </div>
+                    )}
+
+                    <div style={{ marginBottom: '14px' }}>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#cbd5e1', marginBottom: '6px', textTransform: 'uppercase' }}>
+                        Correo Electrónico
+                      </label>
+                      <input
+                        type="email"
+                        required
+                        placeholder="correo@ejemplo.com"
+                        value={otpEmail}
+                        onChange={(e) => setOtpEmail(e.target.value)}
+                        disabled={otpLoading}
+                        style={{
+                          width: '100%',
+                          backgroundColor: '#0a0d14',
+                          border: '1px solid #232d42',
+                          borderRadius: '10px',
+                          padding: '12px 14px',
+                          color: '#fff',
+                          fontSize: '14px',
+                          outline: 'none',
+                          boxSizing: 'border-box'
+                        }}
+                      />
+                    </div>
+
+                    <div style={{ marginBottom: '18px' }}>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#cbd5e1', marginBottom: '6px', textTransform: 'uppercase' }}>
+                        Código de 6 dígitos
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        maxLength={8}
+                        placeholder="123456"
+                        value={otpCode}
+                        onChange={(e) => setOtpCode(e.target.value)}
+                        disabled={otpLoading}
+                        style={{
+                          width: '100%',
+                          backgroundColor: '#0a0d14',
+                          border: '1px solid #232d42',
+                          borderRadius: '10px',
+                          padding: '12px 14px',
+                          color: '#f97316',
+                          fontSize: '18px',
+                          fontWeight: 800,
+                          textAlign: 'center',
+                          letterSpacing: '4px',
+                          outline: 'none',
+                          boxSizing: 'border-box'
+                        }}
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={otpLoading || !otpEmail || !otpCode}
+                      style={{
+                        width: '100%',
+                        backgroundColor: '#f97316',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: '10px',
+                        padding: '12px',
+                        fontSize: '14px',
+                        fontWeight: 700,
+                        cursor: otpLoading || !otpEmail || !otpCode ? 'not-allowed' : 'pointer',
+                        opacity: otpLoading || !otpEmail || !otpCode ? 0.7 : 1
+                      }}
+                    >
+                      {otpLoading ? 'Verificando código...' : 'Validar Código 🔑'}
+                    </button>
+                  </form>
+                )}
               </div>
             ) : (
+              /* CASO: Sesión de recuperación válida -> Formulario de nueva contraseña */
               <form onSubmit={handleSubmit}>
+                <div style={{
+                  backgroundColor: 'rgba(249, 115, 22, 0.1)',
+                  border: '1px solid rgba(249, 115, 22, 0.25)',
+                  padding: '10px 14px',
+                  borderRadius: '10px',
+                  fontSize: '12.5px',
+                  color: '#f97316',
+                  marginBottom: '18px',
+                  lineHeight: 1.4,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}>
+                  <span>🔒</span>
+                  <span>Ingresa la nueva contraseña para tu cuenta:</span>
+                </div>
+
                 {error && (
                   <div style={{
                     backgroundColor: 'rgba(239, 68, 68, 0.12)',

@@ -1,5 +1,5 @@
-import React, { useState, useCallback } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import React, { useState, useEffect, useCallback } from 'react'
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from './application/contexts/AuthContext'
 import { Loader } from './presentation/components/Loader'
 import { SplashScreen } from './presentation/components/SplashScreen'
@@ -121,7 +121,7 @@ export class ErrorBoundary extends React.Component<{ children: React.ReactNode }
 
 // ── Protege rutas privadas ────────────────────────────────────────
 const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
-  const { session, perfil, loading, needsPasswordChange, needsProfileSetup, isAdmin, refreshPerfil, signOut } = useAuth()
+  const { session, perfil, loading, needsPasswordChange, needsProfileSetup, isAdmin, refreshPerfil, signOut, isPasswordRecovery } = useAuth()
 
   if (loading) return <Loader />
   if (!session) return <Navigate to="/login" replace />
@@ -182,6 +182,8 @@ const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
       </div>
     )
   }
+  // Si el usuario llega de un enlace de recuperación de contraseña, obligar a definir su nueva clave
+  if (isPasswordRecovery) return <Navigate to="/reset-password" replace />
   // Si el usuario autenticado tiene rol de administrador, redirigir a su panel
   if (isAdmin) return <Navigate to="/admin" replace />
   if (needsPasswordChange) return <Navigate to="/cambiar-password" replace />
@@ -228,9 +230,27 @@ const AdminRoute = ({ children }: { children: React.ReactNode }) => {
 
 // ── Shell de la app (con splash) ─────────────────────────────────
 function AppShell() {
-  const { config } = useAuth()
+  const { config, isPasswordRecovery } = useAuth()
+  const navigate = useNavigate()
+  const location = useLocation()
   const [splashDone, setSplashDone] = useState(false)
   const handleSplashDone = useCallback(() => setSplashDone(true), [])
+
+  // Detectar recuperación de contraseña globalmente y redirigir a /reset-password
+  useEffect(() => {
+    const hash = typeof window !== 'undefined' ? window.location.hash : ''
+    const isRecoveryHash =
+      hash.includes('type=recovery') ||
+      hash.includes('otp_expired') ||
+      (hash.includes('error=access_denied') && (hash.includes('otp') || hash.includes('expired')))
+    const isRecoveryStorage = typeof window !== 'undefined' && sessionStorage.getItem('condominio_is_recovery') === 'true'
+
+    if (isRecoveryHash || isRecoveryStorage || isPasswordRecovery) {
+      if (location.pathname !== '/reset-password') {
+        navigate('/reset-password' + hash, { replace: true })
+      }
+    }
+  }, [location.pathname, isPasswordRecovery, navigate])
 
   return (
     <>

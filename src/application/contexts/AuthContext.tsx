@@ -22,6 +22,8 @@ interface AuthContextType {
   isConserje: boolean
   needsPasswordChange: boolean
   needsProfileSetup: boolean
+  isPasswordRecovery: boolean
+  clearPasswordRecovery: () => void
 }
 
 const AuthContext = createContext<AuthContextType | null>(null)
@@ -32,6 +34,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [perfil, setPerfil] = useState<Perfil | null>(null)
   const [config, setConfig] = useState<ConfigEdificio | null>(null)
   const [loading, setLoading] = useState(true)
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false
+    return (
+      window.location.hash.includes('type=recovery') ||
+      sessionStorage.getItem('condominio_is_recovery') === 'true'
+    )
+  })
+
+  const clearPasswordRecovery = () => {
+    setIsPasswordRecovery(false)
+    sessionStorage.removeItem('condominio_is_recovery')
+  }
 
   // ── Cargar configuración del edificio ────────────────────────
   const cargarConfig = useCallback(async () => {
@@ -112,7 +126,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, newSession) => {
+      async (event, newSession) => {
+        if (event === 'PASSWORD_RECOVERY' || (typeof window !== 'undefined' && window.location.hash.includes('type=recovery'))) {
+          setIsPasswordRecovery(true)
+          sessionStorage.setItem('condominio_is_recovery', 'true')
+        }
         setSession(newSession)
         setUser(newSession?.user ?? null)
         if (newSession?.user) {
@@ -159,6 +177,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { error } = await supabase.auth.updateUser({ password: newPassword })
       if (error) return { error: error.message }
 
+      clearPasswordRecovery()
+
       // Si nos pasan correo (en el flujo de primera vez), actualizar metadata
       if (email) {
         await supabase.auth.updateUser({
@@ -195,6 +215,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // ── Cerrar sesión ─────────────────────────────────────────────
   const signOut = async () => {
+    clearPasswordRecovery()
     await supabase.auth.signOut()
     setPerfil(null)
     setSession(null)
@@ -232,6 +253,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isConserje,
         needsPasswordChange,
         needsProfileSetup,
+        isPasswordRecovery,
+        clearPasswordRecovery,
       }}
     >
       {children}
