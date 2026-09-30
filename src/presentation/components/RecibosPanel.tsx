@@ -138,6 +138,8 @@ export function RecibosPanel({ onClose }: Props) {
   const [expandedReciboId, setExpandedReciboId] = useState<string | null>(null)
   const [selectedPago, setSelectedPago] = useState<PagoReportado | null>(null)
   const [reportarModalOpen, setReportarModalOpen] = useState(false)
+  const [modalModo, setModalModo] = useState<'pago_total' | 'abono'>('pago_total')
+  const [reciboParaAbonoId, setReciboParaAbonoId] = useState<string | undefined>(undefined)
   const [descargandoId, setDescargandoId] = useState<string | null>(null)
   const [saldoAFavor, setSaldoAFavor] = useState<number>(0)
 
@@ -829,28 +831,59 @@ export function RecibosPanel({ onClose }: Props) {
                       <span>{estaPagado ? 'Compartir Solvencia WhatsApp' : 'Enviar por WhatsApp'}</span>
                     </button>
 
-                    {/* Si está pendiente, botón para reportar pago */}
+                    {/* Si está pendiente, botones para reportar pago total o abonar */}
                     {!estaPagado && !enRevision && (
-                      <button
-                        onClick={() => setReportarModalOpen(true)}
-                        style={{
-                          background: 'linear-gradient(135deg, #fb923c 0%, #ea580c 100%)',
-                          border: 'none',
-                          color: '#fff',
-                          borderRadius: '10px',
-                          padding: '9px 16px',
-                          fontSize: '12px',
-                          fontWeight: 800,
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          boxShadow: '0 3px 12px rgba(234, 88, 12, 0.4)'
-                        }}
-                      >
-                        <span>💳</span>
-                        <span>Reportar Pago</span>
-                      </button>
+                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        <button
+                          onClick={() => {
+                            setModalModo('pago_total')
+                            setReciboParaAbonoId(recibo.id)
+                            setReportarModalOpen(true)
+                          }}
+                          style={{
+                            background: 'linear-gradient(135deg, #fb923c 0%, #ea580c 100%)',
+                            border: 'none',
+                            color: '#fff',
+                            borderRadius: '10px',
+                            padding: '9px 16px',
+                            fontSize: '12px',
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            boxShadow: '0 3px 12px rgba(234, 88, 12, 0.4)'
+                          }}
+                        >
+                          <span>💳</span>
+                          <span>Reportar Pago Total</span>
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            setModalModo('abono')
+                            setReciboParaAbonoId(recibo.id)
+                            setReportarModalOpen(true)
+                          }}
+                          style={{
+                            background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                            border: 'none',
+                            color: '#fff',
+                            borderRadius: '10px',
+                            padding: '9px 16px',
+                            fontSize: '12px',
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            boxShadow: '0 3px 12px rgba(37, 99, 235, 0.4)'
+                          }}
+                        >
+                          <span>🪙</span>
+                          <span>Abonar a este Recibo</span>
+                        </button>
+                      </div>
                     )}
 
                     {/* Ver detalle y desglose de gastos */}
@@ -1085,13 +1118,19 @@ export function RecibosPanel({ onClose }: Props) {
         )
       )}
 
-      {/* ── MODAL REPORTAR PAGO ──────────────────────────────────────────── */}
+      {/* ── MODAL REPORTAR PAGO & ABONO ──────────────────────────────────────────── */}
       {reportarModalOpen && (
         <ReportarPagoModal
           apartamentoId={apartamentoId}
-          onClose={() => setReportarModalOpen(false)}
+          modoInicial={modalModo}
+          reciboInicialId={reciboParaAbonoId}
+          onClose={() => {
+            setReportarModalOpen(false)
+            setReciboParaAbonoId(undefined)
+          }}
           onSuccess={() => {
             setReportarModalOpen(false)
+            setReciboParaAbonoId(undefined)
             cargarDatos()
           }}
         />

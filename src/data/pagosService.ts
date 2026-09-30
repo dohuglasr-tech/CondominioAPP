@@ -4,14 +4,22 @@ import { appCache } from './cacheService'
 export interface ReportePagoPayload {
   apartamento_id: string
   monto_bs: number
+  monto_usd?: number | null
+  tasa_bcv?: number | null
   numero_referencia: string
   banco_origen: string
   comprobante_url?: string | null
+  es_abono?: boolean
+  tipo_deuda_abonada?: 'historica_bs' | 'marzo_usd' | 'general'
+  recibo_id?: string | null
+  periodo_referencia?: string | null
+  saldo_restante_estimado?: number | null
+  notas_residente?: string | null
 }
 
 /**
- * Inserta un pago pendiente en la tabla `pagos`.
- * El campo `estado` queda en 'pendiente' por defecto (definido en la BD).
+ * Inserta un pago pendiente en la tabla `pagos_reportados`.
+ * El campo `estado` queda en 'pendiente' por defecto.
  */
 export async function reportarPago(payload: ReportePagoPayload): Promise<{ error: string | null }> {
   try {
@@ -55,19 +63,51 @@ export async function reportarPago(payload: ReportePagoPayload): Promise<{ error
       }
     }
 
+    const notasAdminPartes: string[] = [`Banco Origen: ${payload.banco_origen}`]
+    if (payload.es_abono) {
+      const tipoTxt = payload.tipo_deuda_abonada === 'historica_bs'
+        ? 'DEUDA HISTÓRICA PRE-MARZO (En Bolívares)'
+        : 'DEUDA MARZO 2026 EN ADELANTE (En Dólares a Tasa BCV)'
+      notasAdminPartes.push(`[ABONO PARCIAL - ${tipoTxt}]`)
+      if (payload.periodo_referencia) {
+        notasAdminPartes.push(`Periodo: ${payload.periodo_referencia}`)
+      }
+      if (payload.monto_usd && payload.monto_usd > 0) {
+        notasAdminPartes.push(`USD: $${payload.monto_usd.toFixed(2)}`)
+      }
+      if (payload.tasa_bcv && payload.tasa_bcv > 0) {
+        notasAdminPartes.push(`Tasa BCV: ${payload.tasa_bcv.toFixed(2)} Bs/$`)
+      }
+      if (payload.saldo_restante_estimado !== undefined && payload.saldo_restante_estimado !== null) {
+        notasAdminPartes.push(`Saldo Restante Estimado: ${payload.tipo_deuda_abonada === 'historica_bs' ? `Bs. ${payload.saldo_restante_estimado.toFixed(2)}` : `$${payload.saldo_restante_estimado.toFixed(2)} USD`}`)
+      }
+    }
+
+    const insertData: Record<string, any> = {
+      apartamento_id: aptoId,
+      monto_bs: payload.monto_bs,
+      referencia: payload.numero_referencia,
+      metodo: 'transferencia_bs',
+      notas_admin: notasAdminPartes.join(' · '),
+      comprobante_url: payload.comprobante_url ?? null,
+      estado: 'pendiente',
+      reportado_por: authData.user.id,
+      fecha_pago: new Date().toISOString().split('T')[0],
+    }
+
+    if (payload.monto_usd && payload.monto_usd > 0) {
+      insertData.monto_usd = payload.monto_usd
+    }
+    if (payload.tasa_bcv && payload.tasa_bcv > 0) {
+      insertData.tasa_bcv = payload.tasa_bcv
+    }
+    if (payload.notas_residente) {
+      insertData.notas_residente = payload.notas_residente
+    }
+
     const { error } = await supabase
       .from('pagos_reportados')
-      .insert({
-        apartamento_id: aptoId,
-        monto_bs: payload.monto_bs,
-        referencia: payload.numero_referencia,
-        metodo: 'transferencia_bs',
-        notas_admin: `Banco Origen: ${payload.banco_origen}`,
-        comprobante_url: payload.comprobante_url ?? null,
-        estado: 'pendiente',
-        reportado_por: authData.user.id,
-        fecha_pago: new Date().toISOString().split('T')[0],
-      })
+      .insert(insertData)
 
     if (error) {
       console.error('[PagosService] Error insertando pago:', error)

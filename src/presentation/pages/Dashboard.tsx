@@ -39,12 +39,14 @@ export function Dashboard() {
   const residenteNombre = p?.nombre_completo || 'Propietario'
 
   const [modalOpen, setModalOpen] = useState(false)
+  const [modalModo, setModalModo] = useState<'pago_total' | 'abono'>('pago_total')
   const [ocultarSaldos, setOcultarSaldos] = useState(false)
   const [alicuota, setAlicuota] = useState<number>(1.59)
   const [esPenthouse, setEsPenthouse] = useState(false)
 
   const [ultimoPago, setUltimoPago] = useState<PagoItem | null>(null)
   const [pagosRecientes, setPagosRecientes] = useState<PagoItem[]>([])
+  const [recibosPendientes, setRecibosPendientes] = useState<Array<{ id: string; total_usd: number; total_bs: number; mes_facturado: string; emitido_at: string; tasa_bcv?: number }>>([])
   const [reciboPendiente, setReciboPendiente] = useState<{ id: string; total_usd: number; total_bs: number; mes_facturado: string; emitido_at: string } | null>(null)
   const [moraRecord, setMoraRecord] = useState<DeudaMoraItem | null>(null)
   const [saldoAFavor, setSaldoAFavor] = useState<number>(0)
@@ -52,20 +54,29 @@ export function Dashboard() {
   const { rate, loading: loadingRate } = useBcvRate()
   const tasaValida = rate && rate > 1 ? rate : (config?.tasa_bcv_actual && config.tasa_bcv_actual > 1 ? config.tasa_bcv_actual : 859.06)
 
-  // Deuda total: Para periodos históricos (< 2026-09) o deudas en mora previas,
-  // NO se ancla dinámicamente al BCV actual; se respeta el monto manual en Bolívares y Dólares de los gastos/deudas.
-  const esHistoricoRecibo = (reciboPendiente?.mes_facturado || '').slice(0, 7) < '2026-09'
-  const deudaUsd = moraRecord
-    ? Number(moraRecord.monto_usd || 0)
-    : (reciboPendiente ? Number(reciboPendiente.total_usd || 0) : 0)
+  // ── DESGLOSE DE DEUDAS PRE-MARZO Y POST-MARZO ──
+  // 1. Recibos pre-marzo 2026 (< '2026-03'): Deuda histórica calculada en Bolívares fijos (no anclada a BCV)
+  const recibosPreMarzo = recibosPendientes.filter(r => (r.mes_facturado || '').slice(0, 7) < '2026-03')
+  const deudaViejaRecibosBs = recibosPreMarzo.reduce((acc, r) => acc + Number(r.total_bs || 0), 0)
+  const deudaViejaMoraBs = moraRecord && Number(moraRecord.monto_bs || 0) > 0 ? Number(moraRecord.monto_bs) : 0
+  const deudaViejaTotalBs = deudaViejaRecibosBs + deudaViejaMoraBs
 
-  const deudaBs = moraRecord
-    ? (moraRecord.monto_bs > 0 ? Number(moraRecord.monto_bs) : (esHistoricoRecibo ? 0 : deudaUsd * tasaValida))
-    : reciboPendiente
-    ? (esHistoricoRecibo
-        ? Number(reciboPendiente.total_bs || 0)
-        : (reciboPendiente.total_bs > 0 ? Number(reciboPendiente.total_bs) : deudaUsd * tasaValida))
-    : 0
+  // 2. Recibos marzo 2026 en adelante (>= '2026-03'): Deuda en Dólares
+  const recibosPostMarzo = recibosPendientes.filter(r => (r.mes_facturado || '').slice(0, 7) >= '2026-03')
+  const deudaMarzoRecibosUsd = recibosPostMarzo.reduce((acc, r) => acc + Number(r.total_usd || 0), 0)
+  const deudaMarzoMoraUsd = moraRecord && Number(moraRecord.monto_usd || 0) > 0 ? Number(moraRecord.monto_usd) : 0
+  const deudaMarzoTotalUsd = deudaMarzoRecibosUsd + deudaMarzoMoraUsd
+
+  // 3. Sumatoria de recibos de marzo y siguientes convertidos a bolívares a tasa BCV actual
+  const deudaMarzoEnBs = deudaMarzoTotalUsd * tasaValida
+
+  // 4. DEUDA TOTAL CONSOLIDADA: Sumatoria de deuda vieja en Bs + deuda de marzo en Bs a tasa BCV
+  const deudaTotalConsolidadaBs = deudaViejaTotalBs + deudaMarzoEnBs
+  const deudaTotalConsolidadaUsd = deudaMarzoTotalUsd + (deudaViejaTotalBs > 0 ? (deudaViejaTotalBs / tasaValida) : 0)
+
+  // Variables de compatibilidad
+  const deudaBs = deudaTotalConsolidadaBs
+  const deudaUsd = deudaTotalConsolidadaUsd
 
 
   // Cargar datos del apartamento y alícuota real impuesta por el administrador
@@ -132,18 +143,16 @@ export function Dashboard() {
           { ttlMs: 3 * 60 * 1000, tags: ['pagos'], forceRefresh }
         ),
         appCache.fetch(
-          `dashboard_recibo_${targetKey}`,
+          `dashboard_recibos_pendientes_${targetKey}`,
           async () => {
-            if (!apartamentoId) return null
+            if (!apartamentoId) return []
             const { data } = await supabase
               .from('recibos_generados')
-              .select('id, total_usd, total_bs, mes_facturado, estado, emitido_at')
+              .select('id, total_usd, total_bs, mes_facturado, estado, emitido_at, tasa_bcv')
               .eq('apartamento_id', apartamentoId)
               .eq('estado', 'pendiente')
-              .order('mes_facturado', { ascending: false })
-              .limit(1)
-              .maybeSingle()
-            return data
+              .order('mes_facturado', { ascending: true })
+            return data || []
           },
           { ttlMs: 3 * 60 * 1000, tags: ['recibos'], forceRefresh }
         )
@@ -153,7 +162,9 @@ export function Dashboard() {
       if (listPagos.length > 0) setUltimoPago(listPagos[0])
       else setUltimoPago(null)
 
-      if (reciboPend) setReciboPendiente(reciboPend)
+      const recs = (reciboPend || []) as any[]
+      setRecibosPendientes(recs)
+      if (recs.length > 0) setReciboPendiente(recs[recs.length - 1])
       else setReciboPendiente(null)
 
       // Consultar si está en mora o tiene recibo emitido (<1m Azul o crónico)
@@ -229,6 +240,7 @@ export function Dashboard() {
       {modalOpen && (
         <ReportarPagoModal
           apartamentoId={apartamentoId}
+          modoInicial={modalModo}
           onClose={() => setModalOpen(false)}
           onSuccess={() => {
             setModalOpen(false)
@@ -465,6 +477,93 @@ export function Dashboard() {
               </span>
             </div>
 
+            {/* Desglose de Deuda Pre-Marzo y Post-Marzo en Móvil */}
+            {(deudaViejaTotalBs > 0 || deudaMarzoTotalUsd > 0) && (
+              <div style={{
+                backgroundColor: 'rgba(0, 0, 0, 0.35)',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                borderRadius: '14px',
+                padding: '12px 14px',
+                marginTop: '10px',
+                marginBottom: '16px'
+              }}>
+                <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>
+                  📊 Composición de tu Deuda
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {deudaViejaTotalBs > 0 && (
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      padding: '8px 10px',
+                      backgroundColor: 'rgba(234, 179, 8, 0.08)',
+                      border: '1px solid rgba(234, 179, 8, 0.25)',
+                      borderRadius: '10px',
+                      fontSize: '12px'
+                    }}>
+                      <div>
+                        <div style={{ color: '#facc15', fontWeight: 700 }}>
+                          📜 Pre-Marzo (Años anteriores)
+                        </div>
+                        <div style={{ color: '#94a3b8', fontSize: '10.5px' }}>
+                          Fijada en Bolívares (sin anclaje BCV)
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ color: '#facc15', fontWeight: 800 }}>
+                          {ocultarSaldos ? '••••' : `Bs. ${deudaViejaTotalBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {deudaMarzoTotalUsd > 0 && (
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      padding: '8px 10px',
+                      backgroundColor: 'rgba(59, 130, 246, 0.08)',
+                      border: '1px solid rgba(59, 130, 246, 0.25)',
+                      borderRadius: '10px',
+                      fontSize: '12px'
+                    }}>
+                      <div>
+                        <div style={{ color: '#60a5fa', fontWeight: 700 }}>
+                          💵 Desde Marzo 2026
+                        </div>
+                        <div style={{ color: '#94a3b8', fontSize: '10.5px' }}>
+                          ${deudaMarzoTotalUsd.toFixed(2)} USD a tasa BCV
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ color: '#60a5fa', fontWeight: 800 }}>
+                          {ocultarSaldos ? '••••' : `Bs. ${deudaMarzoEnBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                        </div>
+                        <div style={{ color: '#93c5fd', fontSize: '10px' }}>
+                          {ocultarSaldos ? '••••' : `($${deudaMarzoTotalUsd.toFixed(2)} USD)`}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {deudaViejaTotalBs > 0 && deudaMarzoTotalUsd > 0 && (
+                    <div style={{
+                      fontSize: '10.5px',
+                      color: '#94a3b8',
+                      textAlign: 'center',
+                      paddingTop: '6px',
+                      borderTop: '1px dashed rgba(255, 255, 255, 0.08)'
+                    }}>
+                      Deuda Total = Bs. {deudaViejaTotalBs.toLocaleString('es-VE', { maximumFractionDigits: 0 })} (viejos) + Bs. {deudaMarzoEnBs.toLocaleString('es-VE', { maximumFractionDigits: 0 })} (Marzo a tasa BCV)
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Saldo a Favor / Billetera Comunitaria */}
             {saldoAFavor > 0 && (
               <div style={{
@@ -649,10 +748,13 @@ export function Dashboard() {
             </h2>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '18px 12px' }}>
-              {/* 1. Reportar Pago (Verde Esmeralda Pulsante) */}
+              {/* 1. Reportar Pago (Verde Esmeralda) */}
               <button
                 className="quick-action-btn"
-                onClick={() => setModalOpen(true)}
+                onClick={() => {
+                  setModalModo('pago_total')
+                  setModalOpen(true)
+                }}
               >
                 <div className="quick-action-circle" style={{
                   backgroundColor: '#13281f',
@@ -666,6 +768,25 @@ export function Dashboard() {
                   </svg>
                 </div>
                 <span className="quick-action-label" style={{ color: '#22c55e', fontWeight: 700 }}>+ Pago</span>
+              </button>
+
+              {/* 2. Abonar a la Deuda (Azul Real) */}
+              <button
+                className="quick-action-btn"
+                onClick={() => {
+                  setModalModo('abono')
+                  setModalOpen(true)
+                }}
+              >
+                <div className="quick-action-circle" style={{
+                  backgroundColor: '#172554',
+                  border: '1px solid rgba(59, 130, 246, 0.35)',
+                  color: '#60a5fa',
+                  boxShadow: '0 4px 18px rgba(59, 130, 246, 0.25)'
+                }}>
+                  <span style={{ fontSize: '20px' }}>🪙</span>
+                </div>
+                <span className="quick-action-label" style={{ color: '#60a5fa', fontWeight: 700 }}>Abonar</span>
               </button>
 
               {/* 2. Mis Recibos (Vino/Rojizo) */}
@@ -1194,33 +1315,128 @@ export function Dashboard() {
                   </div>
                 </div>
 
-                {/* Botón de Pago directo */}
-                <button
-                  onClick={() => setModalOpen(true)}
-                  style={{
-                    width: '100%',
-                    background: 'linear-gradient(135deg, #fb923c 0%, #ea580c 100%)',
-                    border: '1px solid rgba(255, 255, 255, 0.25)',
-                    color: '#fff',
-                    padding: '14px',
+                {/* Desglose de Deuda Pre-Marzo y Post-Marzo en Desktop */}
+                {(deudaViejaTotalBs > 0 || deudaMarzoTotalUsd > 0) && (
+                  <div style={{
+                    backgroundColor: 'rgba(0, 0, 0, 0.35)',
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
                     borderRadius: '14px',
-                    fontSize: '15px',
-                    fontWeight: 800,
-                    cursor: 'pointer',
-                    marginTop: '20px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '8px',
-                    boxShadow: '0 4px 18px rgba(234, 88, 12, 0.45)'
-                  }}
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="12" y1="5" x2="12" y2="19"/>
-                    <line x1="5" y1="12" x2="19" y2="12"/>
-                  </svg>
-                  <span>Reportar Pago de Condominio</span>
-                </button>
+                    padding: '14px 18px',
+                    marginTop: '16px'
+                  }}>
+                    <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '10px' }}>
+                      📊 Composición de tu Deuda Total
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: (deudaViejaTotalBs > 0 && deudaMarzoTotalUsd > 0) ? '1fr 1fr' : '1fr', gap: '10px' }}>
+                      {deudaViejaTotalBs > 0 && (
+                        <div style={{
+                          padding: '10px 14px',
+                          backgroundColor: 'rgba(234, 179, 8, 0.08)',
+                          border: '1px solid rgba(234, 179, 8, 0.25)',
+                          borderRadius: '10px',
+                          fontSize: '12px'
+                        }}>
+                          <div style={{ color: '#facc15', fontWeight: 700 }}>
+                            📜 Pre-Marzo (Años anteriores)
+                          </div>
+                          <div style={{ color: '#94a3b8', fontSize: '11px', margin: '2px 0 4px' }}>
+                            Fijada en Bolívares (sin anclaje BCV)
+                          </div>
+                          <div style={{ color: '#facc15', fontSize: '15px', fontWeight: 800 }}>
+                            {ocultarSaldos ? '••••' : `Bs. ${deudaViejaTotalBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                          </div>
+                        </div>
+                      )}
+
+                      {deudaMarzoTotalUsd > 0 && (
+                        <div style={{
+                          padding: '10px 14px',
+                          backgroundColor: 'rgba(59, 130, 246, 0.08)',
+                          border: '1px solid rgba(59, 130, 246, 0.25)',
+                          borderRadius: '10px',
+                          fontSize: '12px'
+                        }}>
+                          <div style={{ color: '#60a5fa', fontWeight: 700 }}>
+                            💵 Desde Marzo 2026 en adelante
+                          </div>
+                          <div style={{ color: '#94a3b8', fontSize: '11px', margin: '2px 0 4px' }}>
+                            ${deudaMarzoTotalUsd.toFixed(2)} USD a tasa BCV
+                          </div>
+                          <div style={{ color: '#60a5fa', fontSize: '15px', fontWeight: 800 }}>
+                            {ocultarSaldos ? '••••' : `Bs. ${deudaMarzoEnBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {deudaViejaTotalBs > 0 && deudaMarzoTotalUsd > 0 && (
+                      <div style={{
+                        fontSize: '11px',
+                        color: '#94a3b8',
+                        textAlign: 'center',
+                        marginTop: '10px',
+                        paddingTop: '8px',
+                        borderTop: '1px dashed rgba(255, 255, 255, 0.08)'
+                      }}>
+                        Total Consolidado = Bs. {deudaViejaTotalBs.toLocaleString('es-VE', { maximumFractionDigits: 0 })} (viejos) + Bs. {deudaMarzoEnBs.toLocaleString('es-VE', { maximumFractionDigits: 0 })} (Marzo a tasa BCV)
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Botones de Pago y Abono directo */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '20px' }}>
+                  <button
+                    onClick={() => {
+                      setModalModo('pago_total')
+                      setModalOpen(true)
+                    }}
+                    style={{
+                      background: 'linear-gradient(135deg, #fb923c 0%, #ea580c 100%)',
+                      border: '1px solid rgba(255, 255, 255, 0.25)',
+                      color: '#fff',
+                      padding: '14px',
+                      borderRadius: '14px',
+                      fontSize: '14px',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                      boxShadow: '0 4px 18px rgba(234, 88, 12, 0.45)'
+                    }}
+                  >
+                    <span>💳</span>
+                    <span>Reportar Pago Total</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setModalModo('abono')
+                      setModalOpen(true)
+                    }}
+                    style={{
+                      background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                      border: '1px solid rgba(255, 255, 255, 0.25)',
+                      color: '#fff',
+                      padding: '14px',
+                      borderRadius: '14px',
+                      fontSize: '14px',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                      boxShadow: '0 4px 18px rgba(37, 99, 235, 0.45)'
+                    }}
+                  >
+                    <span>🪙</span>
+                    <span>Abonar a la Deuda</span>
+                  </button>
+                </div>
               </div>
 
               {/* 2. Tabla de Pagos Recientes */}

@@ -244,26 +244,101 @@ export const AdminRecibos: React.FC = () => {
         }
 
         if (aptoId) {
-          // 1. Sincronizar recibos_generados: marcar como pagados
-          const { error: errRecibo } = await supabase
-            .from('recibos_generados')
-            .update({ estado: 'pagado' })
-            .eq('apartamento_id', aptoId)
-            .eq('estado', 'pendiente')
+          const esAbono = pagoDb?.notas_admin?.includes('[ABONO PARCIAL')
 
-          if (errRecibo) {
-            console.error('[AdminRecibos] Error marcando recibo como pagado:', errRecibo)
-          }
+          if (esAbono) {
+            // Manejo de abono parcial:
+            // 1. Consultar recibos pendientes del apartamento
+            const { data: recsPend } = await supabase
+              .from('recibos_generados')
+              .select('id, mes_facturado, total_usd, total_bs, tasa_bcv')
+              .eq('apartamento_id', aptoId)
+              .eq('estado', 'pendiente')
+              .order('mes_facturado', { ascending: true })
 
-          // 2. Sincronizar deudas_mora: solventar
-          const { error: errMora } = await supabase
-            .from('deudas_mora')
-            .update({ estado: 'solventado' })
-            .eq('apartamento_id', aptoId)
-            .eq('estado', 'activo')
+            const abonoUsd = Number(pagoDb?.monto_usd || 0)
+            const abonoBs = Number(pagoDb?.monto_bs || 0)
 
-          if (errMora) {
-            console.warn('[AdminRecibos] Error solventando deudas_mora:', errMora)
+            if (recsPend && recsPend.length > 0) {
+              const primerRec = recsPend[0]
+              const esPreMarzo = (primerRec.mes_facturado || '').slice(0, 7) < '2026-03'
+
+              if (esPreMarzo) {
+                // Cálculo en Bolívares
+                const nuevoBs = Math.max(0, Number(primerRec.total_bs || 0) - abonoBs)
+                if (nuevoBs <= 0.05) {
+                  await supabase
+                    .from('recibos_generados')
+                    .update({ estado: 'pagado', total_bs: 0 })
+                    .eq('id', primerRec.id)
+                } else {
+                  await supabase
+                    .from('recibos_generados')
+                    .update({ total_bs: nuevoBs })
+                    .eq('id', primerRec.id)
+                }
+              } else {
+                // Cálculo en Dólares
+                const tasaRec = primerRec.tasa_bcv || 859.06
+                const nuevoUsd = Math.max(0, Number(primerRec.total_usd || 0) - abonoUsd)
+                const nuevoBs = nuevoUsd * tasaRec
+                if (nuevoUsd <= 0.05) {
+                  await supabase
+                    .from('recibos_generados')
+                    .update({ estado: 'pagado', total_usd: 0, total_bs: 0 })
+                    .eq('id', primerRec.id)
+                } else {
+                  await supabase
+                    .from('recibos_generados')
+                    .update({ total_usd: nuevoUsd, total_bs: nuevoBs })
+                    .eq('id', primerRec.id)
+                }
+              }
+            }
+
+            // Reducir en deudas_mora si existe
+            const { data: moraExistente } = await supabase
+              .from('deudas_mora')
+              .select('id, monto_usd, monto_bs')
+              .eq('apartamento_id', aptoId)
+              .eq('estado', 'activo')
+              .maybeSingle()
+
+            if (moraExistente) {
+              const nuevoMoraUsd = Math.max(0, Number(moraExistente.monto_usd || 0) - abonoUsd)
+              const nuevoMoraBs = Math.max(0, Number(moraExistente.monto_bs || 0) - abonoBs)
+              const solvente = nuevoMoraUsd <= 0.05 && nuevoMoraBs <= 0.05
+              await supabase
+                .from('deudas_mora')
+                .update({
+                  monto_usd: nuevoMoraUsd,
+                  monto_bs: nuevoMoraBs,
+                  estado: solvente ? 'solventado' : 'en_convenio'
+                })
+                .eq('id', moraExistente.id)
+            }
+          } else {
+            // 1. Sincronizar recibos_generados: marcar como pagados
+            const { error: errRecibo } = await supabase
+              .from('recibos_generados')
+              .update({ estado: 'pagado' })
+              .eq('apartamento_id', aptoId)
+              .eq('estado', 'pendiente')
+
+            if (errRecibo) {
+              console.error('[AdminRecibos] Error marcando recibo como pagado:', errRecibo)
+            }
+
+            // 2. Sincronizar deudas_mora: solventar
+            const { error: errMora } = await supabase
+              .from('deudas_mora')
+              .update({ estado: 'solventado' })
+              .eq('apartamento_id', aptoId)
+              .eq('estado', 'activo')
+
+            if (errMora) {
+              console.warn('[AdminRecibos] Error solventando deudas_mora:', errMora)
+            }
           }
 
           // 3. Limpiar caché de mora para actualizar inmediatamente todas las vistas
@@ -577,6 +652,20 @@ export const AdminRecibos: React.FC = () => {
                       }}>
                         {cfg.icon} {cfg.label}
                       </span>
+
+                      {pago.notas_admin && pago.notas_admin.includes('[ABONO PARCIAL') && (
+                        <span style={{
+                          backgroundColor: 'rgba(59, 130, 246, 0.18)',
+                          color: '#60a5fa',
+                          border: '1px solid rgba(59, 130, 246, 0.4)',
+                          padding: '2px 8px',
+                          borderRadius: '6px',
+                          fontSize: '11px',
+                          fontWeight: 800,
+                        }}>
+                          🪙 Abono Parcial
+                        </span>
+                      )}
                     </div>
 
                     <p style={{ color: '#888', fontSize: '12px', marginTop: '6px', margin: 0 }}>
