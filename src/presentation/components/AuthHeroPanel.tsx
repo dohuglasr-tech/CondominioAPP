@@ -16,7 +16,7 @@ interface AuthHeroPanelProps {
 }
 
 export const AuthHeroPanel: React.FC<AuthHeroPanelProps> = ({ config, onScrollToForm }) => {
-  const nombreEdificio = config?.nombre_edificio || 'Residencias Ocutuy 5'
+  const nombreEdificio = config?.nombre_edificio || 'DOMUS'
   const logoUrl = config?.logo_url || null
   const rif = config?.rif || null
   const direccion = config?.direccion || null

@@ -69,7 +69,7 @@ export function Login() {
   const [enableBiometricOnLogin, setEnableBiometricOnLogin] = useState(true)
   
   const { signIn, config, session, isAdmin } = useAuth()
-  const nombreEdificio = config?.nombre_edificio || 'Residencias Ocutuy 5'
+  const nombreEdificio = config?.nombre_edificio || 'DOMUS'
 
   // Redirigir si ya existe sesión activa
   useEffect(() => {

@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react'
-import { useAuth } from '../../application/contexts/AuthContext'
 
 export const InstallAppPrompt: React.FC = () => {
-  const { config } = useAuth()
   const [isVisible, setIsVisible] = useState(false)
   const [minimized, setMinimized] = useState(false)
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null)
@@ -109,11 +107,11 @@ export const InstallAppPrompt: React.FC = () => {
           }}
         >
           <img
-            src="/icon-192.png?v=domus-liquid-d"
-            alt="D"
+            src="/icon-192.png?v=domus-pure-black-d"
+            alt="DOMUS"
             style={{ width: '22px', height: '22px', borderRadius: '6px', objectFit: 'cover' }}
           />
-          <span>📲 Instalar App</span>
+          <span>📲 Instalar DOMUS</span>
         </button>
         <style>{`
           @keyframes pwaPillPulse {
@@ -195,39 +193,28 @@ export const InstallAppPrompt: React.FC = () => {
               position: 'relative',
               width: '68px',
               height: '68px',
-              borderRadius: '18px',
-              backgroundColor: '#171f30',
-              padding: '4px',
-              boxShadow: '0 8px 24px rgba(249, 115, 22, 0.35)',
-              border: '2px solid rgba(249, 115, 22, 0.5)',
+              borderRadius: '16px',
+              backgroundColor: '#000000',
+              boxShadow: '0 8px 24px rgba(0, 0, 0, 0.8)',
+              border: '1px solid rgba(255, 255, 255, 0.12)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              flexShrink: 0
+              flexShrink: 0,
+              overflow: 'hidden'
             }}
           >
             <img
-              src="/icon-192.png?v=domus-liquid-d"
-              alt="Icono Condominio"
+              src="/icon-192.png?v=domus-pure-black-d"
+              alt="DOMUS"
               onError={(e) => {
-                // Fallback elegante si el icono no carga
-                (e.target as HTMLImageElement).src = '/apple-touch-icon.png?v=domus-liquid-d'
+                (e.target as HTMLImageElement).src = '/apple-touch-icon.png?v=domus-pure-black-d'
               }}
               style={{
                 width: '100%',
                 height: '100%',
-                borderRadius: '14px',
+                borderRadius: '16px',
                 objectFit: 'cover'
-              }}
-            />
-            {/* Halo brillante */}
-            <span
-              style={{
-                position: 'absolute',
-                inset: '-4px',
-                borderRadius: '22px',
-                border: '1px solid rgba(249, 115, 22, 0.3)',
-                pointerEvents: 'none'
               }}
             />
           </div>
@@ -250,44 +237,44 @@ export const InstallAppPrompt: React.FC = () => {
             >
               📲 {isIOS ? 'App para iPhone' : isAndroid ? 'App para Android' : 'Acceso Directo Móvil'}
             </span>
-            <h3 style={{ margin: 0, color: '#ffffff', fontSize: '18px', fontWeight: 900, lineHeight: 1.2 }}>
+            <h3 style={{ margin: 0, color: '#ffffff', fontSize: '19px', fontWeight: 900, lineHeight: 1.2 }}>
               Instala la Aplicación
             </h3>
-            <p style={{ margin: '2px 0 0', color: '#94a3b8', fontSize: '12.5px', fontWeight: 500 }}>
-              {config?.nombre_edificio || 'Domus Condominio'}
+            <p style={{ margin: '2px 0 0', color: 'var(--color-accent, #f97316)', fontSize: '13px', fontWeight: 900, letterSpacing: '0.8px', textTransform: 'uppercase' }}>
+              DOMUS
             </p>
           </div>
         </div>
 
-        {/* Mensaje descriptivo con beneficios */}
+        {/* Mensaje descriptivo */}
         <p style={{ color: '#cbd5e1', fontSize: '13px', lineHeight: 1.45, margin: '0 0 16px' }}>
-          Para mayor comodidad y rapidez, instala el acceso directo en tu teléfono. Accede a tus recibos y realiza pagos en un toque sin tener que abrir el navegador.
+          Instala <strong>DOMUS</strong> en la pantalla de inicio de tu teléfono para acceder a tus recibos y gestionar tu condominio con máxima velocidad y comodidad.
         </p>
 
-        {/* Tarjetas de Beneficios */}
+        {/* 3 Mejores Integraciones de DOMUS */}
         <div
           style={{
             backgroundColor: 'rgba(255, 255, 255, 0.03)',
             border: '1px solid rgba(255, 255, 255, 0.08)',
             borderRadius: '16px',
-            padding: '12px 14px',
+            padding: '14px',
             marginBottom: '20px',
             display: 'flex',
             flexDirection: 'column',
-            gap: '8px'
+            gap: '11px'
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '12px', color: '#e2e8f0' }}>
-            <span style={{ fontSize: '15px' }}>⚡</span>
-            <span><strong>1 toque desde tu pantalla:</strong> Entrada instantánea sin URL</span>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', fontSize: '12.5px', color: '#e2e8f0', lineHeight: 1.35 }}>
+            <span style={{ fontSize: '17px', lineHeight: 1 }}>🏦</span>
+            <span><strong style={{ color: '#fff' }}>Tasa Oficial BCV en Tiempo Real:</strong> Moneda dual automática con conversión oficial instantánea en USD y Bolívares.</span>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '12px', color: '#e2e8f0' }}>
-            <span style={{ fontSize: '15px' }}>📄</span>
-            <span><strong>Recibos y Pagos:</strong> Consulta solvencias y reporta pagos fácil</span>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', fontSize: '12.5px', color: '#e2e8f0', lineHeight: 1.35 }}>
+            <span style={{ fontSize: '17px', lineHeight: 1 }}>⚡</span>
+            <span><strong style={{ color: '#fff' }}>Reporte y Validación Instantánea:</strong> Conciliación ágil de Pago Móvil y transferencias con recibos digitales y solvencia al día.</span>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '12px', color: '#e2e8f0' }}>
-            <span style={{ fontSize: '15px' }}>💾</span>
-            <span><strong>No consume memoria:</strong> Pesa menos de 1 MB</span>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', fontSize: '12.5px', color: '#e2e8f0', lineHeight: 1.35 }}>
+            <span style={{ fontSize: '17px', lineHeight: 1 }}>🔔</span>
+            <span><strong style={{ color: '#fff' }}>Notificaciones Push y Multicanal:</strong> Alertas directas a tu móvil sobre avisos de cobro, incidencias y chat comunitario.</span>
           </div>
         </div>
 
@@ -437,7 +424,7 @@ export const InstallAppPrompt: React.FC = () => {
               }}
             >
               <span style={{ fontSize: '18px' }}>📲</span>
-              <span>Instalar Aplicación en el Teléfono</span>
+              <span>Instalar DOMUS en el Teléfono</span>
             </button>
 
             {showAndroidManual && (

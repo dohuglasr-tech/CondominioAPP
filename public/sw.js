@@ -24,7 +24,7 @@ self.addEventListener('fetch', (event) => {
 // ── Recibir push desde el servidor ─────────────────────────────────────────
 self.addEventListener('push', (event) => {
   let data = {
-    titulo: 'Residencias Ocutuy 5',
+    titulo: 'DOMUS',
     cuerpo: 'Tienes una nueva notificación',
     link: '/',
     tipo: 'aviso',
