@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useAuth } from '../../application/contexts/AuthContext'
 import { supabase } from '../../data/supabase'
 import { appCache } from '../../data/cacheService'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { ReportarPagoModal } from './ReportarPagoModal'
 import {
   generarPDFRecibo,
@@ -124,6 +124,7 @@ function formatFecha(iso: string): string {
 export function RecibosPanel({ onClose }: Props) {
   const { perfil, config: authConfig } = useAuth()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
 
   const p = perfil as any
   const apartamentoId = perfil?.apartamento_id ?? ''
@@ -133,6 +134,7 @@ export function RecibosPanel({ onClose }: Props) {
   const [activeTab, setActiveTab] = useState<'recibos' | 'pagos'>('recibos')
   const [recibos, setRecibos] = useState<ReciboGenerado[]>([])
   const [pagos, setPagos] = useState<PagoReportado[]>([])
+  const [deudaMoraManual, setDeudaMoraManual] = useState<any | null>(null)
   const [config, setConfig] = useState<ConfigEdificio | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -144,6 +146,17 @@ export function RecibosPanel({ onClose }: Props) {
   const [filtroAnio, setFiltroAnio] = useState<string>('todos')
   const [filtroMes, setFiltroMes] = useState<string>('todos')
 
+  const paramFiltro = searchParams.get('filtro')
+  const [filtroEstado, setFiltroEstado] = useState<'todos' | 'pendientes' | 'pagados'>(
+    paramFiltro === 'pendientes' || paramFiltro === 'mora' ? 'pendientes' : 'todos'
+  )
+
+  useEffect(() => {
+    if (paramFiltro === 'pendientes' || paramFiltro === 'mora') {
+      setFiltroEstado('pendientes')
+    }
+  }, [paramFiltro])
+
   const aniosDisponibles = useMemo(() => {
     const set = new Set<string>()
     recibos.forEach(r => {
@@ -153,15 +166,20 @@ export function RecibosPanel({ onClose }: Props) {
     return Array.from(set).sort((a, b) => b.localeCompare(a))
   }, [recibos])
 
+  const conteoPendientes = useMemo(() => recibos.filter(r => r.estado === 'pendiente').length + (deudaMoraManual ? 1 : 0), [recibos, deudaMoraManual])
+  const conteoPagados = useMemo(() => recibos.filter(r => r.estado === 'pagado').length, [recibos])
+
   const recibosFiltrados = useMemo(() => {
     return recibos.filter(r => {
+      if (filtroEstado === 'pendientes' && r.estado !== 'pendiente') return false
+      if (filtroEstado === 'pagados' && r.estado !== 'pagado') return false
       const y = (r.mes_facturado || '').substring(0, 4)
       const m = (r.mes_facturado || '').substring(5, 7)
       if (filtroAnio !== 'todos' && y !== filtroAnio) return false
       if (filtroMes !== 'todos' && m !== filtroMes) return false
       return true
     })
-  }, [recibos, filtroAnio, filtroMes])
+  }, [recibos, filtroAnio, filtroMes, filtroEstado])
 
   // ── Cargar información completa del residente con Caché ──────────────────────────────
   const cargarDatos = useCallback(async (forceRefresh = false) => {
@@ -172,7 +190,7 @@ export function RecibosPanel({ onClose }: Props) {
 
     try {
       setError(null)
-      const [recibosData, pagosData, configRes] = await Promise.all([
+      const [recibosData, pagosData, configRes, moraRes] = await Promise.all([
         appCache.fetch(
           `residente_recibos_${apartamentoId}`,
           async () => {
@@ -203,10 +221,17 @@ export function RecibosPanel({ onClose }: Props) {
           .from('configuracion_edificio')
           .select('*')
           .maybeSingle(),
+        supabase
+          .from('deudas_mora')
+          .select('*')
+          .eq('apartamento_id', apartamentoId)
+          .eq('estado', 'activo')
+          .maybeSingle(),
       ])
 
       setRecibos(recibosData)
       setPagos(pagosData)
+      setDeudaMoraManual(moraRes.data || null)
       if (configRes.data) {
         setConfig(configRes.data)
       } else if (authConfig) {
@@ -229,7 +254,7 @@ export function RecibosPanel({ onClose }: Props) {
 
     if (!apartamentoId) return
 
-    // ── Suscripción Realtime dual (recibos_generados y pagos_reportados) ──
+    // ── Suscripción Realtime triple (recibos_generados, pagos_reportados y deudas_mora) ──
     const channelId = `residente_recibos_${apartamentoId}_${Math.random().toString(36).slice(2, 7)}`
     const channel = supabase
       .channel(channelId)
@@ -246,6 +271,14 @@ export function RecibosPanel({ onClose }: Props) {
         { event: '*', schema: 'public', table: 'pagos_reportados', filter: `apartamento_id=eq.${apartamentoId}` },
         () => {
           appCache.invalidateTags(['pagos', 'saldos', `pago_${apartamentoId}`])
+          cargarDatos(true)
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'deudas_mora', filter: `apartamento_id=eq.${apartamentoId}` },
+        () => {
+          appCache.invalidateTags(['mora', 'saldos'])
           cargarDatos(true)
         }
       )
@@ -583,6 +616,93 @@ export function RecibosPanel({ onClose }: Props) {
               </div>
             )}
 
+            {/* Selector de Estado: Por Pagar (Mora) / Todos / Pagados */}
+            <div style={{
+              display: 'flex',
+              gap: '8px',
+              marginBottom: '14px',
+              flexWrap: 'wrap'
+            }}>
+              <button
+                onClick={() => setFiltroEstado('pendientes')}
+                style={{
+                  background: filtroEstado === 'pendientes'
+                    ? 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)'
+                    : 'rgba(239, 68, 68, 0.1)',
+                  color: filtroEstado === 'pendientes' ? '#fff' : '#f87171',
+                  border: filtroEstado === 'pendientes' ? 'none' : '1px solid rgba(239, 68, 68, 0.3)',
+                  padding: '8px 16px',
+                  borderRadius: '10px',
+                  fontSize: '12px',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  boxShadow: filtroEstado === 'pendientes' ? '0 2px 12px rgba(239, 68, 68, 0.4)' : 'none'
+                }}
+              >
+                <span>⚠️ Por Pagar / Mora</span>
+                <span style={{
+                  background: filtroEstado === 'pendientes' ? 'rgba(0,0,0,0.3)' : 'rgba(239, 68, 68, 0.25)',
+                  padding: '2px 8px',
+                  borderRadius: '999px',
+                  fontSize: '11px',
+                  fontWeight: 900
+                }}>
+                  {conteoPendientes}
+                </span>
+              </button>
+
+              <button
+                onClick={() => setFiltroEstado('todos')}
+                style={{
+                  background: filtroEstado === 'todos'
+                    ? 'rgba(255, 255, 255, 0.18)'
+                    : 'rgba(255, 255, 255, 0.05)',
+                  color: filtroEstado === 'todos' ? '#fff' : '#94a3b8',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  padding: '8px 14px',
+                  borderRadius: '10px',
+                  fontSize: '12px',
+                  fontWeight: filtroEstado === 'todos' ? 800 : 600,
+                  cursor: 'pointer'
+                }}
+              >
+                Todos ({recibos.length + (deudaMoraManual ? 1 : 0)})
+              </button>
+
+              <button
+                onClick={() => setFiltroEstado('pagados')}
+                style={{
+                  background: filtroEstado === 'pagados'
+                    ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
+                    : 'rgba(16, 185, 129, 0.1)',
+                  color: filtroEstado === 'pagados' ? '#fff' : '#34d399',
+                  border: filtroEstado === 'pagados' ? 'none' : '1px solid rgba(16, 185, 129, 0.3)',
+                  padding: '8px 14px',
+                  borderRadius: '10px',
+                  fontSize: '12px',
+                  fontWeight: filtroEstado === 'pagados' ? 800 : 600,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                <span>✓ Pagados</span>
+                <span style={{
+                  background: filtroEstado === 'pagados' ? 'rgba(0,0,0,0.3)' : 'rgba(16, 185, 129, 0.25)',
+                  padding: '2px 8px',
+                  borderRadius: '999px',
+                  fontSize: '11px',
+                  fontWeight: 900
+                }}>
+                  {conteoPagados}
+                </span>
+              </button>
+            </div>
+
             {/* Barra de Filtros por Año y por Mes */}
             <div style={{
               display: 'flex',
@@ -678,6 +798,71 @@ export function RecibosPanel({ onClose }: Props) {
                 </select>
               </div>
             </div>
+
+            {/* Si tiene Deuda Atrasada / Mora manual y no está filtrando solo pagados */}
+            {deudaMoraManual && filtroEstado !== 'pagados' && (
+              <div style={{
+                background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(185, 28, 28, 0.12) 100%)',
+                border: '1px solid rgba(239, 68, 68, 0.4)',
+                borderLeftWidth: '5px',
+                borderLeftColor: '#ef4444',
+                borderRadius: '16px',
+                padding: '20px',
+                marginBottom: '16px',
+                boxShadow: '0 4px 20px rgba(0, 0, 0, 0.35)'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', marginBottom: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '20px' }}>⚠️</span>
+                    <h3 style={{ color: '#fff', fontSize: '16px', fontWeight: 800, margin: 0 }}>
+                      Deuda Atrasada Registrada (Mora Pendiente)
+                    </h3>
+                  </div>
+                  <span style={{
+                    background: 'rgba(239, 68, 68, 0.25)',
+                    color: '#f87171',
+                    border: '1px solid rgba(239, 68, 68, 0.4)',
+                    padding: '3px 10px',
+                    borderRadius: '999px',
+                    fontSize: '11px',
+                    fontWeight: 800
+                  }}>
+                    {deudaMoraManual.meses_deuda > 1 ? `${deudaMoraManual.meses_deuda} meses atrasados` : 'Pendiente al Cobro'}
+                  </span>
+                </div>
+                <p style={{ color: '#cbd5e1', fontSize: '13px', margin: '0 0 14px', lineHeight: 1.4 }}>
+                  {deudaMoraManual.conceptos_detalle || 'Deuda acumulada registrada por la administración'}
+                  {deudaMoraManual.observaciones ? ` · ${deudaMoraManual.observaciones}` : ''}
+                </p>
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                  gap: '12px',
+                  padding: '12px 14px',
+                  background: 'rgba(0, 0, 0, 0.25)',
+                  borderRadius: '12px'
+                }}>
+                  <div>
+                    <span style={{ color: '#94a3b8', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase' }}>
+                      Monto en Bolívares
+                    </span>
+                    <div style={{ color: '#38bdf8', fontSize: '18px', fontWeight: 800, marginTop: '2px' }}>
+                      Bs. {fmtBs(deudaMoraManual.monto_bs)}
+                    </div>
+                  </div>
+                  {Number(deudaMoraManual.monto_usd) > 0 && (
+                    <div>
+                      <span style={{ color: '#94a3b8', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase' }}>
+                        Monto en Dólares ($)
+                      </span>
+                      <div style={{ color: '#fff', fontSize: '18px', fontWeight: 800, marginTop: '2px' }}>
+                        ${fmtUsd(deudaMoraManual.monto_usd)}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {recibosFiltrados.length === 0 ? (
               <div style={{

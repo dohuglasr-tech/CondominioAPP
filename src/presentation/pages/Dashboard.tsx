@@ -673,7 +673,7 @@ export function Dashboard() {
               </p>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <button
-                  onClick={() => navigate('/mora')}
+                  onClick={() => navigate('/recibos?filtro=pendientes')}
                   style={{
                     flex: 1,
                     background: 'rgba(255, 255, 255, 0.08)',
@@ -686,7 +686,7 @@ export function Dashboard() {
                     cursor: 'pointer'
                   }}
                 >
-                  Ver Lista
+                  Ver mora
                 </button>
                 <button
                   onClick={() => setModalOpen(true)}
@@ -1074,7 +1074,7 @@ export function Dashboard() {
 
               <div style={{ display: 'flex', gap: '10px' }}>
                 <button
-                  onClick={() => navigate('/mora')}
+                  onClick={() => navigate('/recibos?filtro=pendientes')}
                   style={{
                     background: 'rgba(255, 255, 255, 0.08)',
                     border: '1px solid rgba(255, 255, 255, 0.16)',
@@ -1086,7 +1086,7 @@ export function Dashboard() {
                     cursor: 'pointer'
                   }}
                 >
-                  Ver Lista de Mora
+                  Ver mora
                 </button>
                 <button
                   onClick={() => setModalOpen(true)}
