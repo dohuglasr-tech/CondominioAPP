@@ -6,8 +6,10 @@ import {
   obtenerJunta,
   formatWhatsappUrl
 } from '../../data/juntaService'
+import { useNavigate } from 'react-router-dom'
 
 export const JuntaCondominioResidente: React.FC = () => {
+  const navigate = useNavigate()
   const [miembros, setMiembros] = useState<MiembroJunta[]>([])
   const [loading, setLoading] = useState(true)
   const [filtroCategoria, setFiltroCategoria] = useState<string>('todos')
@@ -43,6 +45,30 @@ export const JuntaCondominioResidente: React.FC = () => {
 
   return (
     <div style={{ padding: '28px 20px', maxWidth: '1100px', margin: '0 auto', color: '#fff', fontFamily: 'Inter, sans-serif' }}>
+      {/* Botón de regreso */}
+      <button
+        onClick={() => navigate('/')}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
+          background: 'rgba(255,255,255,0.06)',
+          border: '1px solid rgba(255,255,255,0.1)',
+          color: '#94a3b8',
+          padding: '7px 12px',
+          borderRadius: '10px',
+          fontSize: '12px',
+          fontWeight: 600,
+          cursor: 'pointer',
+          marginBottom: '20px',
+          transition: 'all 0.18s'
+        }}
+        title="Volver al inicio"
+      >
+        <span style={{ fontSize: '16px' }}>←</span>
+        <span>Inicio</span>
+      </button>
+
       {/* HEADER */}
       <div style={{ textAlign: 'center', marginBottom: '32px' }}>
         <div style={{

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { useAuth } from '../../application/contexts/AuthContext'
+import { useNavigate } from 'react-router-dom'
 import { ReportarPagoModal } from '../components/ReportarPagoModal'
 import {
   DeudaMoraItem,
@@ -13,6 +14,7 @@ export { obtenerPisoApto }
 
 export const ListaMoraResidente: React.FC = () => {
   const { perfil, config } = useAuth()
+  const navigate = useNavigate()
   const totalPisos = (config as any)?.total_pisos ?? 10
   const tienePh = (config as any)?.tiene_ph ?? true
   const totalPh = (config as any)?.total_ph ?? 2
@@ -159,6 +161,30 @@ export const ListaMoraResidente: React.FC = () => {
           }}
         />
       )}
+
+      {/* Botón de regreso */}
+      <button
+        onClick={() => navigate('/')}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
+          background: 'rgba(255,255,255,0.06)',
+          border: '1px solid rgba(255,255,255,0.1)',
+          color: '#94a3b8',
+          padding: '7px 12px',
+          borderRadius: '10px',
+          fontSize: '12px',
+          fontWeight: 600,
+          cursor: 'pointer',
+          marginBottom: '16px',
+          transition: 'all 0.18s'
+        }}
+        title="Volver al inicio"
+      >
+        <span style={{ fontSize: '16px' }}>←</span>
+        <span>Inicio</span>
+      </button>
 
       {/* HEADER */}
       <div style={{ marginBottom: '20px' }}>

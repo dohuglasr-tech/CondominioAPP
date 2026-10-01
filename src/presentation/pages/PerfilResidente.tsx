@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react'
 import { useAuth } from '../../application/contexts/AuthContext'
+import { useNavigate } from 'react-router-dom'
 
 export const PerfilResidente: React.FC = () => {
+  const navigate = useNavigate()
   const { user, perfil, config, refreshPerfil, refreshConfig, updatePassword } = useAuth()
   const p = perfil as any
   const c = config as any
@@ -101,6 +103,30 @@ export const PerfilResidente: React.FC = () => {
 
   return (
     <div style={s.page}>
+      {/* Botón de regreso */}
+      <button
+        onClick={() => navigate('/')}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
+          background: 'rgba(255,255,255,0.06)',
+          border: '1px solid rgba(255,255,255,0.1)',
+          color: '#94a3b8',
+          padding: '7px 12px',
+          borderRadius: '10px',
+          fontSize: '12px',
+          fontWeight: 600,
+          cursor: 'pointer',
+          marginBottom: '16px',
+          transition: 'all 0.18s'
+        }}
+        title="Volver al inicio"
+      >
+        <span style={{ fontSize: '16px' }}>←</span>
+        <span>Inicio</span>
+      </button>
+
       {/* Avatar + Nombre */}
       <div style={s.avatarWrap}>
         <div style={s.avatar}>

@@ -159,7 +159,6 @@ export const AdminRecibos: React.FC = () => {
         }
       )
       .subscribe()
-      .subscribe()
 
     return () => {
       supabase.removeChannel(channel)
