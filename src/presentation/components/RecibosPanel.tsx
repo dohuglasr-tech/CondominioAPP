@@ -227,13 +227,16 @@ export function RecibosPanel({ onClose }: Props) {
           .from('deudas_mora')
           .select('*')
           .eq('apartamento_id', apartamentoId)
-          .eq('estado', 'activo')
           .maybeSingle(),
       ])
 
       setRecibos(recibosData)
       setPagos(pagosData)
-      setDeudaMoraManual(moraRes.data || null)
+      const manualMora = moraRes.data && (
+        moraRes.data.estado === 'activo' ||
+        ((Number(moraRes.data.monto_bs) || 0) > 0.05 || (Number(moraRes.data.monto_usd) || 0) > 0.05)
+      ) && moraRes.data.estado !== 'solventado' ? moraRes.data : null
+      setDeudaMoraManual(manualMora)
       if (configRes.data) {
         setConfig(configRes.data)
       } else if (authConfig) {

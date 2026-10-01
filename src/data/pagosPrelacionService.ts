@@ -82,12 +82,11 @@ export async function aplicarPagoConPrelacion(
   }
 
   try {
-    // 1. Consultar deudas activas en deudas_mora
+    // 1. Consultar deudas en deudas_mora para este apartamento
     const { data: moraRow } = await supabase
       .from('deudas_mora')
       .select('*')
       .eq('apartamento_id', aptoId)
-      .eq('estado', 'activo')
       .maybeSingle()
 
     // 2. Consultar recibos pendientes ordenados por mes_facturado ASC (más antiguos primero)
@@ -109,8 +108,10 @@ export async function aplicarPagoConPrelacion(
     // ─────────────────────────────────────────────────────────────────────────────
 
     // A. Deuda atrasada manual (deudas_mora en Bolívares)
-    if (moraRow && Number(moraRow.monto_bs || 0) > 0.05 && remanenteBs > 0) {
-      const moraBs = Number(moraRow.monto_bs)
+    // Se procesa si existe un monto positivo adeudado en Bolívares
+    const saldoMoraBs = moraRow ? Number(moraRow.monto_bs || 0) : 0
+    if (moraRow && saldoMoraBs > 0.05 && remanenteBs > 0) {
+      const moraBs = saldoMoraBs
       if (remanenteBs >= moraBs - 0.05) {
         // Liquidar por completo la porción en Bolívares
         const tieneUsd = Number(moraRow.monto_usd || 0) > 0.05

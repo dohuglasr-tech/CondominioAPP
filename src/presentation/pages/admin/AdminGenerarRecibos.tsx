@@ -236,6 +236,7 @@ export const AdminGenerarRecibos: React.FC = () => {
         total_usd:         calc.totalUsd,
         total_bs:          calc.totalBs,
         estado:            'pendiente',
+        es_indexado:       esIndexado,
         data_json: {
           gastos: gastos.map(g => ({ descripcion: g.descripcion, monto_usd: g.monto_usd, monto_bs: g.monto_bs })),
           cargos_especiales: cargos.filter(c => c.apartamento_id === apto.id),

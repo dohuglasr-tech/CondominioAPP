@@ -76,21 +76,20 @@ export function Dashboard() {
     }
   }
 
-  if (moraRecord && moraRecord.estado === 'activo' && (moraRecord.origen === 'deuda_manual' || !moraRecord.origen)) {
-    if (moraRecord.moneda_principal === 'BS') {
-      deudaFijaBs += Number(moraRecord.monto_bs || 0)
-    } else if (moraRecord.moneda_principal === 'USD') {
-      deudaIndexadaUsd += Number(moraRecord.monto_usd || 0)
-    } else {
-      deudaFijaBs += Number(moraRecord.monto_bs || 0)
-      deudaIndexadaUsd += Number(moraRecord.monto_usd || 0)
-    }
+  // Deuda manual (exclusivamente el componente manual para no duplicar los recibos)
+  if (moraRecord && (moraRecord.estado === 'activo' || !moraRecord.estado)) {
+    const manualBs = Number(moraRecord.monto_manual_bs !== undefined ? moraRecord.monto_manual_bs : (moraRecord.origen === 'deuda_manual' ? (moraRecord.moneda_principal === 'USD' ? 0 : moraRecord.monto_bs) : 0))
+    const manualUsd = Number(moraRecord.monto_manual_usd !== undefined ? moraRecord.monto_manual_usd : (moraRecord.origen === 'deuda_manual' ? (moraRecord.moneda_principal === 'BS' ? 0 : moraRecord.monto_usd) : 0))
+
+    if (manualBs > 0.05) deudaFijaBs += manualBs
+    if (manualUsd > 0.05) deudaIndexadaUsd += manualUsd
   }
 
   const deudaIndexadaBs = deudaIndexadaUsd * tasaValida
   const deudaBs = deudaFijaBs + deudaIndexadaBs
   const deudaUsd = (deudaFijaBs > 0 && tasaValida > 0 ? deudaFijaBs / tasaValida : 0) + deudaIndexadaUsd
   const tieneDeudaFijaBs = deudaFijaBs > 0.05
+  const tieneDeudaReal = deudaBs > 0.05 || (recibosPendientesList.length > 0)
 
 
   // Cargar datos del apartamento y alícuota real impuesta por el administrador
@@ -438,7 +437,7 @@ export function Dashboard() {
                 }}>
                   ⏳ Pago en Verificación
                 </span>
-              ) : moraRecord ? (
+              ) : (moraRecord && tieneDeudaReal) ? (
                 <span style={{
                   backgroundColor: moraRecord.tasa_riesgo === 'azul' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(239, 68, 68, 0.15)',
                   color: moraRecord.tasa_riesgo === 'azul' ? '#60a5fa' : '#ef4444',
@@ -628,8 +627,8 @@ export function Dashboard() {
             </div>
           )}
 
-          {/* ── ALERTA DE RECIBO / MORA (Si el apartamento figura en la lista) ── */}
-          {moraRecord && (() => {
+          {/* ── ALERTA DE RECIBO / MORA (Si el apartamento figura en la lista y tiene deuda real) ── */}
+          {moraRecord && tieneDeudaReal && (() => {
             const tasaCfg = getTasaConfig(moraRecord.tasa_riesgo)
             return (
             <div style={{
@@ -1020,8 +1019,8 @@ export function Dashboard() {
             </div>
           </div>
 
-          {/* ALERTA DE MORA / RECIBO DESKTOP (Si aplica) */}
-          {moraRecord && (() => {
+          {/* ALERTA DE MORA / RECIBO DESKTOP (Si aplica y tiene deuda real) */}
+          {moraRecord && tieneDeudaReal && (() => {
             const tasaCfg = getTasaConfig(moraRecord.tasa_riesgo)
             return (
             <div style={{

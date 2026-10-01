@@ -166,7 +166,10 @@ export const AdminMora: React.FC = () => {
     setFormRiesgo(item.tasa_riesgo)
     setFormRiesgoManual(true)
     setFormAccion(item.accion_legal)
-    setFormEstado(item.estado)
+    const estadoInicial = (Number(item.monto_usd || 0) > 0.05 || Number(item.monto_bs || 0) > 0.05) && item.estado === 'solventado'
+      ? 'activo'
+      : item.estado
+    setFormEstado(estadoInicial)
     setFormConceptos(item.conceptos_detalle || '')
     setFormObservaciones(item.observaciones || '')
     setFormFechaCorte(item.fecha_corte || new Date().toISOString().slice(0, 10))
@@ -212,7 +215,9 @@ export const AdminMora: React.FC = () => {
       moneda_principal: formMoneda,
       tasa_riesgo: formRiesgo,
       accion_legal: formAccion,
-      estado: formEstado,
+      estado: (Number(formMontoUsd) > 0.05 || Number(formMontoBs) > 0.05) && formEstado === 'solventado'
+        ? 'activo'
+        : formEstado,
       conceptos_detalle: formConceptos.trim(),
       observaciones: formObservaciones.trim(),
       fecha_corte: formFechaCorte

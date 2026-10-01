@@ -32,14 +32,14 @@ export function esReciboIndexado(
 ): boolean {
   if (!recibo) return true
 
-  // 1. Verificación directa si existe la propiedad
-  if (recibo.es_indexado !== undefined && recibo.es_indexado !== null) {
-    return Boolean(recibo.es_indexado)
-  }
-
-  // 2. Verificación dentro de data_json
+  // 1. Verificación explícita en data_json (si el administrador tildó o destildó al emitir)
   if (recibo.data_json?.es_indexado !== undefined && recibo.data_json?.es_indexado !== null) {
     return Boolean(recibo.data_json.es_indexado)
+  }
+
+  // 2. Verificación directa si existe la columna en el registro
+  if (recibo.es_indexado !== undefined && recibo.es_indexado !== null) {
+    return Boolean(recibo.es_indexado)
   }
 
   // 3. Verificación de período de administración dinámica

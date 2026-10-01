@@ -28,6 +28,8 @@ export interface DeudaMoraItem {
   meses_deuda: number
   monto_usd: number
   monto_bs: number
+  monto_manual_usd?: number
+  monto_manual_bs?: number
   moneda_principal: MonedaMora
   tasa_riesgo: TasaRiesgoMora
   accion_legal: AccionLegalMora
@@ -338,11 +340,21 @@ export async function obtenerDeudasMora(forceRefresh = false): Promise<{ data: D
       const extraUsd = recs.reduce((s, r) => s + Number(r.total_usd || 0), 0)
       const extraBs = recs.reduce((s, r) => s + Number(r.total_bs || 0), 0)
 
-      const meses = Number(row.meses_deuda || 3)
-      const montoUsd = Number(row.monto_usd || 0) + extraUsd
-      const montoBs = Number(row.monto_bs || 0) + extraBs
+      const esSolventado = row.estado === 'solventado'
+      const manualBs = esSolventado ? 0 : Number(row.monto_bs || 0)
+      const manualUsd = esSolventado ? 0 : Number(row.monto_usd || 0)
+
+      // Si la deuda manual ya está solventada (o en 0) y tampoco tiene recibos pendientes, está 100% al día
+      if (manualBs <= 0.05 && manualUsd <= 0.05 && recs.length === 0) {
+        return
+      }
+
+      const tieneDeudaManual = manualBs > 0.05 || manualUsd > 0.05
+      const meses = Number(row.meses_deuda || (recs.length > 0 ? recs.length : 3))
+      const montoUsd = manualUsd + extraUsd
+      const montoBs = manualBs + extraBs
       const tasa: TasaRiesgoMora =
-        (row.tasa_riesgo as TasaRiesgoMora) || calcularTasaRiesgoPorMeses(meses)
+        (row.tasa_riesgo as TasaRiesgoMora) || (tieneDeudaManual ? calcularTasaRiesgoPorMeses(meses) : (recs.length <= 1 ? 'azul' : calcularTasaRiesgoPorMeses(recs.length)))
 
       deudoresMap.set(row.apartamento_id, {
         id: row.id,
@@ -355,16 +367,18 @@ export async function obtenerDeudasMora(forceRefresh = false): Promise<{ data: D
         meses_deuda: meses,
         monto_usd: Number(montoUsd.toFixed(2)),
         monto_bs: Number(montoBs.toFixed(2)),
+        monto_manual_usd: Number(manualUsd.toFixed(2)),
+        monto_manual_bs: Number(manualBs.toFixed(2)),
         moneda_principal: row.moneda_principal || 'MIXTO',
         tasa_riesgo: tasa,
         accion_legal: (row.accion_legal as AccionLegalMora) || (tasa === 'azul' ? 'notificacion_amistosa' : 'carta_cobro_extrajudicial'),
-        estado: row.estado || 'activo',
+        estado: (tieneDeudaManual || recs.length > 0) ? 'activo' : 'solventado',
         conceptos_detalle:
           row.conceptos_detalle ||
-          (recs.length > 0 ? 'Deuda anterior registrada + Recibo emitido del mes' : 'Deuda anterior acumulada'),
+          (recs.length > 0 ? (tieneDeudaManual ? 'Deuda anterior registrada + Recibo emitido del mes' : 'Recibo emitido del mes') : 'Deuda anterior acumulada'),
         observaciones: row.observaciones || '',
         fecha_corte: row.fecha_corte || new Date().toISOString().slice(0, 10),
-        origen: 'deuda_manual',
+        origen: tieneDeudaManual ? 'deuda_manual' : 'recibo_emitido',
         created_at: row.created_at,
         updated_at: row.updated_at
       })
@@ -497,6 +511,12 @@ export async function guardarDeudaMora(item: Partial<DeudaMoraItem>): Promise<{ 
     cached.sort((a, b) => b.meses_deuda - a.meses_deuda)
     saveLocalMoraCache(cached)
 
+    // Asegurar que si hay deuda positiva, el estado no sea 'solventado'
+    const estadoFinal = (Number(nuevoItem.monto_usd || 0) > 0.05 || Number(nuevoItem.monto_bs || 0) > 0.05) && nuevoItem.estado === 'solventado'
+      ? 'activo'
+      : (nuevoItem.estado || 'activo')
+    nuevoItem.estado = estadoFinal
+
     // Intentar persistir en Supabase si apartamento_id es un UUID válido
     if (nuevoItem.apartamento_id && !nuevoItem.apartamento_id.startsWith('mora-')) {
       try {
@@ -508,7 +528,7 @@ export async function guardarDeudaMora(item: Partial<DeudaMoraItem>): Promise<{ 
           moneda_principal: nuevoItem.moneda_principal,
           tasa_riesgo: nuevoItem.tasa_riesgo,
           accion_legal: nuevoItem.accion_legal,
-          estado: nuevoItem.estado,
+          estado: estadoFinal,
           conceptos_detalle: nuevoItem.conceptos_detalle,
           observaciones: nuevoItem.observaciones,
           fecha_corte: nuevoItem.fecha_corte,
