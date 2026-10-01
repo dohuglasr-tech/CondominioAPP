@@ -74,8 +74,9 @@ export async function obtenerSaldoAFavorApartamento(
           return sum + originalUsd
         }, 0)
 
-        // Si hay recibos pendientes, no puede haber saldo a favor hasta liquidarlos
-        const tienePendientes = recibos.some(r => r.estado === 'pendiente')
+        // Si hay recibos pendientes o mora activa, no puede haber saldo a favor hasta liquidarlos
+        const tienePendientes = recibos.some(r => r.estado === 'pendiente') ||
+          Boolean(moraRes.data && moraRes.data.estado === 'activo' && ((Number(moraRes.data.monto_bs) || 0) > 0.05 || (Number(moraRes.data.monto_usd) || 0) > 0.05))
 
         // Consultar retiros previos de saldo a favor registrados en auditoría
         const logs = logsAuditoria || []

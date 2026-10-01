@@ -87,6 +87,8 @@ interface ConfigEdificio {
   cuenta_bancaria: string | null
   titular_cuenta: string | null
   tasa_bcv_actual: number
+  fecha_inicio_gestion?: string | null
+  fecha_fin_administracion_anterior?: string | null
 }
 
 const MESES = [
@@ -124,7 +126,7 @@ function formatFecha(iso: string): string {
 export function RecibosPanel({ onClose }: Props) {
   const { perfil, config: authConfig } = useAuth()
   const navigate = useNavigate()
-  const [searchParams, setSearchParams] = useSearchParams()
+  const [searchParams] = useSearchParams()
 
   const p = perfil as any
   const apartamentoId = perfil?.apartamento_id ?? ''

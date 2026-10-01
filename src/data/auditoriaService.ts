@@ -15,6 +15,7 @@ export type TipoAccionAuditoria =
   | 'ABONO_SALDO_A_FAVOR'
   | 'APLICAR_SALDO_A_DEUDA'
   | 'PAGO_DEUDA_ATRASADA'
+  | 'PAGO_CONCILIADO_PRELACION'
 
 export interface LogAuditoria {
   id: string

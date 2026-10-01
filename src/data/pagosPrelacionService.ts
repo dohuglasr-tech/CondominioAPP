@@ -361,6 +361,7 @@ export async function aplicarPagoConPrelacion(
         monto_bs: resultado.montoPagoBs,
         monto_usd: Number((resultado.montoPagoBs / tasa).toFixed(2)),
         motivo: `Cascada de prelación: Bolívares Fijos > Indexado al Dólar > Saldo a Favor`,
+        autor_nombre: 'Administración (Conciliación)',
       })
     } catch (errAud) {
       console.warn('[pagosPrelacionService] Error registrando auditoría:', errAud)

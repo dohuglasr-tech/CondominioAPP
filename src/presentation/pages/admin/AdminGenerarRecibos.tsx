@@ -25,6 +25,8 @@ interface ConfigEdificio {
   email_contacto: string | null; dominio_email?: string | null; banco: string | null
   cuenta_bancaria: string | null; titular_cuenta: string | null
   tasa_bcv_actual: number
+  fecha_inicio_gestion?: string | null
+  fecha_fin_administracion_anterior?: string | null
 }
 
 const TIPO_CARGO_LABELS: Record<string, string> = {

@@ -56,6 +56,8 @@ interface ConfigEdificio {
   cuenta_bancaria: string | null
   titular_cuenta: string | null
   tasa_bcv_actual: number
+  fecha_inicio_gestion?: string | null
+  fecha_fin_administracion_anterior?: string | null
 }
 
 const MESES = [
