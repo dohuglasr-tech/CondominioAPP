@@ -248,7 +248,7 @@ export const AdminLayout: React.FC = () => {
           gap: 4px; background: transparent; border: none; color: #82828e; cursor: pointer;
           padding: 6px 0; position: relative; transition: color 0.18s;
         }
-        .admin-bottom-btn.active { color: #f97316; }
+        .admin-bottom-btn.active { color: var(--color-accent, #f97316); }
         .admin-bottom-btn svg { width: 20px; height: 20px; transition: transform 0.18s; }
         .admin-bottom-btn.active svg { transform: translateY(-1px); }
 
@@ -259,13 +259,13 @@ export const AdminLayout: React.FC = () => {
           width: 56px;
           height: 56px;
           border-radius: 50%;
-          background: linear-gradient(135deg, #fb923c 0%, #ea580c 100%);
+          background: var(--color-brand-gradient, linear-gradient(135deg, #fb923c 0%, #ea580c 100%));
           border: 3px solid #090a0d;
           color: #fff;
           display: flex;
           align-items: center;
           justify-content: center;
-          box-shadow: 0 6px 20px rgba(234, 88, 12, 0.55), 0 0 10px rgba(249, 115, 22, 0.4);
+          box-shadow: var(--color-brand-shadow, 0 6px 20px rgba(234, 88, 12, 0.55)), 0 0 10px var(--color-accent-glow);
           cursor: pointer;
           transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
           flex-shrink: 0;
@@ -546,21 +546,21 @@ export const AdminLayout: React.FC = () => {
                   right: '5px',
                   width: '8px',
                   height: '8px',
-                  backgroundColor: '#ea580c',
+                  backgroundColor: 'var(--color-accent, #ea580c)',
                   borderRadius: '50%',
                   border: '2px solid #0c0d10'
                 }} />
               )}
             </button>
 
-            {/* Avatar DG en círculo naranja */}
+            {/* Avatar DG en círculo dinámico */}
             <div
               onClick={() => setDrawerOpen(true)}
               style={{
                 width: '32px',
                 height: '32px',
                 borderRadius: '50%',
-                backgroundColor: '#ea580c',
+                background: 'var(--color-brand-gradient, linear-gradient(135deg, var(--color-accent, #f97316) 0%, var(--color-accent-hover, #ea580c) 100%))',
                 color: '#fff',
                 fontSize: '12px',
                 fontWeight: 800,
@@ -568,7 +568,7 @@ export const AdminLayout: React.FC = () => {
                 alignItems: 'center',
                 justifyContent: 'center',
                 cursor: 'pointer',
-                boxShadow: '0 2px 8px rgba(234, 88, 12, 0.4)'
+                boxShadow: 'var(--color-brand-shadow, 0 2px 8px rgba(234, 88, 12, 0.4))'
               }}
             >
               {adminInitials}
@@ -597,11 +597,11 @@ export const AdminLayout: React.FC = () => {
               width: '38px',
               height: '38px',
               borderRadius: '50%',
-              background: 'linear-gradient(135deg, #fb923c 0%, #ea580c 100%)',
+              background: 'var(--color-brand-gradient, linear-gradient(135deg, #fb923c 0%, #ea580c 100%))',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              boxShadow: '0 2px 10px rgba(249, 115, 22, 0.4)'
+              boxShadow: 'var(--color-brand-shadow, 0 2px 10px rgba(249, 115, 22, 0.4))'
             }}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="4" y="2" width="16" height="20" rx="2"/>
@@ -651,14 +651,14 @@ export const AdminLayout: React.FC = () => {
             width: '46px',
             height: '46px',
             borderRadius: '50%',
-            backgroundColor: '#ea580c',
+            backgroundColor: 'var(--color-accent-hover, #ea580c)',
             color: '#fff',
             fontSize: '16px',
             fontWeight: 800,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            boxShadow: '0 2px 10px rgba(234, 88, 12, 0.45)',
+            boxShadow: 'var(--color-brand-shadow, 0 2px 10px rgba(234, 88, 12, 0.45))',
             flexShrink: 0
           }}>
             {adminInitials}
@@ -703,7 +703,7 @@ export const AdminLayout: React.FC = () => {
                       position: 'absolute',
                       top: '-2px',
                       right: '-2px',
-                      backgroundColor: '#ea580c',
+                      backgroundColor: 'var(--color-accent, #ea580c)',
                       color: '#fff',
                       fontSize: '10px',
                       fontWeight: 800,
@@ -851,7 +851,7 @@ export const AdminLayout: React.FC = () => {
                       position: 'absolute',
                       top: '-2px',
                       right: '-2px',
-                      backgroundColor: '#ea580c',
+                      backgroundColor: 'var(--color-accent, #ea580c)',
                       color: '#fff',
                       fontSize: '10px',
                       fontWeight: 800,
@@ -974,22 +974,22 @@ export const AdminLayout: React.FC = () => {
         <div style={{ padding: '0 20px 24px', borderBottom: '1px solid rgba(255, 255, 255, 0.08)' }}>
           <div style={{
             width: '48px', height: '48px', borderRadius: '14px', marginBottom: '10px',
-            background: 'rgba(249,115,22,0.08)',
-            border: '1px solid rgba(249,115,22,0.2)',
+            background: 'var(--color-accent-light, rgba(249,115,22,0.08))',
+            border: '1px solid var(--border-accent, rgba(249,115,22,0.2))',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             overflow: 'hidden',
           }}>
             {edificioLogo
               ? <img src={edificioLogo} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              : <span style={{ color: '#f97316' }}>{ADMIN_ICONS.edificio}</span>
+              : <span style={{ color: 'var(--color-accent, #f97316)' }}>{ADMIN_ICONS.edificio}</span>
             }
           </div>
           <h1 style={{ color: '#fff', fontSize: '15px', fontWeight: 700, margin: '0 0 6px' }}>{edificioNombre}</h1>
           <span style={{
             display: 'inline-block',
-            backgroundColor: '#f9731620', color: '#f97316',
+            backgroundColor: 'var(--color-accent-light, rgba(249,115,22,0.12))', color: 'var(--color-accent, #f97316)',
             fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '999px',
-            border: '1px solid #f9731640'
+            border: '1px solid var(--border-accent, rgba(249,115,22,0.25))'
           }}>ADMINISTRADOR</span>
         </div>
 
@@ -1006,16 +1006,16 @@ export const AdminLayout: React.FC = () => {
                 style={{
                   display: 'flex', alignItems: 'center', gap: '12px',
                   padding: '10px 12px', borderRadius: '12px', border: 'none', cursor: 'pointer', textAlign: 'left',
-                  backgroundColor: isActive ? 'rgba(249, 115, 22, 0.12)' : 'transparent',
-                  borderLeft: isActive ? '3px solid #f97316' : '3px solid transparent',
+                  backgroundColor: isActive ? 'var(--color-accent-light, rgba(249, 115, 22, 0.12))' : 'transparent',
+                  borderLeft: isActive ? '3px solid var(--color-accent, #f97316)' : '3px solid transparent',
                   transition: 'all 0.2s',
                   position: 'relative',
-                  color: isActive ? '#f97316' : '#71717a'
+                  color: isActive ? 'var(--color-accent, #f97316)' : '#71717a'
                 }}
               >
-                <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: isActive ? '#f97316' : '#94a3b8' }}>{ADMIN_ICONS[item.key]}</span>
+                <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: isActive ? 'var(--color-accent, #f97316)' : '#94a3b8' }}>{ADMIN_ICONS[item.key]}</span>
                 <div style={{ flex: 1 }}>
-                  <div style={{ color: isActive ? '#f97316' : '#ccc', fontSize: '13px', fontWeight: 600 }}>{item.label}</div>
+                  <div style={{ color: isActive ? 'var(--color-accent, #f97316)' : '#ccc', fontSize: '13px', fontWeight: 600 }}>{item.label}</div>
                   <div style={{ color: '#555', fontSize: '11px' }}>{item.desc}</div>
                 </div>
 

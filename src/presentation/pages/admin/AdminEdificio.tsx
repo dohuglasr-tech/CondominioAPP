@@ -334,7 +334,7 @@ export const AdminEdificio: React.FC = () => {
         .admin-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
         @media (max-width: 768px) { .admin-grid-2 { grid-template-columns: 1fr; gap: 0px; } }
         .logo-drop-zone { transition: border-color 0.2s, background-color 0.2s; }
-        .logo-drop-zone:hover { border-color: #f97316 !important; background-color: rgba(249, 115, 22, 0.05) !important; }
+        .logo-drop-zone:hover { border-color: var(--color-accent, #f97316) !important; background-color: var(--color-accent-light, rgba(249, 115, 22, 0.05)) !important; }
       `}</style>
 
       {/* Header Principal */}
@@ -351,9 +351,9 @@ export const AdminEdificio: React.FC = () => {
           type="button"
           onClick={() => setActiveTab('edificio')}
           style={{
-            background: activeTab === 'edificio' ? 'rgba(249, 115, 22, 0.15)' : 'transparent',
-            border: activeTab === 'edificio' ? '1px solid #f97316' : '1px solid transparent',
-            color: activeTab === 'edificio' ? '#f97316' : '#888',
+            background: activeTab === 'edificio' ? 'var(--color-accent-light, rgba(249, 115, 22, 0.15))' : 'transparent',
+            border: activeTab === 'edificio' ? '1px solid var(--color-accent, #f97316)' : '1px solid transparent',
+            color: activeTab === 'edificio' ? 'var(--color-accent, #f97316)' : '#888',
             padding: '10px 18px', borderRadius: '12px', fontSize: '14px', fontWeight: 700,
             cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', transition: 'all 0.18s'
           }}
@@ -366,9 +366,9 @@ export const AdminEdificio: React.FC = () => {
           type="button"
           onClick={() => setActiveTab('organigrama')}
           style={{
-            background: activeTab === 'organigrama' ? 'rgba(249, 115, 22, 0.15)' : 'transparent',
-            border: activeTab === 'organigrama' ? '1px solid #f97316' : '1px solid transparent',
-            color: activeTab === 'organigrama' ? '#f97316' : '#888',
+            background: activeTab === 'organigrama' ? 'var(--color-accent-light, rgba(249, 115, 22, 0.15))' : 'transparent',
+            border: activeTab === 'organigrama' ? '1px solid var(--color-accent, #f97316)' : '1px solid transparent',
+            color: activeTab === 'organigrama' ? 'var(--color-accent, #f97316)' : '#888',
             padding: '10px 18px', borderRadius: '12px', fontSize: '14px', fontWeight: 700,
             cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', transition: 'all 0.18s'
           }}
@@ -376,7 +376,7 @@ export const AdminEdificio: React.FC = () => {
           <span>👥</span>
           <span>Junta de Condominio y Organigrama</span>
           <span style={{
-            background: activeTab === 'organigrama' ? '#f97316' : 'rgba(255,255,255,0.1)',
+            background: activeTab === 'organigrama' ? 'var(--color-accent, #f97316)' : 'rgba(255,255,255,0.1)',
             color: activeTab === 'organigrama' ? '#000' : '#aaa',
             fontSize: '11px', padding: '1px 6px', borderRadius: '999px', fontWeight: 800
           }}>
@@ -410,9 +410,9 @@ export const AdminEdificio: React.FC = () => {
                 onDrop={handleDrop}
                 style={{
                   width: '100px', height: '100px', flexShrink: 0,
-                  backgroundColor: isDragging ? 'rgba(249, 115, 22, 0.1)' : '#1a1a1a',
+                  backgroundColor: isDragging ? 'var(--color-accent-light, rgba(249, 115, 22, 0.1))' : '#1a1a1a',
                   borderRadius: '20px',
-                  border: `2px dashed ${isDragging ? '#f97316' : logoPreview ? '#f9731680' : '#444'}`,
+                  border: `2px dashed ${isDragging ? 'var(--color-accent, #f97316)' : logoPreview ? 'var(--color-accent-glow, #f9731680)' : '#444'}`,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   cursor: 'pointer', overflow: 'hidden',
                 }}
@@ -448,7 +448,7 @@ export const AdminEdificio: React.FC = () => {
                   )}
                 </div>
                 {logoFile && (
-                  <p style={{ color: '#f97316', fontSize: '11px', marginTop: '8px', margin: '8px 0 0 0' }}>
+                  <p style={{ color: 'var(--color-accent, #f97316)', fontSize: '11px', marginTop: '8px', margin: '8px 0 0 0' }}>
                     ✅ {logoFile.name} ({(logoFile.size / 1024).toFixed(0)} KB) — se subirá al guardar
                   </p>
                 )}
@@ -802,10 +802,10 @@ export const AdminEdificio: React.FC = () => {
             <button
               onClick={abrirModalNuevoMiembro}
               style={{
-                background: 'linear-gradient(135deg, #fb923c 0%, #f97316 60%, #ea580c 100%)',
+                background: 'var(--color-brand-gradient, linear-gradient(135deg, #fb923c 0%, #f97316 60%, #ea580c 100%))',
                 color: '#fff', border: 'none', borderRadius: '12px', padding: '11px 20px',
                 fontSize: '13px', fontWeight: 700, cursor: 'pointer', display: 'flex',
-                alignItems: 'center', gap: '8px', boxShadow: '0 4px 15px rgba(249, 115, 22, 0.35)'
+                alignItems: 'center', gap: '8px', boxShadow: 'var(--color-brand-shadow, 0 4px 15px rgba(249, 115, 22, 0.35))'
               }}
             >
               <span>➕</span>
@@ -1055,7 +1055,7 @@ export const AdminEdificio: React.FC = () => {
                 <button
                   type="submit"
                   style={{
-                    background: 'linear-gradient(135deg, #fb923c 0%, #f97316 60%, #ea580c 100%)',
+                    background: 'var(--color-brand-gradient, linear-gradient(135deg, #fb923c 0%, #f97316 60%, #ea580c 100%))',
                     color: '#fff', border: 'none', padding: '10px 22px', borderRadius: '10px',
                     fontSize: '13px', fontWeight: 700, cursor: 'pointer'
                   }}

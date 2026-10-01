@@ -39,18 +39,18 @@ self.addEventListener('push', (event) => {
   }
 
   const iconByType = {
-    recibo_emitido: '/icons/icon-192x192.png',
-    mora: '/icons/icon-192x192.png',
-    chat: '/icons/icon-192x192.png',
-    pago_aprobado: '/icons/icon-192x192.png',
-    pago_rechazado: '/icons/icon-192x192.png',
-    aviso: '/icons/icon-192x192.png',
+    recibo_emitido: '/icon-192.png',
+    mora: '/icon-192.png',
+    chat: '/icon-192.png',
+    pago_aprobado: '/icon-192.png',
+    pago_rechazado: '/icon-192.png',
+    aviso: '/icon-192.png',
   }
 
   const options = {
     body: data.cuerpo,
-    icon: iconByType[data.tipo] || '/icons/icon-192x192.png',
-    badge: '/icons/icon-72x72.png',
+    icon: iconByType[data.tipo] || '/icon-192.png',
+    badge: '/favicon.png',
     data: { url: data.link },
     requireInteraction: data.tipo === 'recibo_emitido' || data.tipo === 'mora',
     tag: `condominio-${data.tipo}`,

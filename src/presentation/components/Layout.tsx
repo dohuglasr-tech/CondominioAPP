@@ -142,7 +142,7 @@ export const Layout: React.FC = () => {
             <img src={edificioLogo} alt="Logo" className="brand-logo-img" />
           ) : (
             <div className="brand-logo">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#f97316" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent, #f97316)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="4" y="2" width="16" height="20" rx="2"/>
                 <line x1="9"  y1="7"  x2="9"  y2="7.01"/>
                 <line x1="15" y1="7"  x2="15" y2="7.01"/>
@@ -316,7 +316,7 @@ export const Layout: React.FC = () => {
               <div style={{ color: '#fff', fontSize: '13px', fontWeight: 800, lineHeight: 1.1 }}>
                 {edificioNombre.toUpperCase()}
               </div>
-              <div style={{ color: '#f97316', fontSize: '10px', fontWeight: 700, marginTop: '2px' }}>
+              <div style={{ color: 'var(--color-accent, #f97316)', fontSize: '10px', fontWeight: 700, marginTop: '2px' }}>
                 Portal del Propietario
               </div>
             </div>
@@ -668,7 +668,7 @@ export const Layout: React.FC = () => {
           letter-spacing: 0.3px;
         }
         .brand-subtitle {
-          color: #f97316;
+          color: var(--color-accent, #f97316);
           font-size: 11px;
           font-weight: 700;
           margin: 2px 0 0;
@@ -690,17 +690,17 @@ export const Layout: React.FC = () => {
         }
         .sidebar-user-card:hover {
           background: rgba(255, 255, 255, 0.06);
-          border-color: rgba(249, 115, 22, 0.3);
+          border-color: var(--border-accent, rgba(249, 115, 22, 0.3));
         }
         .sidebar-user-avatar {
           width: 36px; height: 36px;
           border-radius: 50%;
-          background: linear-gradient(135deg, #fb923c 0%, #ea580c 100%);
+          background: var(--color-brand-gradient, linear-gradient(135deg, #fb923c 0%, #ea580c 100%));
           color: #fff;
           font-size: 12px;
           font-weight: 800;
           display: flex; align-items: center; justify-content: center;
-          box-shadow: 0 2px 8px rgba(234, 88, 12, 0.4);
+          box-shadow: var(--color-brand-shadow, 0 2px 8px rgba(234, 88, 12, 0.4));
           flex-shrink: 0;
         }
         .sidebar-user-info {
@@ -730,7 +730,7 @@ export const Layout: React.FC = () => {
           justify-content: center;
           gap: 8px;
           padding: 12px 14px;
-          background: linear-gradient(135deg, #fb923c 0%, #ea580c 100%);
+          background: var(--color-brand-gradient, linear-gradient(135deg, var(--color-accent, #f97316) 0%, var(--color-accent-hover, #ea580c) 100%));
           border: 1px solid rgba(255, 255, 255, 0.2);
           border-radius: 12px;
           color: #fff;
@@ -738,7 +738,7 @@ export const Layout: React.FC = () => {
           font-weight: 800;
           cursor: pointer;
           position: relative;
-          box-shadow: 0 4px 16px rgba(234, 88, 12, 0.45);
+          box-shadow: var(--color-brand-shadow, 0 4px 16px rgba(234, 88, 12, 0.45));
           transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
         }
         .sidebar-reportar-pago-btn:hover {
@@ -776,9 +776,9 @@ export const Layout: React.FC = () => {
         }
         .nav-btn:hover { background: rgba(255,255,255,0.04); color: #fff; }
         .nav-btn.active {
-          background: rgba(249,115,22,0.12);
-          color: #f97316;
-          border-left: 3px solid #f97316;
+          background: var(--color-accent-light, rgba(249,115,22,0.12));
+          color: var(--color-accent, #f97316);
+          border-left: 3px solid var(--color-accent, #f97316);
           border-radius: 0 10px 10px 0;
         }
         .nav-icon-sidebar {
@@ -793,7 +793,7 @@ export const Layout: React.FC = () => {
           font-size: 10px; color: #64748b; font-weight: 500;
           white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }
-        .nav-btn.active .nav-desc { color: rgba(249,115,22,0.7); }
+        .nav-btn.active .nav-desc { color: var(--color-accent, #f97316); opacity: 0.85; }
 
         .sidebar-footer {
           margin-top: auto; padding-top: 14px; border-top: 1px solid rgba(255, 255, 255, 0.08);
@@ -837,9 +837,9 @@ export const Layout: React.FC = () => {
         .mobile-logo-circle {
           width: 34px; height: 34px;
           border-radius: 50%;
-          background: linear-gradient(135deg, #fb923c 0%, #ea580c 100%);
+          background: var(--color-brand-gradient, linear-gradient(135deg, #fb923c 0%, #ea580c 100%));
           display: flex; align-items: center; justify-content: center;
-          box-shadow: 0 2px 10px rgba(249, 115, 22, 0.4);
+          box-shadow: var(--color-brand-shadow, 0 2px 10px rgba(249, 115, 22, 0.4));
           overflow: hidden;
           flex-shrink: 0;
         }
@@ -855,7 +855,7 @@ export const Layout: React.FC = () => {
           max-width: 180px;
         }
         .mobile-header-apto {
-          color: #f97316;
+          color: var(--color-accent, #f97316);
           font-size: 9px;
           font-weight: 800;
           letter-spacing: 0.6px;
@@ -873,13 +873,13 @@ export const Layout: React.FC = () => {
         .mobile-header-avatar {
           width: 32px; height: 32px;
           border-radius: 50%;
-          background-color: #ea580c;
+          background: var(--color-brand-gradient, linear-gradient(135deg, var(--color-accent, #f97316) 0%, var(--color-accent-hover, #ea580c) 100%));
           color: #fff;
           font-size: 12px;
           font-weight: 800;
           display: flex; align-items: center; justify-content: center;
           cursor: pointer;
-          box-shadow: 0 2px 8px rgba(234, 88, 12, 0.4);
+          box-shadow: var(--color-brand-shadow, 0 2px 8px rgba(234, 88, 12, 0.4));
         }
 
         /* ─── OFF-CANVAS DRAWER (MENÚ FUERA DE LIENZO) ───── */
@@ -926,9 +926,9 @@ export const Layout: React.FC = () => {
         .drawer-logo-circle {
           width: 36px; height: 36px;
           border-radius: 50%;
-          background: linear-gradient(135deg, #fb923c 0%, #ea580c 100%);
+          background: var(--color-brand-gradient, linear-gradient(135deg, var(--color-accent, #f97316) 0%, var(--color-accent-hover, #ea580c) 100%));
           display: flex; align-items: center; justify-content: center;
-          box-shadow: 0 2px 10px rgba(249, 115, 22, 0.4);
+          box-shadow: var(--color-brand-shadow, 0 2px 10px rgba(249, 115, 22, 0.4));
         }
         .drawer-close-btn {
           width: 34px; height: 34px;
@@ -952,12 +952,12 @@ export const Layout: React.FC = () => {
         .drawer-user-avatar {
           width: 44px; height: 44px;
           border-radius: 50%;
-          background: linear-gradient(135deg, #fb923c 0%, #ea580c 100%);
+          background: var(--color-brand-gradient, linear-gradient(135deg, var(--color-accent, #f97316) 0%, var(--color-accent-hover, #ea580c) 100%));
           color: #fff;
           font-size: 15px;
           font-weight: 800;
           display: flex; align-items: center; justify-content: center;
-          box-shadow: 0 2px 10px rgba(234, 88, 12, 0.45);
+          box-shadow: var(--color-brand-shadow, 0 2px 10px rgba(234, 88, 12, 0.45));
           flex-shrink: 0;
         }
         .drawer-scrollable {
@@ -1015,10 +1015,10 @@ export const Layout: React.FC = () => {
           transform: scale(1.05);
         }
         .drawer-circle-icon.active {
-          background: linear-gradient(135deg, #fb923c 0%, #ea580c 100%) !important;
+          background: var(--color-brand-gradient, linear-gradient(135deg, var(--color-accent, #f97316) 0%, var(--color-accent-hover, #ea580c) 100%)) !important;
           border: none !important;
           color: #fff !important;
-          box-shadow: 0 4px 18px rgba(249, 115, 22, 0.5) !important;
+          box-shadow: var(--color-brand-shadow, 0 4px 18px rgba(249, 115, 22, 0.5)) !important;
         }
         .drawer-label {
           font-size: 11px;
@@ -1034,7 +1034,7 @@ export const Layout: React.FC = () => {
           -webkit-box-orient: vertical;
         }
         .drawer-label.active {
-          color: #f97316;
+          color: var(--color-accent, #f97316);
           font-weight: 700;
         }
         .drawer-logout-btn {
@@ -1102,7 +1102,7 @@ export const Layout: React.FC = () => {
           -webkit-user-select: none;
           -webkit-tap-highlight-color: transparent;
         }
-        .bottom-nav-btn.active { color: #f97316; }
+        .bottom-nav-btn.active { color: var(--color-accent, #f97316); }
         .nav-icon {
           display: flex; align-items: center; justify-content: center;
           transition: transform 0.18s; color: inherit;
@@ -1136,7 +1136,7 @@ export const Layout: React.FC = () => {
           width: 56px;
           height: 56px;
           border-radius: 50%;
-          background: radial-gradient(circle, rgba(249, 115, 22, 0.8) 0%, rgba(249, 115, 22, 0) 70%);
+          background: radial-gradient(circle, var(--color-accent-glow, rgba(249, 115, 22, 0.8)) 0%, transparent 70%);
           filter: blur(10px);
           pointer-events: none;
           animation: centerPulse 2.8s infinite ease-in-out;
@@ -1149,9 +1149,9 @@ export const Layout: React.FC = () => {
           width: 54px;
           height: 54px;
           border-radius: 50%;
-          background: linear-gradient(135deg, #fb923c 0%, #ea580c 100%);
+          background: var(--color-brand-gradient, linear-gradient(135deg, #fb923c 0%, #ea580c 100%));
           border: 3px solid #090a0d;
-          box-shadow: 0 6px 20px rgba(234, 88, 12, 0.55), 0 0 10px rgba(249, 115, 22, 0.4);
+          box-shadow: var(--color-brand-shadow, 0 6px 20px rgba(234, 88, 12, 0.55)), 0 0 10px var(--color-accent-glow);
           display: flex;
           align-items: center;
           justify-content: center;
@@ -1165,7 +1165,7 @@ export const Layout: React.FC = () => {
         .center-btn-label {
           font-size: 9px;
           font-weight: 800;
-          color: #f97316;
+          color: var(--color-accent, #f97316);
           letter-spacing: 0.3px;
           margin-top: 4px;
           text-transform: uppercase;

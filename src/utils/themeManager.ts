@@ -95,6 +95,16 @@ export function applyTheme(primaryHex?: string | null): ThemePalette {
     root.style.setProperty('--color-brand-gradient', palette.gradient)
     root.style.setProperty('--color-brand-hero', palette.heroGradient)
     root.style.setProperty('--color-brand-shadow', palette.shadow)
+
+    // Aliases para componentes que referencien primary en lugar de accent
+    root.style.setProperty('--color-primary', palette.primary)
+    root.style.setProperty('--color-primary-hover', palette.hover)
+    root.style.setProperty('--color-primary-light', palette.light)
+    root.style.setProperty('--color-primary-glow', palette.glow)
+    root.style.setProperty('--color-primary-gradient', palette.gradient)
+    root.style.setProperty('--color-primary-shadow', palette.shadow)
+    root.style.setProperty('--primary-color', palette.primary)
+    root.style.setProperty('--theme-primary', palette.primary)
   }
 
   return palette

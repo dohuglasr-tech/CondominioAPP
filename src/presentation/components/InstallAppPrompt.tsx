@@ -1,20 +1,25 @@
 import React, { useState, useEffect } from 'react'
+import { useAuth } from '../../application/contexts/AuthContext'
 
 export const InstallAppPrompt: React.FC = () => {
+  const { config } = useAuth()
   const [isVisible, setIsVisible] = useState(false)
+  const [minimized, setMinimized] = useState(false)
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null)
   const [showAndroidManual, setShowAndroidManual] = useState(false)
   const [isIOS, setIsIOS] = useState(false)
   const [isAndroid, setIsAndroid] = useState(false)
+  const [isStandalone, setIsStandalone] = useState(false)
 
   useEffect(() => {
     // 1. Verificar si ya se está ejecutando como PWA instalada (Standalone)
-    const isStandalone =
+    const standaloneActive =
       window.matchMedia('(display-mode: standalone)').matches ||
       (window.navigator as any).standalone === true ||
       document.referrer.includes('android-app://')
 
-    if (isStandalone) {
+    if (standaloneActive) {
+      setIsStandalone(true)
       return // Ya está instalada y abierta como app, no mostrar
     }
 
@@ -31,16 +36,7 @@ export const InstallAppPrompt: React.FC = () => {
       return // No mostrar en pantallas de escritorio regulares
     }
 
-    // 3. Verificar si el usuario ya descartó recientemente la instalación (dentro de las últimas 12 horas)
-    const dismissedTime = localStorage.getItem('ocutuy_app_install_dismissed_time')
-    if (dismissedTime) {
-      const hoursSince = (Date.now() - parseInt(dismissedTime, 10)) / (1000 * 60 * 60)
-      if (hoursSince < 12) {
-        return
-      }
-    }
-
-    // 4. Capturar el evento nativo de instalación en Android / Chrome
+    // 3. Capturar el evento nativo de instalación en Android / Chrome
     const handleBeforeInstall = (e: Event) => {
       e.preventDefault()
       setDeferredPrompt(e)
@@ -48,7 +44,7 @@ export const InstallAppPrompt: React.FC = () => {
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstall)
 
-    // Mostrar el modal tras 1.2 segundos para una entrada suave y con prioridad visual
+    // Mostrar el modal siempre con animación tras 1.2 segundos en iPhone o Android
     const timer = setTimeout(() => {
       setIsVisible(true)
     }, 1200)
@@ -66,6 +62,7 @@ export const InstallAppPrompt: React.FC = () => {
         const choice = await deferredPrompt.userChoice
         if (choice.outcome === 'accepted') {
           setIsVisible(false)
+          setMinimized(false)
           setDeferredPrompt(null)
         }
       } catch (err) {
@@ -79,10 +76,54 @@ export const InstallAppPrompt: React.FC = () => {
 
   const handleDismiss = () => {
     setIsVisible(false)
-    localStorage.setItem('ocutuy_app_install_dismissed_time', Date.now().toString())
+    setMinimized(true)
   }
 
-  if (!isVisible) return null
+  if (isStandalone) return null
+  if (!isVisible && !minimized) return null
+
+  if (minimized && !isVisible) {
+    return (
+      <div style={{ position: 'fixed', bottom: '20px', right: '16px', zIndex: 99998 }}>
+        <button
+          onClick={() => {
+            setMinimized(false)
+            setIsVisible(true)
+          }}
+          aria-label="Instalar Aplicación"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '10px 18px',
+            borderRadius: '999px',
+            background: 'var(--color-brand-gradient, linear-gradient(135deg, var(--color-accent, #f97316) 0%, var(--color-accent-hover, #ea580c) 100%))',
+            color: '#fff',
+            border: '1px solid rgba(255, 255, 255, 0.25)',
+            boxShadow: 'var(--color-brand-shadow, 0 8px 24px rgba(249, 115, 22, 0.55))',
+            cursor: 'pointer',
+            fontWeight: 800,
+            fontSize: '13px',
+            animation: 'pwaPillPulse 2.4s infinite ease-in-out',
+            outline: 'none'
+          }}
+        >
+          <img
+            src="/icon-192.png?v=domus-liquid-d"
+            alt="D"
+            style={{ width: '22px', height: '22px', borderRadius: '6px', objectFit: 'cover' }}
+          />
+          <span>📲 Instalar App</span>
+        </button>
+        <style>{`
+          @keyframes pwaPillPulse {
+            0%, 100% { transform: scale(1); box-shadow: var(--color-brand-shadow, 0 8px 24px rgba(249, 115, 22, 0.45)); }
+            50% { transform: scale(1.05); box-shadow: 0 10px 30px rgba(249, 115, 22, 0.7); }
+          }
+        `}</style>
+      </div>
+    )
+  }
 
   return (
     <div
@@ -166,11 +207,11 @@ export const InstallAppPrompt: React.FC = () => {
             }}
           >
             <img
-              src="/icon-192.png"
+              src="/icon-192.png?v=domus-liquid-d"
               alt="Icono Condominio"
               onError={(e) => {
                 // Fallback elegante si el icono no carga
-                (e.target as HTMLImageElement).src = '/apple-touch-icon.png'
+                (e.target as HTMLImageElement).src = '/apple-touch-icon.png?v=domus-liquid-d'
               }}
               style={{
                 width: '100%',
@@ -195,9 +236,9 @@ export const InstallAppPrompt: React.FC = () => {
             <span
               style={{
                 display: 'inline-block',
-                backgroundColor: 'rgba(249, 115, 22, 0.15)',
-                color: '#f97316',
-                border: '1px solid rgba(249, 115, 22, 0.35)',
+                backgroundColor: 'var(--color-accent-light, rgba(249, 115, 22, 0.15))',
+                color: 'var(--color-accent, #f97316)',
+                border: '1px solid var(--color-accent-glow, rgba(249, 115, 22, 0.35))',
                 fontSize: '10.5px',
                 fontWeight: 800,
                 textTransform: 'uppercase',
@@ -213,7 +254,7 @@ export const InstallAppPrompt: React.FC = () => {
               Instala la Aplicación
             </h3>
             <p style={{ margin: '2px 0 0', color: '#94a3b8', fontSize: '12.5px', fontWeight: 500 }}>
-              Residencias Ocutuy 5
+              {config?.nombre_edificio || 'Domus Condominio'}
             </p>
           </div>
         </div>
@@ -379,7 +420,7 @@ export const InstallAppPrompt: React.FC = () => {
               onClick={handleInstallClick}
               style={{
                 width: '100%',
-                background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
+                background: 'var(--color-brand-gradient, linear-gradient(135deg, #f97316 0%, #ea580c 100%))',
                 color: '#ffffff',
                 border: 'none',
                 borderRadius: '16px',
@@ -391,7 +432,7 @@ export const InstallAppPrompt: React.FC = () => {
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: '10px',
-                boxShadow: '0 8px 24px -4px rgba(249, 115, 22, 0.65)',
+                boxShadow: 'var(--color-brand-shadow, 0 8px 24px -4px rgba(249, 115, 22, 0.65))',
                 transition: 'transform 0.15s ease'
               }}
             >
@@ -403,8 +444,8 @@ export const InstallAppPrompt: React.FC = () => {
               <div
                 style={{
                   marginTop: '12px',
-                  backgroundColor: 'rgba(249, 115, 22, 0.1)',
-                  border: '1px solid rgba(249, 115, 22, 0.3)',
+                  backgroundColor: 'var(--color-accent-light, rgba(249, 115, 22, 0.1))',
+                  border: '1px solid var(--color-accent-glow, rgba(249, 115, 22, 0.3))',
                   borderRadius: '12px',
                   padding: '12px 14px',
                   fontSize: '12px',

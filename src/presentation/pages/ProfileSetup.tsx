@@ -183,12 +183,12 @@ export const ProfileSetup: React.FC = () => {
             <div key={s} style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <div style={{
                 height: '3px', borderRadius: '99px',
-                backgroundColor: i + 1 <= step ? '#f97316' : '#2a2a2a',
+                backgroundColor: i + 1 <= step ? 'var(--color-accent, #f97316)' : '#2a2a2a',
                 transition: 'background-color 0.3s',
               }} />
               <span style={{
                 fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px',
-                color: i + 1 === step ? '#f97316' : i + 1 < step ? '#666' : '#333',
+                color: i + 1 === step ? 'var(--color-accent, #f97316)' : i + 1 < step ? '#666' : '#333',
               }}>{s}</span>
             </div>
           ))}
@@ -258,9 +258,9 @@ export const ProfileSetup: React.FC = () => {
                       onClick={() => setForm(prev => ({ ...prev, condicion_habitacional: opt }))}
                       style={{
                         padding: '12px', borderRadius: '10px', border: '2px solid',
-                        borderColor: form.condicion_habitacional === opt ? '#f97316' : '#2a2a2a',
-                        backgroundColor: form.condicion_habitacional === opt ? 'rgba(249,115,22,0.08)' : 'transparent',
-                        color: form.condicion_habitacional === opt ? '#f97316' : '#666',
+                        borderColor: form.condicion_habitacional === opt ? 'var(--color-accent, #f97316)' : '#2a2a2a',
+                        backgroundColor: form.condicion_habitacional === opt ? 'var(--color-accent-light, rgba(249,115,22,0.08))' : 'transparent',
+                        color: form.condicion_habitacional === opt ? 'var(--color-accent, #f97316)' : '#666',
                         fontSize: '13px', fontWeight: 700, cursor: 'pointer', transition: 'all 0.2s',
                       }}>
                       {opt === 'propio' ? '🏡 Propietario' : '🔑 Inquilino'}
@@ -279,7 +279,7 @@ export const ProfileSetup: React.FC = () => {
                   <div style={{
                     borderTop: '1px solid #2a2a2a', paddingTop: '20px', marginTop: '8px', marginBottom: '16px',
                   }}>
-                    <p style={{ color: '#f97316', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 16px' }}>
+                    <p style={{ color: 'var(--color-accent, #f97316)', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 16px' }}>
                       📋 Datos del propietario
                     </p>
                   </div>
@@ -342,7 +342,7 @@ export const ProfileSetup: React.FC = () => {
                 backgroundColor: '#0d0d0d', border: '1px solid #2a2a2a',
                 borderRadius: '12px', padding: '14px', marginBottom: '20px',
               }}>
-                <p style={{ color: '#f97316', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.8px', margin: '0 0 10px' }}>
+                <p style={{ color: 'var(--color-accent, #f97316)', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.8px', margin: '0 0 10px' }}>
                   🏢 Edificio (configurado por administración)
                 </p>
                 {[
@@ -381,7 +381,7 @@ export const ProfileSetup: React.FC = () => {
           {step < 3 ? (
             <button onClick={handleNext} style={{
               flex: 1, padding: '14px', borderRadius: '12px',
-              backgroundColor: '#f97316', border: 'none',
+              backgroundColor: 'var(--color-accent, #f97316)', border: 'none',
               color: '#fff', fontSize: '14px', fontWeight: 700, cursor: 'pointer',
             }}>
               Siguiente →
@@ -389,7 +389,7 @@ export const ProfileSetup: React.FC = () => {
           ) : (
             <button onClick={handleSubmit} disabled={saving} style={{
               flex: 1, padding: '14px', borderRadius: '12px',
-              backgroundColor: saving ? '#a3520a' : '#f97316', border: 'none',
+              backgroundColor: saving ? '#a3520a' : 'var(--color-accent, #f97316)', border: 'none',
               color: '#fff', fontSize: '14px', fontWeight: 700,
               cursor: saving ? 'not-allowed' : 'pointer', transition: 'background-color 0.2s',
             }}>

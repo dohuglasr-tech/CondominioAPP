@@ -372,7 +372,7 @@ export const ResetPassword: React.FC = () => {
                       fontWeight: 700,
                       border: 'none',
                       cursor: 'pointer',
-                      backgroundColor: !showOtpInput ? '#f97316' : 'transparent',
+                      backgroundColor: !showOtpInput ? 'var(--color-accent, #f97316)' : 'transparent',
                       color: !showOtpInput ? '#fff' : '#888',
                       transition: 'all 0.15s ease'
                     }}
@@ -390,7 +390,7 @@ export const ResetPassword: React.FC = () => {
                       fontWeight: 700,
                       border: 'none',
                       cursor: 'pointer',
-                      backgroundColor: showOtpInput ? '#f97316' : 'transparent',
+                      backgroundColor: showOtpInput ? 'var(--color-accent, #f97316)' : 'transparent',
                       color: showOtpInput ? '#fff' : '#888',
                       transition: 'all 0.15s ease'
                     }}
@@ -465,7 +465,7 @@ export const ResetPassword: React.FC = () => {
                         disabled={resendLoading || !resendEmail}
                         style={{
                           width: '100%',
-                          backgroundColor: '#f97316',
+                          backgroundColor: 'var(--color-accent, #f97316)',
                           color: '#fff',
                           border: 'none',
                           borderRadius: '10px',
@@ -474,7 +474,7 @@ export const ResetPassword: React.FC = () => {
                           fontWeight: 700,
                           cursor: resendLoading || !resendEmail ? 'not-allowed' : 'pointer',
                           opacity: resendLoading || !resendEmail ? 0.7 : 1,
-                          boxShadow: '0 4px 18px rgba(249, 115, 22, 0.35)'
+                          boxShadow: 'var(--color-brand-shadow, 0 4px 18px var(--color-accent-glow))'
                         }}
                       >
                         {resendLoading ? 'Enviando...' : 'Enviar nuevo enlace 🚀'}
@@ -542,7 +542,7 @@ export const ResetPassword: React.FC = () => {
                           border: '1px solid #232d42',
                           borderRadius: '10px',
                           padding: '12px 14px',
-                          color: '#f97316',
+                          color: 'var(--color-accent, #f97316)',
                           fontSize: '18px',
                           fontWeight: 800,
                           textAlign: 'center',
@@ -558,7 +558,7 @@ export const ResetPassword: React.FC = () => {
                       disabled={otpLoading || !otpEmail || !otpCode}
                       style={{
                         width: '100%',
-                        backgroundColor: '#f97316',
+                        backgroundColor: 'var(--color-accent, #f97316)',
                         color: '#fff',
                         border: 'none',
                         borderRadius: '10px',
@@ -578,12 +578,12 @@ export const ResetPassword: React.FC = () => {
               /* CASO: Sesión de recuperación válida -> Formulario de nueva contraseña */
               <form onSubmit={handleSubmit}>
                 <div style={{
-                  backgroundColor: 'rgba(249, 115, 22, 0.1)',
-                  border: '1px solid rgba(249, 115, 22, 0.25)',
+                  backgroundColor: 'var(--color-accent-light, rgba(249, 115, 22, 0.1))',
+                  border: '1px solid var(--border-accent, rgba(249, 115, 22, 0.25))',
                   padding: '10px 14px',
                   borderRadius: '10px',
                   fontSize: '12.5px',
-                  color: '#f97316',
+                  color: 'var(--color-accent, #f97316)',
                   marginBottom: '18px',
                   lineHeight: 1.4,
                   display: 'flex',
@@ -740,7 +740,7 @@ export const ResetPassword: React.FC = () => {
                   disabled={loading || !password || !confirmPassword}
                   style={{
                     width: '100%',
-                    backgroundColor: '#f97316',
+                    backgroundColor: 'var(--color-accent, #f97316)',
                     color: '#ffffff',
                     border: 'none',
                     borderRadius: '10px',
@@ -749,7 +749,7 @@ export const ResetPassword: React.FC = () => {
                     fontWeight: 800,
                     cursor: loading || !password || !confirmPassword ? 'not-allowed' : 'pointer',
                     opacity: loading || !password || !confirmPassword ? 0.7 : 1,
-                    boxShadow: '0 4px 18px rgba(249, 115, 22, 0.4)',
+                    boxShadow: 'var(--color-brand-shadow, 0 4px 18px var(--color-accent-glow))',
                     transition: 'all 0.2s ease',
                     display: 'flex',
                     justifyContent: 'center',

@@ -994,7 +994,7 @@ export const AdminGastos: React.FC = () => {
                               <img src={comp.factura_url} alt="Factura" style={{ width:'40px', height:'40px', objectFit:'cover', borderRadius:'6px', border:'1px solid #333' }} />
                               <div>
                                 <p style={{ color:'#eee', fontSize:'12px', fontWeight:600, margin:0 }}>📄 Factura / Conforme</p>
-                                <span style={{ color:'#f97316', fontSize:'11px' }}>Clic para ampliar 🔍</span>
+                                <span style={{ color:'var(--color-accent, #f97316)', fontSize:'11px' }}>Clic para ampliar 🔍</span>
                               </div>
                             </div>
                           )}
@@ -1222,7 +1222,7 @@ const FormFields: React.FC<FormFieldsProps> = ({
       <div style={{ borderTop:'1px solid #1e1e1e', margin:'16px 0 0', paddingTop:'14px' }}>
         <div style={{ display:'flex', alignItems:'center', gap:'8px', marginBottom:'12px' }}>
           <span style={{ fontSize:'15px' }}>📎</span>
-          <label style={{ ...lS, color:'#f97316', fontSize:'12px', margin:0 }}>
+          <label style={{ ...lS, color:'var(--color-accent, #f97316)', fontSize:'12px', margin:0 }}>
             Comprobantes y Fotos de Respaldo (Factura y Transferencia)
           </label>
           <span style={{ color:'#666', fontSize:'11px' }}>· Lectura disponible para residentes</span>
@@ -1232,7 +1232,7 @@ const FormFields: React.FC<FormFieldsProps> = ({
           {/* 1. Factura o Recibo Conforme */}
           <div style={{
             backgroundColor:'#0a0a0a',
-            border: activeFacturaImg ? '1px solid rgba(249,115,22,0.5)' : '1px dashed #2a2a2a',
+            border: activeFacturaImg ? '1px solid var(--color-accent-glow, rgba(249,115,22,0.5))' : '1px dashed #2a2a2a',
             borderRadius:'10px',
             padding:'12px',
             display:'flex',
@@ -1296,7 +1296,7 @@ const FormFields: React.FC<FormFieldsProps> = ({
                   backgroundColor:'#121212',
                   transition:'border-color 0.2s',
                 }}
-                onMouseOver={e => e.currentTarget.style.borderColor = '#f97316'}
+                onMouseOver={e => e.currentTarget.style.borderColor = 'var(--color-accent, #f97316)'}
                 onMouseOut={e => e.currentTarget.style.borderColor = '#333'}
               >
                 <span style={{ fontSize:'20px', display:'block', marginBottom:'2px' }}>📷</span>

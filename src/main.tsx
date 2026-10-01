@@ -1,7 +1,11 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { App } from './App'
+import { applyTheme } from './utils/themeManager'
 import './index.css'
+
+// Aplicar inmediatamente el color del edificio configurado antes del primer render
+applyTheme()
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>

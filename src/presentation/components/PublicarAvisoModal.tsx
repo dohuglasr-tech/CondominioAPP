@@ -99,7 +99,7 @@ export const PublicarAvisoModal: React.FC<Props> = ({ isOpen, onClose, onAvisoAc
         onClick={(e) => e.stopPropagation()}
       >
         {/* Accent Bar */}
-        <div style={{ height: '3px', background: 'linear-gradient(90deg, #f97316, #ea580c)', width: '100%' }} />
+        <div style={{ height: '3px', background: 'var(--color-brand-gradient, linear-gradient(90deg, #f97316, #ea580c))', width: '100%' }} />
 
         {/* Header */}
         <div
@@ -165,7 +165,7 @@ export const PublicarAvisoModal: React.FC<Props> = ({ isOpen, onClose, onAvisoAc
                     fontSize: '10px',
                     fontWeight: 800,
                     textTransform: 'uppercase',
-                    color: '#f97316',
+                    color: 'var(--color-accent, #f97316)',
                     display: 'block',
                     marginBottom: '4px',
                   }}
@@ -299,7 +299,7 @@ export const PublicarAvisoModal: React.FC<Props> = ({ isOpen, onClose, onAvisoAc
                 type="submit"
                 disabled={guardando || !mensaje.trim()}
                 style={{
-                  background: 'linear-gradient(90deg, #f97316, #ea580c)',
+                  background: 'var(--color-brand-gradient, linear-gradient(90deg, #f97316, #ea580c))',
                   color: '#fff',
                   border: 'none',
                   padding: '10px 22px',
@@ -308,7 +308,7 @@ export const PublicarAvisoModal: React.FC<Props> = ({ isOpen, onClose, onAvisoAc
                   fontWeight: 700,
                   cursor: guardando || !mensaje.trim() ? 'not-allowed' : 'pointer',
                   opacity: guardando || !mensaje.trim() ? 0.6 : 1,
-                  boxShadow: '0 4px 14px rgba(249, 115, 22, 0.3)',
+                  boxShadow: 'var(--color-brand-shadow, 0 4px 14px var(--color-accent-glow))',
                 }}
               >
                 {guardando ? 'Publicando...' : '📢 Publicar Aviso'}

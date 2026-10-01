@@ -295,7 +295,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onClose }) => {
       height: '3px',
       background: estadoChat.solo_lectura
         ? 'linear-gradient(90deg, transparent, #ef4444, transparent)'
-        : 'linear-gradient(90deg, transparent, #f97316, transparent)',
+        : 'linear-gradient(90deg, transparent, var(--color-accent, #f97316), transparent)',
       borderRadius: '0 0 4px 4px'
     },
     header: {
@@ -347,7 +347,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onClose }) => {
       cursor: estadoChat.solo_lectura ? 'not-allowed' : 'text'
     },
     sendBtn: {
-      background: estadoChat.solo_lectura ? '#451a03' : '#f97316',
+      background: estadoChat.solo_lectura ? '#451a03' : 'var(--color-brand-gradient, #f97316)',
       color: estadoChat.solo_lectura ? '#a8a29e' : '#fff',
       border: 'none',
       borderRadius: '12px',
@@ -416,9 +416,9 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onClose }) => {
               title="Haz clic para modificar tu apartamento"
               style={{
                 fontSize: '11px',
-                backgroundColor: miAptoNumero ? 'rgba(249, 115, 22, 0.15)' : '#3f3f46',
-                color: miAptoNumero ? '#f97316' : '#fff',
-                border: miAptoNumero ? '1px solid rgba(249, 115, 22, 0.4)' : '1px solid #52525b',
+                backgroundColor: miAptoNumero ? 'var(--color-accent-light, rgba(249, 115, 22, 0.15))' : '#3f3f46',
+                color: miAptoNumero ? 'var(--color-accent, #f97316)' : '#fff',
+                border: miAptoNumero ? '1px solid var(--color-accent-glow, rgba(249, 115, 22, 0.4))' : '1px solid #52525b',
                 padding: '6px 12px',
                 borderRadius: '20px',
                 fontWeight: 800,
@@ -438,7 +438,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onClose }) => {
         {editandoApto && (
           <div style={{
             backgroundColor: '#1f1a14',
-            borderBottom: '1px solid #f97316',
+            borderBottom: '1px solid var(--color-accent, #f97316)',
             padding: '12px 20px',
             display: 'flex',
             alignItems: 'center',
@@ -460,7 +460,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onClose }) => {
                 placeholder="Ej: 502, PH-1"
                 style={{
                   backgroundColor: '#0a0a0a',
-                  border: '1px solid #f97316',
+                  border: '1px solid var(--color-accent, #f97316)',
                   color: '#fff',
                   padding: '6px 12px',
                   borderRadius: '6px',
@@ -473,7 +473,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onClose }) => {
               <button
                 type="submit"
                 style={{
-                  backgroundColor: '#f97316',
+                  backgroundColor: 'var(--color-accent, #f97316)',
                   color: '#fff',
                   border: 'none',
                   padding: '6px 12px',
@@ -636,9 +636,9 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onClose }) => {
                       </span>
                     ) : (
                       <span style={{
-                        backgroundColor: isMe ? '#f97316' : '#27272a',
-                        color: isMe ? '#fff' : '#fb923c',
-                        border: isMe ? '1px solid #ea580c' : '1px solid #3f3f46',
+                        backgroundColor: isMe ? 'var(--color-accent, #f97316)' : '#27272a',
+                        color: isMe ? '#fff' : 'var(--color-accent, #fb923c)',
+                        border: isMe ? '1px solid var(--color-accent-hover, #ea580c)' : '1px solid #3f3f46',
                         padding: '2px 8px',
                         borderRadius: '6px',
                         fontWeight: 800,
@@ -647,7 +647,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onClose }) => {
                         display: 'inline-flex',
                         alignItems: 'center',
                         gap: '4px',
-                        boxShadow: isMe ? '0 2px 6px rgba(249,115,22,0.3)' : 'none'
+                        boxShadow: isMe ? '0 2px 6px var(--color-accent-glow, rgba(249,115,22,0.3))' : 'none'
                       }}>
                         🏢 APTO {m.apartamento_numero || 'S/N'}
                       </span>
@@ -655,7 +655,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onClose }) => {
 
                     <span style={{
                       fontWeight: 700,
-                      color: isAdmin ? '#93c5fd' : (isMe ? '#fdba74' : '#e4e4e7'),
+                      color: isAdmin ? '#93c5fd' : (isMe ? 'var(--color-accent, #fdba74)' : '#e4e4e7'),
                       fontSize: '12px'
                     }}>
                       {isAdmin ? 'Administración Torre 5' : (isMe ? `Tú (${m.autor_nombre})` : m.autor_nombre)}
@@ -671,16 +671,16 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onClose }) => {
                     padding: '12px 16px',
                     borderRadius: isMe ? '16px 16px 2px 16px' : '16px 16px 16px 2px',
                     backgroundColor: isMe
-                      ? '#f97316'
+                      ? 'var(--color-accent, #f97316)'
                       : isAnuncio
                         ? 'rgba(234, 179, 8, 0.12)'
                         : isAdmin
-                          ? 'rgba(249,115,22,0.12)'
+                          ? 'var(--color-accent-light, rgba(249,115,22,0.12))'
                           : '#202024',
                     border: isAnuncio
                       ? '1px solid rgba(234, 179, 8, 0.35)'
                       : isAdmin && !isMe
-                        ? '1px solid rgba(249,115,22,0.3)'
+                        ? '1px solid var(--color-accent-glow, rgba(249,115,22,0.3))'
                         : '1px solid transparent',
                     color: isMe ? '#fff' : '#eaeaea',
                     fontSize: '13px',
@@ -743,7 +743,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onClose }) => {
                   <span>Escribiendo como:</span>
                   <span style={{
                     backgroundColor: '#27272a',
-                    color: '#f97316',
+                    color: 'var(--color-accent, #f97316)',
                     padding: '1px 6px',
                     borderRadius: '4px',
                     fontWeight: 800
@@ -754,7 +754,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onClose }) => {
                 {!miAptoNumero && (
                   <button
                     onClick={() => setEditandoApto(true)}
-                    style={{ background: 'none', border: 'none', color: '#f97316', fontSize: '11px', cursor: 'pointer', textDecoration: 'underline' }}
+                    style={{ background: 'none', border: 'none', color: 'var(--color-accent, #f97316)', fontSize: '11px', cursor: 'pointer', textDecoration: 'underline' }}
                   >
                     Asignar Apto
                   </button>
@@ -768,7 +768,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onClose }) => {
                   value={inputVal}
                   onChange={e => setInputVal(e.target.value)}
                   style={st.input}
-                  onFocus={e => e.target.style.borderColor = '#f97316'}
+                  onFocus={e => e.target.style.borderColor = 'var(--color-accent, #f97316)'}
                   onBlur={e => e.target.style.borderColor = '#333'}
                 />
                 <button

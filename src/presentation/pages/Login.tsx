@@ -13,7 +13,7 @@ import {
   BiometricSupport,
 } from '../../utils/biometricAuth'
 
-const FingerprintIcon = ({ size = 20, color = '#f97316' }: { size?: number; color?: string }) => (
+const FingerprintIcon = ({ size = 20, color = 'var(--color-accent, #f97316)' }: { size?: number; color?: string }) => (
   <svg
     width={size}
     height={size}
@@ -349,7 +349,7 @@ export function Login() {
 
           .login-sheet-handle:hover .login-sheet-pill-bar,
           .login-sheet-handle:active .login-sheet-pill-bar {
-            background-color: #f97316;
+            background-color: var(--color-accent, #f97316);
             width: 54px;
           }
         }
@@ -384,16 +384,16 @@ export function Login() {
               gap: '6px',
               padding: '4px 10px',
               borderRadius: '9999px',
-              backgroundColor: 'rgba(249, 115, 22, 0.12)',
-              border: '1px solid rgba(249, 115, 22, 0.25)',
-              color: '#f97316',
+              backgroundColor: 'var(--color-accent-light, rgba(249, 115, 22, 0.12))',
+              border: '1px solid var(--border-accent, rgba(249, 115, 22, 0.25))',
+              color: 'var(--color-accent, #f97316)',
               fontSize: '11px',
               fontWeight: 700,
               letterSpacing: '0.6px',
               textTransform: 'uppercase',
               marginBottom: '10px'
             }}>
-              <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#f97316' }} />
+              <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: 'var(--color-accent, #f97316)' }} />
               Portal Residente
             </div>
             <h1 style={{
@@ -537,7 +537,7 @@ export function Login() {
                     boxSizing: 'border-box',
                     transition: 'border-color 0.2s',
                   }}
-                  onFocus={(e) => e.target.style.borderColor = '#f97316'}
+                  onFocus={(e) => e.target.style.borderColor = 'var(--color-accent, #f97316)'}
                   onBlur={(e) => e.target.style.borderColor = '#232d42'}
                 />
               </div>
@@ -562,14 +562,14 @@ export function Login() {
                     onClick={handleOpenResetModal}
                     style={{
                       fontSize: '11.5px',
-                      color: '#f97316',
+                      color: 'var(--color-accent, #f97316)',
                       fontWeight: 600,
                       cursor: 'pointer',
                       textDecoration: 'none',
                       transition: 'color 0.2s'
                     }}
-                    onMouseOver={(e) => (e.target as HTMLElement).style.color = '#ea580c'}
-                    onMouseOut={(e) => (e.target as HTMLElement).style.color = '#f97316'}
+                    onMouseOver={(e) => (e.target as HTMLElement).style.color = 'var(--color-accent-hover, #ea580c)'}
+                    onMouseOut={(e) => (e.target as HTMLElement).style.color = 'var(--color-accent, #f97316)'}
                   >
                     ¿Olvidó su contraseña?
                   </span>
@@ -597,7 +597,7 @@ export function Login() {
                       boxSizing: 'border-box',
                       transition: 'border-color 0.2s',
                     }}
-                    onFocus={(e) => e.target.style.borderColor = '#f97316'}
+                    onFocus={(e) => e.target.style.borderColor = 'var(--color-accent, #f97316)'}
                     onBlur={(e) => e.target.style.borderColor = '#232d42'}
                   />
                   <button
@@ -632,7 +632,7 @@ export function Login() {
                     type="checkbox"
                     checked={rememberMe}
                     onChange={(e) => setRememberMe(e.target.checked)}
-                    style={{ accentColor: '#f97316', cursor: 'pointer', width: '15px', height: '15px' }}
+                    style={{ accentColor: 'var(--color-accent, #f97316)', cursor: 'pointer', width: '15px', height: '15px' }}
                   />
                   <label htmlFor="remember" style={{ fontSize: '12.5px', color: '#cbd5e1', cursor: 'pointer' }}>
                     Recordar sesión en este dispositivo
@@ -646,10 +646,10 @@ export function Login() {
                       type="checkbox"
                       checked={enableBiometricOnLogin}
                       onChange={(e) => setEnableBiometricOnLogin(e.target.checked)}
-                      style={{ accentColor: '#f97316', cursor: 'pointer', width: '15px', height: '15px' }}
+                      style={{ accentColor: 'var(--color-accent, #f97316)', cursor: 'pointer', width: '15px', height: '15px' }}
                     />
                     <label htmlFor="enableBio" style={{ fontSize: '12px', color: '#94a3b8', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <FingerprintIcon size={14} color="#f97316" />
+                      <FingerprintIcon size={14} color="var(--color-accent, #f97316)" />
                       <span>Autorizar acceso rápido con huella dactilar / Face ID</span>
                     </label>
                   </div>
@@ -662,7 +662,7 @@ export function Login() {
                 disabled={loading || bioLoading || !email || !password}
                 style={{
                   width: '100%',
-                  backgroundColor: '#f97316',
+                  backgroundColor: 'var(--color-accent, #f97316)',
                   color: '#ffffff',
                   border: 'none',
                   borderRadius: '10px',
@@ -671,17 +671,17 @@ export function Login() {
                   fontWeight: 800,
                   cursor: loading || bioLoading || !email || !password ? 'not-allowed' : 'pointer',
                   opacity: loading || bioLoading || !email || !password ? 0.7 : 1,
-                  boxShadow: '0 4px 18px rgba(249, 115, 22, 0.4)',
+                  boxShadow: 'var(--color-brand-shadow, 0 4px 18px var(--color-accent-glow))',
                   transition: 'all 0.2s ease',
                   display: 'flex',
                   justifyContent: 'center',
                   alignItems: 'center',
                 }}
                 onMouseOver={(e) => {
-                  if (!loading && !bioLoading && email && password) e.currentTarget.style.backgroundColor = '#ea580c'
+                  if (!loading && !bioLoading && email && password) e.currentTarget.style.backgroundColor = 'var(--color-accent-hover, #ea580c)'
                 }}
                 onMouseOut={(e) => {
-                  if (!loading && !bioLoading && email && password) e.currentTarget.style.backgroundColor = '#f97316'
+                  if (!loading && !bioLoading && email && password) e.currentTarget.style.backgroundColor = 'var(--color-accent, #f97316)'
                 }}
               >
                 {loading ? <span className="spinner spinner--sm"></span> : 'Iniciar Sesión'}
@@ -713,7 +713,7 @@ export function Login() {
                       backgroundColor: '#0a0d14',
                       border: '1px solid #232d42',
                       borderRadius: '10px',
-                      color: '#f97316',
+                      color: 'var(--color-accent, #f97316)',
                       fontSize: '13.5px',
                       fontWeight: 700,
                       cursor: bioLoading || loading ? 'not-allowed' : 'pointer',
@@ -722,8 +722,8 @@ export function Login() {
                     }}
                     onMouseOver={(e) => {
                       if (!bioLoading && !loading) {
-                        e.currentTarget.style.borderColor = '#f97316'
-                        e.currentTarget.style.backgroundColor = 'rgba(249, 115, 22, 0.08)'
+                        e.currentTarget.style.borderColor = 'var(--color-accent, #f97316)'
+                        e.currentTarget.style.backgroundColor = 'var(--color-accent-light, rgba(249, 115, 22, 0.08))'
                       }
                     }}
                     onMouseOut={(e) => {
@@ -733,7 +733,7 @@ export function Login() {
                       }
                     }}
                   >
-                    <FingerprintIcon size={20} color="#f97316" />
+                    <FingerprintIcon size={20} color="var(--color-accent, #f97316)" />
                     <span>{bioLoading ? 'Verificando huella...' : 'Acceso con Huella / Face ID'}</span>
                   </button>
 
@@ -810,9 +810,9 @@ export function Login() {
               width: '42px',
               height: '42px',
               borderRadius: '50%',
-              backgroundColor: 'rgba(249, 115, 22, 0.15)',
-              border: '1px solid rgba(249, 115, 22, 0.3)',
-              color: '#f97316',
+              backgroundColor: 'var(--color-accent-light, rgba(249, 115, 22, 0.15))',
+              border: '1px solid var(--border-accent, rgba(249, 115, 22, 0.3))',
+              color: 'var(--color-accent, #f97316)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -835,7 +835,7 @@ export function Login() {
               type="button"
               onClick={() => navigate('/register')}
               style={{
-                backgroundColor: '#f97316',
+                backgroundColor: 'var(--color-accent, #f97316)',
                 color: '#ffffff',
                 border: 'none',
                 borderRadius: '8px',
@@ -849,8 +849,8 @@ export function Login() {
                 alignItems: 'center',
                 gap: '6px'
               }}
-              onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#ea580c'}
-              onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#f97316'}
+              onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--color-accent-hover, #ea580c)'}
+              onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'var(--color-accent, #f97316)'}
             >
               Crear mi cuenta 👤+
             </button>
@@ -977,7 +977,7 @@ export function Login() {
                   onClick={() => setShowResetModal(false)}
                   style={{
                     width: '100%',
-                    backgroundColor: '#f97316',
+                    backgroundColor: 'var(--color-accent, #f97316)',
                     color: '#fff',
                     border: 'none',
                     borderRadius: '10px',
@@ -1047,7 +1047,7 @@ export function Login() {
                     disabled={resetLoading || !resetEmail}
                     style={{
                       width: '100%',
-                      backgroundColor: '#f97316',
+                      background: 'var(--color-brand-gradient, linear-gradient(135deg, var(--color-accent, #f97316) 0%, var(--color-accent-hover, #ea580c) 100%))',
                       color: '#fff',
                       border: 'none',
                       borderRadius: '10px',
@@ -1056,7 +1056,7 @@ export function Login() {
                       fontWeight: 800,
                       cursor: resetLoading || !resetEmail ? 'not-allowed' : 'pointer',
                       opacity: resetLoading || !resetEmail ? 0.7 : 1,
-                      boxShadow: '0 4px 18px rgba(249, 115, 22, 0.35)',
+                      boxShadow: 'var(--color-brand-shadow, 0 4px 18px rgba(249, 115, 22, 0.35))',
                       transition: 'all 0.2s ease',
                       display: 'flex',
                       alignItems: 'center',

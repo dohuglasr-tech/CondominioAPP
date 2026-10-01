@@ -254,7 +254,7 @@ export const ListaMoraResidente: React.FC = () => {
                 ) : (
                   <>
                     Registras <strong>{miDeuda.meses_deuda} meses de atraso</strong> por un total de{' '}
-                    <strong style={{ color: '#f97316' }}>
+                    <strong style={{ color: 'var(--color-accent, #f97316)' }}>
                       ${miDeuda.monto_usd.toLocaleString('en-US', { minimumFractionDigits: 2 })} USD
                     </strong>
                     {miDeuda.monto_bs > 0 && ` (Bs. ${miDeuda.monto_bs.toLocaleString('es-VE', { minimumFractionDigits: 2 })})`}.
@@ -271,10 +271,10 @@ export const ListaMoraResidente: React.FC = () => {
             style={{
               background: miDeuda.tasa_riesgo === 'azul'
                 ? 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)'
-                : 'linear-gradient(135deg, #fb923c 0%, #f97316 60%, #ea580c 100%)',
+                : 'var(--color-brand-gradient, linear-gradient(135deg, #fb923c 0%, #f97316 60%, #ea580c 100%))',
               color: '#fff', border: 'none', borderRadius: '12px', padding: '11px 20px',
               fontSize: '13px', fontWeight: 800, cursor: 'pointer',
-              boxShadow: miDeuda.tasa_riesgo === 'azul' ? '0 4px 15px rgba(37, 99, 235, 0.4)' : '0 4px 15px rgba(249, 115, 22, 0.4)',
+              boxShadow: miDeuda.tasa_riesgo === 'azul' ? '0 4px 15px rgba(37, 99, 235, 0.4)' : 'var(--color-brand-shadow, 0 4px 15px rgba(249, 115, 22, 0.4))',
               whiteSpace: 'nowrap'
             }}
           >
@@ -303,7 +303,7 @@ export const ListaMoraResidente: React.FC = () => {
           border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '14px', padding: '12px', textAlign: 'center'
         }}>
           <div style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>Total Por Cobrar</div>
-          <div style={{ fontSize: '20px', fontWeight: 800, color: '#f97316', marginTop: '3px' }}>
+          <div style={{ fontSize: '20px', fontWeight: 800, color: 'var(--color-accent, #f97316)', marginTop: '3px' }}>
             ${stats.totalUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
         </div>
@@ -494,7 +494,7 @@ export const ListaMoraResidente: React.FC = () => {
               style={{
                 background: 'none',
                 border: 'none',
-                color: '#f97316',
+                color: 'var(--color-accent, #f97316)',
                 fontSize: '11px',
                 fontWeight: 700,
                 cursor: 'pointer',
@@ -534,10 +534,10 @@ export const ListaMoraResidente: React.FC = () => {
                   alignItems: 'center',
                   gap: '5px',
                   background: active
-                    ? 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)'
+                    ? 'var(--color-brand-gradient, linear-gradient(135deg, #f97316 0%, #ea580c 100%))'
                     : 'rgba(255, 255, 255, 0.04)',
                   border: active
-                    ? '1px solid #f97316'
+                    ? '1px solid var(--color-accent, #f97316)'
                     : esMiPiso
                     ? '1px solid rgba(59, 130, 246, 0.5)'
                     : '1px solid rgba(255, 255, 255, 0.08)',
@@ -550,7 +550,7 @@ export const ListaMoraResidente: React.FC = () => {
                   whiteSpace: 'nowrap',
                   flexShrink: 0,
                   transition: 'all 0.15s ease',
-                  boxShadow: active ? '0 2px 10px rgba(249, 115, 22, 0.35)' : 'none'
+                  boxShadow: active ? 'var(--color-brand-shadow, 0 2px 10px rgba(249, 115, 22, 0.35))' : 'none'
                 }}
               >
                 <span>{p.label}</span>
@@ -580,12 +580,12 @@ export const ListaMoraResidente: React.FC = () => {
           justifyContent: 'space-between',
           alignItems: 'center',
           padding: '10px 14px',
-          background: 'rgba(249, 115, 22, 0.12)',
-          border: '1px solid rgba(249, 115, 22, 0.3)',
+          background: 'var(--color-accent-light, rgba(249, 115, 22, 0.12))',
+          border: '1px solid var(--color-accent-glow, rgba(249, 115, 22, 0.3))',
           borderRadius: '12px',
           marginBottom: '14px',
           fontSize: '12px',
-          color: '#f97316'
+          color: 'var(--color-accent, #f97316)'
         }}>
           <span>
             🔍 Resultados para &ldquo;<strong>{busqueda}</strong>&rdquo; en todos los pisos ({deudasFiltradas.length} encontrados)
@@ -596,7 +596,7 @@ export const ListaMoraResidente: React.FC = () => {
             style={{
               background: 'none',
               border: 'none',
-              color: '#f97316',
+              color: 'var(--color-accent, #f97316)',
               fontWeight: 700,
               cursor: 'pointer',
               textDecoration: 'underline',
@@ -625,7 +625,7 @@ export const ListaMoraResidente: React.FC = () => {
               ({deudasFiltradas.length} {deudasFiltradas.length === 1 ? 'apartamento' : 'apartamentos'})
             </span>
           </span>
-          <span style={{ color: '#f97316', fontWeight: 800 }}>
+          <span style={{ color: 'var(--color-accent, #f97316)', fontWeight: 800 }}>
             ${totalFiltradoUsd.toLocaleString('en-US', { minimumFractionDigits: 2 })} USD
           </span>
         </div>
@@ -712,7 +712,7 @@ export const ListaMoraResidente: React.FC = () => {
                   <div style={{ textAlign: 'right', marginLeft: 'auto' }}>
                     <div style={{ fontSize: '17px', fontWeight: 800, color: '#fff' }}>
                       ${d.monto_usd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      <span style={{ fontSize: '11px', color: '#f97316', marginLeft: '4px', fontWeight: 700 }}>USD</span>
+                      <span style={{ fontSize: '11px', color: 'var(--color-accent, #f97316)', marginLeft: '4px', fontWeight: 700 }}>USD</span>
                     </div>
                     {d.monto_bs > 0 && (
                       <div style={{ fontSize: '12px', fontWeight: 600, color: '#eab308' }}>
@@ -744,7 +744,7 @@ export const ListaMoraResidente: React.FC = () => {
                         type="button"
                         onClick={() => setModalPagoOpen(true)}
                         style={{
-                          background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
+                          background: 'var(--color-brand-gradient, linear-gradient(135deg, #f97316 0%, #ea580c 100%))',
                           border: 'none', color: '#fff', borderRadius: '6px',
                           padding: '4px 10px', fontSize: '11px', fontWeight: 800,
                           cursor: 'pointer', transition: 'all 0.15s ease'

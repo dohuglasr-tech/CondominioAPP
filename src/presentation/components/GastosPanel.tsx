@@ -121,7 +121,7 @@ export function GastosPanel({ onClose }: Props) {
     },
     topAccent: {
       position: 'absolute' as const, top: 0, left: '20px', right: '20px', height: '3px',
-      background: 'linear-gradient(90deg, transparent, #f97316, transparent)',
+      background: 'linear-gradient(90deg, transparent, var(--color-accent, #f97316), transparent)',
       borderRadius: '0 0 4px 4px',
     },
     header: {
@@ -295,7 +295,7 @@ export function GastosPanel({ onClose }: Props) {
                   style={{
                     backgroundColor: '#141414',
                     border: '1px solid #2a2a2a',
-                    color: '#f97316',
+                    color: 'var(--color-accent, #f97316)',
                     padding: '6px 28px 6px 12px',
                     borderRadius: '8px',
                     fontSize: '13px',
@@ -336,7 +336,7 @@ export function GastosPanel({ onClose }: Props) {
               <p style={{ color: '#666', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 700, marginBottom: '4px' }}>
                 Equivalente
               </p>
-              <p style={{ color: '#f97316', fontSize: '20px', fontWeight: 700 }}>
+              <p style={{ color: 'var(--color-accent, #f97316)', fontSize: '20px', fontWeight: 700 }}>
                 ${formatUsd(totalAMostrar)}
               </p>
               <p style={{ color: '#555', fontSize: '11px', marginTop: '2px' }}>
@@ -371,7 +371,7 @@ export function GastosPanel({ onClose }: Props) {
                       style={{ 
                         ...st.gastoCard, 
                         gridColumn: isExpanded ? '1 / -1' : 'auto',
-                        borderColor: isExpanded ? '#f97316' : '#2a2a2a',
+                        borderColor: isExpanded ? 'var(--color-accent, #f97316)' : '#2a2a2a',
                         marginBottom: 0
                       }} 
                       className="card-interactive"
@@ -418,9 +418,9 @@ export function GastosPanel({ onClose }: Props) {
                                           setShowModal(true)
                                         }}
                                         style={{
-                                          backgroundColor: '#f9731618',
-                                          color: '#f97316',
-                                          border: '1px solid #f9731635',
+                                          backgroundColor: 'var(--color-accent-light, #f9731618)',
+                                          color: 'var(--color-accent, #f97316)',
+                                          border: '1px solid var(--color-accent-glow, #f9731635)',
                                           borderRadius: '6px',
                                           padding: '2px 8px',
                                           fontSize: '11px',
@@ -432,12 +432,12 @@ export function GastosPanel({ onClose }: Props) {
                                           transition: 'all 0.15s ease',
                                         }}
                                         onMouseOver={(e) => {
-                                          e.currentTarget.style.backgroundColor = '#f97316'
+                                          e.currentTarget.style.backgroundColor = 'var(--color-accent, #f97316)'
                                           e.currentTarget.style.color = '#fff'
                                         }}
                                         onMouseOut={(e) => {
-                                          e.currentTarget.style.backgroundColor = '#f9731618'
-                                          e.currentTarget.style.color = '#f97316'
+                                          e.currentTarget.style.backgroundColor = 'var(--color-accent-light, #f9731618)'
+                                          e.currentTarget.style.color = 'var(--color-accent, #f97316)'
                                         }}
                                       >
                                         📄 Ver Factura
@@ -499,11 +499,11 @@ export function GastosPanel({ onClose }: Props) {
                 <button 
                   onClick={handleDownloadPDF}
                   style={{
-                    background: 'linear-gradient(90deg, #f97316, #ea580c)',
+                    background: 'var(--color-brand-gradient, linear-gradient(90deg, #f97316, #ea580c))',
                     color: '#fff', border: 'none', padding: '14px 28px',
                     borderRadius: '12px', fontSize: '15px', fontWeight: 700,
                     cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '8px',
-                    boxShadow: '0 4px 14px rgba(249, 115, 22, 0.3)',
+                    boxShadow: 'var(--color-brand-shadow, 0 4px 14px rgba(249, 115, 22, 0.3))',
                     transition: 'transform 0.2s cubic-bezier(0.16,1,0.3,1)'
                   }}
                   onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.03)'}

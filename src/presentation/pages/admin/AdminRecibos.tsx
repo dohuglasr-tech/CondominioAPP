@@ -492,7 +492,7 @@ export const AdminRecibos: React.FC = () => {
                 cursor: 'pointer',
                 fontSize: '12px',
                 fontWeight: 600,
-                backgroundColor: isActivo ? '#f97316' : '#1e1e1e',
+                backgroundColor: isActivo ? 'var(--color-accent, #f97316)' : '#1e1e1e',
                 color: isActivo ? '#fff' : '#888',
                 display: 'flex',
                 alignItems: 'center',
@@ -551,7 +551,7 @@ export const AdminRecibos: React.FC = () => {
                 key={pago.id}
                 style={{
                   backgroundColor: '#141414',
-                  border: isSelected ? '1px solid #f97316' : isPendiente ? '1px solid #f59e0b40' : '1px solid #1e1e1e',
+                  border: isSelected ? '1px solid var(--color-accent, #f97316)' : isPendiente ? '1px solid #f59e0b40' : '1px solid #1e1e1e',
                   borderRadius: '14px',
                   padding: '18px 20px',
                   transition: 'all 0.2s',
@@ -721,7 +721,7 @@ export const AdminRecibos: React.FC = () => {
               <button
                 onClick={() => setPreviewImg(null)}
                 style={{
-                  backgroundColor: '#f97316',
+                  backgroundColor: 'var(--color-accent, #f97316)',
                   color: '#fff',
                   border: 'none',
                   padding: '10px 24px',

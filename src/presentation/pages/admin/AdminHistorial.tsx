@@ -90,9 +90,9 @@ export const AdminHistorial: React.FC = () => {
       case 'ELIMINACION_RECIBO_INDIVIDUAL':
         return {
           label: 'DEUDA APTO RETIRADA',
-          color: '#f97316',
-          bg: 'rgba(249, 115, 22, 0.15)',
-          border: 'rgba(249, 115, 22, 0.35)',
+          color: 'var(--color-accent, #f97316)',
+          bg: 'var(--color-accent-light, rgba(249, 115, 22, 0.15))',
+          border: 'var(--color-accent-glow, rgba(249, 115, 22, 0.35))',
           icon: '📄'
         }
       case 'EDICION_DEUDA':
@@ -224,13 +224,13 @@ export const AdminHistorial: React.FC = () => {
 
         <div style={{
           background: 'linear-gradient(180deg, #151922 0%, #0d1117 100%)',
-          border: '1px solid rgba(249, 115, 22, 0.2)',
+          border: '1px solid var(--color-accent-glow, rgba(249, 115, 22, 0.2))',
           borderRadius: '18px',
           padding: '18px 20px',
         }}>
-          <div style={{ color: '#f97316', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase' }}>DEUDAS RETIRADAS</div>
+          <div style={{ color: 'var(--color-accent, #f97316)', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase' }}>DEUDAS RETIRADAS</div>
           <div style={{ color: '#fff', fontSize: '28px', fontWeight: 900, marginTop: '4px' }}>{stats.deudasRetiradas}</div>
-          <div style={{ color: '#f97316', fontSize: '11px', marginTop: '4px' }}>Apartamentos individuales</div>
+          <div style={{ color: 'var(--color-accent, #f97316)', fontSize: '11px', marginTop: '4px' }}>Apartamentos individuales</div>
         </div>
 
         <div style={{
@@ -275,7 +275,7 @@ export const AdminHistorial: React.FC = () => {
               key={f.id}
               onClick={() => setFiltroTipo(f.id)}
               style={{
-                backgroundColor: filtroTipo === f.id ? '#f97316' : 'rgba(255, 255, 255, 0.05)',
+                backgroundColor: filtroTipo === f.id ? 'var(--color-accent, #f97316)' : 'rgba(255, 255, 255, 0.05)',
                 color: filtroTipo === f.id ? '#fff' : '#a1a1aa',
                 border: filtroTipo === f.id ? 'none' : '1px solid rgba(255, 255, 255, 0.08)',
                 padding: '7px 14px',
@@ -413,14 +413,14 @@ export const AdminHistorial: React.FC = () => {
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: '12px',
-                    backgroundColor: 'rgba(249, 115, 22, 0.08)',
-                    border: '1px solid rgba(249, 115, 22, 0.25)',
+                    backgroundColor: 'var(--color-accent-light, rgba(249, 115, 22, 0.08))',
+                    border: '1px solid var(--color-accent-glow, rgba(249, 115, 22, 0.25))',
                     padding: '6px 14px',
                     borderRadius: '10px',
                     marginBottom: '14px'
                   }}>
                     <span style={{ color: '#8e8e93', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase' }}>DEUDA RETIRADA:</span>
-                    <span style={{ color: '#f97316', fontSize: '14px', fontWeight: 800 }}>$ {Number(log.monto_usd).toFixed(2)} USD</span>
+                    <span style={{ color: 'var(--color-accent, #f97316)', fontSize: '14px', fontWeight: 800 }}>$ {Number(log.monto_usd).toFixed(2)} USD</span>
                     {log.monto_bs && (
                       <span style={{ color: '#22c55e', fontSize: '13px', fontWeight: 700 }}>
                         (Bs. {Number(log.monto_bs).toLocaleString('es-VE', { minimumFractionDigits: 2 })})
@@ -451,7 +451,7 @@ export const AdminHistorial: React.FC = () => {
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <div style={{
                       width: '24px', height: '24px', borderRadius: '50%',
-                      backgroundColor: '#ea580c', color: '#fff', fontSize: '10px', fontWeight: 800,
+                      backgroundColor: 'var(--color-accent-hover, #ea580c)', color: '#fff', fontSize: '10px', fontWeight: 800,
                       display: 'flex', alignItems: 'center', justifyContent: 'center'
                     }}>
                       {(log.autor_nombre || 'A').charAt(0).toUpperCase()}
@@ -467,7 +467,7 @@ export const AdminHistorial: React.FC = () => {
                       style={{
                         background: 'none',
                         border: 'none',
-                        color: '#f97316',
+                        color: 'var(--color-accent, #f97316)',
                         fontSize: '12px',
                         fontWeight: 700,
                         cursor: 'pointer',

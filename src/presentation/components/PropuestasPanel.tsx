@@ -59,13 +59,13 @@ export const PropuestasPanel: React.FC = () => {
       cursor: 'pointer', textAlign: 'left' as const, display: 'flex', justifyContent: 'space-between', transition: 'all 0.2s'
     },
     progressBar: { height: '6px', borderRadius: '4px', backgroundColor: '#333', marginTop: '8px', overflow: 'hidden' },
-    progressFill: { height: '100%', backgroundColor: '#f97316', transition: 'width 0.3s ease' }
+    progressFill: { height: '100%', backgroundColor: 'var(--color-accent, #f97316)', transition: 'width 0.3s ease' }
   }
 
   return (
     <div style={st.overlay}>
       <div style={st.panel}>
-        <div style={{ height: '4px', background: 'linear-gradient(90deg, transparent, #f97316, transparent)' }} />
+        <div style={{ height: '4px', background: 'linear-gradient(90deg, transparent, var(--color-accent, #f97316), transparent)' }} />
         <div style={st.header}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <button
@@ -109,11 +109,11 @@ export const PropuestasPanel: React.FC = () => {
                           onClick={() => handleVotar(prop.id, op.id)}
                           style={{
                             ...st.optionBtn,
-                            borderColor: isSelected ? '#f97316' : '#333',
-                            backgroundColor: isSelected ? '#f9731615' : '#1e1e1e'
+                            borderColor: isSelected ? 'var(--color-accent, #f97316)' : '#333',
+                            backgroundColor: isSelected ? 'var(--color-accent-light, #f9731615)' : '#1e1e1e'
                           }}
                         >
-                          <span style={{ fontWeight: isSelected ? 700 : 400, color: isSelected ? '#f97316' : '#fff' }}>
+                          <span style={{ fontWeight: isSelected ? 700 : 400, color: isSelected ? 'var(--color-accent, #f97316)' : '#fff' }}>
                             {op.texto}
                           </span>
                           {yaVoto && (
@@ -122,7 +122,7 @@ export const PropuestasPanel: React.FC = () => {
                         </button>
                         {yaVoto && (
                           <div style={st.progressBar}>
-                            <div style={{ ...st.progressFill, width: `${pct}%`, backgroundColor: isSelected ? '#f97316' : '#555' }} />
+                            <div style={{ ...st.progressFill, width: `${pct}%`, backgroundColor: isSelected ? 'var(--color-accent, #f97316)' : '#555' }} />
                           </div>
                         )}
                       </div>

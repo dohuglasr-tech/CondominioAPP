@@ -252,7 +252,7 @@ export const AdminCasos: React.FC = () => {
       {toastMsg && (
         <div style={{
           position: 'fixed', top: '24px', right: '24px', zIndex: 9999,
-          background: 'rgba(21, 25, 34, 0.95)', border: '1px solid #f97316',
+          background: 'rgba(21, 25, 34, 0.95)', border: '1px solid var(--color-accent, #f97316)',
           boxShadow: '0 8px 30px rgba(0,0,0,0.7)', color: '#fff',
           padding: '12px 20px', borderRadius: '14px', fontSize: '14px', fontWeight: 600,
           backdropFilter: 'blur(12px)', display: 'flex', alignItems: 'center', gap: '8px'
@@ -278,11 +278,11 @@ export const AdminCasos: React.FC = () => {
         <button
           onClick={abrirModalNuevo}
           style={{
-            background: 'linear-gradient(135deg, #fb923c 0%, #f97316 60%, #ea580c 100%)',
+            background: 'var(--color-brand-gradient, linear-gradient(135deg, #fb923c 0%, #f97316 60%, #ea580c 100%))',
             color: '#fff', border: '1px solid rgba(255, 255, 255, 0.2)',
             borderRadius: '14px', padding: '12px 24px', fontSize: '14px', fontWeight: 700,
             cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px',
-            boxShadow: '0 4px 20px rgba(249, 115, 22, 0.35)', transition: 'all 0.2s'
+            boxShadow: 'var(--color-brand-shadow, 0 4px 20px rgba(249, 115, 22, 0.35))', transition: 'all 0.2s'
           }}
           onMouseOver={e => e.currentTarget.style.transform = 'translateY(-2px)'}
           onMouseOut={e => e.currentTarget.style.transform = 'translateY(0)'}
@@ -382,9 +382,9 @@ export const AdminCasos: React.FC = () => {
                 key={chip.key}
                 onClick={() => setFiltroTipo(chip.key)}
                 style={{
-                  background: active ? '#f97316' : 'rgba(255, 255, 255, 0.05)',
-                  border: active ? '1px solid #f97316' : '1px solid rgba(255, 255, 255, 0.09)',
-                  color: active ? '#000' : '#ccc',
+                  background: active ? 'var(--color-brand-gradient, #f97316)' : 'rgba(255, 255, 255, 0.05)',
+                  border: active ? '1px solid var(--color-accent, #f97316)' : '1px solid rgba(255, 255, 255, 0.09)',
+                  color: active ? '#fff' : '#ccc',
                   fontWeight: active ? 800 : 500,
                   fontSize: '12px', padding: '7px 14px', borderRadius: '10px',
                   cursor: 'pointer', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '6px',
@@ -490,8 +490,8 @@ export const AdminCasos: React.FC = () => {
 
                         {c.apartamento_numero && (
                           <span style={{
-                            fontSize: '11px', fontWeight: 700, color: '#f97316',
-                            background: 'rgba(249, 115, 22, 0.12)', border: '1px solid rgba(249, 115, 22, 0.25)',
+                            fontSize: '11px', fontWeight: 700, color: 'var(--color-accent, #f97316)',
+                            background: 'var(--color-accent-light, rgba(249, 115, 22, 0.12))', border: '1px solid var(--color-accent-glow, rgba(249, 115, 22, 0.25))',
                             padding: '2px 8px', borderRadius: '6px'
                           }}>
                             Apto {c.apartamento_numero}
@@ -518,7 +518,7 @@ export const AdminCasos: React.FC = () => {
                     {c.monto_usd > 0 && (
                       <div style={{ fontSize: '18px', fontWeight: 800, color: '#fff' }}>
                         ${c.monto_usd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        <span style={{ fontSize: '11px', color: '#f97316', marginLeft: '4px', fontWeight: 700 }}>USD</span>
+                        <span style={{ fontSize: '11px', color: 'var(--color-accent, #f97316)', marginLeft: '4px', fontWeight: 700 }}>USD</span>
                       </div>
                     )}
                     {c.monto_bs > 0 && (
@@ -736,14 +736,14 @@ export const AdminCasos: React.FC = () => {
                 borderRadius: '16px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px'
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '12px', fontWeight: 700, color: '#f97316' }}>Valores Monetarios</span>
+                  <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--color-accent, #f97316)' }}>Valores Monetarios</span>
                   {rate > 0 && (
                     <button
                       type="button"
                       onClick={handleCalcularBs}
                       style={{
-                        background: 'rgba(249, 115, 22, 0.15)', border: '1px solid rgba(249, 115, 22, 0.3)',
-                        color: '#f97316', padding: '3px 8px', borderRadius: '8px', fontSize: '11px',
+                        background: 'var(--color-accent-light, rgba(249, 115, 22, 0.15))', border: '1px solid var(--color-accent-glow, rgba(249, 115, 22, 0.3))',
+                        color: 'var(--color-accent, #f97316)', padding: '3px 8px', borderRadius: '8px', fontSize: '11px',
                         fontWeight: 700, cursor: 'pointer'
                       }}
                     >
@@ -895,10 +895,10 @@ export const AdminCasos: React.FC = () => {
                 <button
                   type="submit"
                   style={{
-                    background: 'linear-gradient(135deg, #fb923c 0%, #f97316 60%, #ea580c 100%)',
+                    background: 'var(--color-brand-gradient, linear-gradient(135deg, #fb923c 0%, #f97316 60%, #ea580c 100%))',
                     color: '#fff', border: 'none', padding: '10px 24px', borderRadius: '12px',
                     fontSize: '14px', fontWeight: 700, cursor: 'pointer',
-                    boxShadow: '0 4px 16px rgba(249, 115, 22, 0.4)'
+                    boxShadow: 'var(--color-brand-shadow, 0 4px 16px rgba(249, 115, 22, 0.4))'
                   }}
                 >
                   {casoEditar ? 'Guardar Cambios' : 'Registrar Caso'}

@@ -228,7 +228,7 @@ export const ReportesPanel: React.FC = () => {
         <button
           onClick={() => setShowForm(true)}
           style={{
-            backgroundColor: '#f97316',
+            backgroundColor: 'var(--color-accent, #f97316)',
             color: '#ffffff',
             border: 'none',
             borderRadius: '12px',
@@ -236,14 +236,14 @@ export const ReportesPanel: React.FC = () => {
             fontSize: '14px',
             fontWeight: 800,
             cursor: 'pointer',
-            boxShadow: '0 4px 18px rgba(249, 115, 22, 0.45)',
+            boxShadow: 'var(--color-brand-shadow, 0 4px 18px var(--color-accent-glow))',
             display: 'flex',
             alignItems: 'center',
             gap: '8px',
             transition: 'all 0.2s',
           }}
-          onMouseOver={(e) => (e.currentTarget.style.backgroundColor = '#ea580c')}
-          onMouseOut={(e) => (e.currentTarget.style.backgroundColor = '#f97316')}
+          onMouseOver={(e) => (e.currentTarget.style.backgroundColor = 'var(--color-accent-hover, #ea580c)')}
+          onMouseOut={(e) => (e.currentTarget.style.backgroundColor = 'var(--color-accent, #f97316)')}
         >
           <span style={{ fontSize: '16px' }}>📷</span>
           <span>+ Reportar Avería</span>
@@ -337,10 +337,10 @@ export const ReportesPanel: React.FC = () => {
         <button
           onClick={() => setFiltroEstado('todos')}
           style={{
-            backgroundColor: filtroEstado === 'todos' ? '#f97316' : 'rgba(255, 255, 255, 0.05)',
+            backgroundColor: filtroEstado === 'todos' ? 'var(--color-accent, #f97316)' : 'rgba(255, 255, 255, 0.05)',
             color: filtroEstado === 'todos' ? '#fff' : '#94a3b8',
             border: '1px solid',
-            borderColor: filtroEstado === 'todos' ? '#f97316' : 'rgba(255, 255, 255, 0.1)',
+            borderColor: filtroEstado === 'todos' ? 'var(--color-accent, #f97316)' : 'rgba(255, 255, 255, 0.1)',
             padding: '6px 14px',
             borderRadius: '20px',
             fontSize: '12px',
@@ -459,7 +459,7 @@ export const ReportesPanel: React.FC = () => {
           <button
             onClick={() => setShowForm(true)}
             style={{
-              backgroundColor: '#f97316',
+              backgroundColor: 'var(--color-accent, #f97316)',
               color: '#fff',
               border: 'none',
               borderRadius: '10px',
@@ -627,15 +627,15 @@ export const ReportesPanel: React.FC = () => {
                   <div
                     style={{
                       marginTop: '6px',
-                      backgroundColor: 'rgba(249, 115, 22, 0.08)',
-                      borderLeft: '3px solid #f97316',
+                      backgroundColor: 'var(--color-accent-light, rgba(249, 115, 22, 0.08))',
+                      borderLeft: '3px solid var(--color-accent, #f97316)',
                       borderRadius: '8px',
                       padding: '12px 14px',
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
                       <span style={{ fontSize: '13px' }}>🏢</span>
-                      <span style={{ color: '#f97316', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                      <span style={{ color: 'var(--color-accent, #f97316)', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.4px' }}>
                         Respuesta Oficial de la Administración
                       </span>
                     </div>
@@ -691,11 +691,11 @@ export const ReportesPanel: React.FC = () => {
                     width: '38px',
                     height: '38px',
                     borderRadius: '10px',
-                    backgroundColor: 'rgba(249, 115, 22, 0.15)',
+                    backgroundColor: 'var(--color-accent-light, rgba(249, 115, 22, 0.15))',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    color: '#f97316',
+                    color: 'var(--color-accent, #f97316)',
                     fontSize: '18px',
                   }}
                 >
@@ -902,11 +902,11 @@ export const ReportesPanel: React.FC = () => {
                       cursor: 'pointer',
                       transition: 'border-color 0.2s',
                     }}
-                    onMouseOver={(e) => (e.currentTarget.style.borderColor = '#f97316')}
+                    onMouseOver={(e) => (e.currentTarget.style.borderColor = 'var(--color-accent, #f97316)')}
                     onMouseOut={(e) => (e.currentTarget.style.borderColor = '#232d42')}
                   >
                     <span style={{ fontSize: '24px' }}>📸</span>
-                    <span style={{ color: '#f97316', fontSize: '13px', fontWeight: 700 }}>
+                    <span style={{ color: 'var(--color-accent, #f97316)', fontSize: '13px', fontWeight: 700 }}>
                       Tomar foto o subir desde la galería
                     </span>
                     <span style={{ color: '#64748b', fontSize: '11px' }}>
@@ -988,7 +988,7 @@ export const ReportesPanel: React.FC = () => {
                   disabled={enviando || !titulo.trim() || !descripcion.trim() || !ubicacion.trim()}
                   style={{
                     flex: 2,
-                    backgroundColor: '#f97316',
+                    backgroundColor: 'var(--color-accent, #f97316)',
                     color: '#fff',
                     border: 'none',
                     padding: '12px',
@@ -996,7 +996,7 @@ export const ReportesPanel: React.FC = () => {
                     fontSize: '13.5px',
                     fontWeight: 800,
                     cursor: enviando ? 'not-allowed' : 'pointer',
-                    boxShadow: '0 4px 18px rgba(249, 115, 22, 0.4)',
+                    boxShadow: 'var(--color-brand-shadow, 0 4px 18px var(--color-accent-glow))',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -1054,7 +1054,7 @@ export const ReportesPanel: React.FC = () => {
               <button
                 onClick={() => setLightboxFoto(null)}
                 style={{
-                  backgroundColor: '#f97316',
+                  backgroundColor: 'var(--color-accent, #f97316)',
                   color: '#fff',
                   border: 'none',
                   borderRadius: '6px',

@@ -521,9 +521,9 @@ export const AdminReportes: React.FC = () => {
                       {rep.apartamento_numero && (
                         <span
                           style={{
-                            backgroundColor: 'rgba(249, 115, 22, 0.15)',
-                            color: '#f97316',
-                            border: '1px solid rgba(249, 115, 22, 0.3)',
+                            backgroundColor: 'var(--color-accent-light, rgba(249, 115, 22, 0.15))',
+                            color: 'var(--color-accent, #f97316)',
+                            border: '1px solid var(--color-accent-glow, rgba(249, 115, 22, 0.3))',
                             padding: '3px 8px',
                             borderRadius: '6px',
                             fontSize: '11px',
@@ -598,7 +598,7 @@ export const AdminReportes: React.FC = () => {
                       <button
                         onClick={() => abrirModalRespuesta(rep)}
                         style={{
-                          backgroundColor: '#f97316',
+                          backgroundColor: 'var(--color-accent, #f97316)',
                           color: '#fff',
                           border: 'none',
                           padding: '6px 14px',
@@ -688,14 +688,14 @@ export const AdminReportes: React.FC = () => {
                 {rep.respuesta_admin && (
                   <div
                     style={{
-                      backgroundColor: 'rgba(249, 115, 22, 0.08)',
-                      borderLeft: '3px solid #f97316',
+                      backgroundColor: 'var(--color-accent-light, rgba(249, 115, 22, 0.08))',
+                      borderLeft: '3px solid var(--color-accent, #f97316)',
                       borderRadius: '8px',
                       padding: '12px 14px',
                     }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                      <span style={{ color: '#f97316', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase' }}>
+                      <span style={{ color: 'var(--color-accent, #f97316)', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase' }}>
                         🏢 Respuesta Oficial al Residente
                       </span>
                       <button
@@ -894,7 +894,7 @@ export const AdminReportes: React.FC = () => {
                   disabled={guardando}
                   style={{
                     flex: 2,
-                    backgroundColor: '#f97316',
+                    backgroundColor: 'var(--color-accent, #f97316)',
                     color: '#fff',
                     border: 'none',
                     padding: '12px',
@@ -902,7 +902,7 @@ export const AdminReportes: React.FC = () => {
                     fontSize: '13.5px',
                     fontWeight: 800,
                     cursor: guardando ? 'not-allowed' : 'pointer',
-                    boxShadow: '0 4px 18px rgba(249, 115, 22, 0.4)',
+                    boxShadow: 'var(--color-brand-shadow, 0 4px 18px rgba(249, 115, 22, 0.4))',
                   }}
                 >
                   {guardando ? 'Guardando...' : 'Guardar y Notificar'}
@@ -948,7 +948,7 @@ export const AdminReportes: React.FC = () => {
               <button
                 onClick={() => setLightboxFoto(null)}
                 style={{
-                  backgroundColor: '#f97316',
+                  backgroundColor: 'var(--color-accent, #f97316)',
                   color: '#fff',
                   border: 'none',
                   borderRadius: '6px',

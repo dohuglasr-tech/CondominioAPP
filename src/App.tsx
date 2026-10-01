@@ -83,7 +83,7 @@ export class ErrorBoundary extends React.Component<{ children: React.ReactNode }
                 window.location.reload()
               }}
               style={{
-                backgroundColor: '#f97316',
+                backgroundColor: 'var(--color-accent, #f97316)',
                 color: '#fff',
                 border: 'none',
                 padding: '10px 18px',
@@ -153,7 +153,7 @@ const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
           <button
             onClick={() => refreshPerfil()}
             style={{
-              backgroundColor: '#f97316',
+              backgroundColor: 'var(--color-accent, #f97316)',
               color: '#fff',
               border: 'none',
               padding: '10px 18px',

@@ -380,7 +380,7 @@ export function Register() {
                 <div style={{
                   height: '3px',
                   borderRadius: '99px',
-                  backgroundColor: i + 1 <= step ? '#f97316' : '#232d42',
+                  backgroundColor: i + 1 <= step ? 'var(--color-accent, #f97316)' : '#232d42',
                   transition: 'background-color 0.3s ease',
                 }} />
                 <span style={{
@@ -388,7 +388,7 @@ export function Register() {
                   fontWeight: 700,
                   textTransform: 'uppercase',
                   letterSpacing: '0.5px',
-                  color: i + 1 === step ? '#f97316' : i + 1 < step ? '#94a3b8' : '#475569',
+                  color: i + 1 === step ? 'var(--color-accent, #f97316)' : i + 1 < step ? '#94a3b8' : '#475569',
                 }}>
                   {s}
                 </span>
@@ -540,9 +540,9 @@ export function Register() {
                         padding: '12px',
                         borderRadius: '10px',
                         border: '2px solid',
-                        borderColor: form.condicion_habitacional === opt ? '#f97316' : '#2a2a2a',
-                        backgroundColor: form.condicion_habitacional === opt ? 'rgba(249,115,22,0.08)' : 'transparent',
-                        color: form.condicion_habitacional === opt ? '#f97316' : '#666',
+                        borderColor: form.condicion_habitacional === opt ? 'var(--color-accent, #f97316)' : '#2a2a2a',
+                        backgroundColor: form.condicion_habitacional === opt ? 'var(--color-accent-light, rgba(249,115,22,0.08))' : 'transparent',
+                        color: form.condicion_habitacional === opt ? 'var(--color-accent, #f97316)' : '#666',
                         fontSize: '13px',
                         fontWeight: 700,
                         cursor: 'pointer',
@@ -688,7 +688,7 @@ export function Register() {
                 padding: '14px',
                 marginBottom: '16px',
               }}>
-                <p style={{ color: '#f97316', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.8px', margin: '0 0 8px 0' }}>
+                <p style={{ color: 'var(--color-accent, #f97316)', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.8px', margin: '0 0 8px 0' }}>
                   🏢 Edificio al que ingresarás
                 </p>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#888' }}>
@@ -742,7 +742,7 @@ export function Register() {
                 flex: 1,
                 padding: '14px',
                 borderRadius: '12px',
-                backgroundColor: '#f97316',
+                backgroundColor: 'var(--color-accent, #f97316)',
                 border: 'none',
                 color: '#fff',
                 fontSize: '14px',
@@ -763,7 +763,7 @@ export function Register() {
                 flex: 1,
                 padding: '14px',
                 borderRadius: '12px',
-                backgroundColor: loading ? '#a3520a' : '#f97316',
+                backgroundColor: loading ? '#a3520a' : 'var(--color-accent, #f97316)',
                 border: 'none',
                 color: '#fff',
                 fontSize: '14px',
@@ -794,9 +794,9 @@ export function Register() {
             width: '40px',
             height: '40px',
             borderRadius: '50%',
-            backgroundColor: 'rgba(249, 115, 22, 0.15)',
-            border: '1px solid rgba(249, 115, 22, 0.3)',
-            color: '#f97316',
+            backgroundColor: 'var(--color-accent-light, rgba(249, 115, 22, 0.15))',
+            border: '1px solid var(--border-accent, rgba(249, 115, 22, 0.3))',
+            color: 'var(--color-accent, #f97316)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -819,7 +819,7 @@ export function Register() {
             type="button"
             onClick={() => navigate('/login')}
             style={{
-              backgroundColor: '#f97316',
+              backgroundColor: 'var(--color-accent, #f97316)',
               color: '#ffffff',
               border: 'none',
               borderRadius: '8px',
@@ -833,8 +833,8 @@ export function Register() {
               alignItems: 'center',
               gap: '6px'
             }}
-            onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#ea580c'}
-            onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#f97316'}
+            onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--color-accent-hover, #ea580c)'}
+            onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'var(--color-accent, #f97316)'}
           >
             Iniciar Sesión →
           </button>

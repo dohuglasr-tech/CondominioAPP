@@ -43,7 +43,7 @@ export const AdminPropuestas: React.FC = () => {
           <h1 style={{ color: '#fff', fontSize: '24px', fontWeight: 800, margin: 0 }}>🗳️ Gestión de Propuestas</h1>
           <p style={{ color: '#666', fontSize: '14px', marginTop: '4px' }}>Crea y administra votaciones para residentes</p>
         </div>
-        <button onClick={() => setShowForm(!showForm)} style={{ backgroundColor: '#f97316', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '10px', cursor: 'pointer', fontWeight: 700, fontSize: '14px' }}>
+        <button onClick={() => setShowForm(!showForm)} style={{ backgroundColor: 'var(--color-accent, #f97316)', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '10px', cursor: 'pointer', fontWeight: 700, fontSize: '14px' }}>
           {showForm ? 'Cancelar' : '+ Nueva Propuesta'}
         </button>
       </div>
@@ -69,12 +69,12 @@ export const AdminPropuestas: React.FC = () => {
               {form.opciones.map((op, i) => (
                 <input key={i} required style={{ ...inputStyle, marginBottom: '8px' }} value={op} onChange={e => updateOpcion(i, e.target.value)} placeholder={`Opción ${i + 1}`} />
               ))}
-              <button type="button" onClick={addOpcion} style={{ backgroundColor: 'transparent', color: '#f97316', border: '1px dashed #f97316', padding: '6px 14px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', marginTop: '4px' }}>
+              <button type="button" onClick={addOpcion} style={{ backgroundColor: 'transparent', color: 'var(--color-accent, #f97316)', border: '1px dashed var(--color-accent, #f97316)', padding: '6px 14px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', marginTop: '4px' }}>
                 + Agregar opción
               </button>
             </div>
           </div>
-          <button type="submit" style={{ marginTop: '20px', backgroundColor: '#f97316', color: '#fff', border: 'none', padding: '12px 24px', borderRadius: '10px', cursor: 'pointer', fontWeight: 700 }}>
+          <button type="submit" style={{ marginTop: '20px', backgroundColor: 'var(--color-accent, #f97316)', color: '#fff', border: 'none', padding: '12px 24px', borderRadius: '10px', cursor: 'pointer', fontWeight: 700 }}>
             🗳️ Publicar Propuesta
           </button>
         </form>
@@ -106,11 +106,11 @@ export const AdminPropuestas: React.FC = () => {
                 return (
                   <div key={i} style={{ marginBottom: '8px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '4px' }}>
-                      <span style={{ color: isWinner ? '#f97316' : '#888' }}>Opción {i + 1} {isWinner && '🏆'}</span>
+                      <span style={{ color: isWinner ? 'var(--color-accent, #f97316)' : '#888' }}>Opción {i + 1} {isWinner && '🏆'}</span>
                       <span style={{ color: '#fff', fontWeight: 600 }}>{v} votos ({pct}%)</span>
                     </div>
                     <div style={{ height: '6px', backgroundColor: '#222', borderRadius: '3px', overflow: 'hidden' }}>
-                      <div style={{ height: '100%', width: `${pct}%`, backgroundColor: isWinner ? '#f97316' : '#444', borderRadius: '3px', transition: 'width 0.5s ease' }} />
+                      <div style={{ height: '100%', width: `${pct}%`, backgroundColor: isWinner ? 'var(--color-accent, #f97316)' : '#444', borderRadius: '3px', transition: 'width 0.5s ease' }} />
                     </div>
                   </div>
                 )

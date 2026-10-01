@@ -161,7 +161,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     )
 
-    return () => subscription.unsubscribe()
+    // ── Sincronización en tiempo real del tema y configuración del edificio ──
+    const configRealtimeChannel = supabase
+      .channel('realtime_edificio_theme_sync')
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'configuracion_edificio' },
+        (payload) => {
+          const newConfig = payload.new as any
+          if (newConfig) {
+            if (newConfig.color_primario) {
+              applyTheme(newConfig.color_primario)
+            }
+            setConfig(prev => (prev ? { ...prev, ...newConfig } : newConfig))
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      subscription.unsubscribe()
+      configRealtimeChannel.unsubscribe()
+    }
   }, [cargarPerfil, cargarConfig])
 
   // ── Login: email + contraseña ──────────────────────────

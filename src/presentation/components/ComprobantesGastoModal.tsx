@@ -108,7 +108,7 @@ export const ComprobantesGastoModal: React.FC<ComprobantesGastoModalProps> = ({
         <div
           style={{
             height: '3px',
-            background: 'linear-gradient(90deg, #f97316, #ea580c, #10b981)',
+            background: 'linear-gradient(90deg, var(--color-accent, #f97316), var(--color-accent-hover, #ea580c), #10b981)',
             width: '100%',
           }}
         />
@@ -128,9 +128,9 @@ export const ComprobantesGastoModal: React.FC<ComprobantesGastoModalProps> = ({
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
               <span
                 style={{
-                  backgroundColor: '#f9731618',
-                  color: '#f97316',
-                  border: '1px solid #f9731630',
+                  backgroundColor: 'var(--color-accent-light, #f9731618)',
+                  color: 'var(--color-accent, #f97316)',
+                  border: '1px solid var(--color-accent-glow, #f9731630)',
                   padding: '2px 8px',
                   borderRadius: '6px',
                   fontSize: '11px',
@@ -179,7 +179,7 @@ export const ComprobantesGastoModal: React.FC<ComprobantesGastoModalProps> = ({
               }}
             >
               {gasto.monto_usd !== undefined && (
-                <span style={{ color: '#f97316', fontWeight: 800 }}>
+                <span style={{ color: 'var(--color-accent, #f97316)', fontWeight: 800 }}>
                   ${gasto.monto_usd.toLocaleString('en-US', { minimumFractionDigits: 2 })} USD
                 </span>
               )}
@@ -252,9 +252,9 @@ export const ComprobantesGastoModal: React.FC<ComprobantesGastoModalProps> = ({
                 setZoomLevel(1)
               }}
               style={{
-                backgroundColor: activeTab === 'factura' ? '#f97316' : '#181818',
+                backgroundColor: activeTab === 'factura' ? 'var(--color-accent, #f97316)' : '#181818',
                 color: activeTab === 'factura' ? '#fff' : '#aaa',
-                border: activeTab === 'factura' ? '1px solid #ea580c' : '1px solid #282828',
+                border: activeTab === 'factura' ? '1px solid var(--color-accent-hover, #ea580c)' : '1px solid #282828',
                 borderRadius: '8px',
                 padding: '7px 14px',
                 fontSize: '13px',

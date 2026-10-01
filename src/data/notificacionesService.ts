@@ -148,8 +148,8 @@ export function mostrarNotificacionLocal(titulo: string, cuerpo: string, link = 
   try {
     const n = new Notification(titulo, {
       body: cuerpo,
-      icon: '/icons/icon-192x192.png',
-      badge: '/icons/icon-72x72.png',
+      icon: '/icon-192.png',
+      badge: '/favicon.png',
       tag: 'condominio-local',
       requireInteraction: false,
     })

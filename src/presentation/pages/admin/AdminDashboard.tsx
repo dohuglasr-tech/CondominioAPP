@@ -17,7 +17,7 @@ interface StatCardProps {
   onClick?: () => void
 }
 
-const StatCard: React.FC<StatCardProps> = ({ icon, label, value, sub, color = '#f97316', badge, pulse, onClick }) => (
+const StatCard: React.FC<StatCardProps> = ({ icon, label, value, sub, color = 'var(--color-accent, #f97316)', badge, pulse, onClick }) => (
   <div
     onClick={onClick}
     style={{
@@ -507,7 +507,7 @@ export const AdminDashboard: React.FC = () => {
                     position: 'absolute',
                     top: '-2px',
                     right: '-2px',
-                    backgroundColor: '#ea580c',
+                    backgroundColor: 'var(--color-accent, #ea580c)',
                     color: '#fff',
                     fontSize: '9px',
                     fontWeight: 900,
@@ -618,7 +618,7 @@ export const AdminDashboard: React.FC = () => {
           </p>
           <div
             onClick={() => navigate('/admin/recibos-emitidos')}
-            style={{ color: '#f97316', fontSize: '13px', fontWeight: 700, cursor: 'pointer' }}
+            style={{ color: 'var(--color-accent, #f97316)', fontSize: '13px', fontWeight: 700, cursor: 'pointer' }}
           >
             Ver todos los recibos emitidos →
           </div>
@@ -643,7 +643,7 @@ export const AdminDashboard: React.FC = () => {
               </p>
               <div
                 onClick={() => navigate('/admin/recibos')}
-                style={{ color: '#f97316', fontSize: '13px', fontWeight: 700, cursor: 'pointer' }}
+                style={{ color: 'var(--color-accent, #f97316)', fontSize: '13px', fontWeight: 700, cursor: 'pointer' }}
               >
                 Ver historial de recibos
               </div>
@@ -729,7 +729,7 @@ export const AdminDashboard: React.FC = () => {
               {getMesLabel(mesSeleccionado)} {mesSeleccionado === mesActualKey ? '· (Mes Actual)' : ''}
             </p>
             {!loadingRate && !errorRate && rate > 0 && (
-              <p style={{ color: '#f97316', fontSize: '12px', marginTop: '6px', margin: 0 }}>
+              <p style={{ color: 'var(--color-accent, #f97316)', fontSize: '12px', marginTop: '6px', margin: 0 }}>
                 Tasa BCV Oficial: {rate.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 4 })} Bs/$
               </p>
             )}
@@ -752,8 +752,8 @@ export const AdminDashboard: React.FC = () => {
                   onChange={e => setMesSeleccionado(e.target.value)}
                   style={{
                     backgroundColor: '#0a0a0a',
-                    color: '#f97316',
-                    border: '1px solid #f9731650',
+                    color: 'var(--color-accent, #f97316)',
+                    border: '1px solid var(--border-accent, #f9731650)',
                     padding: '6px 10px',
                     borderRadius: '8px',
                     fontSize: '13px',
@@ -843,7 +843,7 @@ export const AdminDashboard: React.FC = () => {
               </div>
             </div>
             <button style={{
-              background: 'linear-gradient(135deg, #fb923c 0%, #f97316 55%, #ea580c 100%)',
+              background: 'var(--color-brand-gradient, linear-gradient(135deg, #fb923c 0%, #f97316 55%, #ea580c 100%))',
               color: '#fff',
               border: '1px solid rgba(255, 255, 255, 0.25)',
               padding: '8px 18px',
@@ -851,7 +851,7 @@ export const AdminDashboard: React.FC = () => {
               fontWeight: 700,
               fontSize: '12px',
               cursor: 'pointer',
-              boxShadow: '0 4px 14px rgba(249, 115, 22, 0.35)',
+              boxShadow: 'var(--color-brand-shadow, 0 4px 14px var(--color-accent-glow))',
             }}>
               Revisar Ahora →
             </button>
@@ -939,7 +939,7 @@ export const AdminDashboard: React.FC = () => {
               onClick={() => navigate('/admin/recibos')}
               style={{
                 backgroundColor: 'transparent',
-                color: '#f97316',
+                color: 'var(--color-accent, #f97316)',
                 border: 'none',
                 fontSize: '13px',
                 fontWeight: 600,

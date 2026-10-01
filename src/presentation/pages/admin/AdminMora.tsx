@@ -604,7 +604,7 @@ export const AdminMora: React.FC = () => {
       {toastMsg && (
         <div style={{
           position: 'fixed', top: '24px', right: '24px', zIndex: 9999,
-          background: 'rgba(21, 25, 34, 0.95)', border: '1px solid #f97316',
+          background: 'rgba(21, 25, 34, 0.95)', border: '1px solid var(--color-accent, #f97316)',
           boxShadow: '0 8px 30px rgba(0,0,0,0.7)', color: '#fff',
           padding: '12px 20px', borderRadius: '14px', fontSize: '14px', fontWeight: 600,
           backdropFilter: 'blur(12px)', display: 'flex', alignItems: 'center', gap: '8px'
@@ -682,7 +682,7 @@ export const AdminMora: React.FC = () => {
           <div style={{ fontSize: '24px', fontWeight: 800 }}>
             ${stats.totalUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
-          <div style={{ fontSize: '13px', color: '#f97316', fontWeight: 600, marginTop: '2px' }}>
+          <div style={{ fontSize: '13px', color: 'var(--color-accent, #f97316)', fontWeight: 600, marginTop: '2px' }}>
             {stats.totalBs > 0 && `+ Bs. ${stats.totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}`}
           </div>
           <div style={{ fontSize: '12px', color: '#777', marginTop: '6px' }}>Cartera pendiente total acumulada</div>
@@ -804,8 +804,8 @@ export const AdminMora: React.FC = () => {
                 key={piso.key}
                 onClick={() => setFiltroPiso(piso.key)}
                 style={{
-                  background: active ? '#f97316' : 'rgba(255, 255, 255, 0.05)',
-                  border: active ? '1px solid #f97316' : '1px solid rgba(255, 255, 255, 0.09)',
+                  background: active ? 'var(--color-brand-gradient, #f97316)' : 'rgba(255, 255, 255, 0.05)',
+                  border: active ? '1px solid var(--color-accent, #f97316)' : '1px solid rgba(255, 255, 255, 0.09)',
                   color: active ? '#fff' : '#ccc',
                   fontWeight: active ? 800 : 500,
                   fontSize: '12px', padding: '6px 12px', borderRadius: '10px',
@@ -817,7 +817,7 @@ export const AdminMora: React.FC = () => {
                 <span style={{
                   background: active ? 'rgba(0,0,0,0.35)' : 'rgba(255,255,255,0.1)',
                   fontSize: '10px', padding: '1px 6px', borderRadius: '999px', fontWeight: 800,
-                  color: active ? '#fff' : (count > 0 ? '#f97316' : '#777')
+                  color: active ? '#fff' : (count > 0 ? 'var(--color-accent, #f97316)' : '#777')
                 }}>
                   {count}
                 </span>
@@ -972,7 +972,7 @@ export const AdminMora: React.FC = () => {
                       <span style={{ fontSize: '24px', fontWeight: 900, color: '#fff' }}>
                         ${d.monto_usd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </span>
-                      <span style={{ fontSize: '12px', color: '#f97316', fontWeight: 800 }}>USD</span>
+                      <span style={{ fontSize: '12px', color: 'var(--color-accent, #f97316)', fontWeight: 800 }}>USD</span>
                     </div>
 
                     {d.monto_bs > 0 && (
@@ -1247,7 +1247,7 @@ export const AdminMora: React.FC = () => {
                 borderRadius: '16px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px'
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '12px', fontWeight: 700, color: '#f97316' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--color-accent, #f97316)' }}>
                     Diferenciación de Moneda (USD / Bs.)
                   </span>
                   {rate > 0 && (
@@ -1255,8 +1255,8 @@ export const AdminMora: React.FC = () => {
                       type="button"
                       onClick={handleCalcularBs}
                       style={{
-                        background: 'rgba(249, 115, 22, 0.15)', border: '1px solid rgba(249, 115, 22, 0.3)',
-                        color: '#f97316', padding: '3px 8px', borderRadius: '8px', fontSize: '11px',
+                        background: 'var(--color-accent-light, rgba(249, 115, 22, 0.15))', border: '1px solid var(--color-accent-glow, rgba(249, 115, 22, 0.3))',
+                        color: 'var(--color-accent, #f97316)', padding: '3px 8px', borderRadius: '8px', fontSize: '11px',
                         fontWeight: 700, cursor: 'pointer'
                       }}
                     >

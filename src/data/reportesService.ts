@@ -103,9 +103,9 @@ export const PRIORIDADES_CONFIG: Record<
   },
   alta: {
     label: 'Alta',
-    color: '#f97316',
-    bg: 'rgba(249, 115, 22, 0.12)',
-    border: 'rgba(249, 115, 22, 0.3)',
+    color: 'var(--color-accent, #f97316)',
+    bg: 'var(--color-accent-light, rgba(249, 115, 22, 0.12))',
+    border: 'var(--color-accent-glow, rgba(249, 115, 22, 0.3))',
     icon: '🟠',
   },
   critica: {

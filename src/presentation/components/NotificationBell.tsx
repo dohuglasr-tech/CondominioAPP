@@ -56,7 +56,7 @@ const ICONOS: Record<string, React.ReactNode> = {
 }
 
 const COLORES: Record<string, string> = {
-  recibo_emitido: '#f97316',
+  recibo_emitido: 'var(--color-accent, #f97316)',
   mora: '#ef4444',
   chat: '#3b82f6',
   pago_aprobado: '#22c55e',
@@ -270,7 +270,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
             <div>
               <div style={{ color: '#fff', fontSize: '14px', fontWeight: 800 }}>Notificaciones</div>
               {noLeidas > 0 && (
-                <div style={{ color: '#f97316', fontSize: '11px', fontWeight: 600, marginTop: '2px' }}>
+                <div style={{ color: 'var(--color-accent, #f97316)', fontSize: '11px', fontWeight: 600, marginTop: '2px' }}>
                   {noLeidas} sin leer
                 </div>
               )}
@@ -279,9 +279,9 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
               <button
                 onClick={handleMarcarTodas}
                 style={{
-                  background: 'rgba(249,115,22,0.12)',
-                  border: '1px solid rgba(249,115,22,0.25)',
-                  color: '#f97316',
+                  background: 'var(--color-accent-light, rgba(249,115,22,0.12))',
+                  border: '1px solid var(--border-accent, rgba(249,115,22,0.25))',
+                  color: 'var(--color-accent, #f97316)',
                   fontSize: '11px',
                   fontWeight: 700,
                   padding: '4px 10px',
@@ -316,7 +316,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
                     alignItems: 'flex-start',
                     gap: '12px',
                     padding: '13px 16px',
-                    background: n.leida ? 'transparent' : 'rgba(249,115,22,0.04)',
+                    background: n.leida ? 'transparent' : 'var(--color-accent-light, rgba(249,115,22,0.04))',
                     border: 'none',
                     borderBottom: '1px solid rgba(255,255,255,0.05)',
                     cursor: 'pointer',
@@ -374,7 +374,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
                       width: '8px',
                       height: '8px',
                       borderRadius: '50%',
-                      backgroundColor: '#f97316',
+                      backgroundColor: 'var(--color-accent, #f97316)',
                       flexShrink: 0,
                       marginTop: '6px',
                     }} />
@@ -400,9 +400,9 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
                   setPushGranted(ok)
                 }}
                 style={{
-                  background: 'rgba(249, 115, 22, 0.12)',
-                  border: '1px solid rgba(249, 115, 22, 0.3)',
-                  color: '#f97316',
+                  background: 'var(--color-accent-light, rgba(249, 115, 22, 0.12))',
+                  border: '1px solid var(--border-accent, rgba(249, 115, 22, 0.3))',
+                  color: 'var(--color-accent, #f97316)',
                   fontSize: '11px',
                   fontWeight: 700,
                   padding: '4px 8px',

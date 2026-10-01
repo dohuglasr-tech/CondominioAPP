@@ -200,7 +200,7 @@ export function ReportarPagoModal({ apartamentoId, onClose, onSuccess }: Props) 
       position: 'absolute' as const,
       top: 0, left: '20px', right: '20px',
       height: '3px',
-      background: 'linear-gradient(90deg, transparent, #f97316, transparent)',
+      background: 'linear-gradient(90deg, transparent, var(--color-accent, #f97316), transparent)',
       borderRadius: '0 0 4px 4px',
     },
     closeBtn: {
@@ -265,7 +265,7 @@ export function ReportarPagoModal({ apartamentoId, onClose, onSuccess }: Props) 
     },
     btnPrimary: {
       width: '100%',
-      backgroundColor: '#f97316',
+      backgroundColor: 'var(--color-accent, #f97316)',
       color: '#fff',
       border: 'none',
       borderRadius: '12px',
@@ -273,7 +273,7 @@ export function ReportarPagoModal({ apartamentoId, onClose, onSuccess }: Props) 
       fontSize: '15px',
       fontWeight: 700,
       cursor: 'pointer',
-      boxShadow: '0 4px 20px rgba(249,115,22,0.35)',
+      boxShadow: 'var(--color-brand-shadow, 0 4px 18px var(--color-accent-glow))',
       display: 'flex',
       justifyContent: 'center',
       alignItems: 'center',
@@ -293,8 +293,8 @@ export function ReportarPagoModal({ apartamentoId, onClose, onSuccess }: Props) 
   }
 
   const focusStyle = (e: React.FocusEvent<HTMLInputElement | HTMLSelectElement>) => {
-    e.target.style.borderColor = '#f97316'
-    e.target.style.boxShadow = '0 0 0 3px rgba(249,115,22,0.15), 0 0 15px rgba(249,115,22,0.08)'
+    e.target.style.borderColor = 'var(--color-accent, #f97316)'
+    e.target.style.boxShadow = '0 0 0 3px var(--color-accent-light, rgba(249,115,22,0.15)), 0 0 15px var(--color-accent-light, rgba(249,115,22,0.08))'
   }
 
   const blurStyle = (e: React.FocusEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -482,8 +482,8 @@ export function ReportarPagoModal({ apartamentoId, onClose, onSuccess }: Props) 
               style={st.uploadBox}
               onClick={() => fileRef.current?.click()}
               onMouseOver={(e) => {
-                e.currentTarget.style.borderColor = '#f97316'
-                e.currentTarget.style.backgroundColor = 'rgba(249,115,22,0.03)'
+                e.currentTarget.style.borderColor = 'var(--color-accent, #f97316)'
+                e.currentTarget.style.backgroundColor = 'var(--color-accent-light, rgba(249,115,22,0.03))'
               }}
               onMouseOut={(e) => {
                 e.currentTarget.style.borderColor = '#2a2a2a'
@@ -495,7 +495,7 @@ export function ReportarPagoModal({ apartamentoId, onClose, onSuccess }: Props) 
               {optimizando ? (
                 <>
                   <p style={{ fontSize: '28px', marginBottom: '8px' }}>⚡</p>
-                  <p style={{ color: '#f97316', fontSize: '13px', fontWeight: 600 }}>Optimizando comprobante...</p>
+                  <p style={{ color: 'var(--color-accent, #f97316)', fontSize: '13px', fontWeight: 600 }}>Optimizando comprobante...</p>
                   <p style={{ color: '#666', fontSize: '11px', marginTop: '4px' }}>Comprimiendo imagen para ahorrar espacio</p>
                 </>
               ) : preview ? (

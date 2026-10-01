@@ -112,7 +112,7 @@ export function ChangePassword() {
     },
     button: {
       width: '100%',
-      backgroundColor: '#f97316',
+      backgroundColor: 'var(--color-accent, #f97316)',
       color: '#ffffff',
       border: 'none',
       borderRadius: '8px',
@@ -120,7 +120,7 @@ export function ChangePassword() {
       fontSize: '15px',
       fontWeight: 'bold',
       cursor: 'pointer',
-      boxShadow: '0 4px 15px rgba(249, 115, 22, 0.4)',
+      boxShadow: 'var(--color-brand-shadow, 0 4px 15px rgba(249, 115, 22, 0.4))',
       transition: 'all 0.2s',
       display: 'flex',
       justifyContent: 'center',
@@ -202,7 +202,7 @@ export function ChangePassword() {
               onChange={(e) => setEmail(e.target.value)}
               disabled={loading}
               required
-              onFocus={(e) => e.target.style.borderColor = '#f97316'}
+              onFocus={(e) => e.target.style.borderColor = 'var(--color-accent, #f97316)'}
               onBlur={(e) => e.target.style.borderColor = '#2a2a2a'}
             />
           </div>
@@ -218,7 +218,7 @@ export function ChangePassword() {
               onChange={(e) => setPassword(e.target.value)}
               disabled={loading}
               required
-              onFocus={(e) => e.target.style.borderColor = '#f97316'}
+              onFocus={(e) => e.target.style.borderColor = 'var(--color-accent, #f97316)'}
               onBlur={(e) => e.target.style.borderColor = '#2a2a2a'}
             />
           </div>
@@ -234,7 +234,7 @@ export function ChangePassword() {
               onChange={(e) => setConfirmPassword(e.target.value)}
               disabled={loading}
               required
-              onFocus={(e) => e.target.style.borderColor = '#f97316'}
+              onFocus={(e) => e.target.style.borderColor = 'var(--color-accent, #f97316)'}
               onBlur={(e) => e.target.style.borderColor = '#2a2a2a'}
             />
           </div>
@@ -243,8 +243,8 @@ export function ChangePassword() {
             type="submit" 
             style={styles.button}
             disabled={loading || !email || !password || !confirmPassword}
-            onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#ea580c'}
-            onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#f97316'}
+            onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--color-accent-hover, #ea580c)'}
+            onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'var(--color-accent, #f97316)'}
           >
             {loading ? <span className="spinner spinner--sm"></span> : 'Guardar y Continuar'}
           </button>

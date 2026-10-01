@@ -33,9 +33,9 @@ export const CATEGORIA_ORGANIGRAMA_CONFIG: Record<
   administracion: {
     titulo: 'Administración del Condominio',
     subtitulo: 'Gestión ejecutiva, financiera y operativa del inmueble',
-    color: '#f97316',
-    bg: 'rgba(249, 115, 22, 0.12)',
-    border: 'rgba(249, 115, 22, 0.35)',
+    color: 'var(--color-accent, #f97316)',
+    bg: 'var(--color-accent-light, rgba(249, 115, 22, 0.12))',
+    border: 'var(--color-accent-glow, rgba(249, 115, 22, 0.35))',
     icono: '💼',
     nivelJerarquico: 1
   },

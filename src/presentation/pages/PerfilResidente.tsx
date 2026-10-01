@@ -133,7 +133,7 @@ export const PerfilResidente: React.FC = () => {
           {edificioLogo ? (
             <img src={edificioLogo} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '18px' }} />
           ) : (
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#f97316" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent, #f97316)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="8" r="4"/>
               <path d="M5 20c0-4 3.5-7 7-7s7 3 7 7"/>
             </svg>
@@ -147,7 +147,7 @@ export const PerfilResidente: React.FC = () => {
 
       {/* Aviso solo lectura */}
       <div style={s.notice}>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f97316" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent, #f97316)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="12" cy="12" r="10"/>
           <line x1="12" y1="8" x2="12" y2="12"/>
           <line x1="12" y1="16" x2="12.01" y2="16"/>
@@ -231,9 +231,9 @@ export const PerfilResidente: React.FC = () => {
             setShowPassModal(true)
           }}
           style={{
-            backgroundColor: 'rgba(249, 115, 22, 0.12)',
-            color: '#f97316',
-            border: '1px solid rgba(249, 115, 22, 0.35)',
+            backgroundColor: 'var(--color-accent-light, rgba(249, 115, 22, 0.12))',
+            color: 'var(--color-accent, #f97316)',
+            border: '1px solid var(--border-accent, rgba(249, 115, 22, 0.35))',
             borderRadius: '10px',
             padding: '11px 16px',
             fontSize: '13px',
@@ -245,12 +245,12 @@ export const PerfilResidente: React.FC = () => {
             transition: 'all 0.2s ease'
           }}
           onMouseOver={(e) => {
-            e.currentTarget.style.backgroundColor = 'rgba(249, 115, 22, 0.2)'
-            e.currentTarget.style.borderColor = '#f97316'
+            e.currentTarget.style.backgroundColor = 'var(--color-accent-light, rgba(249, 115, 22, 0.2))'
+            e.currentTarget.style.borderColor = 'var(--color-accent, #f97316)'
           }}
           onMouseOut={(e) => {
-            e.currentTarget.style.backgroundColor = 'rgba(249, 115, 22, 0.12)'
-            e.currentTarget.style.borderColor = 'rgba(249, 115, 22, 0.35)'
+            e.currentTarget.style.backgroundColor = 'var(--color-accent-light, rgba(249, 115, 22, 0.12))'
+            e.currentTarget.style.borderColor = 'var(--border-accent, rgba(249, 115, 22, 0.35))'
           }}
         >
           <span>🔑</span> Cambiar mi contraseña
@@ -467,7 +467,7 @@ export const PerfilResidente: React.FC = () => {
                     disabled={passLoading || !newPassword || !confirmNewPassword}
                     style={{
                       width: '100%',
-                      backgroundColor: '#f97316',
+                      backgroundColor: 'var(--color-accent, #f97316)',
                       color: '#ffffff',
                       border: 'none',
                       borderRadius: '10px',
@@ -476,7 +476,7 @@ export const PerfilResidente: React.FC = () => {
                       fontWeight: 700,
                       cursor: passLoading || !newPassword || !confirmNewPassword ? 'not-allowed' : 'pointer',
                       opacity: passLoading || !newPassword || !confirmNewPassword ? 0.7 : 1,
-                      boxShadow: '0 4px 18px rgba(249, 115, 22, 0.4)',
+                      boxShadow: 'var(--color-brand-shadow, 0 4px 18px var(--color-accent-glow))',
                       transition: 'all 0.2s ease',
                       display: 'flex',
                       alignItems: 'center',
@@ -519,7 +519,7 @@ const s: Record<string, React.CSSProperties> = {
   avatarWrap: { display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 },
   avatar: {
     width: 68, height: 68, borderRadius: 18,
-    background: 'rgba(249,115,22,0.12)',
+    background: 'var(--color-accent-light, rgba(249,115,22,0.12))',
     display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
     overflow: 'hidden',
   },
@@ -527,10 +527,10 @@ const s: Record<string, React.CSSProperties> = {
   sub:  { color: '#888', fontSize: 13, marginTop: 4 },
   notice: {
     display: 'flex', alignItems: 'center', gap: 8,
-    background: 'rgba(249,115,22,0.07)',
-    border: '1px solid rgba(249,115,22,0.2)',
+    background: 'var(--color-accent-light, rgba(249,115,22,0.07))',
+    border: '1px solid var(--border-accent, rgba(249,115,22,0.2))',
     borderRadius: 10, padding: '10px 14px',
-    color: '#f97316', fontSize: 12, fontWeight: 500,
+    color: 'var(--color-accent, #f97316)', fontSize: 12, fontWeight: 500,
     marginBottom: 20,
   },
   card: {
@@ -539,7 +539,7 @@ const s: Record<string, React.CSSProperties> = {
     boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
   },
   cardTitle: {
-    color: '#f97316', fontSize: 12, fontWeight: 700,
+    color: 'var(--color-accent, #f97316)', fontSize: 12, fontWeight: 700,
     textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 14px',
   },
   field: {

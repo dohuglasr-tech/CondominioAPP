@@ -87,6 +87,7 @@ interface ConfigEdificio {
   cuenta_bancaria: string | null
   titular_cuenta: string | null
   tasa_bcv_actual: number
+  color_primario?: string | null
   fecha_inicio_gestion?: string | null
   fecha_fin_administracion_anterior?: string | null
 }
@@ -476,7 +477,7 @@ export function RecibosPanel({ onClose }: Props) {
         <button
           onClick={() => setReportarModalOpen(true)}
           style={{
-            background: 'linear-gradient(135deg, #fb923c 0%, #ea580c 100%)',
+            background: 'var(--color-brand-gradient, linear-gradient(135deg, var(--color-accent, #f97316) 0%, var(--color-accent-hover, #ea580c) 100%))',
             color: '#fff',
             border: 'none',
             borderRadius: '10px',
@@ -487,7 +488,7 @@ export function RecibosPanel({ onClose }: Props) {
             display: 'flex',
             alignItems: 'center',
             gap: '6px',
-            boxShadow: '0 4px 14px rgba(234, 88, 12, 0.4)'
+            boxShadow: 'var(--color-brand-shadow, 0 4px 14px rgba(234, 88, 12, 0.4))'
           }}
         >
           <span>💳</span>
@@ -515,9 +516,9 @@ export function RecibosPanel({ onClose }: Props) {
             fontSize: '13px',
             fontWeight: 700,
             transition: 'all 0.2s',
-            background: activeTab === 'recibos' ? '#f97316' : 'transparent',
+            background: activeTab === 'recibos' ? 'var(--color-brand-gradient, #f97316)' : 'transparent',
             color: activeTab === 'recibos' ? '#fff' : '#94a3b8',
-            boxShadow: activeTab === 'recibos' ? '0 2px 8px rgba(249, 115, 22, 0.4)' : 'none'
+            boxShadow: activeTab === 'recibos' ? 'var(--color-brand-shadow, 0 2px 8px var(--color-accent-glow))' : 'none'
           }}
         >
           📄 Recibos de Condominio ({recibos.length})
@@ -533,9 +534,9 @@ export function RecibosPanel({ onClose }: Props) {
             fontSize: '13px',
             fontWeight: 700,
             transition: 'all 0.2s',
-            background: activeTab === 'pagos' ? '#f97316' : 'transparent',
+            background: activeTab === 'pagos' ? 'var(--color-brand-gradient, #f97316)' : 'transparent',
             color: activeTab === 'pagos' ? '#fff' : '#94a3b8',
-            boxShadow: activeTab === 'pagos' ? '0 2px 8px rgba(249, 115, 22, 0.4)' : 'none'
+            boxShadow: activeTab === 'pagos' ? 'var(--color-brand-shadow, 0 2px 8px var(--color-accent-glow))' : 'none'
           }}
         >
           💳 Historial de Pagos ({pagos.length})
@@ -546,8 +547,8 @@ export function RecibosPanel({ onClose }: Props) {
       {loading ? (
         <div style={{ textAlign: 'center', padding: '60px 20px', color: '#94a3b8' }}>
           <div style={{
-            width: '32px', height: '32px', border: '3px solid rgba(249, 115, 22, 0.2)',
-            borderTopColor: '#f97316', borderRadius: '50%', animation: 'spin 0.8s linear infinite',
+            width: '32px', height: '32px', border: '3px solid var(--color-accent-light, rgba(249, 115, 22, 0.2))',
+            borderTopColor: 'var(--color-accent, #f97316)', borderRadius: '50%', animation: 'spin 0.8s linear infinite',
             margin: '0 auto 16px'
           }} />
           <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
@@ -739,7 +740,7 @@ export function RecibosPanel({ onClose }: Props) {
                     onClick={() => setFiltroAnio(anio)}
                     style={{
                       background: filtroAnio === anio
-                        ? 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)'
+                        ? 'var(--color-brand-gradient, linear-gradient(135deg, #f97316 0%, #ea580c 100%))'
                         : 'rgba(255, 255, 255, 0.06)',
                       color: filtroAnio === anio ? '#fff' : '#cbd5e1',
                       border: 'none',
@@ -914,9 +915,9 @@ export function RecibosPanel({ onClose }: Props) {
                       ? '1px solid rgba(34, 197, 94, 0.35)'
                       : enRevision
                       ? '1px solid rgba(245, 158, 11, 0.35)'
-                      : '1px solid rgba(249, 115, 22, 0.35)',
+                      : '1px solid var(--border-accent, rgba(249, 115, 22, 0.35))',
                     borderLeftWidth: '5px',
-                    borderLeftColor: estaPagado ? '#22c55e' : enRevision ? '#f59e0b' : '#f97316',
+                    borderLeftColor: estaPagado ? '#22c55e' : enRevision ? '#f59e0b' : 'var(--color-accent, #f97316)',
                     borderRadius: '16px',
                     padding: '20px',
                     boxShadow: '0 4px 20px rgba(0, 0, 0, 0.35)',
@@ -1016,7 +1017,7 @@ export function RecibosPanel({ onClose }: Props) {
                       <span style={{ color: '#82828e', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase' }}>
                         Alícuota Aplicada
                       </span>
-                      <div style={{ color: '#f97316', fontSize: '14px', fontWeight: 800, marginTop: '2px' }}>
+                      <div style={{ color: 'var(--color-accent, #f97316)', fontSize: '14px', fontWeight: 800, marginTop: '2px' }}>
                         {formatAlicuotaPct(recibo.alicuota)}
                       </div>
                     </div>
@@ -1194,7 +1195,7 @@ export function RecibosPanel({ onClose }: Props) {
                       <button
                         onClick={() => setReportarModalOpen(true)}
                         style={{
-                          background: 'linear-gradient(135deg, #fb923c 0%, #ea580c 100%)',
+                          background: 'var(--color-brand-gradient, linear-gradient(135deg, var(--color-accent, #f97316) 0%, var(--color-accent-hover, #ea580c) 100%))',
                           border: 'none',
                           color: '#fff',
                           borderRadius: '10px',
@@ -1205,7 +1206,7 @@ export function RecibosPanel({ onClose }: Props) {
                           display: 'flex',
                           alignItems: 'center',
                           gap: '6px',
-                          boxShadow: '0 3px 12px rgba(234, 88, 12, 0.4)'
+                          boxShadow: 'var(--color-brand-shadow, 0 3px 12px rgba(234, 88, 12, 0.4))'
                         }}
                       >
                         <span>💳</span>
@@ -1244,7 +1245,7 @@ export function RecibosPanel({ onClose }: Props) {
                       borderTop: '1px solid rgba(255, 255, 255, 0.08)'
                     }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                        <span style={{ color: '#f97316', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase' }}>
+                        <span style={{ color: 'var(--color-accent, #f97316)', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase' }}>
                           Gastos Comunes del Edificio ({gastos.length})
                         </span>
                         <span style={{ color: '#64748b', fontSize: '11px' }}>
@@ -1334,14 +1335,15 @@ export function RecibosPanel({ onClose }: Props) {
             <button
               onClick={() => setReportarModalOpen(true)}
               style={{
-                background: 'linear-gradient(135deg, #fb923c 0%, #ea580c 100%)',
+                background: 'var(--color-brand-gradient, linear-gradient(135deg, var(--color-accent, #f97316) 0%, var(--color-accent-hover, #ea580c) 100%))',
                 color: '#fff',
                 border: 'none',
                 borderRadius: '10px',
                 padding: '10px 20px',
                 fontSize: '13px',
                 fontWeight: 800,
-                cursor: 'pointer'
+                cursor: 'pointer',
+                boxShadow: 'var(--color-brand-shadow, 0 4px 14px rgba(234, 88, 12, 0.4))'
               }}
             >
               Reportar Mi Primer Pago

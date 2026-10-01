@@ -394,10 +394,10 @@ export function Dashboard() {
                   ESTADO DE CUENTA
                 </span>
                 <span style={{
-                  color: '#f97316',
+                  color: 'var(--color-accent, #f97316)',
                   fontSize: '10px',
                   fontWeight: 800,
-                  backgroundColor: 'rgba(249, 115, 22, 0.12)',
+                  backgroundColor: 'var(--color-accent-light, rgba(249, 115, 22, 0.12))',
                   padding: '2px 7px',
                   borderRadius: '6px'
                 }}>
@@ -594,7 +594,7 @@ export function Dashboard() {
                 <div style={{ color: '#8e8e93', fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '4px' }}>
                   ALÍCUOTA
                 </div>
-                <div style={{ color: '#f97316', fontSize: '13px', fontWeight: 800 }}>
+                <div style={{ color: 'var(--color-accent, #f97316)', fontSize: '13px', fontWeight: 800 }}>
                   {formatAlicuotaPct(alicuota)} {esPenthouse ? '(PH)' : ''}
                 </div>
               </div>
@@ -679,7 +679,7 @@ export function Dashboard() {
                 ) : (
                   <>
                     Tienes <strong>{moraRecord.meses_deuda} meses de atraso</strong> con una deuda acumulada de{' '}
-                    <strong style={{ color: '#f97316' }}>${moraRecord.monto_usd.toFixed(2)} USD</strong>.
+                    <strong style={{ color: 'var(--color-accent, #f97316)' }}>${moraRecord.monto_usd.toFixed(2)} USD</strong>.
                   </>
                 )}
               </p>
@@ -704,7 +704,7 @@ export function Dashboard() {
                   onClick={() => setModalOpen(true)}
                   style={{
                     flex: 1,
-                    background: 'linear-gradient(135deg, #fb923c 0%, #f97316 100%)',
+                    background: 'var(--color-brand-gradient, linear-gradient(135deg, #fb923c 0%, #f97316 100%))',
                     border: 'none',
                     color: '#fff',
                     padding: '8px 10px',
@@ -712,7 +712,7 @@ export function Dashboard() {
                     fontSize: '11px',
                     fontWeight: 800,
                     cursor: 'pointer',
-                    boxShadow: '0 2px 10px rgba(249, 115, 22, 0.4)'
+                    boxShadow: 'var(--color-brand-shadow, 0 2px 10px rgba(249, 115, 22, 0.4))'
                   }}
                 >
                   Reportar Pago
@@ -859,7 +859,7 @@ export function Dashboard() {
               </h3>
               <button
                 onClick={() => navigate('/recibos')}
-                style={{ background: 'none', border: 'none', color: '#f97316', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}
+                style={{ background: 'none', border: 'none', color: 'var(--color-accent, #f97316)', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}
               >
                 Ver todos →
               </button>
@@ -872,9 +872,9 @@ export function Dashboard() {
                   onClick={() => setModalOpen(true)}
                   style={{
                     marginTop: '12px',
-                    background: 'rgba(249, 115, 22, 0.12)',
-                    border: '1px solid rgba(249, 115, 22, 0.3)',
-                    color: '#f97316',
+                    background: 'var(--color-accent-light, rgba(249, 115, 22, 0.12))',
+                    border: '1px solid var(--color-accent-glow, rgba(249, 115, 22, 0.3))',
+                    color: 'var(--color-accent, #f97316)',
                     padding: '8px 16px',
                     borderRadius: '10px',
                     fontSize: '12px',
@@ -969,9 +969,9 @@ export function Dashboard() {
                   ¡Hola, {residenteNombre}!
                 </h1>
                 <span style={{
-                  backgroundColor: 'rgba(249, 115, 22, 0.15)',
-                  color: '#f97316',
-                  border: '1px solid rgba(249, 115, 22, 0.3)',
+                  backgroundColor: 'var(--color-accent-light, rgba(249, 115, 22, 0.15))',
+                  color: 'var(--color-accent, #f97316)',
+                  border: '1px solid var(--color-accent-glow, rgba(249, 115, 22, 0.3))',
                   padding: '3px 10px',
                   borderRadius: '999px',
                   fontSize: '12px',
@@ -1009,7 +1009,7 @@ export function Dashboard() {
               <button
                 onClick={() => setModalOpen(true)}
                 style={{
-                  background: 'linear-gradient(135deg, #fb923c 0%, #ea580c 100%)',
+                  background: 'var(--color-brand-gradient, linear-gradient(135deg, #fb923c 0%, #ea580c 100%))',
                   border: '1px solid rgba(255, 255, 255, 0.25)',
                   color: '#fff',
                   padding: '12px 22px',
@@ -1020,7 +1020,7 @@ export function Dashboard() {
                   display: 'flex',
                   alignItems: 'center',
                   gap: '8px',
-                  boxShadow: '0 4px 18px rgba(234, 88, 12, 0.45)',
+                  boxShadow: 'var(--color-brand-shadow, 0 4px 18px rgba(234, 88, 12, 0.45))',
                   transition: 'all 0.2s'
                 }}
               >
@@ -1084,7 +1084,7 @@ export function Dashboard() {
                     ) : (
                       <>
                         Presentas <strong>{moraRecord.meses_deuda} meses de atraso</strong> con una deuda anterior acumulada de{' '}
-                        <strong style={{ color: '#f97316' }}>${moraRecord.monto_usd.toFixed(2)} USD</strong>. Regulariza tu saldo para evitar recargos legales.
+                        <strong style={{ color: 'var(--color-accent, #f97316)' }}>${moraRecord.monto_usd.toFixed(2)} USD</strong>. Regulariza tu saldo para evitar recargos legales.
                       </>
                     )}
                   </p>
@@ -1110,7 +1110,7 @@ export function Dashboard() {
                 <button
                   onClick={() => setModalOpen(true)}
                   style={{
-                    background: 'linear-gradient(135deg, #fb923c 0%, #f97316 100%)',
+                    background: 'var(--color-brand-gradient, linear-gradient(135deg, #fb923c 0%, #f97316 100%))',
                     border: 'none',
                     color: '#fff',
                     padding: '9px 18px',
@@ -1118,7 +1118,7 @@ export function Dashboard() {
                     fontSize: '13px',
                     fontWeight: 800,
                     cursor: 'pointer',
-                    boxShadow: '0 2px 12px rgba(249, 115, 22, 0.4)'
+                    boxShadow: 'var(--color-brand-shadow, 0 2px 12px rgba(249, 115, 22, 0.4))'
                   }}
                 >
                   Reportar Pago
@@ -1208,7 +1208,7 @@ export function Dashboard() {
                   {ocultarSaldos ? 'Bs. ••••••' : `Bs. ${(deudaBs > 0 ? deudaBs : 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px', color: '#f97316', fontSize: '16px', fontWeight: 700 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px', color: 'var(--color-accent, #f97316)', fontSize: '16px', fontWeight: 700 }}>
                   <span>{ocultarSaldos ? '•••• USD' : `≈ $${deudaUsd.toFixed(2)} USD`}</span>
                   <span style={{ color: '#64748b', fontSize: '13px', fontWeight: 500 }}>
                     · {mesFacturadoTexto}
@@ -1329,7 +1329,7 @@ export function Dashboard() {
                   onClick={() => setModalOpen(true)}
                   style={{
                     width: '100%',
-                    background: 'linear-gradient(135deg, #fb923c 0%, #ea580c 100%)',
+                    background: 'var(--color-brand-gradient, linear-gradient(135deg, #fb923c 0%, #ea580c 100%))',
                     border: '1px solid rgba(255, 255, 255, 0.25)',
                     color: '#fff',
                     padding: '14px',
@@ -1342,7 +1342,7 @@ export function Dashboard() {
                     alignItems: 'center',
                     justifyContent: 'center',
                     gap: '8px',
-                    boxShadow: '0 4px 18px rgba(234, 88, 12, 0.45)'
+                    boxShadow: 'var(--color-brand-shadow, 0 4px 18px rgba(234, 88, 12, 0.45))'
                   }}
                 >
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -1361,7 +1361,7 @@ export function Dashboard() {
                   </h3>
                   <button
                     onClick={() => navigate('/recibos')}
-                    style={{ background: 'none', border: 'none', color: '#f97316', fontSize: '13px', fontWeight: 700, cursor: 'pointer' }}
+                    style={{ background: 'none', border: 'none', color: 'var(--color-accent, #f97316)', fontSize: '13px', fontWeight: 700, cursor: 'pointer' }}
                   >
                     Ver historial completo →
                   </button>
@@ -1575,7 +1575,7 @@ export function Dashboard() {
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
                     <span style={{ color: '#94a3b8' }}>Alícuota Legal:</span>
-                    <span style={{ color: '#f97316', fontWeight: 700 }}>{formatAlicuotaPct(alicuota)}</span>
+                    <span style={{ color: 'var(--color-accent, #f97316)', fontWeight: 700 }}>{formatAlicuotaPct(alicuota)}</span>
                   </div>
                 </div>
               </div>

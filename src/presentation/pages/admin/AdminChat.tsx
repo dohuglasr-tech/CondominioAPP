@@ -536,7 +536,7 @@ export const AdminChat: React.FC = () => {
                         <>
                           {/* Badge de Apartamento */}
                           <span style={{
-                            backgroundColor: '#f97316',
+                            backgroundColor: 'var(--color-accent, #f97316)',
                             color: '#fff',
                             padding: '2px 8px',
                             borderRadius: '6px',
@@ -546,7 +546,7 @@ export const AdminChat: React.FC = () => {
                             display: 'inline-flex',
                             alignItems: 'center',
                             gap: '4px',
-                            boxShadow: '0 2px 6px rgba(249,115,22,0.3)'
+                            boxShadow: 'var(--color-brand-shadow, 0 2px 6px rgba(249,115,22,0.3))'
                           }}>
                             🏢 APTO {m.apartamento_numero || 'S/N'}
                           </span>
@@ -589,17 +589,17 @@ export const AdminChat: React.FC = () => {
                       backgroundColor: isAnuncio
                         ? 'rgba(234, 179, 8, 0.15)'
                         : isAdmin
-                          ? '#f97316'
+                          ? 'var(--color-accent, #f97316)'
                           : '#1e1e24',
                       border: isAnuncio
                         ? '1px solid rgba(234, 179, 8, 0.4)'
                         : isAdmin
-                          ? '1px solid #ea580c'
+                          ? '1px solid var(--color-accent-hover, #ea580c)'
                           : '1px solid #27272a',
                       color: isAdmin && !isAnuncio ? '#fff' : '#f4f4f5',
                       fontSize: '13px',
                       lineHeight: '1.5',
-                      boxShadow: isAdmin && !isAnuncio ? '0 4px 12px rgba(249, 115, 22, 0.25)' : 'none'
+                      boxShadow: isAdmin && !isAnuncio ? 'var(--color-brand-shadow, 0 4px 12px rgba(249, 115, 22, 0.25))' : 'none'
                     }}>
                       {isAnuncio && (
                         <div style={{ fontSize: '11px', fontWeight: 800, color: '#facc15', marginBottom: '4px', textTransform: 'uppercase' }}>
@@ -640,14 +640,14 @@ export const AdminChat: React.FC = () => {
                 fontSize: '13px',
                 outline: 'none'
               }}
-              onFocus={e => e.currentTarget.style.borderColor = '#f97316'}
+              onFocus={e => e.currentTarget.style.borderColor = 'var(--color-accent, #f97316)'}
               onBlur={e => e.currentTarget.style.borderColor = '#27272a'}
             />
             <button
               type="submit"
               disabled={!input.trim() || enviando}
               style={{
-                backgroundColor: '#f97316',
+                backgroundColor: 'var(--color-accent, #f97316)',
                 color: '#fff',
                 border: 'none',
                 padding: '0 20px',
@@ -657,7 +657,7 @@ export const AdminChat: React.FC = () => {
                 fontSize: '13px',
                 opacity: !input.trim() || enviando ? 0.5 : 1,
                 transition: 'all 0.2s',
-                boxShadow: '0 4px 12px rgba(249, 115, 22, 0.3)'
+                boxShadow: 'var(--color-brand-shadow, 0 4px 12px rgba(249, 115, 22, 0.3))'
               }}
             >
               {enviando ? 'Enviando...' : 'Enviar'}

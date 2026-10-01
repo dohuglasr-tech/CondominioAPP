@@ -59,6 +59,7 @@ interface ConfigEdificio {
   cuenta_bancaria: string | null
   titular_cuenta: string | null
   tasa_bcv_actual: number
+  color_primario?: string | null
   fecha_inicio_gestion?: string | null
   fecha_fin_administracion_anterior?: string | null
 }
@@ -645,7 +646,8 @@ export const AdminRecibosEmitidos: React.FC = () => {
           bancoNombre: config?.banco,
           cuentaNumero: config?.cuenta_bancaria,
           titularNombre: config?.titular_cuenta,
-          cedulaRif: config?.rif
+          cedulaRif: config?.rif,
+          colorPrimario: config?.color_primario
         })
         if (res.ok) {
           showToast(`✅ Aviso de cobro enviado al correo del propietario (${emailDestino})`)
@@ -950,7 +952,7 @@ export const AdminRecibosEmitidos: React.FC = () => {
                   setSearchParams({ mes: e.target.value })
                 }}
                 style={{
-                  backgroundColor: '#0a0a0a', color: '#f97316', border: '1px solid #f9731650',
+                  backgroundColor: '#0a0a0a', color: 'var(--color-accent, #f97316)', border: '1px solid var(--color-accent-glow, #f9731650)',
                   padding: '6px 10px', borderRadius: '8px', fontSize: '13px', fontWeight: 700, outline: 'none', cursor: 'pointer'
                 }}
               >
@@ -1387,7 +1389,7 @@ export const AdminRecibosEmitidos: React.FC = () => {
                 <h3 style={{ fontSize: '14px', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <span>💸</span> Distribución de Gastos del Mes
                 </h3>
-                <span style={{ color: '#f97316', fontSize: '12px', fontWeight: 700 }}>Total: $ {fmtUsd(stats.totalGastosComunesUsd)}</span>
+                <span style={{ color: 'var(--color-accent, #f97316)', fontSize: '12px', fontWeight: 700 }}>Total: $ {fmtUsd(stats.totalGastosComunesUsd)}</span>
               </div>
 
               {stats.gastosPorCategoria.length === 0 ? (
@@ -1503,7 +1505,7 @@ export const AdminRecibosEmitidos: React.FC = () => {
                       key={tab.id}
                       onClick={() => setFiltroEstado(tab.id as any)}
                       style={{
-                        backgroundColor: filtroEstado === tab.id ? '#f97316' : 'transparent',
+                        backgroundColor: filtroEstado === tab.id ? 'var(--color-accent, #f97316)' : 'transparent',
                         color: filtroEstado === tab.id ? '#fff' : '#888',
                         border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer',
                         fontSize: '11.5px', fontWeight: 700, transition: 'all 0.15s'
@@ -1612,8 +1614,8 @@ export const AdminRecibosEmitidos: React.FC = () => {
                           onMouseOut={e => e.currentTarget.style.backgroundColor = isPagado ? 'transparent' : 'rgba(239, 68, 68, 0.02)'}
                         >
                           {/* Apto */}
-                          <td style={{ padding: '12px', fontWeight: 800, color: '#f97316', whiteSpace: 'nowrap' }}>
-                            Apto {r.apartamento?.numero} {esPH && <span style={{ backgroundColor: '#f9731620', color: '#f97316', border: '1px solid #f9731640', fontSize: '9px', padding: '1px 5px', borderRadius: '4px', marginLeft: '4px' }}>PH</span>}
+                          <td style={{ padding: '12px', fontWeight: 800, color: 'var(--color-accent, #f97316)', whiteSpace: 'nowrap' }}>
+                            Apto {r.apartamento?.numero} {esPH && <span style={{ backgroundColor: 'var(--color-accent-light, #f9731620)', color: 'var(--color-accent, #f97316)', border: '1px solid var(--color-accent-glow, #f9731640)', fontSize: '9px', padding: '1px 5px', borderRadius: '4px', marginLeft: '4px' }}>PH</span>}
                           </td>
 
                           {/* Residente */}
@@ -1795,11 +1797,11 @@ export const AdminRecibosEmitidos: React.FC = () => {
                         <div>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <span style={{ fontSize: '18px', fontWeight: 900, color: '#f97316' }}>
+                              <span style={{ fontSize: '18px', fontWeight: 900, color: 'var(--color-accent, #f97316)' }}>
                                 Apto {r.apartamento?.numero}
                               </span>
                               {esPH && (
-                                <span style={{ backgroundColor: 'rgba(249, 115, 22, 0.2)', color: '#f97316', border: '1px solid rgba(249, 115, 22, 0.4)', fontSize: '9px', fontWeight: 800, padding: '1px 5px', borderRadius: '4px' }}>
+                                <span style={{ backgroundColor: 'var(--color-accent-light, rgba(249, 115, 22, 0.2))', color: 'var(--color-accent, #f97316)', border: '1px solid var(--color-accent-glow, rgba(249, 115, 22, 0.4))', fontSize: '9px', fontWeight: 800, padding: '1px 5px', borderRadius: '4px' }}>
                                   PH
                                 </span>
                               )}
@@ -1975,7 +1977,7 @@ export const AdminRecibosEmitidos: React.FC = () => {
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid #222', paddingBottom: '14px', marginBottom: '16px' }}>
               <div>
-                <span style={{ color: '#f97316', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase' }}>
+                <span style={{ color: 'var(--color-accent, #f97316)', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase' }}>
                   Detalle del Recibo Emitido
                 </span>
                 <h2 style={{ fontSize: '20px', fontWeight: 800, margin: '2px 0 0' }}>
@@ -1997,7 +1999,7 @@ export const AdminRecibosEmitidos: React.FC = () => {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '16px' }}>
               <div style={{ backgroundColor: '#0a0a0a', padding: '10px 14px', borderRadius: '10px', border: '1px solid #1e1e1e' }}>
                 <div style={{ color: '#888', fontSize: '10px', textTransform: 'uppercase', fontWeight: 600 }}>Total USD a Pagar</div>
-                <div style={{ color: '#f97316', fontSize: '20px', fontWeight: 900 }}>$ {fmtUsd(reciboModal.total_usd)}</div>
+                <div style={{ color: 'var(--color-accent, #f97316)', fontSize: '20px', fontWeight: 900 }}>$ {fmtUsd(reciboModal.total_usd)}</div>
               </div>
               <div style={{ backgroundColor: '#0a0a0a', padding: '10px 14px', borderRadius: '10px', border: '1px solid #1e1e1e' }}>
                 <div style={{ color: '#888', fontSize: '10px', textTransform: 'uppercase', fontWeight: 600 }}>Total en Bolívares</div>
@@ -2028,7 +2030,7 @@ export const AdminRecibosEmitidos: React.FC = () => {
             {/* Notas del Recibo */}
             {reciboModal.data_json?.notas_residentes && (
               <div style={{ marginBottom: '18px', backgroundColor: '#0a0a0a', border: '1px solid #1e1e1e', borderRadius: '10px', padding: '12px' }}>
-                <div style={{ color: '#f97316', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px' }}>
+                <div style={{ color: 'var(--color-accent, #f97316)', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px' }}>
                   Notas para los Residentes emitidas en este recibo:
                 </div>
                 <div style={{ color: '#94a3b8', fontSize: '11px', whiteSpace: 'pre-line', lineHeight: '1.4' }}>
@@ -2114,7 +2116,7 @@ export const AdminRecibosEmitidos: React.FC = () => {
                 <button
                   onClick={() => descargarPDFReciboEmitido(reciboModal)}
                   style={{
-                    backgroundColor: '#f97316', color: '#fff', border: 'none',
+                    backgroundColor: 'var(--color-accent, #f97316)', color: '#fff', border: 'none',
                     padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: 700,
                     display: 'flex', alignItems: 'center', gap: '6px'
                   }}
@@ -2156,7 +2158,7 @@ export const AdminRecibosEmitidos: React.FC = () => {
             </div>
 
             <p style={{ color: '#cbd5e1', fontSize: '13px', lineHeight: 1.45, margin: '0 0 16px' }}>
-              Esta acción eliminará <strong>en su totalidad la emisión de recibos de {mesLabelActivo}</strong> para todos los <strong>{recibos.length} apartamentos</strong>, retirando una deuda total de <strong style={{ color: '#f97316' }}>$ {fmtUsd(stats.totalFacturadoUsd)} USD (Bs. {fmtBs(stats.totalFacturadoBs)})</strong>.
+              Esta acción eliminará <strong>en su totalidad la emisión de recibos de {mesLabelActivo}</strong> para todos los <strong>{recibos.length} apartamentos</strong>, retirando una deuda total de <strong style={{ color: 'var(--color-accent, #f97316)' }}>$ {fmtUsd(stats.totalFacturadoUsd)} USD (Bs. {fmtBs(stats.totalFacturadoBs)})</strong>.
             </p>
 
             <div style={{
@@ -2265,13 +2267,13 @@ export const AdminRecibosEmitidos: React.FC = () => {
           display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: '20px'
         }}>
           <div style={{
-            backgroundColor: '#111318', border: '2px solid #f97316', borderRadius: '20px',
-            maxWidth: '500px', width: '100%', padding: '24px', boxShadow: '0 25px 60px rgba(249, 115, 22, 0.25)'
+            backgroundColor: '#111318', border: '2px solid var(--color-accent, #f97316)', borderRadius: '20px',
+            maxWidth: '500px', width: '100%', padding: '24px', boxShadow: 'var(--color-brand-shadow, 0 25px 60px rgba(249, 115, 22, 0.25))'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
               <div style={{
                 width: '44px', height: '44px', borderRadius: '12px',
-                backgroundColor: 'rgba(249, 115, 22, 0.15)', border: '1px solid rgba(249, 115, 22, 0.35)',
+                backgroundColor: 'var(--color-accent-light, rgba(249, 115, 22, 0.15))', border: '1px solid var(--color-accent-glow, rgba(249, 115, 22, 0.35))',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px'
               }}>
                 📄
@@ -2280,19 +2282,19 @@ export const AdminRecibosEmitidos: React.FC = () => {
                 <h3 style={{ color: '#fff', fontSize: '18px', fontWeight: 800, margin: 0 }}>
                   Retirar Deuda - Apto {reciboParaEliminar.apartamento?.numero}
                 </h3>
-                <span style={{ color: '#f97316', fontSize: '12px', fontWeight: 700 }}>
+                <span style={{ color: 'var(--color-accent, #f97316)', fontSize: '12px', fontWeight: 700 }}>
                   Mes: {mesLabelActivo}
                 </span>
               </div>
             </div>
 
             <p style={{ color: '#cbd5e1', fontSize: '13px', lineHeight: 1.45, margin: '0 0 14px' }}>
-              Se anulará el recibo emitido y se retirará la deuda del <strong>Apartamento {reciboParaEliminar.apartamento?.numero}</strong> por un monto de <strong style={{ color: '#f97316' }}>$ {fmtUsd(reciboParaEliminar.total_usd)} USD (Bs. {fmtBs(reciboParaEliminar.total_bs)})</strong>. El apartamento quedará sin deuda para este mes.
+              Se anulará el recibo emitido y se retirará la deuda del <strong>Apartamento {reciboParaEliminar.apartamento?.numero}</strong> por un monto de <strong style={{ color: 'var(--color-accent, #f97316)' }}>$ {fmtUsd(reciboParaEliminar.total_usd)} USD (Bs. {fmtBs(reciboParaEliminar.total_bs)})</strong>. El apartamento quedará sin deuda para este mes.
             </p>
 
             <div style={{
-              backgroundColor: 'rgba(249, 115, 22, 0.08)',
-              border: '1px solid rgba(249, 115, 22, 0.25)',
+              backgroundColor: 'var(--color-accent-light, rgba(249, 115, 22, 0.08))',
+              border: '1px solid var(--color-accent-glow, rgba(249, 115, 22, 0.25))',
               borderRadius: '10px',
               padding: '10px 12px',
               marginBottom: '16px',
@@ -2346,7 +2348,7 @@ export const AdminRecibosEmitidos: React.FC = () => {
                 onClick={handleConfirmarEliminarRecibo}
                 disabled={eliminandoRecibo || motivoEliminarRecibo.trim().length < 6}
                 style={{
-                  backgroundColor: motivoEliminarRecibo.trim().length >= 6 ? '#ea580c' : '#451a1a',
+                  backgroundColor: motivoEliminarRecibo.trim().length >= 6 ? 'var(--color-accent-hover, #ea580c)' : '#451a1a',
                   color: motivoEliminarRecibo.trim().length >= 6 ? '#fff' : '#888',
                   border: 'none',
                   padding: '9px 18px',

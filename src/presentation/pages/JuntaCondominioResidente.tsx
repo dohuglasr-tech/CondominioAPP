@@ -73,8 +73,8 @@ export const JuntaCondominioResidente: React.FC = () => {
       <div style={{ textAlign: 'center', marginBottom: '32px' }}>
         <div style={{
           display: 'inline-flex', alignItems: 'center', gap: '8px',
-          background: 'rgba(249, 115, 22, 0.12)', border: '1px solid rgba(249, 115, 22, 0.3)',
-          padding: '6px 16px', borderRadius: '999px', color: '#f97316',
+          background: 'var(--color-accent-light, rgba(249, 115, 22, 0.12))', border: '1px solid var(--color-accent-glow, rgba(249, 115, 22, 0.3))',
+          padding: '6px 16px', borderRadius: '999px', color: 'var(--color-accent, #f97316)',
           fontSize: '12px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '12px'
         }}>
           <span>👥</span>
@@ -104,9 +104,9 @@ export const JuntaCondominioResidente: React.FC = () => {
                 key={f.key}
                 onClick={() => setFiltroCategoria(f.key)}
                 style={{
-                  background: active ? '#f97316' : 'rgba(255, 255, 255, 0.05)',
-                  border: active ? '1px solid #f97316' : '1px solid rgba(255, 255, 255, 0.08)',
-                  color: active ? '#000' : '#ccc',
+                  background: active ? 'var(--color-brand-gradient, #f97316)' : 'rgba(255, 255, 255, 0.05)',
+                  border: active ? '1px solid var(--color-accent, #f97316)' : '1px solid rgba(255, 255, 255, 0.08)',
+                  color: active ? '#fff' : '#ccc',
                   padding: '7px 14px', borderRadius: '10px', fontSize: '12px',
                   fontWeight: active ? 800 : 500, cursor: 'pointer',
                   display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.18s'

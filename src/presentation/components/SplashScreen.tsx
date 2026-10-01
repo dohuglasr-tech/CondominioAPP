@@ -74,7 +74,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ logoUrl, buildingNam
         .splash-ring {
           position: absolute; inset: -12px;
           border-radius: 50%;
-          border: 1.5px solid rgba(249,115,22,0.35);
+          border: 1.5px solid var(--border-accent, rgba(249,115,22,0.35));
           animation: splash-ring 2s ease-out infinite;
         }
         .splash-ring-2 {
@@ -92,7 +92,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ logoUrl, buildingNam
             0 16px 40px rgba(0,0,0,0.6),
             inset 0 2px 0 rgba(255,255,255,0.4),
             inset 0 -1px 0 rgba(255,255,255,0.1),
-            0 0 0 1px rgba(249,115,22,0.2);
+            0 0 0 1px var(--border-accent, rgba(249,115,22,0.2));
           display: flex; align-items: center; justify-content: center;
           overflow: hidden;
           animation: splash-pulse 2.5s ease-in-out infinite;
@@ -109,18 +109,18 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ logoUrl, buildingNam
           font-size: 24px; font-weight: 800;
           color: #ffffff; letter-spacing: -0.3px;
           text-align: center; max-width: 240px;
-          text-shadow: 0 2px 12px rgba(249,115,22,0.3);
+          text-shadow: 0 2px 12px var(--color-accent-glow, rgba(249,115,22,0.3));
         }
         .splash-sub {
           font-family: Inter, sans-serif;
           font-size: 11px; font-weight: 600; letter-spacing: 2.5px;
-          color: rgba(249,115,22,0.8); text-transform: uppercase;
+          color: var(--color-accent, rgba(249,115,22,0.8)); text-transform: uppercase;
           margin-top: 8px;
         }
         .splash-dots { display: flex; gap: 6px; }
         .splash-dot {
           width: 6px; height: 6px; border-radius: 50%;
-          background: #f97316;
+          background: var(--color-accent, #f97316);
           animation: splash-dots 1.2s ease-in-out infinite;
         }
         .splash-dot:nth-child(2) { animation-delay: 0.2s; }
@@ -136,15 +136,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ logoUrl, buildingNam
             {logoUrl ? (
               <img src={logoUrl} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             ) : (
-              <svg width="48" height="48" viewBox="0 0 24 24" fill="none"
-                stroke="#f97316" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="4" y="2" width="16" height="20" rx="2"/>
-                <line x1="9"  y1="7"  x2="9"  y2="7.01"/>
-                <line x1="15" y1="7"  x2="15" y2="7.01"/>
-                <line x1="9"  y1="11" x2="9"  y2="11.01"/>
-                <line x1="15" y1="11" x2="15" y2="11.01"/>
-                <path d="M9 16h6v6H9z"/>
-              </svg>
+              <img src="/icon-192.png" alt="Domus Logo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             )}
           </div>
         </div>

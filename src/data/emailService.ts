@@ -24,6 +24,7 @@ export interface DatosEmailRecibo {
   cedulaRif?: string | null
   telefonoPagoMovil?: string | null
   portalUrl?: string
+  colorPrimario?: string | null
 }
 
 export interface DatosEmailMora {
@@ -129,6 +130,8 @@ export function generarHtmlReciboEmitido(datos: DatosEmailRecibo): { subject: st
     ? datos.tasaBcv
     : (datos.totalUsd > 0 && datos.totalBs > 0 ? parseFloat((datos.totalBs / datos.totalUsd).toFixed(4)) : 859.06)
 
+  const primaryColor = datos.colorPrimario || (typeof window !== 'undefined' ? localStorage.getItem('domus_primary_color') : null) || '#f97316'
+
   const subject = `🏢 Aviso de Cobro Condominio — ${datos.mesLabel.toUpperCase()} ${datos.anio} | Apto. ${datos.apartamentoNumero}`
 
   const html = `
@@ -150,10 +153,10 @@ export function generarHtmlReciboEmitido(datos: DatosEmailRecibo): { subject: st
             <td style="background:linear-gradient(135deg, #1e293b 0%, #0f172a 100%);padding:30px 24px;text-align:center;border-bottom:1px solid rgba(255,255,255,0.08);">
               <div style="font-size:38px;margin-bottom:6px;">🏢</div>
               <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:800;letter-spacing:-0.5px;">${edificio.toUpperCase()}</h1>
-              <p style="margin:6px 0 0;color:#f97316;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;">
+              <p style="margin:6px 0 0;color:${primaryColor};font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;">
                 AVISO DE COBRO — RECIBO DE CONDOMINIO
               </p>
-              <div style="display:inline-block;background:rgba(249,115,22,0.15);border:1px solid rgba(249,115,22,0.4);border-radius:20px;padding:4px 14px;margin-top:12px;font-size:12px;color:#fb923c;font-weight:700;">
+              <div style="display:inline-block;background:${primaryColor}22;border:1px solid ${primaryColor}66;border-radius:20px;padding:4px 14px;margin-top:12px;font-size:12px;color:${primaryColor};font-weight:700;">
                 🗓️ Período Facturado: ${datos.mesLabel.toUpperCase()} ${datos.anio}
               </div>
             </td>
@@ -182,10 +185,10 @@ export function generarHtmlReciboEmitido(datos: DatosEmailRecibo): { subject: st
                   </td>
                 </tr>
                 <tr>
-                  <td style="padding:20px;background:rgba(249, 115, 22, 0.05);">
-                    <div style="font-size:12px;color:#fb923c;text-transform:uppercase;font-weight:700;margin-bottom:6px;">Total a pagar por su cuota:</div>
+                  <td style="padding:20px;background:${primaryColor}0d;">
+                    <div style="font-size:12px;color:${primaryColor};text-transform:uppercase;font-weight:700;margin-bottom:6px;">Total a pagar por su cuota:</div>
                     <div style="font-size:30px;color:#ffffff;font-weight:900;letter-spacing:-0.5px;">
-                      $ ${fmtUsd(datos.totalUsd)} <span style="font-size:14px;color:#f97316;font-weight:700;">USD</span>
+                      $ ${fmtUsd(datos.totalUsd)} <span style="font-size:14px;color:${primaryColor};font-weight:700;">USD</span>
                     </div>
                     <div style="font-size:18px;color:#eab308;font-weight:700;margin-top:4px;">
                       Bs. ${fmtBs(datos.totalBs)}
@@ -214,7 +217,7 @@ export function generarHtmlReciboEmitido(datos: DatosEmailRecibo): { subject: st
 
               <!-- BOTÓN CTA -->
               <div style="text-align:center;margin-bottom:28px;">
-                <a href="${portal}/recibos" target="_blank" style="display:inline-block;background:linear-gradient(135deg, #f97316 0%, #ea580c 100%);color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:12px;font-size:14px;font-weight:800;box-shadow:0 6px 20px rgba(234, 88, 12, 0.4);">
+                <a href="${portal}/recibos" target="_blank" style="display:inline-block;background:${primaryColor};color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:12px;font-size:14px;font-weight:800;box-shadow:0 6px 20px ${primaryColor}66;">
                   💳 Reportar Pago y Ver Recibo Oficial →
                 </a>
               </div>

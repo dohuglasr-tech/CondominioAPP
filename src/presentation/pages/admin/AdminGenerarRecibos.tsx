@@ -25,6 +25,7 @@ interface ConfigEdificio {
   email_contacto: string | null; dominio_email?: string | null; banco: string | null
   cuenta_bancaria: string | null; titular_cuenta: string | null
   tasa_bcv_actual: number
+  color_primario?: string | null
   fecha_inicio_gestion?: string | null
   fecha_fin_administracion_anterior?: string | null
 }
@@ -43,7 +44,7 @@ const S = {
   card: { backgroundColor: '#141414', border: '1px solid #1e1e1e', borderRadius: '14px', padding: '20px 22px' } as React.CSSProperties,
   input: { width: '100%', backgroundColor: '#0a0a0a', border: '1px solid #2a2a2a', color: '#fff', padding: '10px 12px', borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' as const },
   label: { display: 'block', color: '#888', fontSize: '11px', fontWeight: 600, marginBottom: '5px', textTransform: 'uppercase' as const, letterSpacing: '0.4px' },
-  btnPrimary: { backgroundColor: '#f97316', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '10px', cursor: 'pointer', fontWeight: 700, fontSize: '14px' } as React.CSSProperties,
+  btnPrimary: { backgroundColor: 'var(--color-accent, #f97316)', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '10px', cursor: 'pointer', fontWeight: 700, fontSize: '14px' } as React.CSSProperties,
   btnSecondary: { backgroundColor: '#1e1e1e', color: '#ccc', border: '1px solid #2a2a2a', padding: '10px 20px', borderRadius: '10px', cursor: 'pointer', fontWeight: 600, fontSize: '14px' } as React.CSSProperties,
   btnDanger: { backgroundColor: '#ef444420', color: '#ef4444', border: '1px solid #ef444430', padding: '6px 12px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: 600 } as React.CSSProperties,
   badge: (color: string) => ({ backgroundColor: `${color}18`, color, border: `1px solid ${color}35`, padding: '2px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 700 }) as React.CSSProperties,
@@ -303,7 +304,8 @@ export const AdminGenerarRecibos: React.FC = () => {
           bancoNombre: config?.banco,
           cuentaNumero: config?.cuenta_bancaria,
           titularNombre: config?.titular_cuenta,
-          cedulaRif: config?.rif
+          cedulaRif: config?.rif,
+          colorPrimario: config?.color_primario
         }).catch(err => console.warn(`[AdminGenerarRecibos] Error despachando email a Apto. ${apto.numero}:`, err))
       }
     }
@@ -312,7 +314,7 @@ export const AdminGenerarRecibos: React.FC = () => {
   }
 
   // ─── RENDER ────────────────────────────────────────────────────────────
-  const stepColors = ['#f97316','#3b82f6','#8b5cf6','#10b981']
+  const stepColors = ['var(--color-accent, #f97316)','#3b82f6','#8b5cf6','#10b981']
 
   return (
     <div style={{ padding: '32px', maxWidth: '1100px', margin: '0 auto' }}>
@@ -466,7 +468,7 @@ export const AdminGenerarRecibos: React.FC = () => {
               <div style={{ display:'flex', gap:'20px', alignItems:'center' }}>
                 <div style={{ textAlign:'right' }}>
                   <div style={{ color:'#555', fontSize:'11px', fontWeight:600, textTransform:'uppercase' }}>Total USD</div>
-                  <div style={{ color:'#f97316', fontWeight:800, fontSize:'18px' }}>$ {fmtUsd(totalGastosUsd)}</div>
+                  <div style={{ color:'var(--color-accent, #f97316)', fontWeight:800, fontSize:'18px' }}>$ {fmtUsd(totalGastosUsd)}</div>
                 </div>
                 <div style={{ width:'1px', height:'36px', backgroundColor:'#2a2a2a' }} />
                 <div style={{ textAlign:'right' }}>
@@ -499,7 +501,7 @@ export const AdminGenerarRecibos: React.FC = () => {
                         <td style={{ color:'#ccc', padding:'7px 8px', fontWeight:600 }}>{g.descripcion}</td>
                         <td style={{ color:'#666', padding:'7px 8px', fontSize:'11px' }}>{g.categoria}</td>
                         <td style={{ color:'#10b981', padding:'7px 8px', textAlign:'right', fontWeight:700 }}>Bs. {fmtBs(g.monto_bs)}</td>
-                        <td style={{ color:'#f97316', padding:'7px 8px', textAlign:'right', fontWeight:700 }}>$ {fmtUsd(g.monto_usd)}</td>
+                        <td style={{ color:'var(--color-accent, #f97316)', padding:'7px 8px', textAlign:'right', fontWeight:700 }}>$ {fmtUsd(g.monto_usd)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -507,7 +509,7 @@ export const AdminGenerarRecibos: React.FC = () => {
                 {/* Banner totales */}
                 <div style={{ backgroundColor:'#0f0f0f', border:'1px solid #1e1e1e', borderRadius:'8px', padding:'10px 14px', display:'flex', gap:'24px', justifyContent:'flex-end' }}>
                   <span style={{ color:'#555', fontSize:'12px' }}>SUBTOTAL: <strong style={{ color:'#10b981' }}>Bs. {fmtBs(totalGastosBs)}</strong></span>
-                  <span style={{ color:'#555', fontSize:'12px' }}>SUBTOTAL: <strong style={{ color:'#f97316' }}>$ {fmtUsd(totalGastosUsd)}</strong></span>
+                  <span style={{ color:'#555', fontSize:'12px' }}>SUBTOTAL: <strong style={{ color:'var(--color-accent, #f97316)' }}>$ {fmtUsd(totalGastosUsd)}</strong></span>
                 </div>
               </>
             )}
@@ -532,18 +534,18 @@ export const AdminGenerarRecibos: React.FC = () => {
                       const esPH = a.numero.toUpperCase().includes('PH') || a.piso === 11
                       return (
                         <tr key={a.id} style={{ borderBottom:'1px solid #111' }}>
-                          <td style={{ color:'#f97316', fontWeight:800, padding:'7px 8px' }}>
+                          <td style={{ color:'var(--color-accent, #f97316)', fontWeight:800, padding:'7px 8px' }}>
                             #{a.numero}
                             {esPH && (
-                              <span style={{ marginLeft:'6px', fontSize:'9px', backgroundColor:'#f9731625', color:'#f97316', border:'1px solid #f9731640', padding:'1px 5px', borderRadius:'4px', fontWeight:700 }}>
+                              <span style={{ marginLeft:'6px', fontSize:'9px', backgroundColor:'var(--color-accent-light, #f9731625)', color:'var(--color-accent, #f97316)', border:'1px solid var(--color-accent-glow, #f9731640)', padding:'1px 5px', borderRadius:'4px', fontWeight:700 }}>
                                 PH
                               </span>
                             )}
                           </td>
                           <td style={{ color:'#666', padding:'7px 8px', maxWidth:'100px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{a.propietario_nombre || '—'}</td>
-                          <td style={{ color: esPH ? '#f97316' : '#888', padding:'7px 8px', textAlign:'right', fontWeight: esPH ? 700 : 400 }}>{formatAlicuotaPct(a.alicuota)}</td>
+                          <td style={{ color: esPH ? 'var(--color-accent, #f97316)' : '#888', padding:'7px 8px', textAlign:'right', fontWeight: esPH ? 700 : 400 }}>{formatAlicuotaPct(a.alicuota)}</td>
                           <td style={{ color:'#10b981', padding:'7px 8px', textAlign:'right' }}>{fmtBs(c.subtotalBs)}</td>
-                          <td style={{ color:'#f97316', padding:'7px 8px', textAlign:'right' }}>{fmtUsd(c.subtotalUsd)}</td>
+                          <td style={{ color:'var(--color-accent, #f97316)', padding:'7px 8px', textAlign:'right' }}>{fmtUsd(c.subtotalUsd)}</td>
                           <td style={{ color: esPH ? '#f59e0b' : '#888', padding:'7px 8px', textAlign:'right', fontWeight: esPH ? 700 : 400 }}>
                             {c.pctApto}% {esPH && '👑'}
                           </td>
@@ -588,7 +590,7 @@ export const AdminGenerarRecibos: React.FC = () => {
                 <div key={apto.id} style={{ marginBottom:'12px', backgroundColor:'#0f0f0f', border:'1px solid #1e1e1e', borderRadius:'12px', padding:'14px 16px' }}>
                   <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: caps.length > 0 ? '10px' : 0 }}>
                     <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
-                      <span style={{ color:'#f97316', fontWeight:800, fontSize:'14px' }}>Apto {apto.numero}</span>
+                      <span style={{ color:'var(--color-accent, #f97316)', fontWeight:800, fontSize:'14px' }}>Apto {apto.numero}</span>
                       {apto.propietario_nombre && <span style={{ color:'#555', fontSize:'12px' }}>{apto.propietario_nombre}</span>}
                       {totalExtraUsd > 0 && <span style={S.badge('#f59e0b')}>+$ {fmtUsd(totalExtraUsd)}</span>}
                     </div>
@@ -626,7 +628,7 @@ export const AdminGenerarRecibos: React.FC = () => {
                       </div>
                       <div>
                         <label style={S.label}>Monto USD $</label>
-                        <input type="number" style={{ ...S.input, borderColor:'#f97316', color:'#f97316' }} placeholder="0.00" min="0" step="0.01"
+                        <input type="number" style={{ ...S.input, borderColor:'var(--color-accent, #f97316)', color:'var(--color-accent, #f97316)' }} placeholder="0.00" min="0" step="0.01"
                           value={cargoForm.monto_usd} onChange={e => setCargoForm({...cargoForm, monto_usd: e.target.value})} />
                       </div>
                       <div>
@@ -656,7 +658,7 @@ export const AdminGenerarRecibos: React.FC = () => {
           {/* Card: Notas para los Residentes (Editable por el Admin) */}
           <div style={{ ...S.card, width:'100%', boxSizing:'border-box' }}>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'10px' }}>
-              <label style={{ ...S.label, marginBottom:0, display:'flex', alignItems:'center', gap:'8px', color:'#f97316', fontSize:'13px', fontWeight:700 }}>
+              <label style={{ ...S.label, marginBottom:0, display:'flex', alignItems:'center', gap:'8px', color:'var(--color-accent, #f97316)', fontSize:'13px', fontWeight:700 }}>
                 <span>📝</span> NOTAS PARA LOS RESIDENTES
               </label>
               <button
@@ -717,7 +719,7 @@ export const AdminGenerarRecibos: React.FC = () => {
                     <select
                       value={previewAptoIdx}
                       onChange={e => setPreviewAptoIdx(Number(e.target.value))}
-                      style={{ ...S.input, width:'auto', padding:'6px 12px', fontSize:'13px', fontWeight:700, color:'#f97316', borderColor:'#f97316' }}
+                      style={{ ...S.input, width:'auto', padding:'6px 12px', fontSize:'13px', fontWeight:700, color:'var(--color-accent, #f97316)', borderColor:'var(--color-accent, #f97316)' }}
                     >
                       {apartamentos.map((a, idx) => (
                         <option key={a.id} value={idx}>
@@ -750,7 +752,7 @@ export const AdminGenerarRecibos: React.FC = () => {
                     backgroundColor:'#0f172a',
                     padding:'20px 24px',
                     position:'relative',
-                    borderBottom:'3px solid #f97316',
+                    borderBottom:'3px solid var(--color-accent, #f97316)',
                     display:'flex',
                     justifyContent:'space-between',
                     alignItems:'center',
@@ -758,8 +760,8 @@ export const AdminGenerarRecibos: React.FC = () => {
                     gap:'16px'
                   }}>
                     {/* Lado izquierdo */}
-                    <div style={{ borderLeft:'3px solid #f97316', paddingLeft:'12px' }}>
-                      <div style={{ color:'#f97316', fontSize:'11px', fontWeight:800, letterSpacing:'0.5px', textTransform:'uppercase' }}>
+                    <div style={{ borderLeft:'3px solid var(--color-accent, #f97316)', paddingLeft:'12px' }}>
+                      <div style={{ color:'var(--color-accent, #f97316)', fontSize:'11px', fontWeight800:800, letterSpacing:'0.5px', textTransform:'uppercase' } as any}>
                         JUNTA DE CONDOMINIO OCUTUY 5
                       </div>
                       <h2 style={{ color:'#ffffff', fontSize:'22px', fontWeight:900, margin:'2px 0 4px', letterSpacing:'-0.5px' }}>
@@ -772,7 +774,7 @@ export const AdminGenerarRecibos: React.FC = () => {
 
                     {/* Lado derecho */}
                     <div style={{ textAlign:'right', fontSize:'10px', color:'#cbd5e1' }}>
-                      <div style={{ color:'#f97316', fontWeight:800, fontSize:'12px' }}>
+                      <div style={{ color:'var(--color-accent, #f97316)', fontWeight:800, fontSize:'12px' }}>
                         RIF: {config.rif || 'J-296749485'}
                       </div>
                       <div style={{ marginTop:'2px' }}>
@@ -798,7 +800,7 @@ export const AdminGenerarRecibos: React.FC = () => {
                       </thead>
                       <tbody>
                         <tr style={{ fontWeight:700, backgroundColor:'#ffffff' }}>
-                          <td style={{ padding:'6px 8px', border:'1px solid #cbd5e1', textAlign:'center', color:'#f97316', fontSize:'12px' }}>
+                          <td style={{ padding:'6px 8px', border:'1px solid #cbd5e1', textAlign:'center', color:'var(--color-accent, #f97316)', fontSize:'12px' }}>
                             Nro. {apto.numero} {esPH ? '(PH)' : ''}
                           </td>
                           <td style={{ padding:'6px 8px', border:'1px solid #cbd5e1', textAlign:'left', color:'#0f172a' }}>
@@ -868,9 +870,9 @@ export const AdminGenerarRecibos: React.FC = () => {
                     </table>
 
                     {/* Total a Pagar con Alícuota (Fila Naranja Resaltada) */}
-                    <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'11px', marginTop:'2px', border:'1px solid #ea580c' }}>
+                    <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'11px', marginTop:'2px', border:'1px solid var(--color-accent-hover, #ea580c)' }}>
                       <tbody>
-                        <tr style={{ backgroundColor:'#f97316', color:'#ffffff', fontWeight:800 }}>
+                        <tr style={{ backgroundColor:'var(--color-accent, #f97316)', color:'#ffffff', fontWeight:800 }}>
                           <td style={{ padding:'8px 8px', textAlign:'right' }}>
                             TOTAL A PAGAR (ALÍCUOTA {formatAlicuotaPct(apto.alicuota)})
                           </td>
@@ -968,7 +970,7 @@ export const AdminGenerarRecibos: React.FC = () => {
               <div style={{ fontSize:'48px', marginBottom:'16px' }}>📤</div>
               <h2 style={{ color:'#fff', fontSize:'22px', fontWeight:800, margin:'0 0 10px' }}>Emitir Recibos — {mesLabel} {anio}</h2>
               <p style={{ color:'#666', fontSize:'14px', margin:'0 0 6px' }}>
-                Se generarán <strong style={{ color:'#f97316' }}>{apartamentos.length} recibos</strong> y quedarán visibles para los residentes.
+                Se generarán <strong style={{ color:'var(--color-accent, #f97316)' }}>{apartamentos.length} recibos</strong> y quedarán visibles para los residentes.
               </p>
               <div style={{ backgroundColor:'#0f0f0f', border:'1px solid #1e1e1e', borderRadius:'10px', padding:'16px', margin:'20px 0', textAlign:'left' }}>
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px', fontSize:'13px' }}>
@@ -976,7 +978,7 @@ export const AdminGenerarRecibos: React.FC = () => {
                   <div><span style={{ color:'#555' }}>F. Reserva Regular:</span> <span style={{ color:'#fff', fontWeight:700 }}>{fondoReservaPct}%</span></div>
                   <div><span style={{ color:'#555' }}>F. Reserva PH:</span> <span style={{ color:'#f59e0b', fontWeight:700 }}>{fondoReservaPhPct}% 👑</span></div>
                   <div><span style={{ color:'#555' }}>Apartamentos:</span> <span style={{ color:'#fff', fontWeight:700 }}>{apartamentos.length}</span></div>
-                  <div><span style={{ color:'#555' }}>Total gastos $:</span> <span style={{ color:'#f97316', fontWeight:800 }}>$ {fmtUsd(totalGastosUsd)}</span></div>
+                  <div><span style={{ color:'#555' }}>Total gastos $:</span> <span style={{ color:'var(--color-accent, #f97316)', fontWeight:800 }}>$ {fmtUsd(totalGastosUsd)}</span></div>
                   <div><span style={{ color:'#555' }}>Total gastos Bs:</span> <span style={{ color:'#10b981', fontWeight:800 }}>Bs. {fmtBs(totalGastosBs)}</span></div>
                   <div><span style={{ color:'#555' }}>Cargos especiales:</span> <span style={{ color: cargos.length>0?'#f59e0b':'#555', fontWeight:700 }}>{cargos.length}</span></div>
                   <div style={{ gridColumn: 'span 2', borderTop: '1px solid #222', paddingTop: '8px', marginTop: '4px' }}>

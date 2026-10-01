@@ -211,7 +211,7 @@ export const RetirarSaldoModal: React.FC<Props> = ({
                 style={{
                   background: 'none',
                   border: 'none',
-                  color: '#f97316',
+                  color: 'var(--color-accent, #f97316)',
                   fontSize: '11px',
                   fontWeight: 700,
                   cursor: 'pointer',

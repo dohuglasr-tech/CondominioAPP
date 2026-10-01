@@ -414,7 +414,7 @@ export const AdminResidentes: React.FC = () => {
             fontWeight: 700,
             border: 'none',
             cursor: 'pointer',
-            backgroundColor: filtroTipo === 'todos' ? '#f97316' : '#1e1e1e',
+            backgroundColor: filtroTipo === 'todos' ? 'var(--color-accent, #f97316)' : '#1e1e1e',
             color: filtroTipo === 'todos' ? '#fff' : '#888',
             transition: 'all 0.15s ease'
           }}
@@ -479,7 +479,7 @@ export const AdminResidentes: React.FC = () => {
                 }}
                 style={{
                   backgroundColor: '#141414',
-                  border: `1px solid ${isSelected ? '#f97316' : '#1e1e1e'}`,
+                  border: `1px solid ${isSelected ? 'var(--color-accent, #f97316)' : '#1e1e1e'}`,
                   borderRadius: '12px',
                   padding: '14px 16px',
                   display: 'flex',
@@ -488,7 +488,7 @@ export const AdminResidentes: React.FC = () => {
                   cursor: 'pointer',
                   textAlign: 'left',
                   transition: 'all 0.15s ease',
-                  borderLeft: `4px solid ${isSelected ? '#f97316' : r.es_ph ? '#8b5cf6' : '#333'}`,
+                  borderLeft: `4px solid ${isSelected ? 'var(--color-accent, #f97316)' : r.es_ph ? '#8b5cf6' : '#333'}`,
                   width: '100%',
                   boxSizing: 'border-box'
                 }}
@@ -501,7 +501,7 @@ export const AdminResidentes: React.FC = () => {
                         PH
                       </span>
                     )}
-                    <span style={{ fontSize: '11px', color: '#f97316', fontWeight: 700, backgroundColor: '#f9731615', padding: '1px 6px', borderRadius: '4px' }}>
+                    <span style={{ fontSize: '11px', color: 'var(--color-accent, #f97316)', fontWeight: 700, backgroundColor: 'var(--color-accent-light, #f9731615)', padding: '1px 6px', borderRadius: '4px' }}>
                       {formatAlicuotaPct(r.alicuota)}
                     </span>
                     {(() => {
@@ -546,7 +546,7 @@ export const AdminResidentes: React.FC = () => {
                     {r.historial_pagos.length} pago{r.historial_pagos.length !== 1 ? 's' : ''}
                   </p>
                   {isMobile && (
-                    <span style={{ color: '#f97316', fontSize: '14px', fontWeight: 800 }}>
+                    <span style={{ color: 'var(--color-accent, #f97316)', fontSize: '14px', fontWeight: 800 }}>
                       →
                     </span>
                   )}
@@ -607,7 +607,7 @@ export const AdminResidentes: React.FC = () => {
                 disabled={guardando}
                 style={{
                   flex: isMobile ? 1 : 'none',
-                  background: '#f97316',
+                  background: 'var(--color-accent, #f97316)',
                   color: '#fff',
                   border: 'none',
                   padding: '9px 18px',
@@ -624,8 +624,8 @@ export const AdminResidentes: React.FC = () => {
           </div>
 
           {/* CARD DE ALÍCUOTA EDITABLE */}
-          <div style={{ backgroundColor: '#0a0a0a', padding: '16px', borderRadius: '12px', border: '1px solid #f9731640', marginBottom: '20px' }}>
-            <h3 style={{ color: '#f97316', fontSize: '13.5px', fontWeight: 700, margin: '0 0 8px' }}>
+          <div style={{ backgroundColor: '#0a0a0a', padding: '16px', borderRadius: '12px', border: '1px solid var(--border-accent, #f9731640)', marginBottom: '20px' }}>
+            <h3 style={{ color: 'var(--color-accent, #f97316)', fontSize: '13.5px', fontWeight: 700, margin: '0 0 8px' }}>
               📊 Alícuota del Apartamento (%)
             </h3>
             <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '180px 1fr', gap: '12px', alignItems: 'center' }}>
@@ -640,7 +640,7 @@ export const AdminResidentes: React.FC = () => {
                   onChange={e => setForm({ ...form, alicuota_input: e.target.value })}
                   placeholder="1.59"
                 />
-                <span style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', color: '#f97316', fontWeight: 800 }}>%</span>
+                <span style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-accent, #f97316)', fontWeight: 800 }}>%</span>
               </div>
               <div style={{ color: '#aaa', fontSize: '11.5px', lineHeight: 1.4 }}>
                 <p style={{ margin: '0 0 2px', color: '#fff', fontWeight: 600 }}>
@@ -669,7 +669,7 @@ export const AdminResidentes: React.FC = () => {
           </div>
 
           <div style={{ backgroundColor: '#0a0a0a', padding: '16px', borderRadius: '12px', border: '1px solid #2a2a2a', marginBottom: '18px' }}>
-            <h3 style={{ color: '#f97316', fontSize: '13.5px', marginBottom: '10px', marginTop: 0 }}>👤 Datos del Propietario</h3>
+            <h3 style={{ color: 'var(--color-accent, #f97316)', fontSize: '13.5px', marginBottom: '10px', marginTop: 0 }}>👤 Datos del Propietario</h3>
             <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '12px' }}>
               <div>
                 <label style={labelStyle}>Nombre del Propietario</label>
@@ -767,7 +767,7 @@ export const AdminResidentes: React.FC = () => {
               <button
                 onClick={() => { setForm({ ...selected }); setEditMode(true) }}
                 style={{
-                  backgroundColor: '#f97316',
+                  backgroundColor: 'var(--color-accent, #f97316)',
                   color: '#fff',
                   border: 'none',
                   padding: '8px 16px',
@@ -946,7 +946,7 @@ export const AdminResidentes: React.FC = () => {
             <span style={{ color: '#888', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 700 }}>
               Alícuota de Condominio
             </span>
-            <div style={{ color: '#f97316', fontSize: isMobile ? '26px' : '28px', fontWeight: 900, marginTop: '2px' }}>
+            <div style={{ color: 'var(--color-accent, #f97316)', fontSize: isMobile ? '26px' : '28px', fontWeight: 900, marginTop: '2px' }}>
               {formatAlicuotaPct(selected.alicuota)}
             </div>
             <p style={{ color: '#888', fontSize: '12px', margin: '4px 0 0' }}>
@@ -959,8 +959,8 @@ export const AdminResidentes: React.FC = () => {
             onClick={() => { setForm({ ...selected }); setEditMode(true) }}
             style={{
               backgroundColor: '#1e1e1e',
-              color: '#f97316',
-              border: '1px solid #f9731640',
+              color: 'var(--color-accent, #f97316)',
+              border: '1px solid var(--border-accent, #f9731640)',
               padding: '8px 14px',
               borderRadius: '8px',
               cursor: 'pointer',
@@ -1312,8 +1312,8 @@ export const AdminResidentes: React.FC = () => {
                 onClick={() => { setSelected(null); setEditMode(false) }}
                 style={{
                   backgroundColor: '#1c1c20',
-                  color: '#f97316',
-                  border: '1px solid rgba(249, 115, 22, 0.4)',
+                  color: 'var(--color-accent, #f97316)',
+                  border: '1px solid var(--border-accent, rgba(249, 115, 22, 0.4))',
                   padding: '9px 14px',
                   borderRadius: '10px',
                   cursor: 'pointer',
@@ -1331,7 +1331,7 @@ export const AdminResidentes: React.FC = () => {
                 <button
                   onClick={() => { setForm({ ...selected }); setEditMode(true) }}
                   style={{
-                    backgroundColor: '#f97316',
+                    backgroundColor: 'var(--color-accent, #f97316)',
                     color: '#fff',
                     border: 'none',
                     padding: '9px 15px',
