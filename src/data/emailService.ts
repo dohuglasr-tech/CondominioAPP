@@ -367,7 +367,7 @@ export function generarHtmlPagoAprobado(datos: DatosEmailPagoAprobado): { subjec
     ? new Date(datos.fechaPago).toLocaleDateString('es-VE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
     : new Date().toLocaleDateString('es-VE')
 
-  const subject = `✅ Pago Validado y Solvente — ${edificio} | Apto. ${datos.apartamentoNumero}`
+  const subject = `✅ ¡Gracias por su Pago! — ${edificio} | Apto. ${datos.apartamentoNumero}`
 
   const html = `
 <!DOCTYPE html>
@@ -389,9 +389,9 @@ export function generarHtmlPagoAprobado(datos: DatosEmailPagoAprobado): { subjec
               <div style="display:inline-block;background:linear-gradient(135deg,#10b981,#059669);border-radius:50%;width:64px;height:64px;line-height:64px;font-size:32px;text-align:center;color:#fff;margin-bottom:12px;box-shadow:0 6px 16px rgba(16,185,129,0.4);">
                 ✓
               </div>
-              <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:800;letter-spacing:-0.5px;">¡PAGO VALIDADO Y CONCILIADO!</h1>
+              <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:800;letter-spacing:-0.5px;">¡PAGO RECIBIDO — MUCHAS GRACIAS POR SU PAGO!</h1>
               <p style="margin:6px 0 0;color:#34d399;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;">
-                ${edificio.toUpperCase()} · CONSTANCIA DE SOLVENCIA
+                ${edificio.toUpperCase()} · COMPROBANTE Y CONSTANCIA DE PAGO
               </p>
             </td>
           </tr>
@@ -405,11 +405,11 @@ export function generarHtmlPagoAprobado(datos: DatosEmailPagoAprobado): { subjec
               
               <!-- MENSAJE DE AGRADECIMIENTO DESTACADO -->
               <div style="background:rgba(16, 185, 129, 0.08);border:1px solid rgba(16, 185, 129, 0.35);border-radius:14px;padding:18px;margin-bottom:24px;text-align:center;">
-                <div style="font-size:15px;color:#4ade80;font-weight:700;margin-bottom:4px;">
-                  🌟 ¡Muchas gracias por mantenerse al día con el condominio!
+                <div style="font-size:16px;color:#4ade80;font-weight:800;margin-bottom:4px;">
+                  🌟 ¡Muchas gracias por su pago y por apoyar a la comunidad!
                 </div>
                 <div style="font-size:13px;color:#94a3b8;line-height:1.5;">
-                  Su valioso aporte y puntualidad permiten preservar la operatividad, seguridad, limpieza y servicios esenciales de nuestra comunidad.
+                  Su valioso aporte ha sido validado exitosamente en el sistema de condominio y aplicado a su cuenta. Gracias por su compromiso con el mantenimiento y operatividad de nuestra comunidad.
                 </div>
               </div>
 

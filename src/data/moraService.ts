@@ -283,16 +283,16 @@ export async function obtenerDeudasMora(forceRefresh = false): Promise<{ data: D
             .from('deudas_mora')
             .select('*, apartamentos(id, numero, piso, propietario_nombre, telefono_contacto)'),
           supabase
-        .from('recibos_generados')
-        .select('id, apartamento_id, mes_facturado, total_usd, total_bs, estado, emitido_at')
-        .eq('estado', 'pendiente'),
-      supabase
-        .from('apartamentos')
-        .select('id, numero, piso, propietario_nombre, telefono_contacto'),
-      supabase
-        .from('perfiles')
-        .select('apartamento_id, nombre_completo, condicion_habitacional, propietario_nombre, telefono, propietario_email')
-    ])
+            .from('recibos_generados')
+            .select('id, apartamento_id, mes_facturado, total_usd, total_bs, estado, emitido_at, data_json')
+            .eq('estado', 'pendiente'),
+          supabase
+            .from('apartamentos')
+            .select('id, numero, piso, propietario_nombre, telefono_contacto'),
+          supabase
+            .from('perfiles')
+            .select('apartamento_id, nombre_completo, condicion_habitacional, propietario_nombre, telefono, propietario_email')
+        ])
 
     // Si hubo error grave en la consulta básica de deudas_mora y tampoco hay recibos
     if (dmRes.error && recibosRes.error) {
@@ -350,11 +350,13 @@ export async function obtenerDeudasMora(forceRefresh = false): Promise<{ data: D
       }
 
       const tieneDeudaManual = manualBs > 0.05 || manualUsd > 0.05
-      const meses = Number(row.meses_deuda || (recs.length > 0 ? recs.length : 3))
+      const tieneAbonoParcial = recs.some((r: any) => Boolean(r.data_json?.abonos?.length))
+      const meses = tieneDeudaManual ? Number(row.meses_deuda || 3) : Math.max(1, recs.length)
       const montoUsd = manualUsd + extraUsd
       const montoBs = manualBs + extraBs
-      const tasa: TasaRiesgoMora =
-        (row.tasa_riesgo as TasaRiesgoMora) || (tieneDeudaManual ? calcularTasaRiesgoPorMeses(meses) : (recs.length <= 1 ? 'azul' : calcularTasaRiesgoPorMeses(recs.length)))
+      const tasa: TasaRiesgoMora = tieneDeudaManual
+        ? ((row.tasa_riesgo as TasaRiesgoMora) || calcularTasaRiesgoPorMeses(meses))
+        : (recs.length <= 1 || tieneAbonoParcial ? 'azul' : calcularTasaRiesgoPorMeses(recs.length))
 
       deudoresMap.set(row.apartamento_id, {
         id: row.id,
@@ -371,11 +373,16 @@ export async function obtenerDeudasMora(forceRefresh = false): Promise<{ data: D
         monto_manual_bs: Number(manualBs.toFixed(2)),
         moneda_principal: row.moneda_principal || 'MIXTO',
         tasa_riesgo: tasa,
-        accion_legal: (row.accion_legal as AccionLegalMora) || (tasa === 'azul' ? 'notificacion_amistosa' : 'carta_cobro_extrajudicial'),
+        accion_legal: tieneDeudaManual
+          ? ((row.accion_legal as AccionLegalMora) || 'carta_cobro_extrajudicial')
+          : 'notificacion_amistosa',
         estado: (tieneDeudaManual || recs.length > 0) ? 'activo' : 'solventado',
         conceptos_detalle:
-          row.conceptos_detalle ||
-          (recs.length > 0 ? (tieneDeudaManual ? 'Deuda anterior registrada + Recibo emitido del mes' : 'Recibo emitido del mes') : 'Deuda anterior acumulada'),
+          tieneAbonoParcial
+            ? 'Diferencia pendiente de su último recibo'
+            : (tieneDeudaManual
+              ? (row.conceptos_detalle || 'Deuda anterior registrada + Recibo emitido del mes')
+              : (recs.length > 0 ? 'Recibo emitido del mes' : 'Deuda anterior acumulada')),
         observaciones: row.observaciones || '',
         fecha_corte: row.fecha_corte || new Date().toISOString().slice(0, 10),
         origen: tieneDeudaManual ? 'deuda_manual' : 'recibo_emitido',

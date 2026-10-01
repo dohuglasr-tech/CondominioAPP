@@ -90,6 +90,12 @@ export function Dashboard() {
   const deudaUsd = (deudaFijaBs > 0 && tasaValida > 0 ? deudaFijaBs / tasaValida : 0) + deudaIndexadaUsd
   const tieneDeudaFijaBs = deudaFijaBs > 0.05
   const tieneDeudaReal = deudaBs > 0.05 || (recibosPendientesList.length > 0)
+  const tieneAbonoParcial = recibosPendientesList.some(r => Boolean(r.data_json?.abonos?.length))
+  const soloDebeDiferenciaUltimoRecibo = (
+    !tieneDeudaFijaBs &&
+    recibosPendientesList.length <= 1
+  ) || tieneAbonoParcial
+  const fmtBs = (m: number) => (Number(m) || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 
   // Cargar datos del apartamento y alícuota real impuesta por el administrador
@@ -439,9 +445,9 @@ export function Dashboard() {
                 </span>
               ) : (moraRecord && tieneDeudaReal) ? (
                 <span style={{
-                  backgroundColor: moraRecord.tasa_riesgo === 'azul' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(239, 68, 68, 0.15)',
-                  color: moraRecord.tasa_riesgo === 'azul' ? '#60a5fa' : '#ef4444',
-                  border: `1px solid ${moraRecord.tasa_riesgo === 'azul' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
+                  backgroundColor: soloDebeDiferenciaUltimoRecibo ? 'rgba(56, 189, 248, 0.15)' : (moraRecord.tasa_riesgo === 'azul' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(239, 68, 68, 0.15)'),
+                  color: soloDebeDiferenciaUltimoRecibo ? '#38bdf8' : (moraRecord.tasa_riesgo === 'azul' ? '#60a5fa' : '#ef4444'),
+                  border: `1px solid ${soloDebeDiferenciaUltimoRecibo ? 'rgba(56, 189, 248, 0.3)' : (moraRecord.tasa_riesgo === 'azul' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(239, 68, 68, 0.3)')}`,
                   borderRadius: '999px',
                   padding: '3px 10px',
                   fontSize: '11px',
@@ -450,7 +456,7 @@ export function Dashboard() {
                   alignItems: 'center',
                   gap: '5px'
                 }}>
-                  {moraRecord.tasa_riesgo === 'azul' ? '🔵 Recibo al Cobro (<1m)' : `⚠️ En Lista de Mora (${moraRecord.meses_deuda} meses)`}
+                  {soloDebeDiferenciaUltimoRecibo ? '🔵 Diferencia Pendiente' : (moraRecord.tasa_riesgo === 'azul' ? '🔵 Recibo al Cobro (<1m)' : `⚠️ En Lista de Mora (${moraRecord.meses_deuda} meses)`)}
                 </span>
               ) : deudaUsd > 0 ? (
                 <span style={{
@@ -630,35 +636,42 @@ export function Dashboard() {
           {/* ── ALERTA DE RECIBO / MORA (Si el apartamento figura en la lista y tiene deuda real) ── */}
           {moraRecord && tieneDeudaReal && (() => {
             const tasaCfg = getTasaConfig(moraRecord.tasa_riesgo)
+            const esDiferencia = soloDebeDiferenciaUltimoRecibo || tieneAbonoParcial
             return (
             <div style={{
-              background: moraRecord.tasa_riesgo === 'azul'
-                ? 'linear-gradient(135deg, rgba(59, 130, 246, 0.16) 0%, rgba(37, 99, 235, 0.16) 100%)'
+              background: esDiferencia || moraRecord.tasa_riesgo === 'azul'
+                ? 'linear-gradient(135deg, rgba(14, 165, 233, 0.16) 0%, rgba(3, 105, 161, 0.16) 100%)'
                 : 'linear-gradient(135deg, rgba(168, 85, 247, 0.16) 0%, rgba(239, 68, 68, 0.16) 100%)',
-              border: `2px solid ${tasaCfg.color}`,
+              border: `2px solid ${esDiferencia ? '#38bdf8' : tasaCfg.color}`,
               borderRadius: '20px',
               padding: '16px',
-              boxShadow: `0 8px 24px rgba(0, 0, 0, 0.5), 0 0 16px ${tasaCfg.color}25`
+              boxShadow: `0 8px 24px rgba(0, 0, 0, 0.5), 0 0 16px ${esDiferencia ? 'rgba(56, 189, 248, 0.25)' : `${tasaCfg.color}25`}`
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
-                <span style={{ fontSize: '20px' }}>{moraRecord.tasa_riesgo === 'azul' ? '🔵' : '⚠️'}</span>
+                <span style={{ fontSize: '20px' }}>{esDiferencia ? '💳' : (moraRecord.tasa_riesgo === 'azul' ? '🔵' : '⚠️')}</span>
                 <span style={{ fontWeight: 800, fontSize: '13px', color: '#fff' }}>
-                  {moraRecord.tasa_riesgo === 'azul'
+                  {esDiferencia
+                    ? `Apto ${moraRecord.apartamento_numero} · Saldo Pendiente de tu Último Recibo`
+                    : moraRecord.tasa_riesgo === 'azul'
                     ? `Apto ${moraRecord.apartamento_numero} · Recibo del Mes al Cobro`
                     : `Apto ${moraRecord.apartamento_numero} en Lista de Mora`}
                 </span>
                 <span style={{
                   fontSize: '10px', fontWeight: 800,
-                  color: tasaCfg.color,
-                  background: tasaCfg.bg,
-                  border: `1px solid ${tasaCfg.border}`,
+                  color: esDiferencia ? '#38bdf8' : tasaCfg.color,
+                  background: esDiferencia ? 'rgba(56, 189, 248, 0.15)' : tasaCfg.bg,
+                  border: `1px solid ${esDiferencia ? 'rgba(56, 189, 248, 0.35)' : tasaCfg.border}`,
                   padding: '2px 6px', borderRadius: '999px', marginLeft: 'auto'
                 }}>
-                  {tasaCfg.badgeText}
+                  {esDiferencia ? '🔵 Diferencia Pendiente' : tasaCfg.badgeText}
                 </span>
               </div>
               <p style={{ margin: '0 0 12px 0', fontSize: '11px', color: '#cbd5e1', lineHeight: 1.3 }}>
-                {moraRecord.tasa_riesgo === 'azul' ? (
+                {esDiferencia ? (
+                  <>
+                    Le queda por pagar la diferencia de su último recibo: <strong style={{ color: '#38bdf8' }}>${deudaUsd.toFixed(2)} USD (Bs. {fmtBs(deudaBs)})</strong>. Reporta tu pago para quedar completamente al día.
+                  </>
+                ) : moraRecord.tasa_riesgo === 'azul' ? (
                   <>
                     Tienes el recibo del mes emitido (&lt;1 mes) con un monto de{' '}
                     <strong style={{ color: '#60a5fa' }}>${moraRecord.monto_usd.toFixed(2)} USD</strong>. Reporta tu pago para estar al día.
@@ -685,7 +698,7 @@ export function Dashboard() {
                     cursor: 'pointer'
                   }}
                 >
-                  Ver mora
+                  {esDiferencia ? 'Ver detalle' : 'Ver mora'}
                 </button>
                 <button
                   onClick={() => setModalOpen(true)}
@@ -1022,41 +1035,48 @@ export function Dashboard() {
           {/* ALERTA DE MORA / RECIBO DESKTOP (Si aplica y tiene deuda real) */}
           {moraRecord && tieneDeudaReal && (() => {
             const tasaCfg = getTasaConfig(moraRecord.tasa_riesgo)
+            const esDiferencia = soloDebeDiferenciaUltimoRecibo || tieneAbonoParcial
             return (
             <div style={{
-              background: moraRecord.tasa_riesgo === 'azul'
-                ? 'linear-gradient(135deg, rgba(59, 130, 246, 0.16) 0%, rgba(37, 99, 235, 0.16) 100%)'
+              background: esDiferencia || moraRecord.tasa_riesgo === 'azul'
+                ? 'linear-gradient(135deg, rgba(14, 165, 233, 0.16) 0%, rgba(3, 105, 161, 0.16) 100%)'
                 : 'linear-gradient(135deg, rgba(168, 85, 247, 0.16) 0%, rgba(239, 68, 68, 0.16) 100%)',
-              border: `2px solid ${tasaCfg.color}`,
+              border: `2px solid ${esDiferencia ? '#38bdf8' : tasaCfg.color}`,
               borderRadius: '20px',
               padding: '18px 24px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
               marginBottom: '24px',
-              boxShadow: `0 8px 30px rgba(0, 0, 0, 0.5), 0 0 16px ${tasaCfg.color}25`
+              boxShadow: `0 8px 30px rgba(0, 0, 0, 0.5), 0 0 16px ${esDiferencia ? 'rgba(56, 189, 248, 0.25)' : `${tasaCfg.color}25`}`
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                <span style={{ fontSize: '32px' }}>{moraRecord.tasa_riesgo === 'azul' ? '🔵' : '⚠️'}</span>
+                <span style={{ fontSize: '32px' }}>{esDiferencia ? '💳' : (moraRecord.tasa_riesgo === 'azul' ? '🔵' : '⚠️')}</span>
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span style={{ fontWeight: 800, fontSize: '16px', color: '#fff' }}>
-                      {moraRecord.tasa_riesgo === 'azul'
+                      {esDiferencia
+                        ? `Tu Apartamento (${moraRecord.apartamento_numero}) tiene un saldo pendiente en su último recibo`
+                        : moraRecord.tasa_riesgo === 'azul'
                         ? `Tu Apartamento (${moraRecord.apartamento_numero}) tiene el Recibo del Mes al Cobro`
                         : `Tu Apartamento (${moraRecord.apartamento_numero}) figura en la Lista de Mora Comunitaria`}
                     </span>
                     <span style={{
                       fontSize: '11px', fontWeight: 800,
-                      color: tasaCfg.color,
-                      background: tasaCfg.bg,
-                      border: `1px solid ${tasaCfg.border}`,
+                      color: esDiferencia ? '#38bdf8' : tasaCfg.color,
+                      background: esDiferencia ? 'rgba(56, 189, 248, 0.15)' : tasaCfg.bg,
+                      border: `1px solid ${esDiferencia ? 'rgba(56, 189, 248, 0.35)' : tasaCfg.border}`,
                       padding: '2px 8px', borderRadius: '999px'
                     }}>
-                      {tasaCfg.badgeText}
+                      {esDiferencia ? '🔵 Diferencia Pendiente' : tasaCfg.badgeText}
                     </span>
                   </div>
                   <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#cbd5e1' }}>
-                    {moraRecord.tasa_riesgo === 'azul' ? (
+                    {esDiferencia ? (
+                      <>
+                        Le queda por pagar la diferencia de su último recibo: <strong style={{ color: '#38bdf8' }}>${deudaUsd.toFixed(2)} USD (Bs. {fmtBs(deudaBs)})</strong>. Reporta tu pago para mantener tu solvencia al 100%.
+                      </>
+                    ) : moraRecord.tasa_riesgo === 'azul' ? (
                       <>
                         Tienes el recibo del mes emitido (&lt;1 mes) con un monto de{' '}
                         <strong style={{ color: '#60a5fa' }}>${moraRecord.monto_usd.toFixed(2)} USD</strong>. Cancela dentro del plazo para mantener tu solvencia comunitaria.
@@ -1085,7 +1105,7 @@ export function Dashboard() {
                     cursor: 'pointer'
                   }}
                 >
-                  Ver mora
+                  {esDiferencia ? 'Ver detalle' : 'Ver mora'}
                 </button>
                 <button
                   onClick={() => setModalOpen(true)}
