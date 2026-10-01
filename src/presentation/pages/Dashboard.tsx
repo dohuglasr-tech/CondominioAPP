@@ -62,14 +62,14 @@ export function Dashboard() {
 
   if (recibosPendientesList.length > 0) {
     recibosPendientesList.forEach(r => {
-      if (esReciboIndexado(r)) {
+      if (esReciboIndexado(r, config?.fecha_inicio_gestion)) {
         deudaIndexadaUsd += Number(r.total_usd || 0)
       } else {
         deudaFijaBs += Number(r.total_bs || 0)
       }
     })
   } else if (reciboPendiente) {
-    if (esReciboIndexado(reciboPendiente)) {
+    if (esReciboIndexado(reciboPendiente, config?.fecha_inicio_gestion)) {
       deudaIndexadaUsd += Number(reciboPendiente.total_usd || 0)
     } else {
       deudaFijaBs += Number(reciboPendiente.total_bs || 0)

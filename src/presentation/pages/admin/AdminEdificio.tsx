@@ -35,6 +35,8 @@ export const AdminEdificio: React.FC = () => {
     banco: '',
     cuenta_bancaria: '',
     titular_cuenta: '',
+    fecha_inicio_gestion: '2026-09-01',
+    fecha_fin_administracion_anterior: '2026-08-31',
   })
   const [logoPreview, setLogoPreview] = useState<string | null>(null)
   const [logoFile, setLogoFile] = useState<File | null>(null)
@@ -79,6 +81,8 @@ export const AdminEdificio: React.FC = () => {
         banco: config.banco || '',
         cuenta_bancaria: config.cuenta_bancaria || '',
         titular_cuenta: config.titular_cuenta || '',
+        fecha_inicio_gestion: (config as any)?.fecha_inicio_gestion || '2026-09-01',
+        fecha_fin_administracion_anterior: (config as any)?.fecha_fin_administracion_anterior || '2026-08-31',
       })
       if (config.logo_url) setLogoPreview(config.logo_url)
       if ((config as any).color_primario) {
@@ -212,6 +216,8 @@ export const AdminEdificio: React.FC = () => {
         banco: info.banco,
         cuenta_bancaria: info.cuenta_bancaria,
         titular_cuenta: info.titular_cuenta,
+        fecha_inicio_gestion: info.fecha_inicio_gestion || '2026-09-01',
+        fecha_fin_administracion_anterior: info.fecha_fin_administracion_anterior || '2026-08-31',
         logo_url,
         updated_at: new Date().toISOString(),
       }
@@ -681,6 +687,62 @@ export const AdminEdificio: React.FC = () => {
                     Botón de ejemplo
                   </div>
                 </div>
+              </div>
+            </div>
+
+            {/* Período de Transición y Administración */}
+            <div style={{ marginTop: '24px', marginBottom: '28px', backgroundColor: '#181a20', border: '1px solid #282c37', borderRadius: '12px', padding: '18px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+                <span style={{ fontSize: '18px' }}>🏛️</span>
+                <div>
+                  <h4 style={{ color: '#fff', fontSize: '15px', fontWeight: 700, margin: 0 }}>Período de la Administración y Transición</h4>
+                  <p style={{ color: '#94a3b8', fontSize: '12px', margin: '2px 0 0' }}>
+                    Configura cuándo asumió la administración actual y cuándo concluyó la administración anterior.
+                    El sistema sincroniza automáticamente las alertas, silencia correos de meses anteriores y activa las emisiones regulares según estas fechas.
+                  </p>
+                </div>
+              </div>
+
+              <div className="admin-grid-2">
+                <div style={groupStyle}>
+                  <label style={labelStyle}>Fecha de Salida de la Última Administración</label>
+                  <input
+                    type="date"
+                    name="fecha_fin_administracion_anterior"
+                    value={info.fecha_fin_administracion_anterior || '2026-08-31'}
+                    onChange={handleChange}
+                    style={inputStyle}
+                  />
+                  <span style={{ fontSize: '11px', color: '#64748b' }}>Hasta esta fecha se considera "Carga de Administración Anterior"</span>
+                </div>
+
+                <div style={groupStyle}>
+                  <label style={{ ...labelStyle, color: 'var(--color-accent, #f97316)', fontWeight: 700 }}>
+                    Fecha de Entrada de la Administración Actual *
+                  </label>
+                  <input
+                    type="date"
+                    name="fecha_inicio_gestion"
+                    value={info.fecha_inicio_gestion || '2026-09-01'}
+                    onChange={handleChange}
+                    style={{ ...inputStyle, borderColor: 'var(--color-accent, #f97316)' }}
+                    required
+                  />
+                  <span style={{ fontSize: '11px', color: '#64748b' }}>A partir de esta fecha es la administración activa (emisiones regulares con correos)</span>
+                </div>
+              </div>
+
+              <div style={{
+                marginTop: '12px',
+                padding: '10px 14px',
+                backgroundColor: 'rgba(59, 130, 246, 0.08)',
+                border: '1px solid rgba(59, 130, 246, 0.25)',
+                borderRadius: '8px',
+                fontSize: '12px',
+                color: '#93c5fd',
+                lineHeight: 1.4
+              }}>
+                ℹ️ <strong>Sincronización del Sistema:</strong> Cualquier mes anterior a <strong>{info.fecha_inicio_gestion || '2026-09-01'}</strong> silenciará los correos masivos para evitar alarmar a los residentes y se marcará como período anterior. A partir de <strong>{info.fecha_inicio_gestion ? info.fecha_inicio_gestion.slice(0, 7) : '2026-09'}</strong> en adelante, las emisiones se gestionarán como la administración actual activa.
               </div>
             </div>
 

@@ -68,6 +68,8 @@ export interface ConfigEdificio {
   cuenta_bancaria: string | null
   titular_cuenta: string | null
   ciudad: string | null
+  fecha_inicio_gestion?: string | null
+  fecha_fin_administracion_anterior?: string | null
   updated_at: string | null
 }
 

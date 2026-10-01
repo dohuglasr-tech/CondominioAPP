@@ -297,7 +297,7 @@ export function RecibosPanel({ onClose }: Props) {
       }
 
       // Si está pagado o hay un pago aprobado para este apartamento
-      const esHistorico = !esReciboIndexado(recibo)
+      const esHistorico = !esReciboIndexado(recibo, config?.fecha_inicio_gestion)
       const esDeudaAtrasada = Boolean(recibo.data_json?.es_recibo_deuda_atrasada)
 
       const pagoAprobado = pagos.find(p => p.estado === 'aprobado')
@@ -699,7 +699,7 @@ export function RecibosPanel({ onClose }: Props) {
             ) : (
               recibosFiltrados.map((recibo) => {
               const { mesLabel, anio } = parseMesFacturado(recibo.mes_facturado)
-              const esHistorico = !esReciboIndexado(recibo)
+              const esHistorico = !esReciboIndexado(recibo, config?.fecha_inicio_gestion)
               const esDeudaAtrasada = Boolean(recibo.data_json?.es_recibo_deuda_atrasada)
               const estaPagado = recibo.estado === 'pagado' || (!esHistorico && pagos.some(p => p.estado === 'aprobado'))
               const enRevision = !estaPagado && !!pagoEnRevision

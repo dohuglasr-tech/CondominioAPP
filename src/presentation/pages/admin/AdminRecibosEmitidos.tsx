@@ -83,12 +83,13 @@ export const AdminRecibosEmitidos: React.FC = () => {
   const [cambiandoEstadoId, setCambiandoEstadoId] = useState<string | null>(null)
 
   // ── Estados para Administración Anterior o Meses No Indexados (Bolívares Fijos) ───────
+  const fechaEntradaActual = (config?.fecha_inicio_gestion || '2026-09-01').slice(0, 7)
   const esMesHistorico = useMemo(() => {
     if (recibos.length > 0) {
-      return !esReciboIndexado(recibos[0])
+      return !esReciboIndexado(recibos[0], config?.fecha_inicio_gestion)
     }
-    return (mesSeleccionado || '').slice(0, 7) < '2026-09'
-  }, [mesSeleccionado, recibos])
+    return (mesSeleccionado || '').slice(0, 7) < fechaEntradaActual
+  }, [mesSeleccionado, recibos, fechaEntradaActual, config?.fecha_inicio_gestion])
 
   const [modalBulkPagadosOpen, setModalBulkPagadosOpen] = useState(false)
   const [modalBulkMoraOpen, setModalBulkMoraOpen] = useState(false)
@@ -494,7 +495,7 @@ export const AdminRecibosEmitidos: React.FC = () => {
       titular_cuenta: config.titular_cuenta
     }
 
-    const esHistoricoRecibo = !esReciboIndexado(r)
+    const esHistoricoRecibo = !esReciboIndexado(r, config?.fecha_inicio_gestion)
 
     const doc = generarPDFRecibo(
       aptoData,
@@ -920,7 +921,7 @@ export const AdminRecibosEmitidos: React.FC = () => {
                 {mesesDisponibles.map(m => {
                   const [anioStr, mesNum] = m.split('-')
                   const label = `${MESES[(parseInt(mesNum)||1) - 1]} ${anioStr}`
-                  const esHist = m.slice(0, 7) < '2026-09'
+                  const esHist = m.slice(0, 7) < fechaEntradaActual
                   return <option key={m} value={m}>{label}{esHist ? ' 🏛️ (Histórico)' : ''}</option>
                 })}
               </select>

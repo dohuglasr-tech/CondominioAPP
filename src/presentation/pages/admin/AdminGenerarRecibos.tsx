@@ -90,7 +90,8 @@ export const AdminGenerarRecibos: React.FC = () => {
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 4000) }
 
   const mesStr  = `${anio}-${String(mes + 1).padStart(2, '0')}-01`
-  const esHistorico = !esIndexado
+  const fechaEntradaActual = (config?.fecha_inicio_gestion || '2026-09-01').slice(0, 7)
+  const esHistorico = mesStr.slice(0, 7) < fechaEntradaActual
   const mesLabel = MESES[mes]
 
   const totalGastosUsd = gastos.reduce((s, g) => s + g.monto_usd, 0)
@@ -143,6 +144,7 @@ export const AdminGenerarRecibos: React.FC = () => {
   }, [mesStr])
 
   useEffect(() => { cargarDatos() }, [mes, anio])
+  useEffect(() => { setEsIndexado(!esHistorico) }, [esHistorico])
 
   // Cargar cargos especiales del mes
   useEffect(() => {
