@@ -23,6 +23,7 @@ export const RetirarSaldoModal: React.FC<Props> = ({
   apartamentoNumero,
   propietarioNombre,
   saldoAFavorUsd,
+  saldoAFavorBs,
   tasaBcv,
   autorNombre,
   autorEmail,
@@ -34,12 +35,13 @@ export const RetirarSaldoModal: React.FC<Props> = ({
 
   useEffect(() => {
     if (isOpen) {
-      setMontoRetirar(saldoAFavorUsd > 0 ? saldoAFavorUsd.toFixed(2) : '0')
+      const calcUsd = saldoAFavorUsd > 0 ? saldoAFavorUsd : (saldoAFavorBs > 0 ? (saldoAFavorBs / (tasaBcv > 1 ? tasaBcv : 859.06)) : 0)
+      setMontoRetirar(calcUsd > 0 ? calcUsd.toFixed(2) : '0')
       setMotivo('')
       setError(null)
       setGuardando(false)
     }
-  }, [isOpen, saldoAFavorUsd])
+  }, [isOpen, saldoAFavorUsd, saldoAFavorBs, tasaBcv])
 
   if (!isOpen) return null
 
@@ -174,10 +176,10 @@ export const RetirarSaldoModal: React.FC<Props> = ({
           </div>
           <div style={{ textAlign: 'right' }}>
             <div style={{ color: '#4ade80', fontSize: '18px', fontWeight: 900 }}>
-              +${saldoAFavorUsd.toFixed(2)} USD
+              {saldoAFavorUsd >= 1 ? `+$${saldoAFavorUsd.toFixed(2)} USD` : `+Bs. ${saldoAFavorBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
             </div>
             <div style={{ color: '#86efac', fontSize: '11px', fontWeight: 600 }}>
-              ≈ Bs. {(saldoAFavorUsd * tasaValida).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              {saldoAFavorUsd >= 1 ? `≈ Bs. ${(saldoAFavorBs > 0 ? saldoAFavorBs : saldoAFavorUsd * tasaValida).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `≈ $${saldoAFavorUsd.toFixed(2)} USD`}
             </div>
           </div>
         </div>

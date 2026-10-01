@@ -146,6 +146,7 @@ export function RecibosPanel({ onClose }: Props) {
   const [reportarModalOpen, setReportarModalOpen] = useState(false)
   const [descargandoId, setDescargandoId] = useState<string | null>(null)
   const [saldoAFavor, setSaldoAFavor] = useState<number>(0)
+  const [saldoAFavorBs, setSaldoAFavorBs] = useState<number>(0)
   const [filtroAnio, setFiltroAnio] = useState<string>('todos')
   const [filtroMes, setFiltroMes] = useState<string>('todos')
 
@@ -248,6 +249,7 @@ export function RecibosPanel({ onClose }: Props) {
       const tasaActual = configRes.data?.tasa_bcv_actual || authConfig?.tasa_bcv_actual || 859.06
       const sRes = await obtenerSaldoAFavorApartamento(apartamentoId, tasaActual)
       setSaldoAFavor(sRes.saldo_a_favor_usd)
+      setSaldoAFavorBs(sRes.saldo_a_favor_bs)
     } catch (e: any) {
       setError(e.message || 'Error cargando datos de recibos')
     } finally {
@@ -568,66 +570,68 @@ export function RecibosPanel({ onClose }: Props) {
         </div>
       ) : activeTab === 'recibos' ? (
         /* ── PESTAÑA 1: RECIBOS DE CONDOMINIO ────────────────────────────── */
-        recibos.length === 0 ? (
-          <div style={{
-            background: 'rgba(255, 255, 255, 0.02)',
-            border: '1px solid rgba(255, 255, 255, 0.06)',
-            borderRadius: '16px',
-            padding: '48px 24px',
-            textAlign: 'center'
-          }}>
-            <span style={{ fontSize: '42px', display: 'block', marginBottom: '14px' }}>📭</span>
-            <h3 style={{ color: '#fff', fontSize: '16px', fontWeight: 700, margin: '0 0 6px' }}>
-              No hay recibos emitidos aún
-            </h3>
-            <p style={{ color: '#94a3b8', fontSize: '13px', margin: 0, maxWidth: '400px', marginInline: 'auto' }}>
-              La administración del condominio aún no ha emitido el recibo para tu apartamento. En cuanto se emita, lo verás reflejado aquí con su desglose exacto.
-            </p>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            {/* Saldo a Favor / Crédito del Apartamento */}
-            {saldoAFavor > 0 && (
-              <div style={{
-                backgroundColor: 'rgba(34, 197, 94, 0.1)',
-                border: '1px solid rgba(34, 197, 94, 0.3)',
-                borderRadius: '16px',
-                padding: '16px 20px',
-                marginBottom: '10px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: '14px',
-                boxShadow: '0 4px 16px rgba(0, 0, 0, 0.3)'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{
-                    width: '40px', height: '40px', borderRadius: '12px',
-                    backgroundColor: 'rgba(34, 197, 94, 0.2)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: '20px', color: '#4ade80'
-                  }}>
-                    💚
-                  </div>
-                  <div>
-                    <div style={{ color: '#4ade80', fontSize: '13px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-                      Saldo a Favor Disponible
-                    </div>
-                    <div style={{ color: '#94a3b8', fontSize: '12px', marginTop: '2px' }}>
-                      Tienes crédito acumulado en tu cuenta. Se deduce automáticamente al cancelar tu recibo.
-                    </div>
-                  </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          {/* Saldo a Favor / Crédito del Apartamento */}
+          {(saldoAFavor > 0 || saldoAFavorBs > 0) && (
+            <div style={{
+              backgroundColor: 'rgba(34, 197, 94, 0.1)',
+              border: '1px solid rgba(34, 197, 94, 0.3)',
+              borderRadius: '16px',
+              padding: '16px 20px',
+              marginBottom: '10px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '14px',
+              boxShadow: '0 4px 16px rgba(0, 0, 0, 0.3)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{
+                  width: '40px', height: '40px', borderRadius: '12px',
+                  backgroundColor: 'rgba(34, 197, 94, 0.2)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '20px', color: '#4ade80'
+                }}>
+                  💚
                 </div>
-                <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                  <div style={{ color: '#4ade80', fontSize: '18px', fontWeight: 900 }}>
-                    +${fmtUsd(saldoAFavor)} USD
+                <div>
+                  <div style={{ color: '#4ade80', fontSize: '13px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                    Saldo a Favor Disponible
                   </div>
-                  <div style={{ color: '#86efac', fontSize: '11px', fontWeight: 600 }}>
-                    ≈ Bs. {fmtBs(saldoAFavor * (config?.tasa_bcv_actual || 859.06))}
+                  <div style={{ color: '#94a3b8', fontSize: '12px', marginTop: '2px' }}>
+                    Tienes crédito acumulado en tu cuenta. Se deduce automáticamente al cancelar tu recibo.
                   </div>
                 </div>
               </div>
-            )}
+              <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                <div style={{ color: '#4ade80', fontSize: '18px', fontWeight: 900 }}>
+                  {saldoAFavor >= 1 ? `+$${fmtUsd(saldoAFavor)} USD` : `+Bs. ${fmtBs(saldoAFavorBs)}`}
+                </div>
+                <div style={{ color: '#86efac', fontSize: '11px', fontWeight: 600 }}>
+                  {saldoAFavor >= 1 ? `≈ Bs. ${fmtBs(saldoAFavorBs)}` : `≈ $${fmtUsd(saldoAFavor > 0 ? saldoAFavor : saldoAFavorBs / (config?.tasa_bcv_actual || 859.06))} USD`}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {recibos.length === 0 ? (
+            <div style={{
+              background: 'rgba(255, 255, 255, 0.02)',
+              border: '1px solid rgba(255, 255, 255, 0.06)',
+              borderRadius: '16px',
+              padding: '48px 24px',
+              textAlign: 'center'
+            }}>
+              <span style={{ fontSize: '42px', display: 'block', marginBottom: '14px' }}>📭</span>
+              <h3 style={{ color: '#fff', fontSize: '16px', fontWeight: 700, margin: '0 0 6px' }}>
+                No hay recibos emitidos aún
+              </h3>
+              <p style={{ color: '#94a3b8', fontSize: '13px', margin: 0, maxWidth: '400px', marginInline: 'auto' }}>
+                La administración del condominio aún no ha emitido el recibo para tu apartamento. En cuanto se emita, lo verás reflejado aquí con su desglose exacto.
+              </p>
+            </div>
+          ) : (
+            <>
 
             {/* Selector de Estado: Por Pagar (Mora) / Todos / Pagados */}
             <div style={{
@@ -1313,9 +1317,10 @@ export function RecibosPanel({ onClose }: Props) {
                 </div>
               )
             }))}
-          </div>
-        )
-      ) : (
+          </>
+        )}
+      </div>
+    ) : (
         /* ── PESTAÑA 2: HISTORIAL DE PAGOS REPORTADOS ──────────────────────── */
         pagos.length === 0 ? (
           <div style={{

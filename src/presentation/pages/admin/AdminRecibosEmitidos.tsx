@@ -1065,6 +1065,26 @@ export const AdminRecibosEmitidos: React.FC = () => {
             <span>📑</span> Informe Ejecutivo (PDF)
           </button>
 
+          <a
+            href="/admin/calendario-deudas"
+            style={{
+              backgroundColor: 'rgba(59, 130, 246, 0.15)',
+              color: '#60a5fa',
+              border: '1px solid rgba(59, 130, 246, 0.35)',
+              padding: '8px 14px',
+              borderRadius: '10px',
+              fontSize: '13px',
+              fontWeight: 700,
+              textDecoration: 'none',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              transition: 'all 0.2s'
+            }}
+          >
+            <span>📅</span> Calendario de Deudas
+          </a>
+
           <button
             onClick={cargarRecibosDelMes}
             style={{

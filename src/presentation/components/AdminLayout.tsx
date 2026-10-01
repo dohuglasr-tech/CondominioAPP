@@ -94,6 +94,20 @@ const ADMIN_ICONS: Record<string, React.ReactNode> = {
       <line x1="12" y1="16" x2="12.01" y2="16"/>
     </svg>
   ),
+  calendario: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+      <line x1="16" y1="2" x2="16" y2="6"/>
+      <line x1="8" y1="2" x2="8" y2="6"/>
+      <line x1="3" y1="10" x2="21" y2="10"/>
+      <path d="M8 14h.01"/>
+      <path d="M12 14h.01"/>
+      <path d="M16 14h.01"/>
+      <path d="M8 18h.01"/>
+      <path d="M12 18h.01"/>
+      <path d="M16 18h.01"/>
+    </svg>
+  ),
   historial: (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
@@ -109,6 +123,7 @@ const adminNav = [
   { key: 'recibos', label: 'Recibos', path: '/admin/recibos', desc: 'Aprobar / rechazar pagos', isRecibos: true },
   { key: 'generarRecibos', label: 'Generar Recibos', path: '/admin/generar-recibos', desc: 'Emisión masiva del mes' },
   { key: 'recibosEmitidos', label: 'Recibos Emitidos', path: '/admin/recibos-emitidos', desc: 'Historial y recibos emitidos' },
+  { key: 'calendario', label: 'Calendario de Deudas', path: '/admin/calendario-deudas', desc: 'Matriz mensual de impago y mora' },
   { key: 'casos', label: 'Casos', path: '/admin/casos', desc: 'Multas, acuerdos y locales' },
   { key: 'mora', label: 'Mora y Deudores', path: '/admin/mora', desc: 'Deudas > 3 meses y riesgo legal' },
   { key: 'residentes', label: 'Residentes', path: '/admin/residentes', desc: 'Gestión de apartamentos' },

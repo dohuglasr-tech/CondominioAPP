@@ -99,14 +99,14 @@ export const AdminResidentes: React.FC = () => {
   const [deleting, setDeleting] = useState(false)
   const [deleteMessage, setDeleteMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
-  const cargarResidentes = useCallback(async () => {
+  const cargarResidentes = useCallback(async (forceRefresh = false) => {
     setLoading(true)
     try {
       const [aptosRes, perfilesRes, pagosRes, saldosMap, moraRes, recibosPendRes] = await Promise.all([
         supabase.from('apartamentos').select('*'),
         supabase.from('perfiles').select('*'),
         supabase.from('pagos_reportados').select('id, monto_bs, referencia, estado, fecha_pago, reportado_por, apartamento_id, created_at').order('created_at', { ascending: false }),
-        obtenerTodosLosSaldosAFavor(tasaBcvValida),
+        obtenerTodosLosSaldosAFavor(tasaBcvValida, forceRefresh),
         supabase.from('deudas_mora').select('apartamento_id, monto_usd, monto_bs').eq('estado', 'activo'),
         supabase.from('recibos_generados').select('apartamento_id, total_usd, total_bs').eq('estado', 'pendiente'),
       ])
@@ -505,8 +505,10 @@ export const AdminResidentes: React.FC = () => {
                       {formatAlicuotaPct(r.alicuota)}
                     </span>
                     {(() => {
-                      const s = saldosPorApto.get(r.id)?.saldo_a_favor_usd || 0
-                      if (s <= 0) return null
+                      const sInfo = saldosPorApto.get(r.id)
+                      const sUsd = sInfo?.saldo_a_favor_usd || 0
+                      const sBs = sInfo?.saldo_a_favor_bs || 0
+                      if (sUsd <= 0.0001 && sBs <= 0.01) return null
                       return (
                         <span style={{
                           fontSize: '11px',
@@ -517,7 +519,7 @@ export const AdminResidentes: React.FC = () => {
                           padding: '1px 6px',
                           borderRadius: '4px'
                         }}>
-                          💚 +${s.toFixed(2)}
+                          💚 {sUsd >= 1 ? `+$${sUsd.toFixed(2)}` : `+Bs. ${sBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                         </span>
                       )
                     })()}
@@ -809,11 +811,12 @@ export const AdminResidentes: React.FC = () => {
           const saldoInfo = saldosPorApto.get(selected.id)
           const saldoUsd = saldoInfo?.saldo_a_favor_usd || 0
           const saldoBs = saldoInfo?.saldo_a_favor_bs || (saldoUsd * tasaBcvValida)
+          const tieneSaldo = saldoUsd > 0.0001 || saldoBs > 0.01
 
           return (
             <div style={{
-              backgroundColor: saldoUsd > 0 ? 'rgba(16, 185, 129, 0.08)' : '#0a0a0a',
-              border: saldoUsd > 0 ? '1px solid rgba(16, 185, 129, 0.35)' : '1px solid #2a2a2a',
+              backgroundColor: tieneSaldo ? 'rgba(16, 185, 129, 0.08)' : '#0a0a0a',
+              border: tieneSaldo ? '1px solid rgba(16, 185, 129, 0.35)' : '1px solid #2a2a2a',
               borderRadius: '12px',
               padding: '18px 20px',
               marginBottom: '16px',
@@ -822,23 +825,29 @@ export const AdminResidentes: React.FC = () => {
               justifyContent: 'space-between',
               alignItems: isMobile ? 'flex-start' : 'center',
               gap: '12px',
-              boxShadow: saldoUsd > 0 ? '0 4px 18px rgba(16, 185, 129, 0.12)' : 'none',
+              boxShadow: tieneSaldo ? '0 4px 18px rgba(16, 185, 129, 0.12)' : 'none',
             }}>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <span style={{ fontSize: '18px' }}>💚</span>
-                  <span style={{ color: saldoUsd > 0 ? '#4ade80' : '#888', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 800 }}>
+                  <span style={{ color: tieneSaldo ? '#4ade80' : '#888', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 800 }}>
                     Saldo a Favor / Cuenta Corriente
                   </span>
                 </div>
 
-                <div style={{ color: saldoUsd > 0 ? '#4ade80' : '#fff', fontSize: isMobile ? '24px' : '26px', fontWeight: 900, marginTop: '4px' }}>
-                  {saldoUsd > 0 ? `+$${saldoUsd.toFixed(2)} USD` : '$0.00 USD'}
+                <div style={{ color: tieneSaldo ? '#4ade80' : '#fff', fontSize: isMobile ? '24px' : '26px', fontWeight: 900, marginTop: '4px' }}>
+                  {tieneSaldo ? (
+                    saldoUsd >= 1
+                      ? `+$${saldoUsd.toFixed(2)} USD`
+                      : `+Bs. ${saldoBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                  ) : '$0.00 USD'}
                 </div>
 
                 <p style={{ color: '#888', fontSize: '12px', margin: '4px 0 0' }}>
-                  {saldoUsd > 0
-                    ? `≈ Bs. ${saldoBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · Crédito disponible para próximos recibos`
+                  {tieneSaldo
+                    ? (saldoUsd >= 1
+                        ? `≈ Bs. ${saldoBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · Crédito disponible para próximos recibos`
+                        : `≈ $${(saldoUsd > 0 ? saldoUsd : saldoBs / tasaBcvValida).toFixed(2)} USD · Crédito disponible para próximos recibos`)
                     : 'El apartamento no tiene saldo a favor acumulado actualmente.'}
                 </p>
               </div>
@@ -871,7 +880,7 @@ export const AdminResidentes: React.FC = () => {
                   <span>➕</span> Abonar Saldo a Favor
                 </button>
 
-                {saldoUsd > 0 && (deudasPorApto.get(selected.id)?.totalUsd || 0) > 0 && (
+                {tieneSaldo && (deudasPorApto.get(selected.id)?.totalUsd || 0) > 0 && (
                   <button
                     type="button"
                     onClick={() => setCompensarModalOpen(true)}
@@ -898,7 +907,7 @@ export const AdminResidentes: React.FC = () => {
                   </button>
                 )}
 
-                {saldoUsd > 0 && (
+                {tieneSaldo && (
                   <button
                     type="button"
                     onClick={() => setSaldoModalOpen(true)}
@@ -1255,7 +1264,7 @@ export const AdminResidentes: React.FC = () => {
             </p>
           </div>
           <button
-            onClick={cargarResidentes}
+            onClick={() => cargarResidentes(true)}
             style={{
               backgroundColor: '#1e1e1e',
               color: '#fff',

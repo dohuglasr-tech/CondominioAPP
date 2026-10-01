@@ -42,6 +42,7 @@ export function ReportarPagoModal({ apartamentoId, onClose, onSuccess }: Props) 
   const [statsCompresion, setStatsCompresion] = useState<ResultadoCompresion | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [saldoAFavor, setSaldoAFavor] = useState<number>(0)
+  const [saldoAFavorBs, setSaldoAFavorBs] = useState<number>(0)
 
   const [banco, setBanco] = useState('')
   const [monto, setMonto] = useState('')
@@ -67,8 +68,9 @@ export function ReportarPagoModal({ apartamentoId, onClose, onSuccess }: Props) 
   useEffect(() => {
     if (apartamentoId) {
       obtenerSaldoAFavorApartamento(apartamentoId).then((res) => {
-        if (res?.saldo_a_favor_usd > 0) {
+        if (res?.saldo_a_favor_usd > 0 || res?.saldo_a_favor_bs > 0) {
           setSaldoAFavor(res.saldo_a_favor_usd)
+          setSaldoAFavorBs(res.saldo_a_favor_bs)
         }
       }).catch(() => {})
     }
@@ -397,7 +399,7 @@ export function ReportarPagoModal({ apartamentoId, onClose, onSuccess }: Props) 
         <p style={st.title}>Reportar Pago</p>
         <p style={st.subtitle}>Completa los datos de tu transferencia.</p>
 
-        {saldoAFavor > 0 && (
+        {(saldoAFavor > 0 || saldoAFavorBs > 0) && (
           <div style={{
             backgroundColor: 'rgba(34, 197, 94, 0.1)',
             border: '1px solid rgba(34, 197, 94, 0.3)',
@@ -413,7 +415,9 @@ export function ReportarPagoModal({ apartamentoId, onClose, onSuccess }: Props) 
           }}>
             <span style={{ fontSize: '18px' }}>💚</span>
             <div>
-              <strong>Saldo a favor: ${saldoAFavor.toFixed(2)} USD</strong>. Si estás usando este crédito para pagar, reporta solo la diferencia transferida.
+              <strong>
+                Saldo a favor: {saldoAFavor >= 1 ? `$${saldoAFavor.toFixed(2)} USD` : `Bs. ${saldoAFavorBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+              </strong>. Si estás usando este crédito para pagar, reporta solo la diferencia transferida.
             </div>
           </div>
         )}

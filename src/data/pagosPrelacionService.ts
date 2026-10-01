@@ -340,9 +340,10 @@ export async function aplicarPagoConPrelacion(
     // FASE 3: SALDO POSITIVO / SALDO A FAVOR
     // "De no tener deuda indexada, el saldo pasara a positivo para el usuario."
     // ─────────────────────────────────────────────────────────────────────────────
-    if (remanenteBs > 0.05) {
+    if (remanenteBs > 0.001) {
       resultado.saldoRestanteBs = Number(remanenteBs.toFixed(2))
-      resultado.saldoRestanteUsd = Number((remanenteBs / tasa).toFixed(2))
+      const calcUsd = Number((remanenteBs / tasa).toFixed(2))
+      resultado.saldoRestanteUsd = calcUsd > 0 ? calcUsd : 0.01
       resultado.esSaldoAFavor = true
     }
 

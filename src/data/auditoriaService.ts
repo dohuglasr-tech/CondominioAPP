@@ -16,6 +16,7 @@ export type TipoAccionAuditoria =
   | 'APLICAR_SALDO_A_DEUDA'
   | 'PAGO_DEUDA_ATRASADA'
   | 'PAGO_CONCILIADO_PRELACION'
+  | 'CALENDARIO_CHECKLIST_PAGO'
 
 export interface LogAuditoria {
   id: string

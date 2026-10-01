@@ -50,6 +50,7 @@ export function Dashboard() {
   const [recibosPendientesList, setRecibosPendientesList] = useState<any[]>([])
   const [moraRecord, setMoraRecord] = useState<DeudaMoraItem | null>(null)
   const [saldoAFavor, setSaldoAFavor] = useState<number>(0)
+  const [saldoAFavorBs, setSaldoAFavorBs] = useState<number>(0)
 
   const { rate, loading: loadingRate } = useBcvRate()
   const tasaValida = rate && rate > 1 ? rate : (config?.tasa_bcv_actual && config.tasa_bcv_actual > 1 ? config.tasa_bcv_actual : 859.06)
@@ -203,6 +204,7 @@ export function Dashboard() {
       if (apartamentoId) {
         const saldoRes = await obtenerSaldoAFavorApartamento(apartamentoId, tasaValida, forceRefresh)
         setSaldoAFavor(saldoRes.saldo_a_favor_usd)
+        setSaldoAFavorBs(saldoRes.saldo_a_favor_bs)
       }
     } catch (err) {
       console.warn('[Dashboard] Error cargando datos del residente:', err)
@@ -539,7 +541,7 @@ export function Dashboard() {
             )}
 
             {/* Saldo a Favor / Billetera Comunitaria */}
-            {saldoAFavor > 0 && (
+            {(saldoAFavor > 0 || saldoAFavorBs > 0) && (
               <div style={{
                 backgroundColor: 'rgba(34, 197, 94, 0.12)',
                 border: '1px solid rgba(34, 197, 94, 0.3)',
@@ -564,10 +566,10 @@ export function Dashboard() {
                 </div>
                 <div style={{ textAlign: 'right' }}>
                   <div style={{ color: '#4ade80', fontSize: '14px', fontWeight: 800 }}>
-                    {ocultarSaldos ? '••••' : `+$${saldoAFavor.toFixed(2)}`}
+                    {ocultarSaldos ? '••••' : (saldoAFavor >= 1 ? `+$${saldoAFavor.toFixed(2)} USD` : `+Bs. ${saldoAFavorBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`)}
                   </div>
                   <div style={{ color: '#86efac', fontSize: '10px', fontWeight: 600 }}>
-                    {ocultarSaldos ? '••••' : `≈ Bs. ${(saldoAFavor * tasaValida).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                    {ocultarSaldos ? '••••' : (saldoAFavor >= 1 ? `≈ Bs. ${saldoAFavorBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `≈ $${(saldoAFavor > 0 ? saldoAFavor : saldoAFavorBs / tasaValida).toFixed(2)} USD`)}
                   </div>
                 </div>
               </div>
@@ -1259,7 +1261,7 @@ export function Dashboard() {
                 )}
 
                 {/* Saldo a Favor Desktop */}
-                {saldoAFavor > 0 && (
+                {(saldoAFavor > 0 || saldoAFavorBs > 0) && (
                   <div style={{
                     backgroundColor: 'rgba(34, 197, 94, 0.12)',
                     border: '1px solid rgba(34, 197, 94, 0.3)',
@@ -1284,10 +1286,10 @@ export function Dashboard() {
                     </div>
                     <div style={{ textAlign: 'right' }}>
                       <div style={{ color: '#4ade80', fontSize: '17px', fontWeight: 800 }}>
-                        {ocultarSaldos ? '••••' : `+$${saldoAFavor.toFixed(2)} USD`}
+                        {ocultarSaldos ? '••••' : (saldoAFavor >= 1 ? `+$${saldoAFavor.toFixed(2)} USD` : `+Bs. ${saldoAFavorBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`)}
                       </div>
                       <div style={{ color: '#86efac', fontSize: '11px', fontWeight: 600 }}>
-                        {ocultarSaldos ? '••••' : `≈ Bs. ${(saldoAFavor * tasaValida).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                        {ocultarSaldos ? '••••' : (saldoAFavor >= 1 ? `≈ Bs. ${saldoAFavorBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `≈ $${(saldoAFavor > 0 ? saldoAFavor : saldoAFavorBs / tasaValida).toFixed(2)} USD`)}
                       </div>
                     </div>
                   </div>

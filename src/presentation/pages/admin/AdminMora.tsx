@@ -662,6 +662,27 @@ export const AdminMora: React.FC = () => {
             <span>➕</span>
             <span>Montar Deuda Anterior de Apartamento</span>
           </button>
+
+          <a
+            href="/admin/calendario-deudas"
+            style={{
+              background: 'rgba(59, 130, 246, 0.15)',
+              color: '#60a5fa',
+              border: '1px solid rgba(59, 130, 246, 0.35)',
+              borderRadius: '14px',
+              padding: '12px 20px',
+              fontSize: '13px',
+              fontWeight: 700,
+              textDecoration: 'none',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              transition: 'all 0.2s'
+            }}
+          >
+            <span>📅</span>
+            <span>Ver Calendario de Deudas</span>
+          </a>
         </div>
       </div>
 

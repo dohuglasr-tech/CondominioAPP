@@ -37,6 +37,8 @@ export async function obtenerSaldoAFavorApartamento(
     `saldo_favor_${apartamento_id}_${tasaBcv}`,
     async () => {
       try {
+        const tasa = tasaBcv && tasaBcv > 1 ? tasaBcv : 859.06
+
         const [pagosRes, recibosRes, logsAuditoria, moraRes] = await Promise.all([
           supabase
             .from('pagos_reportados')
@@ -45,7 +47,7 @@ export async function obtenerSaldoAFavorApartamento(
             .eq('estado', 'aprobado'),
           supabase
             .from('recibos_generados')
-            .select('total_usd, total_bs, estado, data_json')
+            .select('total_usd, total_bs, estado, data_json, es_indexado')
             .eq('apartamento_id', apartamento_id),
           obtenerHistorialAuditoria().catch(() => []),
           supabase
@@ -55,24 +57,47 @@ export async function obtenerSaldoAFavorApartamento(
             .maybeSingle(),
         ])
 
-        // Calcular total pagado en USD
+        // Calcular total pagado en USD y en Bs
         const pagos = pagosRes.data || []
-        const totalPagadoUsd = pagos.reduce((sum, p) => {
-          if (p.monto_usd && Number(p.monto_usd) > 0) {
-            return sum + Number(p.monto_usd)
-          }
-          if (p.monto_bs && Number(p.monto_bs) > 0 && tasaBcv > 0) {
-            return sum + Number(p.monto_bs) / tasaBcv
-          }
-          return sum
-        }, 0)
+        let totalPagadoUsd = 0
+        let totalPagadoBs = 0
 
-        // Calcular total facturado en USD (usando montos originales de recibos para no distorsionar ante abonos)
+        pagos.forEach((p) => {
+          const mUsd = Number(p.monto_usd) || 0
+          const mBs = Number(p.monto_bs) || 0
+
+          if (mUsd > 0 && mBs > 0) {
+            totalPagadoUsd += mUsd
+            totalPagadoBs += mBs
+          } else if (mUsd > 0) {
+            totalPagadoUsd += mUsd
+            totalPagadoBs += mUsd * tasa
+          } else if (mBs > 0) {
+            totalPagadoBs += mBs
+            totalPagadoUsd += mBs / tasa
+          }
+        })
+
+        // Calcular total facturado en USD y en Bs
         const recibos = recibosRes.data || []
-        let totalFacturadoUsd = recibos.reduce((sum, r) => {
-          const originalUsd = Number(r.data_json?.monto_original_usd || r.total_usd || 0)
-          return sum + originalUsd
-        }, 0)
+        let totalFacturadoUsd = 0
+        let totalFacturadoBs = 0
+
+        recibos.forEach((r) => {
+          const origUsd = Number(r.data_json?.monto_original_usd ?? r.total_usd ?? 0)
+          const origBs = Number(r.data_json?.monto_original_bs ?? r.total_bs ?? 0)
+
+          if (origUsd > 0 && origBs > 0) {
+            totalFacturadoUsd += origUsd
+            totalFacturadoBs += origBs
+          } else if (origUsd > 0) {
+            totalFacturadoUsd += origUsd
+            totalFacturadoBs += origUsd * tasa
+          } else if (origBs > 0) {
+            totalFacturadoBs += origBs
+            totalFacturadoUsd += origBs / tasa
+          }
+        })
 
         // Si hay recibos pendientes o mora activa, no puede haber saldo a favor hasta liquidarlos
         const tienePendientes = recibos.some(r => r.estado === 'pendiente') ||
@@ -84,13 +109,30 @@ export async function obtenerSaldoAFavorApartamento(
           (l) => l.tipo_accion === 'RETIRO_SALDO_A_FAVOR' && l.apartamento_id === apartamento_id
         )
         const totalRetiradoUsd = retirosApto.reduce((sum, l) => sum + (Number(l.monto_usd) || 0), 0)
+        const totalRetiradoBs = retirosApto.reduce((sum, l) => {
+          if (l.monto_bs && Number(l.monto_bs) > 0) return sum + Number(l.monto_bs)
+          return sum + (Number(l.monto_usd || 0) * tasa)
+        }, 0)
 
-        // Saldo a favor = (Pagado - Facturado) - Retirado por Admin (solo si no tiene recibos pendientes)
-        const diffBruto = totalPagadoUsd - totalFacturadoUsd
-        const saldoNetoUsd = (!tienePendientes && diffBruto > 0.05)
-          ? Math.max(0, parseFloat((diffBruto - totalRetiradoUsd).toFixed(2)))
-          : 0
-        const saldoNetoBs = saldoNetoUsd > 0 ? parseFloat((saldoNetoUsd * tasaBcv).toFixed(2)) : 0
+        // Diferencias netas
+        const diffUsdBruto = totalPagadoUsd - totalFacturadoUsd - totalRetiradoUsd
+        const diffBsBruto = totalPagadoBs - totalFacturadoBs - totalRetiradoBs
+
+        let saldoNetoUsd = 0
+        let saldoNetoBs = 0
+
+        if (!tienePendientes && (diffUsdBruto > 0.0001 || diffBsBruto > 0.01)) {
+          saldoNetoBs = Math.max(0, parseFloat(diffBsBruto.toFixed(2)))
+          saldoNetoUsd = Math.max(0, parseFloat(diffUsdBruto.toFixed(2)))
+
+          // Salvaguardar consistencia cruzada: si por redondeo USD dio 0 pero hay saldo en Bs
+          if (saldoNetoBs > 0 && saldoNetoUsd <= 0) {
+            saldoNetoUsd = parseFloat((saldoNetoBs / tasa).toFixed(2)) || 0.01
+          }
+          if (saldoNetoUsd > 0 && saldoNetoBs <= 0) {
+            saldoNetoBs = parseFloat((saldoNetoUsd * tasa).toFixed(2))
+          }
+        }
 
         return {
           apartamento_id,
@@ -130,69 +172,137 @@ export async function obtenerTodosLosSaldosAFavor(
       const mapaSaldos = new Map<string, SaldoApartamento>()
 
       try {
-        const [pagosRes, recibosRes, logsAuditoria] = await Promise.all([
+        const tasa = tasaBcv && tasaBcv > 1 ? tasaBcv : 859.06
+
+        const [pagosRes, recibosRes, logsAuditoria, moraRes] = await Promise.all([
           supabase
             .from('pagos_reportados')
             .select('apartamento_id, monto_usd, monto_bs')
             .eq('estado', 'aprobado'),
           supabase
             .from('recibos_generados')
-            .select('apartamento_id, total_usd'),
+            .select('apartamento_id, total_usd, total_bs, estado, data_json, es_indexado'),
           obtenerHistorialAuditoria().catch(() => []),
+          supabase
+            .from('deudas_mora')
+            .select('apartamento_id, monto_usd, monto_bs, estado')
+            .eq('estado', 'activo'),
         ])
 
-        const pagosPorApto = new Map<string, number>()
+        const pagosUsdPorApto = new Map<string, number>()
+        const pagosBsPorApto = new Map<string, number>()
         ;(pagosRes.data || []).forEach((p: any) => {
           const aptoId = p.apartamento_id
           if (!aptoId) return
-          let monto = 0
-          if (p.monto_usd && Number(p.monto_usd) > 0) {
-            monto = Number(p.monto_usd)
-          } else if (p.monto_bs && Number(p.monto_bs) > 0 && tasaBcv > 0) {
-            monto = Number(p.monto_bs) / tasaBcv
+          const mUsd = Number(p.monto_usd) || 0
+          const mBs = Number(p.monto_bs) || 0
+
+          let addUsd = 0
+          let addBs = 0
+          if (mUsd > 0 && mBs > 0) {
+            addUsd = mUsd
+            addBs = mBs
+          } else if (mUsd > 0) {
+            addUsd = mUsd
+            addBs = mUsd * tasa
+          } else if (mBs > 0) {
+            addBs = mBs
+            addUsd = mBs / tasa
           }
-          pagosPorApto.set(aptoId, (pagosPorApto.get(aptoId) || 0) + monto)
+
+          pagosUsdPorApto.set(aptoId, (pagosUsdPorApto.get(aptoId) || 0) + addUsd)
+          pagosBsPorApto.set(aptoId, (pagosBsPorApto.get(aptoId) || 0) + addBs)
         })
 
-        const facturadoPorApto = new Map<string, number>()
+        const facturadoUsdPorApto = new Map<string, number>()
+        const facturadoBsPorApto = new Map<string, number>()
+        const aptosConPendientes = new Set<string>()
+
         ;(recibosRes.data || []).forEach((r: any) => {
           const aptoId = r.apartamento_id
           if (!aptoId) return
-          const total = Number(r.total_usd || 0)
-          facturadoPorApto.set(aptoId, (facturadoPorApto.get(aptoId) || 0) + total)
+          if (r.estado === 'pendiente') {
+            aptosConPendientes.add(aptoId)
+          }
+          const origUsd = Number(r.data_json?.monto_original_usd ?? r.total_usd ?? 0)
+          const origBs = Number(r.data_json?.monto_original_bs ?? r.total_bs ?? 0)
+
+          let addUsd = 0
+          let addBs = 0
+          if (origUsd > 0 && origBs > 0) {
+            addUsd = origUsd
+            addBs = origBs
+          } else if (origUsd > 0) {
+            addUsd = origUsd
+            addBs = origUsd * tasa
+          } else if (origBs > 0) {
+            addBs = origBs
+            addUsd = origBs / tasa
+          }
+
+          facturadoUsdPorApto.set(aptoId, (facturadoUsdPorApto.get(aptoId) || 0) + addUsd)
+          facturadoBsPorApto.set(aptoId, (facturadoBsPorApto.get(aptoId) || 0) + addBs)
         })
 
-        const retiradoPorApto = new Map<string, number>()
+        ;(moraRes.data || []).forEach((m: any) => {
+          if (!m.apartamento_id) return
+          if ((Number(m.monto_bs) || 0) > 0.05 || (Number(m.monto_usd) || 0) > 0.05) {
+            aptosConPendientes.add(m.apartamento_id)
+          }
+        })
+
+        const retiradoUsdPorApto = new Map<string, number>()
+        const retiradoBsPorApto = new Map<string, number>()
         ;(logsAuditoria || []).forEach((l) => {
           if (l.tipo_accion === 'RETIRO_SALDO_A_FAVOR' && l.apartamento_id) {
-            const monto = Number(l.monto_usd || 0)
-            retiradoPorApto.set(l.apartamento_id, (retiradoPorApto.get(l.apartamento_id) || 0) + monto)
+            const mUsd = Number(l.monto_usd) || 0
+            const mBs = Number(l.monto_bs) || (mUsd * tasa)
+            retiradoUsdPorApto.set(l.apartamento_id, (retiradoUsdPorApto.get(l.apartamento_id) || 0) + mUsd)
+            retiradoBsPorApto.set(l.apartamento_id, (retiradoBsPorApto.get(l.apartamento_id) || 0) + mBs)
           }
         })
 
         // Construir conjunto de todos los apartamentos con movimientos
         const todosAptosIds = new Set<string>([
-          ...pagosPorApto.keys(),
-          ...facturadoPorApto.keys(),
-          ...retiradoPorApto.keys(),
+          ...pagosUsdPorApto.keys(),
+          ...facturadoUsdPorApto.keys(),
+          ...retiradoUsdPorApto.keys(),
         ])
 
         todosAptosIds.forEach((aptoId) => {
-          const pagado = pagosPorApto.get(aptoId) || 0
-          const facturado = facturadoPorApto.get(aptoId) || 0
-          const retirado = retiradoPorApto.get(aptoId) || 0
+          const tienePendientes = aptosConPendientes.has(aptoId)
+          const pagadoUsd = pagosUsdPorApto.get(aptoId) || 0
+          const pagadoBs = pagosBsPorApto.get(aptoId) || 0
+          const facturadoUsd = facturadoUsdPorApto.get(aptoId) || 0
+          const facturadoBs = facturadoBsPorApto.get(aptoId) || 0
+          const retiradoUsd = retiradoUsdPorApto.get(aptoId) || 0
+          const retiradoBs = retiradoBsPorApto.get(aptoId) || 0
 
-          const diff = pagado - facturado
-          const saldoNeto = diff > 0.05 ? Math.max(0, parseFloat((diff - retirado).toFixed(2))) : 0
-          const saldoBs = saldoNeto > 0 ? parseFloat((saldoNeto * tasaBcv).toFixed(2)) : 0
+          const diffUsd = pagadoUsd - facturadoUsd - retiradoUsd
+          const diffBs = pagadoBs - facturadoBs - retiradoBs
+
+          let saldoNetoUsd = 0
+          let saldoNetoBs = 0
+
+          if (!tienePendientes && (diffUsd > 0.0001 || diffBs > 0.01)) {
+            saldoNetoBs = Math.max(0, parseFloat(diffBs.toFixed(2)))
+            saldoNetoUsd = Math.max(0, parseFloat(diffUsd.toFixed(2)))
+
+            if (saldoNetoBs > 0 && saldoNetoUsd <= 0) {
+              saldoNetoUsd = parseFloat((saldoNetoBs / tasa).toFixed(2)) || 0.01
+            }
+            if (saldoNetoUsd > 0 && saldoNetoBs <= 0) {
+              saldoNetoBs = parseFloat((saldoNetoUsd * tasa).toFixed(2))
+            }
+          }
 
           mapaSaldos.set(aptoId, {
             apartamento_id: aptoId,
-            saldo_a_favor_usd: saldoNeto,
-            saldo_a_favor_bs: saldoBs,
-            total_pagado_usd: parseFloat(pagado.toFixed(2)),
-            total_facturado_usd: parseFloat(facturado.toFixed(2)),
-            total_retirado_usd: parseFloat(retirado.toFixed(2)),
+            saldo_a_favor_usd: saldoNetoUsd,
+            saldo_a_favor_bs: saldoNetoBs,
+            total_pagado_usd: parseFloat(pagadoUsd.toFixed(2)),
+            total_facturado_usd: parseFloat(facturadoUsd.toFixed(2)),
+            total_retirado_usd: parseFloat(retiradoUsd.toFixed(2)),
           })
         })
 
