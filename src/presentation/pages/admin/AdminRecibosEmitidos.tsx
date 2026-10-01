@@ -12,6 +12,7 @@ import { SkeletonCard, SkeletonChart, SkeletonTable } from '../../components/Ske
 import { generarMensajeCobroRecibo, generarMensajeReciboPagado, abrirWhatsApp } from '../../../utils/whatsappHelper'
 import { despacharEmailRecibo, despacharEmailPagoAprobado } from '../../../data/emailService'
 import { generarInformeGestionPDF, DatosInformeGestion } from '../../../utils/informeGestionPdfGenerator'
+import { esReciboIndexado } from '../../../utils/indexacionHelper'
 
 interface ReciboEmitido {
   id: string
@@ -81,10 +82,13 @@ export const AdminRecibosEmitidos: React.FC = () => {
   const [toast, setToast] = useState<string | null>(null)
   const [cambiandoEstadoId, setCambiandoEstadoId] = useState<string | null>(null)
 
-  // ── Estados para Administración Anterior (Meses Históricos < 2026-09) ───────
+  // ── Estados para Administración Anterior o Meses No Indexados (Bolívares Fijos) ───────
   const esMesHistorico = useMemo(() => {
+    if (recibos.length > 0) {
+      return !esReciboIndexado(recibos[0])
+    }
     return (mesSeleccionado || '').slice(0, 7) < '2026-09'
-  }, [mesSeleccionado])
+  }, [mesSeleccionado, recibos])
 
   const [modalBulkPagadosOpen, setModalBulkPagadosOpen] = useState(false)
   const [modalBulkMoraOpen, setModalBulkMoraOpen] = useState(false)
@@ -490,7 +494,7 @@ export const AdminRecibosEmitidos: React.FC = () => {
       titular_cuenta: config.titular_cuenta
     }
 
-    const esHistoricoRecibo = (r.mes_facturado || '').slice(0, 7) < '2026-09'
+    const esHistoricoRecibo = !esReciboIndexado(r)
 
     const doc = generarPDFRecibo(
       aptoData,

@@ -19,6 +19,7 @@ import {
   abrirWhatsApp,
 } from '../../utils/whatsappHelper'
 import { obtenerSaldoAFavorApartamento } from '../../data/saldoFavorService'
+import { esReciboIndexado } from '../../utils/indexacionHelper'
 
 interface Props {
   onClose?: () => void
@@ -296,7 +297,7 @@ export function RecibosPanel({ onClose }: Props) {
       }
 
       // Si está pagado o hay un pago aprobado para este apartamento
-      const esHistorico = (recibo.mes_facturado || '').slice(0, 7) < '2026-09'
+      const esHistorico = !esReciboIndexado(recibo)
       const esDeudaAtrasada = Boolean(recibo.data_json?.es_recibo_deuda_atrasada)
 
       const pagoAprobado = pagos.find(p => p.estado === 'aprobado')
@@ -698,7 +699,7 @@ export function RecibosPanel({ onClose }: Props) {
             ) : (
               recibosFiltrados.map((recibo) => {
               const { mesLabel, anio } = parseMesFacturado(recibo.mes_facturado)
-              const esHistorico = (recibo.mes_facturado || '').slice(0, 7) < '2026-09'
+              const esHistorico = !esReciboIndexado(recibo)
               const esDeudaAtrasada = Boolean(recibo.data_json?.es_recibo_deuda_atrasada)
               const estaPagado = recibo.estado === 'pagado' || (!esHistorico && pagos.some(p => p.estado === 'aprobado'))
               const enRevision = !estaPagado && !!pagoEnRevision

@@ -7,6 +7,8 @@ import { useAuth } from '../../../application/contexts/AuthContext'
 import { useBcvRate } from '../../../data/useBcvRate'
 import { obtenerTodosLosSaldosAFavor, SaldoApartamento } from '../../../data/saldoFavorService'
 import { RetirarSaldoModal } from '../../components/RetirarSaldoModal'
+import { AbonarSaldoModal } from '../../components/AbonarSaldoModal'
+import { CompensarDeudaModal } from '../../components/CompensarDeudaModal'
 
 interface PersonaContacto {
   nombre: string
@@ -69,7 +71,10 @@ export const AdminResidentes: React.FC = () => {
 
   const [residentes, setResidentes] = useState<Residente[]>([])
   const [saldosPorApto, setSaldosPorApto] = useState<Map<string, SaldoApartamento>>(new Map())
+  const [deudasPorApto, setDeudasPorApto] = useState<Map<string, { totalUsd: number; totalBs: number }>>(new Map())
   const [saldoModalOpen, setSaldoModalOpen] = useState(false)
+  const [abonarModalOpen, setAbonarModalOpen] = useState(false)
+  const [compensarModalOpen, setCompensarModalOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [busqueda, setBusqueda] = useState('')
   const [filtroTipo, setFiltroTipo] = useState<'todos' | 'con_usuario' | 'ph'>('todos')
@@ -97,14 +102,34 @@ export const AdminResidentes: React.FC = () => {
   const cargarResidentes = useCallback(async () => {
     setLoading(true)
     try {
-      const [aptosRes, perfilesRes, pagosRes, saldosMap] = await Promise.all([
+      const [aptosRes, perfilesRes, pagosRes, saldosMap, moraRes, recibosPendRes] = await Promise.all([
         supabase.from('apartamentos').select('*'),
         supabase.from('perfiles').select('*'),
         supabase.from('pagos_reportados').select('id, monto_bs, referencia, estado, fecha_pago, reportado_por, apartamento_id, created_at').order('created_at', { ascending: false }),
         obtenerTodosLosSaldosAFavor(tasaBcvValida),
+        supabase.from('deudas_mora').select('apartamento_id, monto_usd, monto_bs').eq('estado', 'activo'),
+        supabase.from('recibos_generados').select('apartamento_id, total_usd, total_bs').eq('estado', 'pendiente'),
       ])
 
       setSaldosPorApto(saldosMap)
+
+      const dMap = new Map<string, { totalUsd: number; totalBs: number }>()
+      ;(moraRes.data || []).forEach((m: any) => {
+        if (!m.apartamento_id) return
+        dMap.set(m.apartamento_id, {
+          totalUsd: Number(m.monto_usd || 0),
+          totalBs: Number(m.monto_bs || 0),
+        })
+      })
+      ;(recibosPendRes.data || []).forEach((r: any) => {
+        if (!r.apartamento_id) return
+        const prev = dMap.get(r.apartamento_id) || { totalUsd: 0, totalBs: 0 }
+        dMap.set(r.apartamento_id, {
+          totalUsd: prev.totalUsd + Number(r.total_usd || 0),
+          totalBs: prev.totalBs + Number(r.total_bs || 0),
+        })
+      })
+      setDeudasPorApto(dMap)
 
       if (aptosRes.error) {
         console.warn('[AdminResidentes] Error cargando apartamentos:', aptosRes.error.message)
@@ -818,31 +843,88 @@ export const AdminResidentes: React.FC = () => {
                 </p>
               </div>
 
-              {saldoUsd > 0 && (
+              {/* Botones de Gestión de Saldo */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', width: isMobile ? '100%' : 'auto' }}>
                 <button
-                  onClick={() => setSaldoModalOpen(true)}
+                  type="button"
+                  onClick={() => setAbonarModalOpen(true)}
                   style={{
-                    backgroundColor: 'rgba(239, 68, 68, 0.15)',
-                    color: '#f87171',
-                    border: '1px solid rgba(239, 68, 68, 0.35)',
+                    backgroundColor: 'rgba(34, 197, 94, 0.15)',
+                    color: '#4ade80',
+                    border: '1px solid rgba(34, 197, 94, 0.4)',
                     padding: '9px 16px',
                     borderRadius: '8px',
                     cursor: 'pointer',
                     fontSize: '12.5px',
                     fontWeight: 800,
-                    width: isMobile ? '100%' : 'auto',
+                    flex: isMobile ? 1 : 'none',
                     textAlign: 'center',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     gap: '6px',
+                    boxShadow: '0 2px 10px rgba(34, 197, 94, 0.2)',
                     transition: 'all 0.2s',
                   }}
-                  title="Retirar o anular este saldo a favor con justificación inmutable en Auditoría"
+                  title="Abonar saldo positivo a la cuenta del apartamento con motivo obligatorio de auditoría"
                 >
-                  <span>🗑️</span> Quitar Saldo a Favor
+                  <span>➕</span> Abonar Saldo a Favor
                 </button>
-              )}
+
+                {saldoUsd > 0 && (deudasPorApto.get(selected.id)?.totalUsd || 0) > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setCompensarModalOpen(true)}
+                    style={{
+                      backgroundColor: 'rgba(59, 130, 246, 0.15)',
+                      color: '#60a5fa',
+                      border: '1px solid rgba(59, 130, 246, 0.4)',
+                      padding: '9px 16px',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      fontSize: '12.5px',
+                      fontWeight: 800,
+                      flex: isMobile ? 1 : 'none',
+                      textAlign: 'center',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px',
+                      transition: 'all 0.2s',
+                    }}
+                    title="Aplicar parte o todo el saldo a favor para restar de la deuda pendiente"
+                  >
+                    <span>⚡</span> Compensar Deuda
+                  </button>
+                )}
+
+                {saldoUsd > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setSaldoModalOpen(true)}
+                    style={{
+                      backgroundColor: 'rgba(239, 68, 68, 0.12)',
+                      color: '#f87171',
+                      border: '1px solid rgba(239, 68, 68, 0.35)',
+                      padding: '9px 14px',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      fontSize: '12.5px',
+                      fontWeight: 700,
+                      width: isMobile ? '100%' : 'auto',
+                      textAlign: 'center',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px',
+                      transition: 'all 0.2s',
+                    }}
+                    title="Retirar o anular este saldo a favor con justificación inmutable en Auditoría"
+                  >
+                    <span>🗑️</span> Quitar Saldo
+                  </button>
+                )}
+              </div>
             </div>
           )
         })()}
@@ -1362,6 +1444,52 @@ export const AdminResidentes: React.FC = () => {
           propietarioNombre={selected.propietario.nombre}
           saldoAFavorUsd={saldosPorApto.get(selected.id)?.saldo_a_favor_usd || 0}
           saldoAFavorBs={saldosPorApto.get(selected.id)?.saldo_a_favor_bs || 0}
+          tasaBcv={tasaBcvValida}
+          autorNombre={perfil?.nombre_completo || 'Administrador'}
+          autorEmail={user?.email || null}
+        />
+      )}
+
+      {/* Modal para Abonar Saldo Positivo (A Favor) con Motivo Obligatorio */}
+      {selected && (
+        <AbonarSaldoModal
+          isOpen={abonarModalOpen}
+          onClose={() => setAbonarModalOpen(false)}
+          onSuccess={() => {
+            setDeleteMessage({
+              type: 'success',
+              text: `Saldo positivo acreditado con éxito al Apto ${selected.apartamento}. Se asentó en Auditoría y Pagos.`
+            })
+            cargarResidentes()
+          }}
+          apartamentoId={selected.id}
+          apartamentoNumero={selected.apartamento}
+          propietarioNombre={selected.propietario.nombre}
+          deudaActualUsd={deudasPorApto.get(selected.id)?.totalUsd || 0}
+          deudaActualBs={deudasPorApto.get(selected.id)?.totalBs || 0}
+          tasaBcv={tasaBcvValida}
+          autorNombre={perfil?.nombre_completo || 'Administrador'}
+          autorEmail={user?.email || null}
+        />
+      )}
+
+      {/* Modal para Compensar Deuda Pendiente con Saldo a Favor Existente */}
+      {selected && (
+        <CompensarDeudaModal
+          isOpen={compensarModalOpen}
+          onClose={() => setCompensarModalOpen(false)}
+          onSuccess={() => {
+            setDeleteMessage({
+              type: 'success',
+              text: `Deuda del Apto ${selected.apartamento} compensada exitosamente con su Saldo a Favor disponible.`
+            })
+            cargarResidentes()
+          }}
+          apartamentoId={selected.id}
+          apartamentoNumero={selected.apartamento}
+          propietarioNombre={selected.propietario.nombre}
+          saldoAFavorDisponibleUsd={saldosPorApto.get(selected.id)?.saldo_a_favor_usd || 0}
+          deudaActualUsd={deudasPorApto.get(selected.id)?.totalUsd || 0}
           tasaBcv={tasaBcvValida}
           autorNombre={perfil?.nombre_completo || 'Administrador'}
           autorEmail={user?.email || null}

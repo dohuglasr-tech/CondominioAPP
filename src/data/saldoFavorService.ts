@@ -276,3 +276,305 @@ export function aplicarSaldoAFavor(
     saldoRestanteUsd: parseFloat(restante.toFixed(2)),
   }
 }
+
+/**
+ * Agrega saldo positivo (a favor) a la cuenta del residente con motivo obligatorio.
+ * Permite opcionalmente aplicar dicho saldo de inmediato para restar/liquidar la deuda pendiente.
+ */
+export async function abonarSaldoAFavorApartamento(params: {
+  apartamento_id: string
+  apartamento_numero: string
+  propietario_nombre?: string | null
+  monto_usd: number
+  monto_bs?: number
+  motivo: string
+  aplicar_a_deuda?: boolean
+  autor_nombre: string
+  autor_email?: string | null
+  tasaBcv?: number
+}): Promise<{ success: boolean; error?: string; amortizadoUsd?: number }> {
+  try {
+    const montoUsd = parseFloat(Number(params.monto_usd).toFixed(2))
+    if (isNaN(montoUsd) || montoUsd <= 0) {
+      return { success: false, error: 'El monto a abonar debe ser mayor a 0.' }
+    }
+
+    if (!params.motivo || params.motivo.trim().length < 4) {
+      return { success: false, error: 'Debes indicar un motivo descriptivo para el abono (mínimo 4 caracteres).' }
+    }
+
+    const tasa = params.tasaBcv && params.tasaBcv > 1 ? params.tasaBcv : 859.06
+    const montoBs = params.monto_bs && params.monto_bs > 0
+      ? parseFloat(Number(params.monto_bs).toFixed(2))
+      : parseFloat((montoUsd * tasa).toFixed(2))
+
+    const refCodigo = `ABONO-${Date.now().toString(36).toUpperCase()}`
+
+    // 1. Asentar el pago acreditado en pagos_reportados
+    const { error: errPago } = await supabase.from('pagos_reportados').insert({
+      apartamento_id: params.apartamento_id,
+      monto_usd: montoUsd,
+      monto_bs: montoBs,
+      tasa_bcv: tasa,
+      metodo_pago: 'abono_saldo_favor',
+      referencia: refCodigo,
+      banco_origen: 'Administración',
+      banco_destino: 'Billetera Comunitaria',
+      fecha_pago: new Date().toISOString().slice(0, 10),
+      fecha_revision: new Date().toISOString(),
+      estado: 'aprobado',
+      notas_admin: `Abono de Saldo a Favor por administración. Motivo: ${params.motivo.trim()}`
+    })
+
+    if (errPago) {
+      console.warn('[SaldoFavorService] Error registrando pago de abono:', errPago.message)
+    }
+
+    // 2. Registrar evento inmutable en el Historial de Auditoría
+    await registrarEventoAuditoria({
+      tipo_accion: 'ABONO_SALDO_A_FAVOR',
+      titulo: `Abono de Saldo a Favor - Apto ${params.apartamento_numero}`,
+      descripcion: `Se acreditó saldo a favor de $${montoUsd.toFixed(2)} USD (≈ Bs. ${montoBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}) al Apto ${params.apartamento_numero}. Motivo: ${params.motivo.trim()}`,
+      apartamento_id: params.apartamento_id,
+      apartamento_numero: params.apartamento_numero,
+      monto_usd: montoUsd,
+      monto_bs: montoBs,
+      motivo: params.motivo.trim(),
+      autor_nombre: params.autor_nombre || 'Administrador',
+      autor_email: params.autor_email || null,
+      datos_anteriores: null,
+      datos_nuevos: {
+        apartamento_id: params.apartamento_id,
+        apartamento_numero: params.apartamento_numero,
+        monto_usd: montoUsd,
+        monto_bs: montoBs,
+        motivo: params.motivo.trim(),
+        referencia: refCodigo,
+        aplicar_a_deuda: Boolean(params.aplicar_a_deuda)
+      }
+    })
+
+    let amortizadoUsd = 0
+
+    // 3. Si se marcó aplicar directamente a la deuda pendiente
+    if (params.aplicar_a_deuda) {
+      let remanente = montoUsd
+
+      // A) Consultar recibos pendientes del apartamento
+      const { data: recibosPendientes } = await supabase
+        .from('recibos_generados')
+        .select('*')
+        .eq('apartamento_id', params.apartamento_id)
+        .eq('estado', 'pendiente')
+        .order('mes_facturado', { ascending: true })
+
+      if (recibosPendientes && recibosPendientes.length > 0) {
+        for (const r of recibosPendientes) {
+          if (remanente <= 0.05) break
+          const rTotal = Number(r.total_usd || 0)
+
+          if (remanente >= rTotal) {
+            // Liquidar completamente el recibo
+            await supabase
+              .from('recibos_generados')
+              .update({
+                estado: 'pagado',
+                data_json: {
+                  ...(r.data_json || {}),
+                  pagado_con_saldo_favor: true,
+                  fecha_pago_saldo: new Date().toISOString(),
+                  referencia_abono: refCodigo
+                }
+              })
+              .eq('id', r.id)
+
+            remanente -= rTotal
+            amortizadoUsd += rTotal
+          }
+        }
+      }
+
+      // B) Si queda remanente o no había recibos pero hay deuda en deudas_mora
+      if (remanente > 0.05) {
+        const { data: moraRow } = await supabase
+          .from('deudas_mora')
+          .select('*')
+          .eq('apartamento_id', params.apartamento_id)
+          .eq('estado', 'activo')
+          .maybeSingle()
+
+        if (moraRow) {
+          const deudaMoraUsd = Number(moraRow.monto_usd || 0)
+          if (deudaMoraUsd > 0) {
+            const descuentoMora = Math.min(deudaMoraUsd, remanente)
+            const nuevoSaldoMora = Math.max(0, deudaMoraUsd - descuentoMora)
+            const nuevoEstado = nuevoSaldoMora <= 0.05 ? 'solventado' : 'activo'
+
+            await supabase
+              .from('deudas_mora')
+              .update({
+                monto_usd: nuevoSaldoMora,
+                monto_bs: Math.max(0, Number(moraRow.monto_bs || 0) - (descuentoMora * tasa)),
+                estado: nuevoEstado,
+                observaciones: `Amortizado $${descuentoMora.toFixed(2)} con Saldo a Favor (${refCodigo}). ${moraRow.observaciones || ''}`,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', moraRow.id)
+
+            remanente -= descuentoMora
+            amortizadoUsd += descuentoMora
+          }
+        }
+      }
+
+      // C) Si se amortizó algo, asentar evento de compensación en auditoría
+      if (amortizadoUsd > 0) {
+        await registrarEventoAuditoria({
+          tipo_accion: 'APLICAR_SALDO_A_DEUDA',
+          titulo: `Aplicación de Saldo a Deuda - Apto ${params.apartamento_numero}`,
+          descripcion: `Se amortizó un total de $${amortizadoUsd.toFixed(2)} USD de la deuda pendiente del Apto ${params.apartamento_numero} usando el abono realizado.`,
+          apartamento_id: params.apartamento_id,
+          apartamento_numero: params.apartamento_numero,
+          monto_usd: amortizadoUsd,
+          monto_bs: parseFloat((amortizadoUsd * tasa).toFixed(2)),
+          motivo: `Compensación directa al abonar: ${params.motivo.trim()}`,
+          autor_nombre: params.autor_nombre || 'Administrador',
+          autor_email: params.autor_email || null,
+          datos_anteriores: null,
+          datos_nuevos: {
+            apartamento_id: params.apartamento_id,
+            monto_amortizado_usd: amortizadoUsd,
+            remanente_a_favor_usd: Math.max(0, montoUsd - amortizadoUsd)
+          }
+        })
+      }
+    }
+
+    // Invalidar caches
+    appCache.invalidateTags(['saldos', 'recibos', 'pagos', 'mora', 'apartamentos', `saldo_${params.apartamento_id}`])
+
+    return { success: true, amortizadoUsd }
+  } catch (err: any) {
+    console.error('[SaldoFavorService] Error abonando saldo a favor:', err)
+    return { success: false, error: err.message || 'Error inesperado al abonar saldo.' }
+  }
+}
+
+/**
+ * Aplica saldo a favor existente de un residente para pagar o reducir su deuda pendiente.
+ */
+export async function aplicarSaldoAFavorADeuda(params: {
+  apartamento_id: string
+  apartamento_numero: string
+  monto_usd_a_aplicar: number
+  motivo?: string
+  autor_nombre: string
+  autor_email?: string | null
+  tasaBcv?: number
+}): Promise<{ success: boolean; error?: string; amortizadoUsd?: number }> {
+  try {
+    const monto = parseFloat(Number(params.monto_usd_a_aplicar).toFixed(2))
+    if (isNaN(monto) || monto <= 0) {
+      return { success: false, error: 'El monto a aplicar debe ser mayor a 0.' }
+    }
+
+    const tasa = params.tasaBcv && params.tasaBcv > 1 ? params.tasaBcv : 859.06
+    let remanente = monto
+    let amortizadoUsd = 0
+    const refCompensacion = `COMP-${Date.now().toString(36).toUpperCase()}`
+
+    // 1. Liquidar recibos pendientes
+    const { data: recibosPendientes } = await supabase
+      .from('recibos_generados')
+      .select('*')
+      .eq('apartamento_id', params.apartamento_id)
+      .eq('estado', 'pendiente')
+      .order('mes_facturado', { ascending: true })
+
+    if (recibosPendientes && recibosPendientes.length > 0) {
+      for (const r of recibosPendientes) {
+        if (remanente <= 0.05) break
+        const rTotal = Number(r.total_usd || 0)
+
+        if (remanente >= rTotal) {
+          await supabase
+            .from('recibos_generados')
+            .update({
+              estado: 'pagado',
+              data_json: {
+                ...(r.data_json || {}),
+                pagado_con_saldo_favor: true,
+                fecha_pago_saldo: new Date().toISOString(),
+                referencia_abono: refCompensacion
+              }
+            })
+            .eq('id', r.id)
+
+          remanente -= rTotal
+          amortizadoUsd += rTotal
+        }
+      }
+    }
+
+    // 2. Liquidar deudas_mora si aún hay saldo
+    if (remanente > 0.05) {
+      const { data: moraRow } = await supabase
+        .from('deudas_mora')
+        .select('*')
+        .eq('apartamento_id', params.apartamento_id)
+        .eq('estado', 'activo')
+        .maybeSingle()
+
+      if (moraRow) {
+        const deudaMoraUsd = Number(moraRow.monto_usd || 0)
+        if (deudaMoraUsd > 0) {
+          const desc = Math.min(deudaMoraUsd, remanente)
+          const nuevoSaldo = Math.max(0, deudaMoraUsd - desc)
+
+          await supabase
+            .from('deudas_mora')
+            .update({
+              monto_usd: nuevoSaldo,
+              monto_bs: Math.max(0, Number(moraRow.monto_bs || 0) - (desc * tasa)),
+              estado: nuevoSaldo <= 0.05 ? 'solventado' : 'activo',
+              observaciones: `Compensado $${desc.toFixed(2)} con Saldo a Favor (${refCompensacion}). ${moraRow.observaciones || ''}`,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', moraRow.id)
+
+          remanente -= desc
+          amortizadoUsd += desc
+        }
+      }
+    }
+
+    // 3. Registrar en auditoría
+    await registrarEventoAuditoria({
+      tipo_accion: 'APLICAR_SALDO_A_DEUDA',
+      titulo: `Compensación de Deuda con Saldo a Favor - Apto ${params.apartamento_numero}`,
+      descripcion: `Se aplicaron $${amortizadoUsd.toFixed(2)} USD de Saldo a Favor para amortizar la deuda del Apto ${params.apartamento_numero}. Motivo: ${params.motivo || 'Compensación de deuda autorizada por administración'}`,
+      apartamento_id: params.apartamento_id,
+      apartamento_numero: params.apartamento_numero,
+      monto_usd: amortizadoUsd,
+      monto_bs: parseFloat((amortizadoUsd * tasa).toFixed(2)),
+      motivo: params.motivo || 'Compensación de deuda autorizada por administración',
+      autor_nombre: params.autor_nombre || 'Administrador',
+      autor_email: params.autor_email || null,
+      datos_anteriores: null,
+      datos_nuevos: {
+        apartamento_id: params.apartamento_id,
+        monto_aplicado_usd: amortizadoUsd,
+        referencia: refCompensacion
+      }
+    })
+
+    // Invalidar caches
+    appCache.invalidateTags(['saldos', 'recibos', 'pagos', 'mora', 'apartamentos', `saldo_${params.apartamento_id}`])
+
+    return { success: true, amortizadoUsd }
+  } catch (err: any) {
+    console.error('[SaldoFavorService] Error aplicando saldo a deuda:', err)
+    return { success: false, error: err.message || 'Error inesperado al aplicar saldo a la deuda.' }
+  }
+}
+

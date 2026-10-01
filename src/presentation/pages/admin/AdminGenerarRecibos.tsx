@@ -85,10 +85,12 @@ export const AdminGenerarRecibos: React.FC = () => {
   const [resultado, setResultado] = useState<{ ok: number; fail: number } | null>(null)
   const [toast, setToast]         = useState<string | null>(null)
 
+  const [esIndexado, setEsIndexado] = useState(true)
+
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 4000) }
 
   const mesStr  = `${anio}-${String(mes + 1).padStart(2, '0')}-01`
-  const esHistorico = mesStr < '2026-09-01'
+  const esHistorico = !esIndexado
   const mesLabel = MESES[mes]
 
   const totalGastosUsd = gastos.reduce((s, g) => s + g.monto_usd, 0)
@@ -235,6 +237,7 @@ export const AdminGenerarRecibos: React.FC = () => {
           cargos_especiales: cargos.filter(c => c.apartamento_id === apto.id),
           fondo_reserva_pct: calc.pctApto,
           notas_residentes: notasResidentes,
+          es_indexado: esIndexado,
         },
         emitido_at: new Date().toISOString(),
       }
@@ -380,18 +383,53 @@ export const AdminGenerarRecibos: React.FC = () => {
             </div>
           </div>
 
-          {/* Banner Informativo para Carga Histórica (Administración Anterior) */}
-          {esHistorico && (
-            <div style={{ backgroundColor: '#1e1b4b', border: '1px solid #6366f1', borderRadius: '12px', padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '14px' }}>
-              <span style={{ fontSize: '26px' }}>🏛️</span>
-              <div style={{ fontSize: '13px', color: '#c7d2fe', lineHeight: '1.5' }}>
-                <strong style={{ color: '#fff', fontSize: '14px' }}>Modo Carga Histórica (Administración Anterior — {mesLabel} {anio}):</strong>
-                <br />
-                Este mes es anterior a Septiembre 2026. <strong>Esta deuda no está anclada a la tasa BCV</strong>; los cálculos en Bolívares y Dólares se calculan directamente en base a los montos cargados manualmente en los gastos. Al emitir estos recibos <strong>no se enviarán correos masivos</strong> a los copropietarios.
-                Una vez emitidos, podrás gestionarlos en <strong>Recibos Emitidos</strong> o en <strong>Mora y Deudores</strong> para marcar pagos y liquidar deudas atrasadas.
+          {/* Selector de Modalidad: Indexado al Dólar BCV vs Anclado a Bolívares */}
+          <div style={{
+            ...S.card,
+            border: esIndexado ? '1px solid rgba(34, 197, 94, 0.4)' : '1px solid rgba(59, 130, 246, 0.4)',
+            backgroundColor: esIndexado ? 'rgba(34, 197, 94, 0.05)' : 'rgba(59, 130, 246, 0.05)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: '16px',
+            flexWrap: 'wrap'
+          }}>
+            <div style={{ flex: 1, minWidth: '260px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                <span style={{ fontSize: '20px' }}>{esIndexado ? '🟢' : '🔵'}</span>
+                <strong style={{ color: '#fff', fontSize: '15px' }}>
+                  {esIndexado ? 'Recibos Indexados al Dólar (Tasa Oficial BCV)' : 'Recibos No Indexados (Anclados a Bolívares Fijos)'}
+                </strong>
               </div>
+              <p style={{ color: '#94a3b8', fontSize: '12.5px', margin: 0, lineHeight: '1.4' }}>
+                {esIndexado
+                  ? 'Al marcar SÍ, el recibo se emite anclado a la divisa ($ USD). En el portal del residente, el monto a pagar se calculará en Bolívares a la tasa oficial del BCV del día en que se realice el pago.'
+                  : 'Al marcar NO, solo se cuenta el monto expresado en Bolívares. La deuda creada al residente queda anclada a los Bolívares (fija y sin indexar).'}
+              </p>
             </div>
-          )}
+
+            <label style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '10px',
+              cursor: 'pointer',
+              userSelect: 'none',
+              backgroundColor: '#0a0a0a',
+              border: esIndexado ? '1px solid #22c55e' : '1px solid #3b82f6',
+              padding: '8px 14px',
+              borderRadius: '10px'
+            }}>
+              <input
+                type="checkbox"
+                checked={esIndexado}
+                onChange={e => setEsIndexado(e.target.checked)}
+                style={{ width: '18px', height: '18px', accentColor: '#22c55e', cursor: 'pointer' }}
+              />
+              <span style={{ fontSize: '12.5px', fontWeight: 800, color: esIndexado ? '#4ade80' : '#60a5fa' }}>
+                {esIndexado ? '✓ RECIBO INDEXADO' : '✕ NO INDEXADO (BS)'}
+              </span>
+            </label>
+          </div>
 
           {/* Resumen Gastos */}
           <div style={S.card}>

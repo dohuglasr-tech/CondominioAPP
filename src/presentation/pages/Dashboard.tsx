@@ -9,6 +9,7 @@ import { obtenerDeudasMora, TASA_RIESGO_CONFIG, DeudaMoraItem, TasaRiesgoMora } 
 import { formatAlicuotaPct, getAlicuotaPctNumber } from '../../utils/alicuota'
 import { AvisoBanner } from '../components/AvisoBanner'
 import { obtenerSaldoAFavorApartamento } from '../../data/saldoFavorService'
+import { esReciboIndexado } from '../../utils/indexacionHelper'
 
 interface PagoItem {
   id: string
@@ -45,27 +46,51 @@ export function Dashboard() {
 
   const [ultimoPago, setUltimoPago] = useState<PagoItem | null>(null)
   const [pagosRecientes, setPagosRecientes] = useState<PagoItem[]>([])
-  const [reciboPendiente, setReciboPendiente] = useState<{ id: string; total_usd: number; total_bs: number; mes_facturado: string; emitido_at: string } | null>(null)
+  const [reciboPendiente, setReciboPendiente] = useState<any | null>(null)
+  const [recibosPendientesList, setRecibosPendientesList] = useState<any[]>([])
   const [moraRecord, setMoraRecord] = useState<DeudaMoraItem | null>(null)
   const [saldoAFavor, setSaldoAFavor] = useState<number>(0)
 
   const { rate, loading: loadingRate } = useBcvRate()
   const tasaValida = rate && rate > 1 ? rate : (config?.tasa_bcv_actual && config.tasa_bcv_actual > 1 ? config.tasa_bcv_actual : 859.06)
 
-  // Deuda total: Para periodos históricos (< 2026-09) o deudas en mora previas,
-  // NO se ancla dinámicamente al BCV actual; se respeta el monto manual en Bolívares y Dólares de los gastos/deudas.
-  const esHistoricoRecibo = (reciboPendiente?.mes_facturado || '').slice(0, 7) < '2026-09'
-  const deudaUsd = moraRecord
-    ? Number(moraRecord.monto_usd || 0)
-    : (reciboPendiente ? Number(reciboPendiente.total_usd || 0) : 0)
+  // ── Cálculo consolidado y desglose de deudas ──────────────────────────────
+  // Si el recibo no está indexado (o la deuda es manual en Bs), queda fija en Bolívares.
+  // Si está indexado, se ancla al Dólar y se multiplica por la tasa BCV del día en curso.
+  let deudaFijaBs = 0
+  let deudaIndexadaUsd = 0
 
-  const deudaBs = moraRecord
-    ? (moraRecord.monto_bs > 0 ? Number(moraRecord.monto_bs) : (esHistoricoRecibo ? 0 : deudaUsd * tasaValida))
-    : reciboPendiente
-    ? (esHistoricoRecibo
-        ? Number(reciboPendiente.total_bs || 0)
-        : (reciboPendiente.total_bs > 0 ? Number(reciboPendiente.total_bs) : deudaUsd * tasaValida))
-    : 0
+  if (recibosPendientesList.length > 0) {
+    recibosPendientesList.forEach(r => {
+      if (esReciboIndexado(r)) {
+        deudaIndexadaUsd += Number(r.total_usd || 0)
+      } else {
+        deudaFijaBs += Number(r.total_bs || 0)
+      }
+    })
+  } else if (reciboPendiente) {
+    if (esReciboIndexado(reciboPendiente)) {
+      deudaIndexadaUsd += Number(reciboPendiente.total_usd || 0)
+    } else {
+      deudaFijaBs += Number(reciboPendiente.total_bs || 0)
+    }
+  }
+
+  if (moraRecord && moraRecord.origen === 'deuda_manual') {
+    if (moraRecord.moneda_principal === 'BS') {
+      deudaFijaBs += Number(moraRecord.monto_bs || 0)
+    } else if (moraRecord.moneda_principal === 'USD') {
+      deudaIndexadaUsd += Number(moraRecord.monto_usd || 0)
+    } else {
+      deudaFijaBs += Number(moraRecord.monto_bs || 0)
+      deudaIndexadaUsd += Number(moraRecord.monto_usd || 0)
+    }
+  }
+
+  const deudaIndexadaBs = deudaIndexadaUsd * tasaValida
+  const deudaBs = deudaFijaBs + deudaIndexadaBs
+  const deudaUsd = (deudaFijaBs > 0 && tasaValida > 0 ? deudaFijaBs / tasaValida : 0) + deudaIndexadaUsd
+  const tieneDeudaFijaBs = deudaFijaBs > 0.05
 
 
   // Cargar datos del apartamento y alícuota real impuesta por el administrador
@@ -134,16 +159,14 @@ export function Dashboard() {
         appCache.fetch(
           `dashboard_recibo_${targetKey}`,
           async () => {
-            if (!apartamentoId) return null
+            if (!apartamentoId) return []
             const { data } = await supabase
               .from('recibos_generados')
-              .select('id, total_usd, total_bs, mes_facturado, estado, emitido_at')
+              .select('id, total_usd, total_bs, mes_facturado, estado, emitido_at, data_json, es_indexado')
               .eq('apartamento_id', apartamentoId)
               .eq('estado', 'pendiente')
               .order('mes_facturado', { ascending: false })
-              .limit(1)
-              .maybeSingle()
-            return data
+            return data || []
           },
           { ttlMs: 3 * 60 * 1000, tags: ['recibos'], forceRefresh }
         )
@@ -153,7 +176,9 @@ export function Dashboard() {
       if (listPagos.length > 0) setUltimoPago(listPagos[0])
       else setUltimoPago(null)
 
-      if (reciboPend) setReciboPendiente(reciboPend)
+      const rList = Array.isArray(reciboPend) ? reciboPend : (reciboPend ? [reciboPend] : [])
+      setRecibosPendientesList(rList)
+      if (rList.length > 0) setReciboPendiente(rList[0])
       else setReciboPendiente(null)
 
       // Consultar si está en mora o tiene recibo emitido (<1m Azul o crónico)
@@ -464,6 +489,49 @@ export function Dashboard() {
                 {ocultarSaldos ? '••••' : `≈ $${deudaUsd.toFixed(2)} USD`}
               </span>
             </div>
+
+            {/* Desglose de Deudas por Modalidad (Bolívar Fijo vs Dólar BCV) - Solo si tiene deuda en Bolívares */}
+            {tieneDeudaFijaBs && (
+              <div style={{
+                backgroundColor: 'rgba(255, 255, 255, 0.04)',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                borderRadius: '14px',
+                padding: '12px 14px',
+                marginBottom: '16px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px'
+              }}>
+                <div style={{ color: '#94a3b8', fontSize: '10.5px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Desglose de Deudas por Modalidad:
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ color: '#93c5fd', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span>🔵</span> Deuda anclada a Bolívares:
+                  </span>
+                  <span style={{ color: '#60a5fa', fontWeight: 800, fontSize: '13px' }}>
+                    {ocultarSaldos ? '••••••' : `Bs. ${deudaFijaBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                  </span>
+                </div>
+
+                {deudaIndexadaUsd > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ color: '#86efac', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span>🟢</span> Deuda indexada al Dólar (BCV):
+                    </span>
+                    <div style={{ textAlign: 'right' }}>
+                      <span style={{ color: '#4ade80', fontWeight: 800, fontSize: '13px' }}>
+                        {ocultarSaldos ? '••••' : `$${deudaIndexadaUsd.toFixed(2)} USD`}
+                      </span>
+                      <span style={{ color: '#94a3b8', fontSize: '10.5px', display: 'block' }}>
+                        {ocultarSaldos ? '••••' : `≈ Bs. ${deudaIndexadaBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Saldo a Favor / Billetera Comunitaria */}
             {saldoAFavor > 0 && (
@@ -1127,6 +1195,49 @@ export function Dashboard() {
                     · {mesFacturadoTexto}
                   </span>
                 </div>
+
+                {/* Desglose de Deudas por Modalidad (Desktop) - Solo si tiene deuda fija en Bolívares */}
+                {tieneDeudaFijaBs && (
+                  <div style={{
+                    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                    borderRadius: '14px',
+                    padding: '14px 18px',
+                    marginTop: '16px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '10px'
+                  }}>
+                    <div style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.6px' }}>
+                      Desglose de Deudas por Modalidad:
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: '#93c5fd', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span>🔵</span> Deuda anclada a Bolívares (Monto Fijo):
+                      </span>
+                      <span style={{ color: '#60a5fa', fontWeight: 800, fontSize: '14px' }}>
+                        {ocultarSaldos ? '••••••' : `Bs. ${deudaFijaBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                      </span>
+                    </div>
+
+                    {deudaIndexadaUsd > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ color: '#86efac', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span>🟢</span> Deuda indexada al Dólar (Tasa Oficial BCV):
+                        </span>
+                        <div style={{ textAlign: 'right' }}>
+                          <span style={{ color: '#4ade80', fontWeight: 800, fontSize: '14px' }}>
+                            {ocultarSaldos ? '••••' : `$${deudaIndexadaUsd.toFixed(2)} USD`}
+                          </span>
+                          <span style={{ color: '#94a3b8', fontSize: '11px', display: 'block' }}>
+                            {ocultarSaldos ? '••••' : `≈ Bs. ${deudaIndexadaBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Saldo a Favor Desktop */}
                 {saldoAFavor > 0 && (
