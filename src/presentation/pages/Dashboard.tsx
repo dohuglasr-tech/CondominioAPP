@@ -210,8 +210,8 @@ export function Dashboard() {
   }, [apartamentoId, aptoNumero, tasaValida])
 
   useEffect(() => {
-    cargarApartamentoInfo()
-    cargarDatosResidente()
+    cargarApartamentoInfo(true)
+    cargarDatosResidente(true)
 
     if (!apartamentoId) return
 

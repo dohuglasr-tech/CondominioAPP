@@ -28,11 +28,14 @@ interface ReciboEmitido {
   total_usd: number
   total_bs: number
   estado: 'pendiente' | 'pagado'
+  es_indexado?: boolean
   data_json: {
     gastos?: Array<{ descripcion: string; monto_usd: number; monto_bs: number; categoria?: string }>
     cargos_especiales?: Array<{ tipo: string; descripcion: string; monto_usd: number; monto_bs?: number }>
     fondo_reserva_pct?: number
     notas_residentes?: string
+    es_indexado?: boolean
+    [key: string]: any
   } | null
   emitido_at: string
   // Datos unidos del apartamento y perfil
@@ -316,6 +319,37 @@ export const AdminRecibosEmitidos: React.FC = () => {
       showToast(`❌ Error: ${err.message}`)
     } finally {
       setEjecutandoBulk(false)
+    }
+  }
+
+  // ── 3.2 Cambio de Modalidad del Mes (Indexado al Dólar vs Bolívares Fijos) ──
+  const [cambiandoModalidad, setCambiandoModalidad] = useState(false)
+  const ejecutarCambioModalidadMes = async (nuevoIndexado: boolean) => {
+    if (!mesSeleccionado || recibos.length === 0) return
+    setCambiandoModalidad(true)
+    try {
+      for (const r of recibos) {
+        await supabase
+          .from('recibos_generados')
+          .update({
+            es_indexado: nuevoIndexado,
+            data_json: { ...(r.data_json || {}), es_indexado: nuevoIndexado }
+          })
+          .eq('id', r.id)
+      }
+
+      setRecibos(prev => prev.map(r => ({
+        ...r,
+        es_indexado: nuevoIndexado,
+        data_json: { ...(r.data_json || {}), es_indexado: nuevoIndexado }
+      })))
+
+      appCache.invalidateTags(['recibos', 'saldos', 'mora'])
+      showToast(`✅ Modalidad de ${mesLabelActivo} cambiada a: ${nuevoIndexado ? 'Indexado al Dólar (BCV)' : 'No Indexado (Bolívares Fijos)'}`)
+    } catch (err: any) {
+      showToast(`❌ Error: ${err.message}`)
+    } finally {
+      setCambiandoModalidad(false)
     }
   }
 
@@ -929,6 +963,41 @@ export const AdminRecibosEmitidos: React.FC = () => {
               </select>
             </div>
           )}
+
+          {/* BOTÓN CONMUTADOR DE MODALIDAD (INDEXADO DÓLAR VS BS FIJOS) */}
+          {recibos.length > 0 && (() => {
+            const esIndexadoActivo = recibos[0]?.es_indexado ?? recibos[0]?.data_json?.es_indexado ?? false
+            return (
+              <button
+                disabled={cambiandoModalidad}
+                onClick={() => {
+                  const nuevo = !esIndexadoActivo
+                  if (window.confirm(`¿Deseas cambiar la modalidad de ${mesLabelActivo} a ${nuevo ? 'INDEXADO AL DÓLAR (BCV)' : 'NO INDEXADO (Bolívares Fijos)'}? Esto actualizará la visualización de la deuda de todos los residentes para este mes.`)) {
+                    ejecutarCambioModalidadMes(nuevo)
+                  }
+                }}
+                style={{
+                  backgroundColor: esIndexadoActivo ? 'rgba(16, 185, 129, 0.15)' : 'rgba(59, 130, 246, 0.15)',
+                  color: esIndexadoActivo ? '#10b981' : '#3b82f6',
+                  border: `1px solid ${esIndexadoActivo ? 'rgba(16, 185, 129, 0.4)' : 'rgba(59, 130, 246, 0.4)'}`,
+                  padding: '8px 14px',
+                  borderRadius: '10px',
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  cursor: cambiandoModalidad ? 'wait' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  transition: 'all 0.2s',
+                  boxShadow: esIndexadoActivo ? '0 4px 12px rgba(16, 185, 129, 0.15)' : '0 4px 12px rgba(59, 130, 246, 0.15)'
+                }}
+                title="Cambiar entre deuda indexada al dólar BCV o bolívares fijos para toda la emisión de este mes"
+              >
+                <span>{esIndexadoActivo ? '🟢' : '🔵'}</span>
+                {cambiandoModalidad ? 'Actualizando...' : esIndexadoActivo ? 'Mes Indexado ($ USD)' : 'Mes No Indexado (Bs)'}
+              </button>
+            )
+          })()}
 
           {/* BOTÓN ESPECIAL: RETIRAR DEUDA / ELIMINAR EMISIÓN */}
           {recibos.length > 0 && (

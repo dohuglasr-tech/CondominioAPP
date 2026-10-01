@@ -318,11 +318,11 @@ function AppShell() {
           }
         >
           <Route index element={<Dashboard />} />
-          <Route path="gastos"     element={<GastosPanel onClose={() => {}} />} />
-          <Route path="recibos"    element={<RecibosPanel onClose={() => {}} />} />
+          <Route path="gastos"     element={<GastosPanel onClose={() => navigate('/')} />} />
+          <Route path="recibos"    element={<RecibosPanel onClose={() => navigate('/')} />} />
           <Route path="junta"      element={<JuntaCondominioResidente />} />
           <Route path="mora"       element={<ListaMoraResidente />} />
-          <Route path="chat"       element={<ChatPanel onClose={() => {}} />} />
+          <Route path="chat"       element={<ChatPanel onClose={() => navigate('/')} />} />
           <Route path="propuestas" element={<PropuestasPanel />} />
           <Route path="reportes"   element={<ReportesPanel />} />
           <Route path="perfil"     element={<PerfilResidente />} />

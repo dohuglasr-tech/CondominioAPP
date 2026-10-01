@@ -413,27 +413,50 @@ export const AdminGenerarRecibos: React.FC = () => {
               </p>
             </div>
 
-            <label style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '10px',
-              cursor: 'pointer',
-              userSelect: 'none',
-              backgroundColor: '#0a0a0a',
-              border: esIndexado ? '1px solid #22c55e' : '1px solid #3b82f6',
-              padding: '8px 14px',
-              borderRadius: '10px'
-            }}>
-              <input
-                type="checkbox"
-                checked={esIndexado}
-                onChange={e => setEsIndexado(e.target.checked)}
-                style={{ width: '18px', height: '18px', accentColor: '#22c55e', cursor: 'pointer' }}
-              />
-              <span style={{ fontSize: '12.5px', fontWeight: 800, color: esIndexado ? '#4ade80' : '#60a5fa' }}>
-                {esIndexado ? '✓ RECIBO INDEXADO' : '✕ NO INDEXADO (BS)'}
-              </span>
-            </label>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => setEsIndexado(true)}
+                style={{
+                  backgroundColor: esIndexado ? '#15803d' : '#141414',
+                  color: esIndexado ? '#fff' : '#94a3b8',
+                  border: esIndexado ? '2px solid #22c55e' : '1px solid #334155',
+                  padding: '9px 16px',
+                  borderRadius: '10px',
+                  fontSize: '13px',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  boxShadow: esIndexado ? '0 0 14px rgba(34, 197, 94, 0.4)' : 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                <span>🟢</span>
+                <span>RECIBO INDEXADO ($ USD)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setEsIndexado(false)}
+                style={{
+                  backgroundColor: !esIndexado ? '#1e40af' : '#141414',
+                  color: !esIndexado ? '#fff' : '#94a3b8',
+                  border: !esIndexado ? '2px solid #3b82f6' : '1px solid #334155',
+                  padding: '9px 16px',
+                  borderRadius: '10px',
+                  fontSize: '13px',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  boxShadow: !esIndexado ? '0 0 14px rgba(59, 130, 246, 0.4)' : 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                <span>🔵</span>
+                <span>NO INDEXADO (BS FIJOS)</span>
+              </button>
+            </div>
           </div>
 
           {/* Resumen Gastos */}
@@ -956,6 +979,12 @@ export const AdminGenerarRecibos: React.FC = () => {
                   <div><span style={{ color:'#555' }}>Total gastos $:</span> <span style={{ color:'#f97316', fontWeight:800 }}>$ {fmtUsd(totalGastosUsd)}</span></div>
                   <div><span style={{ color:'#555' }}>Total gastos Bs:</span> <span style={{ color:'#10b981', fontWeight:800 }}>Bs. {fmtBs(totalGastosBs)}</span></div>
                   <div><span style={{ color:'#555' }}>Cargos especiales:</span> <span style={{ color: cargos.length>0?'#f59e0b':'#555', fontWeight:700 }}>{cargos.length}</span></div>
+                  <div style={{ gridColumn: 'span 2', borderTop: '1px solid #222', paddingTop: '8px', marginTop: '4px' }}>
+                    <span style={{ color:'#888' }}>Modalidad de cobro:</span>{' '}
+                    <span style={{ color: esIndexado ? '#4ade80' : '#60a5fa', fontWeight: 800, fontSize: '13px' }}>
+                      {esIndexado ? '🟢 Indexado al Dólar (Tasa Oficial BCV)' : '🔵 Anclado a Bolívares Fijos'}
+                    </span>
+                  </div>
                 </div>
               </div>
 

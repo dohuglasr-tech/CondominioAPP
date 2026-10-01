@@ -441,7 +441,14 @@ export function RecibosPanel({ onClose }: Props) {
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <button
-            onClick={() => onClose ? onClose() : navigate('/')}
+            onClick={() => {
+              if (onClose && typeof onClose === 'function') {
+                try { onClose() } catch (_) {}
+              }
+              navigate('/')
+            }}
+            title="Volver al Panel Principal"
+            aria-label="Volver"
             style={{
               background: 'rgba(255, 255, 255, 0.06)',
               border: '1px solid rgba(255, 255, 255, 0.1)',
