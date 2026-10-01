@@ -5,6 +5,7 @@ import { appCache } from '../../../data/cacheService'
 import { useAuth } from '../../../application/contexts/AuthContext'
 import { despacharEmailPagoAprobado } from '../../../data/emailService'
 import { limpiarCacheMora } from '../../../data/moraService'
+import { aplicarPagoConPrelacion } from '../../../data/pagosPrelacionService'
 import { SkeletonListItem } from '../../components/Skeleton'
 
 interface PagoAdmin {
@@ -244,30 +245,29 @@ export const AdminRecibos: React.FC = () => {
         }
 
         if (aptoId) {
-          // 1. Sincronizar recibos_generados: marcar como pagados
-          const { error: errRecibo } = await supabase
-            .from('recibos_generados')
-            .update({ estado: 'pagado' })
-            .eq('apartamento_id', aptoId)
-            .eq('estado', 'pendiente')
-
-          if (errRecibo) {
-            console.error('[AdminRecibos] Error marcando recibo como pagado:', errRecibo)
+          // Aplicar pago siguiendo la prelación:
+          // 1. Deudas en Bs fijos (deuda atrasada manual y recibos no indexados)
+          // 2. Recibos indexados (se descuenta en Bs y el saldo restante queda indexado al Dólar)
+          // 3. Saldo a favor (si cubre todo o no tiene deuda indexada)
+          try {
+            const resPrelacion = await aplicarPagoConPrelacion(
+              {
+                id,
+                apartamento_id: aptoId,
+                monto_bs: Number(pagoDb?.monto_bs ?? selected?.monto_bs ?? pagoObj?.monto_bs ?? 0),
+                monto_usd: pagoDb?.monto_usd ? Number(pagoDb.monto_usd) : null,
+                referencia: pagoDb?.referencia || selected?.numero_referencia || pagoObj?.numero_referencia || 'S/R',
+                banco_origen: selected?.banco_origen || pagoObj?.banco_origen || 'Transferencia',
+                fecha_pago: pagoDb?.fecha_pago || selected?.fecha_pago || pagoObj?.fecha_pago || new Date().toISOString().slice(0, 10),
+                tasa_bcv: config?.tasa_bcv_actual || 859.06
+              },
+              config?.tasa_bcv_actual || 859.06,
+              config?.fecha_inicio_gestion
+            )
+            console.log('[AdminRecibos] Resultado conciliación con prelación:', resPrelacion)
+          } catch (errPrel) {
+            console.error('[AdminRecibos] Error aplicando prelación de pago:', errPrel)
           }
-
-          // 2. Sincronizar deudas_mora: solventar
-          const { error: errMora } = await supabase
-            .from('deudas_mora')
-            .update({ estado: 'solventado' })
-            .eq('apartamento_id', aptoId)
-            .eq('estado', 'activo')
-
-          if (errMora) {
-            console.warn('[AdminRecibos] Error solventando deudas_mora:', errMora)
-          }
-
-          // 3. Limpiar caché de mora para actualizar inmediatamente todas las vistas
-          limpiarCacheMora()
         }
 
         // 4. Despachar email automático de confirmación de pago y constancia de solvencia

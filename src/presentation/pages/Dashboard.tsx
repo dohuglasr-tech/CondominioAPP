@@ -76,7 +76,7 @@ export function Dashboard() {
     }
   }
 
-  if (moraRecord && moraRecord.origen === 'deuda_manual') {
+  if (moraRecord && moraRecord.estado === 'activo' && (moraRecord.origen === 'deuda_manual' || !moraRecord.origen)) {
     if (moraRecord.moneda_principal === 'BS') {
       deudaFijaBs += Number(moraRecord.monto_bs || 0)
     } else if (moraRecord.moneda_principal === 'USD') {

@@ -301,7 +301,7 @@ export function RecibosPanel({ onClose }: Props) {
       const esDeudaAtrasada = Boolean(recibo.data_json?.es_recibo_deuda_atrasada)
 
       const pagoAprobado = pagos.find(p => p.estado === 'aprobado')
-      const estaPagado = recibo.estado === 'pagado' || (!esHistorico && !!pagoAprobado)
+      const estaPagado = recibo.estado === 'pagado'
 
       const pagoInfo: ReciboPagoInfo | undefined = estaPagado
         ? {
@@ -701,7 +701,7 @@ export function RecibosPanel({ onClose }: Props) {
               const { mesLabel, anio } = parseMesFacturado(recibo.mes_facturado)
               const esHistorico = !esReciboIndexado(recibo, config?.fecha_inicio_gestion)
               const esDeudaAtrasada = Boolean(recibo.data_json?.es_recibo_deuda_atrasada)
-              const estaPagado = recibo.estado === 'pagado' || (!esHistorico && pagos.some(p => p.estado === 'aprobado'))
+              const estaPagado = recibo.estado === 'pagado'
               const enRevision = !estaPagado && !!pagoEnRevision
               const isExpanded = expandedReciboId === recibo.id
 
@@ -832,6 +832,32 @@ export function RecibosPanel({ onClose }: Props) {
                       </div>
                     </div>
                   </div>
+
+                  {/* Abonos parciales recibidos en este recibo */}
+                  {!estaPagado && Boolean(recibo.data_json?.abonos?.length) && (
+                    <div style={{
+                      backgroundColor: 'rgba(56, 189, 248, 0.08)',
+                      border: '1px solid rgba(56, 189, 248, 0.3)',
+                      borderRadius: '10px',
+                      padding: '10px 14px',
+                      marginBottom: '14px',
+                      fontSize: '12px',
+                      color: '#7dd3fc',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      flexWrap: 'wrap',
+                      gap: '8px'
+                    }}>
+                      <span>
+                        💸 <strong>Abono amortizado:</strong> Bs. {fmtBs((recibo.data_json?.abonos || []).reduce((s: number, a: any) => s + (Number(a.monto_bs) || 0), 0))}
+                        {recibo.data_json?.monto_original_usd ? ` (Total inicial: $${fmtUsd(recibo.data_json.monto_original_usd)} USD)` : ''}
+                      </span>
+                      <span style={{ color: '#38bdf8', fontWeight: 800 }}>
+                        Saldo adeudado {esHistorico ? 'fijo' : 'indexado'}: {esHistorico ? `Bs. ${fmtBs(recibo.total_bs)}` : `$${fmtUsd(recibo.total_usd)} USD`}
+                      </span>
+                    </div>
+                  )}
 
                   {/* Deducción de Saldo a Favor si aplica en recibo pendiente */}
                   {!estaPagado && saldoAFavor > 0 && (

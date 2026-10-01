@@ -37,7 +37,7 @@ export async function obtenerSaldoAFavorApartamento(
     `saldo_favor_${apartamento_id}_${tasaBcv}`,
     async () => {
       try {
-        const [pagosRes, recibosRes, logsAuditoria] = await Promise.all([
+        const [pagosRes, recibosRes, logsAuditoria, moraRes] = await Promise.all([
           supabase
             .from('pagos_reportados')
             .select('monto_usd, monto_bs')
@@ -45,9 +45,14 @@ export async function obtenerSaldoAFavorApartamento(
             .eq('estado', 'aprobado'),
           supabase
             .from('recibos_generados')
-            .select('total_usd, total_bs, estado')
+            .select('total_usd, total_bs, estado, data_json')
             .eq('apartamento_id', apartamento_id),
           obtenerHistorialAuditoria().catch(() => []),
+          supabase
+            .from('deudas_mora')
+            .select('monto_usd, monto_bs, estado')
+            .eq('apartamento_id', apartamento_id)
+            .maybeSingle(),
         ])
 
         // Calcular total pagado en USD
@@ -62,9 +67,15 @@ export async function obtenerSaldoAFavorApartamento(
           return sum
         }, 0)
 
-        // Calcular total facturado en USD (todos los recibos)
+        // Calcular total facturado en USD (usando montos originales de recibos para no distorsionar ante abonos)
         const recibos = recibosRes.data || []
-        const totalFacturadoUsd = recibos.reduce((sum, r) => sum + Number(r.total_usd || 0), 0)
+        let totalFacturadoUsd = recibos.reduce((sum, r) => {
+          const originalUsd = Number(r.data_json?.monto_original_usd || r.total_usd || 0)
+          return sum + originalUsd
+        }, 0)
+
+        // Si hay recibos pendientes, no puede haber saldo a favor hasta liquidarlos
+        const tienePendientes = recibos.some(r => r.estado === 'pendiente')
 
         // Consultar retiros previos de saldo a favor registrados en auditoría
         const logs = logsAuditoria || []
@@ -73,9 +84,11 @@ export async function obtenerSaldoAFavorApartamento(
         )
         const totalRetiradoUsd = retirosApto.reduce((sum, l) => sum + (Number(l.monto_usd) || 0), 0)
 
-        // Saldo a favor = (Pagado - Facturado) - Retirado por Admin
+        // Saldo a favor = (Pagado - Facturado) - Retirado por Admin (solo si no tiene recibos pendientes)
         const diffBruto = totalPagadoUsd - totalFacturadoUsd
-        const saldoNetoUsd = diffBruto > 0.05 ? Math.max(0, parseFloat((diffBruto - totalRetiradoUsd).toFixed(2))) : 0
+        const saldoNetoUsd = (!tienePendientes && diffBruto > 0.05)
+          ? Math.max(0, parseFloat((diffBruto - totalRetiradoUsd).toFixed(2)))
+          : 0
         const saldoNetoBs = saldoNetoUsd > 0 ? parseFloat((saldoNetoUsd * tasaBcv).toFixed(2)) : 0
 
         return {
