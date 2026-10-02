@@ -88,7 +88,7 @@ export interface GasServicioData {
   updatedAt: string
 }
 
-const STORAGE_GAS_KEY = 'condominio_gas_servicio_cache'
+const STORAGE_GAS_KEY = 'condominio_gas_servicio_v2'
 const DB_GAS_TIPO = 'config_gas_servicio'
 
 // Configuración limpia por defecto
@@ -182,10 +182,20 @@ export function generarDatosSemillaGas(
 
 function getLocalGasCache(): GasServicioData | null {
   try {
+    localStorage.removeItem('condominio_gas_servicio_cache')
+    localStorage.removeItem('condominio_gas_servicio_v1')
     const raw = localStorage.getItem(STORAGE_GAS_KEY)
     if (raw) {
       const parsed = JSON.parse(raw)
       if (parsed && parsed.config && Array.isArray(parsed.llenados)) {
+        const tieneDatosPrueba =
+          parsed.llenados.some((l: any) => l.id?.includes('2026-09-18') || l.id?.includes('2026-08-05') || (l.proveedor && l.proveedor.includes('PDVSA'))) ||
+          parsed.eventosCalendario?.some((e: any) => e.id?.includes('ev-recaudo-01') || e.id?.includes('ev-recaudo-02'))
+
+        if (tieneDatosPrueba) {
+          localStorage.removeItem(STORAGE_GAS_KEY)
+          return null
+        }
         return parsed
       }
     }
@@ -197,6 +207,8 @@ function getLocalGasCache(): GasServicioData | null {
 
 function saveLocalGasCache(data: GasServicioData) {
   try {
+    localStorage.removeItem('condominio_gas_servicio_cache')
+    localStorage.removeItem('condominio_gas_servicio_v1')
     localStorage.setItem(STORAGE_GAS_KEY, JSON.stringify(data))
   } catch (e) {
     console.warn('[gasService] Error guardando caché local:', e)
@@ -205,6 +217,8 @@ function saveLocalGasCache(data: GasServicioData) {
 
 export function limpiarCacheLocalGas() {
   try {
+    localStorage.removeItem('condominio_gas_servicio_cache')
+    localStorage.removeItem('condominio_gas_servicio_v1')
     localStorage.removeItem(STORAGE_GAS_KEY)
   } catch (e) {}
 }
@@ -247,6 +261,23 @@ export async function obtenerGasServicioData(forceClean: boolean = false): Promi
     if (!error && row?.descripcion && !forceClean) {
       try {
         const parsed = JSON.parse(row.descripcion) as GasServicioData
+        // Si el registro de DB aún tuviese los datos ficticios viejos, forzar limpieza
+        if (parsed.llenados?.some((l: any) => l.id?.includes('2026-09-18') || l.id?.includes('2026-08-05'))) {
+          parsed.llenados = []
+          parsed.eventosCalendario = []
+          parsed.config.nivelActualPorcentaje = 0
+          parsed.config.monedaCuota = 'BS'
+          if (parsed.jornadas?.[0]?.pagos) {
+            Object.values(parsed.jornadas[0].pagos).forEach(p => {
+              p.estado = 'pendiente'
+              p.moneda = 'BS'
+              p.referencia = ''
+              p.fechaPago = undefined
+              p.metodoPago = undefined
+            })
+          }
+          await guardarGasServicioData(parsed)
+        }
         if (parsed.config) {
           parsed.config.tasaBcv = tasaBcv
         }
@@ -270,27 +301,36 @@ export async function obtenerGasServicioData(forceClean: boolean = false): Promi
 
     // 5. Generar estructura limpia sin datos de prueba y guardarla en Supabase
     const limpia = generarDatosSemillaGas(aptosDb || [], tasaBcv)
-
-    Promise.resolve(
-      supabase
-        .from('casos_comunidad')
-        .insert({
-          tipo: DB_GAS_TIPO,
-          titulo: 'CONFIG_GAS_SERVICIO',
-          descripcion: JSON.stringify(limpia),
-          monto_usd: 0,
-          monto_bs: 0,
-          estado: 'abierto',
-          fecha: new Date().toISOString().split('T')[0]
-        })
-    )
-      .then(() => {
-        saveLocalGasCache(limpia)
-      })
-      .catch((e: any) => console.warn('[gasService] Error guardando config limpia en Supabase:', e))
-
+    limpiarCacheLocalGas()
     saveLocalGasCache(limpia)
-    return { data: limpia, error: null, fromDb: false }
+
+    try {
+      if (row?.id) {
+        await supabase
+          .from('casos_comunidad')
+          .update({
+            descripcion: JSON.stringify(limpia),
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', row.id)
+      } else {
+        await supabase
+          .from('casos_comunidad')
+          .insert({
+            tipo: DB_GAS_TIPO,
+            titulo: 'CONFIG_GAS_SERVICIO',
+            descripcion: JSON.stringify(limpia),
+            monto_usd: 0,
+            monto_bs: 0,
+            estado: 'abierto',
+            fecha: new Date().toISOString().split('T')[0]
+          })
+      }
+    } catch (e: any) {
+      console.warn('[gasService] Error guardando config limpia en Supabase:', e)
+    }
+
+    return { data: limpia, error: null, fromDb: true }
   } catch (err: any) {
     console.error('[gasService] Error en obtenerGasServicioData:', err)
     const fallback = generarDatosSemillaGas()

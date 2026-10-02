@@ -8,6 +8,7 @@ import {
   guardarEventoCalendario,
   eliminarEventoCalendario,
   calcularMetricasGas,
+  limpiarCacheLocalGas,
   GasServicioData,
   LlenadoGas,
   DetallePagoAptoGas,
@@ -93,6 +94,13 @@ export const AdminGas: React.FC = () => {
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleReiniciarLimpio = async () => {
+    if (!window.confirm('¿Deseas vaciar la memoria local y forzar la recarga limpia de gas (0% tanque, 0 llenados y lista de apartamentos en espera)?')) return
+    limpiarCacheLocalGas()
+    await cargarDatos(true)
+    showToast('Base de gas limpia recargada exitosamente')
   }
 
   useEffect(() => {
@@ -496,6 +504,27 @@ export const AdminGas: React.FC = () => {
             title="Ajustes de Cuota y Datos Bancarios"
           >
             ⚙️
+          </button>
+
+          <button
+            onClick={handleReiniciarLimpio}
+            style={{
+              backgroundColor: 'rgba(239, 68, 68, 0.12)',
+              color: '#f87171',
+              border: '1px solid rgba(239, 68, 68, 0.28)',
+              padding: '10px 14px',
+              borderRadius: '12px',
+              fontSize: '13px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+            title="Limpiar datos de prueba y forzar sincronización limpia"
+          >
+            <span>🔄</span>
+            <span>Limpiar Datos</span>
           </button>
         </div>
       </div>
