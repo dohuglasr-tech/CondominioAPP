@@ -1342,6 +1342,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
                   onClick={() => {
                     if (anioSeleccionado !== anio) {
                       setAnioSeleccionado(anio)
+                      setVistaModo('completo')
                     } else {
                       cargarDatos(true)
                     }
@@ -1511,8 +1512,12 @@ export const AdminCalendarioDeudas: React.FC = () => {
               <button
                 key={anio}
                 onClick={() => {
-                  if (anioSeleccionado !== anio) setAnioSeleccionado(anio)
-                  else cargarDatos(true)
+                  if (anioSeleccionado !== anio) {
+                    setAnioSeleccionado(anio)
+                    setVistaModo('completo')
+                  } else {
+                    cargarDatos(true)
+                  }
                 }}
                 style={{
                   backgroundColor: anioSeleccionado === anio ? '#2563eb' : 'transparent',
@@ -1565,21 +1570,23 @@ export const AdminCalendarioDeudas: React.FC = () => {
             >
               Calendario {anioSeleccionado} ($)
             </button>
-            <button
-              onClick={() => setVistaModo('historico_2025')}
-              style={{
-                backgroundColor: vistaModo === 'historico_2025' ? 'var(--color-accent, #f97316)' : 'transparent',
-                color: '#fff',
-                border: 'none',
-                borderRadius: '6px',
-                padding: '6px 12px',
-                fontSize: '11px',
-                fontWeight: 700,
-                cursor: 'pointer'
-              }}
-            >
-              Deudas Pasadas (Bs)
-            </button>
+            {columnasNaranja.length > 0 && (
+              <button
+                onClick={() => setVistaModo('historico_2025')}
+                style={{
+                  backgroundColor: vistaModo === 'historico_2025' ? 'var(--color-accent, #f97316)' : 'transparent',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '6px',
+                  padding: '6px 12px',
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  cursor: 'pointer'
+                }}
+              >
+                Deudas Pasadas (Bs)
+              </button>
+            )}
           </div>
 
           <label className="calendario-checklist-toggle" style={{
@@ -1662,7 +1669,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
                 >
                   APTO
                 </th>
-                {(vistaModo === 'completo' || vistaModo === 'historico_2025') && (
+                {columnasNaranja.length > 0 && (vistaModo === 'completo' || vistaModo === 'historico_2025') && (
                   <th
                     colSpan={columnasNaranja.length}
                     onClick={() => {
@@ -1833,7 +1840,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
                 </th>
 
                 {/* Columnas Sección Deudas Pasadas */}
-                {(vistaModo === 'completo' || vistaModo === 'historico_2025') && (
+                {columnasNaranja.length > 0 && (vistaModo === 'completo' || vistaModo === 'historico_2025') && (
                   <>
                     {columnasNaranja.map(col => (
                       <th
@@ -2290,7 +2297,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
                       </td>
 
                       {/* Celdas Sección Naranja */}
-                      {(vistaModo === 'completo' || vistaModo === 'historico_2025') && (
+                      {columnasNaranja.length > 0 && (vistaModo === 'completo' || vistaModo === 'historico_2025') && (
                         <>
                           {columnasNaranja.map(col => renderCeldaColumna(apto, col))}
                         </>
@@ -2417,7 +2424,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
                 </td>
 
                 {/* Totales Sección Naranja */}
-                {(vistaModo === 'completo' || vistaModo === 'historico_2025') && (
+                {columnasNaranja.length > 0 && (vistaModo === 'completo' || vistaModo === 'historico_2025') && (
                   <>
                     {columnasNaranja.map(col => calcularTotalColumna(col))}
                   </>

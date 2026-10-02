@@ -4,13 +4,16 @@ import { appCache } from './cacheService'
 export interface ReportePagoPayload {
   apartamento_id: string
   monto_bs: number
+  monto_usd?: number | null
+  metodo?: string
   numero_referencia: string
   banco_origen: string
   comprobante_url?: string | null
+  notas_admin?: string | null
 }
 
 /**
- * Inserta un pago pendiente en la tabla `pagos`.
+ * Inserta un pago pendiente en la tabla `pagos_reportados`.
  * El campo `estado` queda en 'pendiente' por defecto (definido en la BD).
  */
 export async function reportarPago(payload: ReportePagoPayload): Promise<{ error: string | null }> {
@@ -60,9 +63,10 @@ export async function reportarPago(payload: ReportePagoPayload): Promise<{ error
       .insert({
         apartamento_id: aptoId,
         monto_bs: payload.monto_bs,
+        monto_usd: payload.monto_usd ?? null,
         referencia: payload.numero_referencia,
-        metodo: 'transferencia_bs',
-        notas_admin: `Banco Origen: ${payload.banco_origen}`,
+        metodo: payload.metodo || 'transferencia_bs',
+        notas_admin: payload.notas_admin || `Banco Origen: ${payload.banco_origen}`,
         comprobante_url: payload.comprobante_url ?? null,
         estado: 'pendiente',
         reportado_por: authData.user.id,

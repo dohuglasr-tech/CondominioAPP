@@ -146,8 +146,7 @@ export function obtenerColumnasPorDefecto(anio = 2026): ColumnaCalendarioConfig[
   }
 
   // Plantilla limpia para 2027 y años sucesivos:
-  // Sección Naranja: Deudas acumuladas / conceptos extraordinarios
-  // Sección Azul: 12 meses completos del año en dólares ($)
+  // Completamente independiente: 12 meses del año en dólares ($), sin arrastre de deudas 2025
   const mesesNombres = [
     'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
     'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
@@ -163,22 +162,16 @@ export function obtenerColumnasPorDefecto(anio = 2026): ColumnaCalendarioConfig[
       moneda: 'USD',
       tipo: 'mes',
       mesKey: key,
-      orden: 5 + idx
+      orden: 1 + idx
     }
   })
 
-  return [
-    { id: 'deuda_2025', titulo: 'Deuda Pasada', seccion: 'naranja', moneda: 'BS', tipo: 'historico', orden: 1 },
-    { id: 'cable_viajero', titulo: 'Cable Viaj.', seccion: 'naranja', moneda: 'USD', tipo: 'historico', orden: 2 },
-    { id: 'guaya', titulo: 'Guaya', seccion: 'naranja', moneda: 'USD', tipo: 'historico', orden: 3 },
-    { id: 'arreglo', titulo: 'Arreglo', seccion: 'naranja', moneda: 'BS', tipo: 'historico', orden: 4 },
-    ...colsMeses
-  ]
+  return colsMeses
 }
 
 export function obtenerConfiguracionPorDefecto(anio = 2026): ConfiguracionCalendario {
   return {
-    tituloSeccionHistorica: anio === 2026 ? 'DEUDA AL AÑO 2025 / CONCEPTOS EXTRAORDINARIOS' : 'DEUDAS PASADAS / CONCEPTOS EXTRAORDINARIOS',
+    tituloSeccionHistorica: anio === 2026 ? 'DEUDA AL AÑO 2025 / CONCEPTOS EXTRAORDINARIOS' : '',
     tituloSeccionMensual: `CALENDARIO MENSUAL ${anio} (EMISIÓN)`,
     columnas: obtenerColumnasPorDefecto(anio),
     filasPersonalizadas: [],
@@ -243,28 +236,7 @@ export async function obtenerConfiguracionCalendario(anio: number = 2026): Promi
 
     // 2. Si no existe en Supabase y no es 2026 (ej: 2027 inicializándose por primera vez):
     if (anio !== 2026) {
-      try {
-        // Heredar columnas históricas de naranja y títulos personalizados del 2026
-        const config2026 = await obtenerConfiguracionCalendario(2026)
-        if (config2026) {
-          const colsNaranja2026 = (config2026.columnas || []).filter(c => c.seccion === 'naranja')
-          if (colsNaranja2026.length > 0) {
-            const colsMesesAnio = defaultConfig.columnas.filter(c => c.seccion === 'azul')
-            const colsCombinadas = [
-              ...colsNaranja2026.map((c, i) => ({ ...c, orden: i + 1 })),
-              ...colsMesesAnio.map((c, i) => ({ ...c, orden: colsNaranja2026.length + i + 1 }))
-            ]
-            defaultConfig.columnas = colsCombinadas
-            defaultConfig.tituloSeccionHistorica = config2026.tituloSeccionHistorica
-            defaultConfig.filasPersonalizadas = config2026.filasPersonalizadas || []
-            defaultConfig.filasOcultasIds = config2026.filasOcultasIds || []
-          }
-        }
-      } catch (err2026) {
-        console.warn('Error heredando columnas de 2026 para plantilla ' + anio, err2026)
-      }
-
-      // Guardar plantilla del nuevo año en Supabase de forma asíncrona
+      // Guardar plantilla limpia del nuevo año en Supabase de forma asíncrona
       Promise.resolve(
         supabase
           .from('casos_comunidad')
@@ -574,26 +546,29 @@ export async function obtenerMatrizCalendario(
             } catch (e) {}
           }
 
+          const es2026 = anioSeleccionado === 2026
           const esMoraSolventada = moraRow?.estado === 'solventado'
-          const deudaBase2025 = esMoraSolventada ? 0 : Number(conceptosHist.deuda_2025 || (moraRow?.monto_bs && !conceptosHist.deuda_2025 ? moraRow.monto_bs : 0))
-          const cableViajero  = esMoraSolventada ? 0 : Number(conceptosHist.cable_viajero || 0)
-          const guaya         = esMoraSolventada ? 0 : Number(conceptosHist.guaya || 0)
-          const arreglo       = esMoraSolventada ? 0 : Number(conceptosHist.arreglo || 0)
+          const deudaBase2025 = (es2026 && !esMoraSolventada) ? Number(conceptosHist.deuda_2025 || (moraRow?.monto_bs && !conceptosHist.deuda_2025 ? moraRow.monto_bs : 0)) : 0
+          const cableViajero  = (es2026 && !esMoraSolventada) ? Number(conceptosHist.cable_viajero || 0) : 0
+          const guaya         = (es2026 && !esMoraSolventada) ? Number(conceptosHist.guaya || 0) : 0
+          const arreglo       = (es2026 && !esMoraSolventada) ? Number(conceptosHist.arreglo || 0) : 0
 
           const colsParaApto = configCalendario.columnas || []
-          const mDeuda: 'USD' | 'BS' = (conceptosHist.deuda_2025_moneda as ('USD' | 'BS')) || colsParaApto.find(c => c.id === 'deuda_2025')?.moneda || 'BS'
-          const mCable: 'USD' | 'BS' = (conceptosHist.cable_viajero_moneda as ('USD' | 'BS')) || colsParaApto.find(c => c.id === 'cable_viajero')?.moneda || 'USD'
-          const mGuaya: 'USD' | 'BS' = (conceptosHist.guaya_moneda as ('USD' | 'BS')) || colsParaApto.find(c => c.id === 'guaya')?.moneda || 'USD'
-          const mArreglo: 'USD' | 'BS' = (conceptosHist.arreglo_moneda as ('USD' | 'BS')) || colsParaApto.find(c => c.id === 'arreglo')?.moneda || 'BS'
+          const mDeuda: 'USD' | 'BS' = es2026 ? ((conceptosHist.deuda_2025_moneda as ('USD' | 'BS')) || colsParaApto.find(c => c.id === 'deuda_2025')?.moneda || 'BS') : 'BS'
+          const mCable: 'USD' | 'BS' = es2026 ? ((conceptosHist.cable_viajero_moneda as ('USD' | 'BS')) || colsParaApto.find(c => c.id === 'cable_viajero')?.moneda || 'USD') : 'USD'
+          const mGuaya: 'USD' | 'BS' = es2026 ? ((conceptosHist.guaya_moneda as ('USD' | 'BS')) || colsParaApto.find(c => c.id === 'guaya')?.moneda || 'USD') : 'USD'
+          const mArreglo: 'USD' | 'BS' = es2026 ? ((conceptosHist.arreglo_moneda as ('USD' | 'BS')) || colsParaApto.find(c => c.id === 'arreglo')?.moneda || 'BS') : 'BS'
 
           const mesesMap: Record<string, ReciboMesItem | null> = {}
           let sumPendienteBs = 0
           let sumPendienteUsd = 0
 
-          if (mDeuda === 'BS') sumPendienteBs += deudaBase2025; else sumPendienteUsd += deudaBase2025
-          if (mCable === 'BS') sumPendienteBs += cableViajero; else sumPendienteUsd += cableViajero
-          if (mGuaya === 'BS') sumPendienteBs += guaya; else sumPendienteUsd += guaya
-          if (mArreglo === 'BS') sumPendienteBs += arreglo; else sumPendienteUsd += arreglo
+          if (es2026) {
+            if (mDeuda === 'BS') sumPendienteBs += deudaBase2025; else sumPendienteUsd += deudaBase2025
+            if (mCable === 'BS') sumPendienteBs += cableViajero; else sumPendienteUsd += cableViajero
+            if (mGuaya === 'BS') sumPendienteBs += guaya; else sumPendienteUsd += guaya
+            if (mArreglo === 'BS') sumPendienteBs += arreglo; else sumPendienteUsd += arreglo
+          }
           let mesesConDeuda = 0
 
           columnasMeses.forEach(col => {
@@ -647,10 +622,10 @@ export async function obtenerMatrizCalendario(
             telefono: perf?.telefono || apto.telefono_contacto || null,
             email: perf?.propietario_email || null,
 
-            deuda_base_2025: deudaBase2025,
-            cable_viajero: cableViajero,
-            guaya: guaya,
-            arreglo: arreglo,
+            deuda_base_2025: es2026 ? deudaBase2025 : 0,
+            cable_viajero: es2026 ? cableViajero : 0,
+            guaya: es2026 ? guaya : 0,
+            arreglo: es2026 ? arreglo : 0,
             monedas_conceptos: {
               deuda_base_2025: mDeuda,
               cable_viajero: mCable,
@@ -668,8 +643,8 @@ export async function obtenerMatrizCalendario(
             saldo_a_favor_usd: saldo?.saldo_a_favor_usd || 0,
             saldo_a_favor_bs: saldo?.saldo_a_favor_bs || 0,
 
-            deuda_mora_id: moraRow?.id,
-            deuda_mora_estado: moraRow?.estado
+            deuda_mora_id: es2026 ? moraRow?.id : undefined,
+            deuda_mora_estado: es2026 ? moraRow?.estado : undefined
           }
         })
 

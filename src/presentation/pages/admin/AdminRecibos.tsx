@@ -562,7 +562,7 @@ export const AdminRecibos: React.FC = () => {
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                       <p style={{ color: '#fff', fontSize: '16px', fontWeight: 700, margin: 0 }}>
-                        Apto {pago.apartamento?.numero || 'S/A'} — Bs. {pago.monto_bs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        Apto {pago.apartamento?.numero || 'S/A'} — {pago.monto_usd && Number(pago.monto_usd) > 0 ? `$${Number(pago.monto_usd).toFixed(2)} USD (Bs. ${pago.monto_bs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})` : `Bs. ${pago.monto_bs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                       </p>
                       <span style={{
                         backgroundColor: `${cfg.color}18`,

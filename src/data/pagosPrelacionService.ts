@@ -59,8 +59,11 @@ export async function aplicarPagoConPrelacion(
   fechaInicioGestion?: string | null
 ): Promise<ResultadoPrelacion> {
   const aptoId = pago.apartamento_id
-  let remanenteBs = Number(pago.monto_bs || 0)
   const tasa = Number(pago.tasa_bcv && pago.tasa_bcv > 1 ? pago.tasa_bcv : (tasaBcvActual > 1 ? tasaBcvActual : 859.06))
+  let remanenteBs = Number(pago.monto_bs || 0)
+  if (remanenteBs <= 0 && Number(pago.monto_usd || 0) > 0) {
+    remanenteBs = Number((Number(pago.monto_usd) * tasa).toFixed(2))
+  }
 
   const resultado: ResultadoPrelacion = {
     success: true,
@@ -117,11 +120,23 @@ export async function aplicarPagoConPrelacion(
         const tieneUsd = Number(moraRow.monto_usd || 0) > 0.05
         const nuevoEstado = tieneUsd ? 'activo' : 'solventado'
 
+        let conceptosHist: any = {}
+        if (moraRow.conceptos_detalle) {
+          try {
+            if (moraRow.conceptos_detalle.startsWith('{')) {
+              conceptosHist = JSON.parse(moraRow.conceptos_detalle)
+            }
+          } catch (_) {}
+        }
+        conceptosHist.deuda_2025 = 0
+        conceptosHist.actualizado_at = new Date().toISOString()
+
         await supabase
           .from('deudas_mora')
           .update({
             monto_bs: 0,
             estado: nuevoEstado,
+            conceptos_detalle: JSON.stringify(conceptosHist),
             observaciones: `Deuda Bs (Bs. ${moraBs.toFixed(2)}) cancelada con pago Ref: ${pago.referencia || 'S/R'}. ${moraRow.observaciones || ''}`.trim(),
             updated_at: new Date().toISOString()
           })
@@ -305,12 +320,26 @@ export async function aplicarPagoConPrelacion(
       const moraValorBs = moraUsd * tasa
 
       if (remanenteBs >= moraValorBs - 0.05) {
+        let conceptosHist: any = {}
+        if (moraRow.conceptos_detalle) {
+          try {
+            if (moraRow.conceptos_detalle.startsWith('{')) {
+              conceptosHist = JSON.parse(moraRow.conceptos_detalle)
+            }
+          } catch (_) {}
+        }
+        conceptosHist.cable_viajero = 0
+        conceptosHist.guaya = 0
+        conceptosHist.arreglo = 0
+        conceptosHist.actualizado_at = new Date().toISOString()
+
         await supabase
           .from('deudas_mora')
           .update({
             monto_usd: 0,
             monto_bs: 0,
             estado: 'solventado',
+            conceptos_detalle: JSON.stringify(conceptosHist),
             observaciones: `Deuda USD ($${moraUsd.toFixed(2)}) cancelada con pago Ref: ${pago.referencia || 'S/R'}. ${moraRow.observaciones || ''}`.trim(),
             updated_at: new Date().toISOString()
           })
