@@ -115,6 +115,14 @@ const ADMIN_ICONS: Record<string, React.ReactNode> = {
       <polyline points="9 12 11 14 15 10"/>
     </svg>
   ),
+  gas: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 22V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v17"/>
+      <path d="M15 9h2a2 2 0 0 1 2 2v2a2 2 0 0 0 2 2h0a2 2 0 0 0 2-2V9.83a2 2 0 0 0-.59-1.42L20.5 6.5"/>
+      <path d="M7 9h4"/>
+      <path d="M3 22h12"/>
+    </svg>
+  ),
 }
 
 const adminNav = [
@@ -125,6 +133,7 @@ const adminNav = [
   { key: 'generarRecibos', label: 'Generar Recibos', path: '/admin/generar-recibos', desc: 'Emisión masiva del mes' },
   { key: 'recibosEmitidos', label: 'Recibos Emitidos', path: '/admin/recibos-emitidos', desc: 'Historial y recibos emitidos' },
   { key: 'calendario', label: 'Calendario de Deudas', path: '/admin/calendario-deudas', desc: 'Matriz mensual de impago y mora' },
+  { key: 'gas', label: 'Gas', path: '/admin/gas', desc: 'Llenados, recaudación y morosidad' },
   { key: 'casos', label: 'Casos', path: '/admin/casos', desc: 'Multas, acuerdos y locales' },
   { key: 'mora', label: 'Mora y Deudores', path: '/admin/mora', desc: 'Deudas > 3 meses y riesgo legal' },
   { key: 'residentes', label: 'Residentes', path: '/admin/residentes', desc: 'Gestión de apartamentos' },
@@ -767,6 +776,13 @@ export const AdminLayout: React.FC = () => {
                   {ADMIN_ICONS.casos}
                 </div>
                 <span className={`offcanvas-label ${pathname.startsWith('/admin/casos') ? 'active' : ''}`}>Casos</span>
+              </button>
+
+              <button className="offcanvas-item-btn" onClick={() => navigate('/admin/gas')}>
+                <div className={`offcanvas-circle-icon ${pathname.startsWith('/admin/gas') ? 'active' : ''}`}>
+                  {ADMIN_ICONS.gas}
+                </div>
+                <span className={`offcanvas-label ${pathname.startsWith('/admin/gas') ? 'active' : ''}`}>Gas</span>
               </button>
 
               <button className="offcanvas-item-btn" onClick={() => navigate('/admin/edificio')}>

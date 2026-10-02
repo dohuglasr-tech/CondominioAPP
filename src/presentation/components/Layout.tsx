@@ -79,6 +79,14 @@ const SVG = {
       <line x1="21" y1="12" x2="9" y2="12"/>
     </svg>
   ),
+  gas: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 22V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v17"/>
+      <path d="M15 9h2a2 2 0 0 1 2 2v2a2 2 0 0 0 2 2h0a2 2 0 0 0 2-2V9.83a2 2 0 0 0-.59-1.42L20.5 6.5"/>
+      <path d="M7 9h4"/>
+      <path d="M3 22h12"/>
+    </svg>
+  ),
 }
 
 export const Layout: React.FC = () => {
@@ -114,6 +122,7 @@ export const Layout: React.FC = () => {
   const navItems: { label: string; desc: string; path: string; icon: keyof typeof SVG }[] = [
     { label: 'Inicio',               desc: 'Estado de cuenta y resumen', path: '/',           icon: 'inicio' },
     { label: 'Mis Recibos',          desc: 'Historial y recibos emitidos', path: '/recibos',  icon: 'recibos' },
+    { label: 'Servicio de Gas',      desc: 'Tanque y cuota independiente', path: '/gas',      icon: 'gas' },
     { label: 'Junta de Condominio',  desc: 'Organigrama y directiva',    path: '/junta',    icon: 'junta' },
     { label: 'Lista de Mora',        desc: 'Transparencia comunitaria',  path: '/mora',     icon: 'mora' },
     { label: 'Chat Edificio',        desc: 'Avisos y chat en vivo',      path: '/chat',     icon: 'chat' },
@@ -435,6 +444,20 @@ export const Layout: React.FC = () => {
                   {SVG.gastos}
                 </div>
                 <span className={`drawer-label ${pathname.startsWith('/gastos') ? 'active' : ''}`}>Gastos</span>
+              </button>
+
+              {/* 5. Gas Comunal */}
+              <button
+                className="drawer-item-btn"
+                onClick={() => {
+                  setDrawerOpen(false)
+                  navigate('/gas')
+                }}
+              >
+                <div className={`drawer-circle-icon ${pathname.startsWith('/gas') ? 'active' : ''}`}>
+                  {SVG.gas}
+                </div>
+                <span className={`drawer-label ${pathname.startsWith('/gas') ? 'active' : ''}`}>Gas</span>
               </button>
             </div>
           </div>

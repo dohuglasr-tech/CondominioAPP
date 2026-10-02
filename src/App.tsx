@@ -34,8 +34,10 @@ import { AdminCasos } from './presentation/pages/admin/AdminCasos'
 import { AdminMora } from './presentation/pages/admin/AdminMora'
 import { AdminCalendarioDeudas } from './presentation/pages/admin/AdminCalendarioDeudas'
 import { AdminHistorial } from './presentation/pages/admin/AdminHistorial'
+import { AdminGas } from './presentation/pages/admin/AdminGas'
 import { ListaMoraResidente } from './presentation/pages/ListaMoraResidente'
 import { JuntaCondominioResidente } from './presentation/pages/JuntaCondominioResidente'
+import { GasResidente } from './presentation/pages/GasResidente'
 import { Register } from './presentation/pages/Register'
 import { InactivityManager } from './presentation/components/InactivityManager'
 
@@ -309,6 +311,7 @@ function AppShell() {
           <Route path="casos"      element={<AdminCasos />} />
           <Route path="mora"       element={<AdminMora />} />
           <Route path="calendario-deudas" element={<AdminCalendarioDeudas />} />
+          <Route path="gas"        element={<AdminGas />} />
           <Route path="historial"  element={<AdminHistorial />} />
         </Route>
 
@@ -323,6 +326,7 @@ function AppShell() {
           <Route index element={<Dashboard />} />
           <Route path="gastos"     element={<GastosPanel onClose={() => navigate('/')} />} />
           <Route path="recibos"    element={<RecibosPanel onClose={() => navigate('/')} />} />
+          <Route path="gas"        element={<GasResidente />} />
           <Route path="junta"      element={<JuntaCondominioResidente />} />
           <Route path="mora"       element={<ListaMoraResidente />} />
           <Route path="chat"       element={<ChatPanel onClose={() => navigate('/')} />} />
