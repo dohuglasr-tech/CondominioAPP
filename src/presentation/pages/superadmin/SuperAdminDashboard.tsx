@@ -1105,7 +1105,7 @@ export const SuperAdminDashboard: React.FC = () => {
                         }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#38bdf8', fontWeight: 700 }}>
                             <span>🌐</span>
-                            <span style={{ fontFamily: 'monospace' }}>{b.slug || slugifyBuildingName(b.nombre_edificio)}.domus.ve</span>
+                            <span style={{ fontFamily: 'monospace' }}>/e/{b.slug || slugifyBuildingName(b.nombre_edificio)}</span>
                           </div>
                           <button
                             type="button"
@@ -2629,8 +2629,8 @@ export const SuperAdminDashboard: React.FC = () => {
                           color: '#38bdf8', padding: '10px', fontSize: '13px', fontFamily: 'monospace', fontWeight: 700
                         }}
                       />
-                      <span style={{ padding: '0 10px', color: '#64748b', fontSize: '12px', fontWeight: 600 }}>
-                        .domus.ve
+                      <span style={{ padding: '0 10px', color: '#64748b', fontSize: '11px', fontWeight: 600 }}>
+                        /e/portal
                       </span>
                     </div>
                   </div>
