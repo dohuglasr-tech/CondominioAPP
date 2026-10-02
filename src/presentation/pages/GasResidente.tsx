@@ -73,13 +73,14 @@ export const GasResidente: React.FC = () => {
       }}>
         <div style={{ fontSize: '36px', marginBottom: '14px' }}>⛽</div>
         <div style={{ fontWeight: 700, fontSize: '15px', color: '#fff' }}>Consultando estado del gas comunal...</div>
-        <div style={{ fontSize: '12px', marginTop: '4px' }}>Sincronizando nivel del tanque y pagos comunitarios</div>
+        <div style={{ fontSize: '12px', marginTop: '4px' }}>Sincronizando nivel del tanque y cuotas del edificio</div>
       </div>
     )
   }
 
   const isSolvente = miDeuda ? !miDeuda.tieneDeuda : true
   const datosPago = data?.config.datosPago
+  const esDeudaBs = miDeuda?.monedaPrincipal === 'BS'
 
   return (
     <div style={{
@@ -98,7 +99,7 @@ export const GasResidente: React.FC = () => {
           </h1>
         </div>
         <p style={{ color: '#a1a1aa', fontSize: '13px', margin: 0 }}>
-          Tanque central, estado de recargas y cuota comunitaria independiente del condominio.
+          Tanque central, estado de recargas y cuota comunitaria independiente del recibo de condominio.
         </p>
       </div>
 
@@ -153,7 +154,7 @@ export const GasResidente: React.FC = () => {
               Tu apartamento está solvente con el gas
             </div>
             <p style={{ color: '#a1a1aa', fontSize: '13px', margin: '0 0 14px', lineHeight: 1.5 }}>
-              La cuota para la jornada actual ({miDeuda?.campanaTitulo || 'Octubre 2026'}) fue debidamente conciliada. ¡Gracias por contribuir oportunamente con la recarga del tanque!
+              La cuota para la jornada actual ({miDeuda?.campanaTitulo || 'Recaudación de Gas'}) se encuentra al día. ¡Gracias por tu puntualidad vecinal!
             </p>
 
             {miDeuda?.detallePago?.referencia && (
@@ -177,21 +178,35 @@ export const GasResidente: React.FC = () => {
           </div>
         ) : (
           <div>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '4px' }}>
-              <span style={{ fontSize: '32px', fontWeight: 900, color: '#ef4444' }}>
-                ${(miDeuda?.montoUsd || 5).toFixed(2)} USD
-              </span>
-              <span style={{ fontSize: '14px', color: '#a1a1aa' }}>
-                ≈ Bs. {(miDeuda?.montoBs || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </span>
+            {/* Monto de la deuda: Si la moneda es Bolívares, se destaca primero y prominentemente en Bs. */}
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
+              {esDeudaBs ? (
+                <>
+                  <span style={{ fontSize: '32px', fontWeight: 900, color: '#ef4444' }}>
+                    Bs. {(miDeuda?.montoBs || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                  <span style={{ fontSize: '14px', color: '#a1a1aa' }}>
+                    (≈ ${(miDeuda?.montoUsd || 0).toFixed(2)} USD a tasa BCV)
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span style={{ fontSize: '32px', fontWeight: 900, color: '#ef4444' }}>
+                    ${(miDeuda?.montoUsd || 5).toFixed(2)} USD
+                  </span>
+                  <span style={{ fontSize: '14px', color: '#a1a1aa' }}>
+                    ≈ Bs. {(miDeuda?.montoBs || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </>
+              )}
             </div>
 
             <p style={{ color: '#fca5a5', fontSize: '12px', margin: '0 0 16px', lineHeight: 1.4 }}>
-              *Cuota de gas comunal para reposición del tanque. Recuerda que este pago se realiza directamente a la cuenta del gas por fuera del recibo ordinario.
+              *Cuota de gas comunal para la recarga del tanque. Recuerda que este pago se efectúa directamente a la cuenta del gas, por fuera del recibo ordinario de condominio.
             </p>
 
             {/* Fecha Límite */}
-            {miDeuda?.fechaLimite && (
+            {miDeuda?.fechaLimite ? (
               <div style={{
                 backgroundColor: 'rgba(239, 68, 68, 0.12)',
                 border: '1px solid rgba(239, 68, 68, 0.25)',
@@ -208,7 +223,7 @@ export const GasResidente: React.FC = () => {
                 <span>⏳</span>
                 <span>Fecha límite de recaudación: <b>{miDeuda.fechaLimite}</b></span>
               </div>
-            )}
+            ) : null}
 
             {/* Datos Bancarios para Pagar Gas */}
             {datosPago && (
@@ -253,9 +268,9 @@ export const GasResidente: React.FC = () => {
                   gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
                   gap: '8px 16px'
                 }}>
-                  <div><span style={{ color: '#a1a1aa' }}>Banco:</span> <b>{datosPago.banco}</b></div>
-                  <div><span style={{ color: '#a1a1aa' }}>Teléfono:</span> <b>{datosPago.telefono}</b></div>
-                  <div><span style={{ color: '#a1a1aa' }}>C.I. / RIF:</span> <b>{datosPago.rifCedula}</b></div>
+                  <div><span style={{ color: '#a1a1aa' }}>Banco:</span> <b>{datosPago.banco || 'Por definir'}</b></div>
+                  <div><span style={{ color: '#a1a1aa' }}>Teléfono:</span> <b>{datosPago.telefono || 'Por definir'}</b></div>
+                  <div><span style={{ color: '#a1a1aa' }}>C.I. / RIF:</span> <b>{datosPago.rifCedula || 'Por definir'}</b></div>
                   <div><span style={{ color: '#a1a1aa' }}>Titular:</span> <b>{datosPago.titular}</b></div>
                 </div>
 
@@ -269,7 +284,7 @@ export const GasResidente: React.FC = () => {
                   justifyContent: 'space-between',
                   alignItems: 'center'
                 }}>
-                  <span>Monto exacto en Bs: <b>Bs. {(miDeuda?.montoBs || 0).toFixed(2)}</b></span>
+                  <span>Monto exacto en Bolívares: <b>Bs. {(miDeuda?.montoBs || 0).toFixed(2)}</b></span>
                   <button
                     onClick={copyBsAmount}
                     style={{
@@ -316,7 +331,7 @@ export const GasResidente: React.FC = () => {
               padding: '2px 8px',
               borderRadius: '999px'
             }}>
-              {metricas.nivelEstado.toUpperCase()}
+              {metricas.nivelPct > 0 ? metricas.nivelEstado.toUpperCase() : 'PENDIENTE CARGA'}
             </span>
           </div>
 
@@ -330,7 +345,7 @@ export const GasResidente: React.FC = () => {
               </span>
             </div>
             <div style={{ textAlign: 'right', fontSize: '12px', color: '#a1a1aa' }}>
-              Autonomía: <b style={{ color: '#fff' }}>~{metricas.diasAutonomia} días</b>
+              Autonomía: <b style={{ color: '#fff' }}>{metricas.diasAutonomia > 0 ? `~${metricas.diasAutonomia} días` : 'Sin estimar'}</b>
             </div>
           </div>
 
@@ -365,14 +380,14 @@ export const GasResidente: React.FC = () => {
             <div>
               <div style={{ fontSize: '11px', color: '#a1a1aa' }}>Último Llenado Realizado:</div>
               <div style={{ fontWeight: 700, fontSize: '13px', marginTop: '2px' }}>
-                {metricas.ultimoLlenado?.fecha || '18/09/2026'} ({metricas.ultimoLlenado?.litrosCargados || 2000} L)
+                {metricas.ultimoLlenado?.fecha || 'Sin registro previo'}
               </div>
             </div>
 
             <div>
               <div style={{ fontSize: '11px', color: '#a1a1aa' }}>Proveedor del Servicio:</div>
               <div style={{ fontWeight: 700, fontSize: '13px', marginTop: '2px', color: 'var(--color-accent, #f97316)' }}>
-                {data?.config.proveedorActual || 'Gas Comunal / PDVSA Gas'}
+                {data?.config.proveedorActual || 'Por registrar'}
               </div>
             </div>
           </div>
@@ -431,9 +446,9 @@ export const GasResidente: React.FC = () => {
             }} />
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#a1a1aa' }}>
-            <span>Recaudado: <b style={{ color: '#fff' }}>${metricas.totalRecaudadoUsd.toFixed(2)} USD</b></span>
-            <span>Meta para la cisterna: <b style={{ color: '#fff' }}>${metricas.metaUsd.toFixed(2)} USD</b></span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#a1a1aa', flexWrap: 'wrap', gap: '4px' }}>
+            <span>Recaudado: <b style={{ color: '#fff' }}>Bs. {metricas.totalRecaudadoBs.toLocaleString('es-VE')} (${metricas.totalRecaudadoUsd.toFixed(2)} USD)</b></span>
+            <span>Meta: <b style={{ color: '#fff' }}>Bs. {metricas.metaBs.toLocaleString('es-VE')}</b></span>
           </div>
         </div>
       )}
@@ -448,52 +463,65 @@ export const GasResidente: React.FC = () => {
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
           <span style={{ fontSize: '18px' }}>📜</span>
           <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 800 }}>
-            Historial de Llenados y Cisternas
+            Historial de Descargas de Gas
           </h3>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          {data?.llenados.map(ll => {
-            const isCompletado = ll.estado === 'completado'
-            return (
-              <div
-                key={ll.id}
-                style={{
-                  padding: '12px 14px',
-                  borderRadius: '12px',
-                  backgroundColor: 'rgba(255, 255, 255, 0.03)',
-                  border: '1px solid rgba(255, 255, 255, 0.06)',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  fontSize: '12px'
-                }}
-              >
-                <div>
-                  <div style={{ fontWeight: 800, fontSize: '13px', color: '#fff' }}>
-                    {ll.litrosCargados.toLocaleString()} L · {ll.proveedor}
+        {(!data?.llenados || data.llenados.length === 0) ? (
+          <div style={{
+            padding: '24px',
+            textAlign: 'center',
+            color: '#71717a',
+            fontSize: '12px',
+            backgroundColor: 'rgba(255, 255, 255, 0.02)',
+            borderRadius: '12px'
+          }}>
+            No hay registros de descargas de gas registradas aún.
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {data.llenados.map(ll => {
+              const isCompletado = ll.estado === 'completado'
+              return (
+                <div
+                  key={ll.id}
+                  style={{
+                    padding: '12px 14px',
+                    borderRadius: '12px',
+                    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+                    border: '1px solid rgba(255, 255, 255, 0.06)',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    fontSize: '12px'
+                  }}
+                >
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: '13px', color: '#fff' }}>
+                      {ll.litrosCargados.toLocaleString()} L · {ll.proveedor || 'Cisterna'}
+                    </div>
+                    <div style={{ color: '#a1a1aa', marginTop: '2px' }}>
+                      Fecha: <b>{ll.fecha}</b> {ll.responsableRecibio ? `· Responsable: ${ll.responsableRecibio}` : ''}
+                    </div>
                   </div>
-                  <div style={{ color: '#a1a1aa', marginTop: '2px' }}>
-                    Fecha: <b>{ll.fecha}</b> · Responsable: {ll.responsableRecibio}
-                  </div>
-                </div>
 
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontWeight: 800, color: '#22c55e' }}>
-                    ${ll.costoTotalUsd.toFixed(2)} USD
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontWeight: 800, color: '#22c55e' }}>
+                      {ll.costoTotalBs > 0 ? `Bs. ${ll.costoTotalBs.toLocaleString('es-VE')}` : `$${ll.costoTotalUsd.toFixed(2)} USD`}
+                    </div>
+                    <span style={{
+                      fontSize: '10px',
+                      fontWeight: 700,
+                      color: isCompletado ? '#22c55e' : 'var(--color-accent, #f97316)'
+                    }}>
+                      {ll.estado.toUpperCase()}
+                    </span>
                   </div>
-                  <span style={{
-                    fontSize: '10px',
-                    fontWeight: 700,
-                    color: isCompletado ? '#22c55e' : 'var(--color-accent, #f97316)'
-                  }}>
-                    {ll.estado.toUpperCase()}
-                  </span>
                 </div>
-              </div>
-            )
-          })}
-        </div>
+              )
+            })}
+          </div>
+        )}
       </div>
     </div>
   )

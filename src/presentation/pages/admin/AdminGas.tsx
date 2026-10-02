@@ -10,7 +10,6 @@ import {
   calcularMetricasGas,
   GasServicioData,
   LlenadoGas,
-  EventoDiarioGas,
   DetallePagoAptoGas,
   TanqueGasConfig
 } from '../../../data/gasService'
@@ -27,45 +26,52 @@ export const AdminGas: React.FC = () => {
 
   // Estado del Calendario
   const [calAnio, setCalAnio] = useState<number>(2026)
-  const [calMes, setCalMes] = useState<number>(10) // 1-12 (Octubre)
-  const [diaSeleccionado, setDiaSeleccionado] = useState<string | null>('2026-10-06')
+  const [calMes, setCalMes] = useState<number>(10) // 1-12
+  const [diaSeleccionado, setDiaSeleccionado] = useState<string | null>(new Date().toISOString().slice(0, 10))
 
   // Modales
   const [modalNivelTanqueOpen, setModalNivelTanqueOpen] = useState(false)
-  const [nuevoNivelTanque, setNuevoNivelTanque] = useState<number>(68)
+  const [nuevoNivelTanque, setNuevoNivelTanque] = useState<number>(0)
 
   const [modalLlenadoOpen, setModalLlenadoOpen] = useState(false)
   const [formLlenado, setFormLlenado] = useState({
     fecha: new Date().toISOString().slice(0, 10),
-    porcentajeInicial: 20,
-    porcentajeFinal: 95,
-    litrosCargados: 2000,
-    costoTotalUsd: 290,
-    proveedor: 'Gas Comunal / PDVSA Cisterna',
+    porcentajeInicial: 0,
+    porcentajeFinal: 100,
+    litrosCargados: 2500,
+    monedaCosto: 'BS' as 'BS' | 'USD',
+    costoMonto: '',
+    proveedor: '',
     numeroFacturaGuia: '',
-    responsableRecibio: 'Dohuglas Guevara / Administración',
+    responsableRecibio: '',
     estado: 'completado' as 'completado' | 'programado',
     observaciones: ''
   })
 
+  // Modal Evento / Recaudación diaria
   const [modalEventoOpen, setModalEventoOpen] = useState(false)
   const [formEvento, setFormEvento] = useState({
-    fecha: '2026-10-06',
+    fecha: new Date().toISOString().slice(0, 10),
     tipo: 'recaudacion' as 'recaudacion' | 'llenado' | 'cierre_cobro' | 'mantenimiento' | 'otro',
     titulo: '',
     descripcion: '',
-    montoUsd: ''
+    moneda: 'BS' as 'BS' | 'USD',
+    monto: ''
   })
 
+  // Modal Pago Apartamento
   const [modalPagoOpen, setModalPagoOpen] = useState(false)
   const [aptoParaPagar, setAptoParaPagar] = useState<DetallePagoAptoGas | null>(null)
   const [formPago, setFormPago] = useState({
     fechaPago: new Date().toISOString().slice(0, 10),
-    metodoPago: 'pago_movil' as 'pago_movil' | 'transferencia' | 'efectivo_usd' | 'efectivo_bs' | 'otro',
+    moneda: 'BS' as 'BS' | 'USD',
+    monto: '',
+    metodoPago: 'pago_movil' as 'pago_movil' | 'transferencia' | 'efectivo_bs' | 'efectivo_usd' | 'otro',
     referencia: '',
     observaciones: ''
   })
 
+  // Modal Configuración
   const [modalConfigOpen, setModalConfigOpen] = useState(false)
   const [formConfig, setFormConfig] = useState<TanqueGasConfig | null>(null)
 
@@ -74,13 +80,12 @@ export const AdminGas: React.FC = () => {
     setTimeout(() => setToastMsg(null), 3500)
   }
 
-  // Cargar datos
-  const cargarDatos = async () => {
+  const cargarDatos = async (forceClean: boolean = false) => {
     setLoading(true)
     try {
-      const res = await obtenerGasServicioData()
+      const res = await obtenerGasServicioData(forceClean)
       setData(res.data)
-      setNuevoNivelTanque(res.data.config.nivelActualPorcentaje)
+      setNuevoNivelTanque(res.data.config.nivelActualPorcentaje || 0)
       setFormConfig(res.data.config)
     } catch (err: any) {
       console.error('Error cargando gas:', err)
@@ -94,13 +99,11 @@ export const AdminGas: React.FC = () => {
     cargarDatos()
   }, [])
 
-  // Métricas
   const metricas = useMemo(() => {
     if (!data) return null
     return calcularMetricasGas(data)
   }, [data])
 
-  // Lista de apartamentos ordenada
   const apartamentosList = useMemo(() => {
     if (!data || !metricas?.jornadaActiva) return []
     const raw = Object.values(metricas.jornadaActiva.pagos)
@@ -112,7 +115,6 @@ export const AdminGas: React.FC = () => {
     })
   }, [data, metricas])
 
-  // Apartamentos filtrados
   const apartamentosFiltrados = useMemo(() => {
     return apartamentosList.filter(item => {
       if (filtroEstado === 'morosos' && item.estado !== 'pendiente') return false
@@ -128,17 +130,14 @@ export const AdminGas: React.FC = () => {
     })
   }, [apartamentosList, filtroEstado, busquedaApto])
 
-  // Eventos para el día seleccionado
   const eventosDelDia = useMemo(() => {
     if (!data || !diaSeleccionado) return []
     return data.eventosCalendario.filter(e => e.fecha === diaSeleccionado)
   }, [data, diaSeleccionado])
 
-  // Generador de días del mes en calendario
   const diasCalendario = useMemo(() => {
     const totalDias = new Date(calAnio, calMes, 0).getDate()
-    const primerDiaSemana = new Date(calAnio, calMes - 1, 1).getDay() // 0 = Domingo
-    // Ajustar a Lunes = 0, Domingo = 6
+    const primerDiaSemana = new Date(calAnio, calMes - 1, 1).getDay()
     const offset = primerDiaSemana === 0 ? 6 : primerDiaSemana - 1
 
     const celdas: { diaNum: number | null; fechaIso: string | null }[] = []
@@ -153,9 +152,8 @@ export const AdminGas: React.FC = () => {
     return celdas
   }, [calAnio, calMes])
 
-  // Mapa de eventos por fecha para el calendario
   const eventosPorFecha = useMemo(() => {
-    const map = new Map<string, EventoDiarioGas[]>()
+    const map = new Map<string, any[]>()
     if (!data) return map
     data.eventosCalendario.forEach(ev => {
       const arr = map.get(ev.fecha) || []
@@ -165,7 +163,6 @@ export const AdminGas: React.FC = () => {
     return map
   }, [data])
 
-  // Guardar nivel de tanque
   const handleGuardarNivelTanque = async () => {
     const res = await actualizarConfigTanque({ nivelActualPorcentaje: nuevoNivelTanque })
     if (res.success && res.data) {
@@ -177,16 +174,38 @@ export const AdminGas: React.FC = () => {
     }
   }
 
-  // Guardar nuevo llenado
   const handleGuardarLlenado = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!data) return
-    const tasa = data.config.tasaBcv
-    const payload: Omit<LlenadoGas, 'id'> = {
-      ...formLlenado,
-      costoTotalBs: Number((formLlenado.costoTotalUsd * tasa).toFixed(2)),
-      tasaBcv: tasa
+    const tasa = data.config.tasaBcv || 859.06
+    const costoNum = Number(formLlenado.costoMonto) || 0
+
+    let costoTotalBs = 0
+    let costoTotalUsd = 0
+
+    if (formLlenado.monedaCosto === 'BS') {
+      costoTotalBs = costoNum
+      costoTotalUsd = tasa > 0 ? Number((costoNum / tasa).toFixed(2)) : 0
+    } else {
+      costoTotalUsd = costoNum
+      costoTotalBs = Number((costoNum * tasa).toFixed(2))
     }
+
+    const payload: Omit<LlenadoGas, 'id'> = {
+      fecha: formLlenado.fecha,
+      porcentajeInicial: formLlenado.porcentajeInicial,
+      porcentajeFinal: formLlenado.porcentajeFinal,
+      litrosCargados: Number(formLlenado.litrosCargados) || 0,
+      costoTotalBs,
+      costoTotalUsd,
+      tasaBcv: tasa,
+      proveedor: formLlenado.proveedor.trim(),
+      numeroFacturaGuia: formLlenado.numeroFacturaGuia.trim(),
+      responsableRecibio: formLlenado.responsableRecibio.trim(),
+      estado: formLlenado.estado,
+      observaciones: formLlenado.observaciones.trim()
+    }
+
     const res = await registrarLlenado(payload)
     if (res.success && res.data) {
       setData(res.data)
@@ -197,7 +216,6 @@ export const AdminGas: React.FC = () => {
     }
   }
 
-  // Eliminar llenado
   const handleEliminarLlenado = async (id: string) => {
     if (!window.confirm('¿Seguro que deseas eliminar este registro de llenado?')) return
     const res = await eliminarLlenado(id)
@@ -207,63 +225,99 @@ export const AdminGas: React.FC = () => {
     }
   }
 
-  // Guardar evento de calendario
+  // Guardar evento de recaudación por día (con opción de Bs. o USD)
   const handleGuardarEvento = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!formEvento.titulo.trim()) {
-      showToast('Ingresa un título para el evento')
+      showToast('Ingresa un título para el registro')
       return
     }
-    const monto = Number(formEvento.montoUsd) || 0
+    const monto = Number(formEvento.monto) || 0
     const tasa = data?.config.tasaBcv || 859.06
+
+    let montoBs = 0
+    let montoUsd = 0
+
+    if (formEvento.moneda === 'BS') {
+      montoBs = monto
+      montoUsd = tasa > 0 ? Number((monto / tasa).toFixed(2)) : 0
+    } else {
+      montoUsd = monto
+      montoBs = Number((monto * tasa).toFixed(2))
+    }
+
     const res = await guardarEventoCalendario({
       fecha: formEvento.fecha,
       tipo: formEvento.tipo,
       titulo: formEvento.titulo.trim(),
       descripcion: formEvento.descripcion.trim(),
-      montoUsd: monto,
-      montoBs: Number((monto * tasa).toFixed(2))
+      moneda: formEvento.moneda,
+      montoBs,
+      montoUsd
     })
+
     if (res.success && res.data) {
       setData(res.data)
       setModalEventoOpen(false)
-      showToast('Evento registrado en el calendario')
+      showToast('Registro diario guardado en el calendario')
     }
   }
 
-  // Eliminar evento de calendario
   const handleEliminarEvento = async (id: string) => {
     const res = await eliminarEventoCalendario(id)
     if (res.success && res.data) {
       setData(res.data)
-      showToast('Evento eliminado del calendario')
+      showToast('Registro eliminado del calendario')
     }
   }
 
-  // Abrir modal pago
   const abrirModalPago = (apto: DetallePagoAptoGas) => {
     setAptoParaPagar(apto)
+    const moneda = (apto.moneda as 'BS' | 'USD') || data?.config.monedaCuota || 'BS'
+    const montoDefecto = moneda === 'BS'
+      ? (apto.montoBs || data?.config.costoPorAptoDefectoBs || 0)
+      : (apto.montoUsd || data?.config.costoPorAptoDefectoUsd || 0)
+
     setFormPago({
       fechaPago: new Date().toISOString().slice(0, 10),
-      metodoPago: (apto.metodoPago as any) || 'pago_movil',
+      moneda,
+      monto: montoDefecto ? String(montoDefecto) : '',
+      metodoPago: (apto.metodoPago as any) || (moneda === 'BS' ? 'pago_movil' : 'efectivo_usd'),
       referencia: apto.referencia || '',
       observaciones: apto.observaciones || ''
     })
     setModalPagoOpen(true)
   }
 
-  // Confirmar pago de apartamento
   const handleConfirmarPago = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!data || !metricas?.jornadaActiva || !aptoParaPagar) return
+    const tasa = data.config.tasaBcv || 859.06
+    const montoNum = Number(formPago.monto) || 0
+
+    let montoBs = 0
+    let montoUsd = 0
+
+    if (formPago.moneda === 'BS') {
+      montoBs = montoNum
+      montoUsd = tasa > 0 ? Number((montoNum / tasa).toFixed(2)) : 0
+    } else {
+      montoUsd = montoNum
+      montoBs = Number((montoNum * tasa).toFixed(2))
+    }
+
     const key = aptoParaPagar.apartamentoId || aptoParaPagar.apartamentoNumero
     const res = await togglePagoApartamento(metricas.jornadaActiva.id, key, {
       estado: 'pagado',
       fechaPago: formPago.fechaPago,
+      moneda: formPago.moneda,
+      montoBs,
+      montoUsd,
       metodoPago: formPago.metodoPago,
       referencia: formPago.referencia.trim(),
       observaciones: formPago.observaciones.trim()
     })
+
     if (res.success && res.data) {
       setData(res.data)
       setModalPagoOpen(false)
@@ -273,7 +327,6 @@ export const AdminGas: React.FC = () => {
     }
   }
 
-  // Revertir pago a pendiente
   const handleRevertirPago = async (apto: DetallePagoAptoGas) => {
     if (!data || !metricas?.jornadaActiva) return
     if (!window.confirm(`¿Revertir Apto ${apto.apartamentoNumero} a estado DEUDA PENDIENTE?`)) return
@@ -285,11 +338,10 @@ export const AdminGas: React.FC = () => {
     })
     if (res.success && res.data) {
       setData(res.data)
-      showToast(`Apto ${apto.apartamentoNumero} marcado como pendiente`)
+      showToast(`Apto ${apto.apartamentoNumero} marcado como deuda pendiente`)
     }
   }
 
-  // Guardar configuración general
   const handleGuardarConfig = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!formConfig) return
@@ -303,25 +355,29 @@ export const AdminGas: React.FC = () => {
     }
   }
 
-  // Enviar mensaje por WhatsApp
   const handleCobroWhatsapp = (apto: DetallePagoAptoGas) => {
-    const telefono = ''
+    const isBs = data?.config.monedaCuota === 'BS'
+    const textoMonto = isBs
+      ? `Bs. ${(apto.montoBs || data?.config.costoPorAptoDefectoBs || 0).toLocaleString('es-VE')}`
+      : `$${(apto.montoUsd || data?.config.costoPorAptoDefectoUsd || 0).toFixed(2)} USD (≈ Bs. ${(apto.montoBs || 0).toLocaleString('es-VE')})`
+
     const msg = encodeURIComponent(
-      `Hola vecino(a) del Apto ${apto.apartamentoNumero} (${apto.propietario || ''}), le recordamos que la cuota del servicio de gas comunal para el llenado del tanque (${metricas?.jornadaActiva?.titulo || 'Octubre 2026'}) por monto de $${(apto.montoUsd || 5).toFixed(2)} USD (aprox. Bs. ${(apto.montoBs || 0).toLocaleString('es-VE')}) está pendiente por conciliar. Agradecemos reportar su referencia para programar el despacho de la cisterna.`
+      `Hola vecino(a) del Apto ${apto.apartamentoNumero} (${apto.propietario || ''}), le recordamos que la cuota del servicio de gas comunal para la recarga del tanque (${metricas?.jornadaActiva?.titulo || 'Recaudación de Gas'}) por monto de ${textoMonto} está pendiente por conciliar. Agradecemos reportar su comprobante o referencia.`
     )
-    window.open(`https://wa.me/${telefono}?text=${msg}`, '_blank')
+    window.open(`https://wa.me/?text=${msg}`, '_blank')
   }
 
   if (loading && !data) {
     return (
       <div style={{ padding: '32px', textAlign: 'center', color: '#a1a1aa' }}>
         <div style={{ fontSize: '32px', marginBottom: '12px' }}>⛽</div>
-        <p>Cargando información del servicio de gas comunal...</p>
+        <p>Cargando servicio de gas comunal...</p>
       </div>
     )
   }
 
   const MESES_NOMBRES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+  const esMonedaBs = data?.config.monedaCuota === 'BS'
 
   return (
     <div style={{ padding: '20px 24px', maxWidth: '1240px', margin: '0 auto', color: '#f4f4f5' }}>
@@ -372,15 +428,15 @@ export const AdminGas: React.FC = () => {
               padding: '2px 10px',
               borderRadius: '999px'
             }}>
-              Extra-Recibo Oficial
+              Recaudo en {esMonedaBs ? 'Bolívares (Bs.)' : 'Dólares ($)'}
             </span>
           </div>
           <p style={{ color: '#a1a1aa', fontSize: '13px', margin: '6px 0 0' }}>
-            Control del tanque, fechas de llenado, jornadas de recaudación y lista de morosos independiente.
+            Deuda de gas separada del recibo ordinario · Recaudaciones por día en Bs. y Dólares.
           </p>
         </div>
 
-        {/* Acciones Rápidas del Header */}
+        {/* Acciones Rápidas */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           <button
             onClick={() => setModalLlenadoOpen(true)}
@@ -422,8 +478,8 @@ export const AdminGas: React.FC = () => {
               gap: '6px'
             }}
           >
-            <span>📅</span>
-            <span>Recaudación por Día</span>
+            <span>💰</span>
+            <span>Recaudación por Día (Bs/$)</span>
           </button>
 
           <button
@@ -437,7 +493,7 @@ export const AdminGas: React.FC = () => {
               fontSize: '13px',
               cursor: 'pointer'
             }}
-            title="Ajustes de Tanque y Datos Bancarios"
+            title="Ajustes de Cuota y Datos Bancarios"
           >
             ⚙️
           </button>
@@ -458,8 +514,7 @@ export const AdminGas: React.FC = () => {
             border: '1px solid rgba(255, 255, 255, 0.08)',
             borderRadius: '18px',
             padding: '18px',
-            position: 'relative',
-            overflow: 'hidden'
+            position: 'relative'
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
               <span style={{ fontSize: '11px', fontWeight: 800, color: '#a1a1aa', textTransform: 'uppercase', letterSpacing: '0.6px' }}>
@@ -491,7 +546,6 @@ export const AdminGas: React.FC = () => {
               </span>
             </div>
 
-            {/* Barra de progreso visual del nivel de gas */}
             <div style={{
               width: '100%',
               height: '8px',
@@ -512,14 +566,14 @@ export const AdminGas: React.FC = () => {
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#a1a1aa' }}>
-              <span>Autonomía estimada: <b style={{ color: '#fff' }}>~{metricas.diasAutonomia} días</b></span>
+              <span>Autonomía: <b style={{ color: '#fff' }}>{metricas.diasAutonomia > 0 ? `~${metricas.diasAutonomia} días` : 'Sin carga'}</b></span>
               <span style={{ color: metricas.nivelPct <= 25 ? '#ef4444' : '#22c55e', fontWeight: 700 }}>
                 {metricas.nivelEstado.toUpperCase()}
               </span>
             </div>
           </div>
 
-          {/* CARD 2: Recaudación Activa */}
+          {/* CARD 2: Recaudación Activa (En Bolívares y Dólares) */}
           <div style={{
             background: 'var(--color-bg-card, #12141a)',
             border: '1px solid rgba(255, 255, 255, 0.08)',
@@ -528,7 +582,7 @@ export const AdminGas: React.FC = () => {
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
               <span style={{ fontSize: '11px', fontWeight: 800, color: '#a1a1aa', textTransform: 'uppercase', letterSpacing: '0.6px' }}>
-                RECAUDACIÓN OCTUBRE
+                RECAUDACIÓN ACTIVA
               </span>
               <span style={{
                 fontSize: '11px',
@@ -542,14 +596,25 @@ export const AdminGas: React.FC = () => {
               </span>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
-              <span style={{ fontSize: '28px', fontWeight: 900, color: '#22c55e' }}>
-                ${metricas.totalRecaudadoUsd.toFixed(2)}
-              </span>
-              <span style={{ fontSize: '13px', color: '#a1a1aa' }}>
-                / ${metricas.metaUsd.toFixed(2)} USD
-              </span>
-            </div>
+            {esMonedaBs ? (
+              <div>
+                <div style={{ fontSize: '24px', fontWeight: 900, color: '#22c55e' }}>
+                  Bs. {metricas.totalRecaudadoBs.toLocaleString('es-VE')}
+                </div>
+                <div style={{ fontSize: '12px', color: '#a1a1aa', marginTop: '2px' }}>
+                  Meta: Bs. {metricas.metaBs.toLocaleString('es-VE')} (${metricas.metaUsd.toFixed(2)} USD)
+                </div>
+              </div>
+            ) : (
+              <div>
+                <div style={{ fontSize: '26px', fontWeight: 900, color: '#22c55e' }}>
+                  ${metricas.totalRecaudadoUsd.toFixed(2)} USD
+                </div>
+                <div style={{ fontSize: '12px', color: '#a1a1aa', marginTop: '2px' }}>
+                  Meta: ${metricas.metaUsd.toFixed(2)} USD (≈ Bs. {metricas.metaBs.toLocaleString('es-VE')})
+                </div>
+              </div>
+            )}
 
             <div style={{
               width: '100%',
@@ -568,12 +633,12 @@ export const AdminGas: React.FC = () => {
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#a1a1aa' }}>
-              <span>Cuota: <b>${(data?.config.costoPorAptoDefectoUsd || 5).toFixed(2)} USD</b></span>
-              <span>≈ Bs. {metricas.totalRecaudadoBs.toLocaleString('es-VE')}</span>
+              <span>Cuota: <b>{esMonedaBs ? `Bs. ${(data?.config.costoPorAptoDefectoBs || 0).toLocaleString('es-VE')}` : `$${(data?.config.costoPorAptoDefectoUsd || 0).toFixed(2)} USD`}</b></span>
+              <span>Tasa: Bs. {data?.config.tasaBcv}</span>
             </div>
           </div>
 
-          {/* CARD 3: Solventes vs Morosos de Gas */}
+          {/* CARD 3: Deudores vs Solventes */}
           <div style={{
             background: 'var(--color-bg-card, #12141a)',
             border: '1px solid rgba(255, 255, 255, 0.08)',
@@ -582,7 +647,7 @@ export const AdminGas: React.FC = () => {
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
               <span style={{ fontSize: '11px', fontWeight: 800, color: '#a1a1aa', textTransform: 'uppercase', letterSpacing: '0.6px' }}>
-                APARTAMENTOS DEUDORES
+                DEUDORES DE GAS
               </span>
               <span style={{
                 fontSize: '11px',
@@ -599,12 +664,12 @@ export const AdminGas: React.FC = () => {
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
               <div>
                 <div style={{ fontSize: '26px', fontWeight: 900, color: '#22c55e' }}>{metricas.aptosSolventes}</div>
-                <div style={{ fontSize: '11px', color: '#a1a1aa' }}>Al Día</div>
+                <div style={{ fontSize: '11px', color: '#a1a1aa' }}>Solventes</div>
               </div>
               <div style={{ height: '36px', width: '1px', backgroundColor: 'rgba(255, 255, 255, 0.1)' }} />
               <div>
                 <div style={{ fontSize: '26px', fontWeight: 900, color: '#ef4444' }}>{metricas.aptosMorosos}</div>
-                <div style={{ fontSize: '11px', color: '#a1a1aa' }}>Morosos Gas</div>
+                <div style={{ fontSize: '11px', color: '#a1a1aa' }}>Con Deuda</div>
               </div>
             </div>
 
@@ -631,7 +696,7 @@ export const AdminGas: React.FC = () => {
             </div>
           </div>
 
-          {/* CARD 4: Próximo / Último Llenado */}
+          {/* CARD 4: Llenados de Tanque */}
           <div style={{
             background: 'var(--color-bg-card, #12141a)',
             border: '1px solid rgba(255, 255, 255, 0.08)',
@@ -640,25 +705,40 @@ export const AdminGas: React.FC = () => {
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
               <span style={{ fontSize: '11px', fontWeight: 800, color: '#a1a1aa', textTransform: 'uppercase', letterSpacing: '0.6px' }}>
-                CICLO DE RECARGA
+                HISTORIAL DE CISTERNAS
               </span>
               <span style={{ fontSize: '11px', color: 'var(--color-accent, #f97316)', fontWeight: 700 }}>
-                Cisterna
+                {data?.llenados.length || 0} Llenados
               </span>
             </div>
 
             <div style={{ fontSize: '13px', marginBottom: '8px' }}>
-              <div style={{ color: '#a1a1aa', fontSize: '11px' }}>Último Llenado:</div>
+              <div style={{ color: '#a1a1aa', fontSize: '11px' }}>Último Llenado Registrado:</div>
               <div style={{ fontWeight: 700, color: '#fff' }}>
-                {metricas.ultimoLlenado?.fecha || '18/09/2026'} · {metricas.ultimoLlenado?.litrosCargados || 2000} L (${metricas.ultimoLlenado?.costoTotalUsd || 280})
+                {metricas.ultimoLlenado?.fecha || 'Sin llenados registrados'}
               </div>
+              {metricas.ultimoLlenado && (
+                <div style={{ fontSize: '11px', color: '#22c55e', marginTop: '2px' }}>
+                  {metricas.ultimoLlenado.litrosCargados.toLocaleString()} L · {metricas.ultimoLlenado.proveedor}
+                </div>
+              )}
             </div>
 
-            <div style={{ fontSize: '13px', paddingTop: '8px', borderTop: '1px dashed rgba(255, 255, 255, 0.1)' }}>
-              <div style={{ color: '#a1a1aa', fontSize: '11px' }}>Próximo Estimado:</div>
-              <div style={{ fontWeight: 700, color: 'var(--color-accent, #f97316)' }}>
-                {metricas.proximoLlenado?.fecha || '22/10/2026'} (Programado)
-              </div>
+            <div style={{ paddingTop: '8px', borderTop: '1px dashed rgba(255, 255, 255, 0.1)' }}>
+              <button
+                onClick={() => setModalLlenadoOpen(true)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--color-accent, #f97316)',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  padding: 0
+                }}
+              >
+                + Registrar descarga de cisterna
+              </button>
             </div>
           </div>
         </div>
@@ -674,10 +754,10 @@ export const AdminGas: React.FC = () => {
         paddingBottom: '4px'
       }}>
         {[
-          { key: 'dashboard', label: '📊 Resumen y Campaña' },
+          { key: 'dashboard', label: '📊 Resumen de Campaña' },
           { key: 'calendario', label: '📅 Calendario y Recaudación Diaria' },
           { key: 'morosos', label: `👥 Morosos y Solventes (${metricas?.totalAptos || 62})` },
-          { key: 'llenados', label: '🚛 Historial de Llenados' }
+          { key: 'llenados', label: `🚛 Llenados (${data?.llenados.length || 0})` }
         ].map(tab => {
           const isActive = activeTab === tab.key
           return (
@@ -693,8 +773,7 @@ export const AdminGas: React.FC = () => {
                 fontSize: '13px',
                 fontWeight: isActive ? 800 : 600,
                 cursor: 'pointer',
-                whiteSpace: 'nowrap',
-                transition: 'all 0.18s'
+                whiteSpace: 'nowrap'
               }}
             >
               {tab.label}
@@ -703,10 +782,9 @@ export const AdminGas: React.FC = () => {
         })}
       </div>
 
-      {/* ── TAB 1: RESUMEN Y CAMPAÑA ACTIVA ─────────────────────────── */}
+      {/* ── TAB 1: RESUMEN DE CAMPAÑA ─────────────────────────────────── */}
       {activeTab === 'dashboard' && metricas && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
-          {/* Card Detalle de Campaña Activa */}
           <div style={{
             background: 'var(--color-bg-card, #12141a)',
             border: '1px solid rgba(255, 255, 255, 0.08)',
@@ -715,7 +793,7 @@ export const AdminGas: React.FC = () => {
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800 }}>
-                {metricas.jornadaActiva?.titulo || 'Jornada de Gas'}
+                {metricas.jornadaActiva?.titulo || 'Recaudación de Gas'}
               </h3>
               <span style={{
                 backgroundColor: 'rgba(34, 197, 94, 0.15)',
@@ -731,20 +809,22 @@ export const AdminGas: React.FC = () => {
             </div>
 
             <p style={{ color: '#a1a1aa', fontSize: '13px', lineHeight: 1.5, margin: '0 0 16px' }}>
-              Recaudación de cuota extraordinaria para la reposición del tanque comunal. Esta deuda se administra por fuera del recibo ordinario.
+              Recaudación de cuota de gas comunal para la recarga del tanque. Esta deuda se concilia por separado del recibo mensual y aparece al residente como deuda en Bolívares y Divisas.
             </p>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px' }}>
               <div style={{ backgroundColor: 'rgba(255, 255, 255, 0.03)', padding: '12px', borderRadius: '12px' }}>
-                <span style={{ fontSize: '11px', color: '#a1a1aa' }}>Fecha Límite</span>
-                <div style={{ fontWeight: 800, fontSize: '14px', marginTop: '2px', color: '#f97316' }}>
-                  {metricas.jornadaActiva?.fechaLimite || '2026-10-15'}
+                <span style={{ fontSize: '11px', color: '#a1a1aa' }}>Moneda Principal</span>
+                <div style={{ fontWeight: 800, fontSize: '14px', marginTop: '2px', color: 'var(--color-accent, #f97316)' }}>
+                  {esMonedaBs ? 'Bolívares (Bs.)' : 'Dólares ($ USD)'}
                 </div>
               </div>
               <div style={{ backgroundColor: 'rgba(255, 255, 255, 0.03)', padding: '12px', borderRadius: '12px' }}>
-                <span style={{ fontSize: '11px', color: '#a1a1aa' }}>Cuota por Apartamento</span>
+                <span style={{ fontSize: '11px', color: '#a1a1aa' }}>Cuota por Apto</span>
                 <div style={{ fontWeight: 800, fontSize: '14px', marginTop: '2px' }}>
-                  ${(data?.config.costoPorAptoDefectoUsd || 5).toFixed(2)} USD
+                  {esMonedaBs
+                    ? `Bs. ${(data?.config.costoPorAptoDefectoBs || 0).toLocaleString('es-VE')}`
+                    : `$${(data?.config.costoPorAptoDefectoUsd || 0).toFixed(2)} USD`}
                 </div>
               </div>
             </div>
@@ -757,21 +837,17 @@ export const AdminGas: React.FC = () => {
               padding: '16px'
             }}>
               <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--color-accent, #f97316)', marginBottom: '8px' }}>
-                🏦 Datos de Pago Configurados para Residentes:
+                🏦 Datos de Pago Móvil / Transferencia para el Residente:
               </div>
               <div style={{ fontSize: '12px', color: '#ddd', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <div><b>Banco:</b> {data?.config.datosPago.banco}</div>
-                <div><b>Pago Móvil / Teléfono:</b> {data?.config.datosPago.telefono}</div>
-                <div><b>C.I. / RIF:</b> {data?.config.datosPago.rifCedula}</div>
+                <div><b>Banco:</b> {data?.config.datosPago.banco || 'Por configurar'}</div>
+                <div><b>Teléfono:</b> {data?.config.datosPago.telefono || 'Por configurar'}</div>
+                <div><b>RIF / C.I.:</b> {data?.config.datosPago.rifCedula || 'Por configurar'}</div>
                 <div><b>Titular:</b> {data?.config.datosPago.titular}</div>
-                <div style={{ color: '#a1a1aa', fontSize: '11px', marginTop: '4px' }}>
-                  *{data?.config.datosPago.nota}
-                </div>
               </div>
             </div>
           </div>
 
-          {/* Card Resumen de Cobranza Rápida */}
           <div style={{
             background: 'var(--color-bg-card, #12141a)',
             border: '1px solid rgba(255, 255, 255, 0.08)',
@@ -779,7 +855,7 @@ export const AdminGas: React.FC = () => {
             padding: '24px'
           }}>
             <h3 style={{ margin: '0 0 16px', fontSize: '16px', fontWeight: 800 }}>
-              Acciones de Conciliación
+              Conciliación Rápida
             </h3>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -806,7 +882,9 @@ export const AdminGas: React.FC = () => {
                     {metricas.aptosMorosos} Apartamentos con Deuda Pendiente
                   </div>
                   <div style={{ fontSize: '12px', color: '#a1a1aa', marginTop: '2px' }}>
-                    Monto por cobrar: ${(metricas.aptosMorosos * (data?.config.costoPorAptoDefectoUsd || 5)).toFixed(2)} USD
+                    {esMonedaBs
+                      ? `Por cobrar: Bs. ${(metricas.aptosMorosos * (data?.config.costoPorAptoDefectoBs || 0)).toLocaleString('es-VE')}`
+                      : `Por cobrar: $${(metricas.aptosMorosos * (data?.config.costoPorAptoDefectoUsd || 0)).toFixed(2)} USD`}
                   </div>
                 </div>
                 <span style={{ fontSize: '18px' }}>→</span>
@@ -835,7 +913,7 @@ export const AdminGas: React.FC = () => {
                     {metricas.aptosSolventes} Apartamentos Solventes
                   </div>
                   <div style={{ fontSize: '12px', color: '#a1a1aa', marginTop: '2px' }}>
-                    Total recaudado: ${metricas.totalRecaudadoUsd.toFixed(2)} USD
+                    Recaudado: Bs. {metricas.totalRecaudadoBs.toLocaleString('es-VE')} (${metricas.totalRecaudadoUsd.toFixed(2)} USD)
                   </div>
                 </div>
                 <span style={{ fontSize: '18px' }}>→</span>
@@ -858,10 +936,10 @@ export const AdminGas: React.FC = () => {
               >
                 <div>
                   <div style={{ fontWeight: 800, color: 'var(--color-accent, #f97316)' }}>
-                    Ver Línea de Tiempo en el Calendario
+                    Registrar Recaudaciones Diarias en el Calendario
                   </div>
                   <div style={{ fontSize: '12px', color: '#a1a1aa', marginTop: '2px' }}>
-                    Gestionar ingresos diarios y fechas de llenado
+                    Anotar ingresos diarios en Bolívares o Dólares
                   </div>
                 </div>
                 <span style={{ fontSize: '18px' }}>📅</span>
@@ -871,23 +949,20 @@ export const AdminGas: React.FC = () => {
         </div>
       )}
 
-      {/* ── TAB 2: CALENDARIO INTERACTIVO DE RECAUDACIÓN ─────────────── */}
+      {/* ── TAB 2: CALENDARIO INTERACTIVO DE RECAUDACIÓN DIARIA ───────── */}
       {activeTab === 'calendario' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
-          {/* Columna Izquierda: Vista Mes Calendario */}
+          {/* Vista Mes Calendario */}
           <div style={{
             background: 'var(--color-bg-card, #12141a)',
             border: '1px solid rgba(255, 255, 255, 0.08)',
             borderRadius: '20px',
             padding: '20px'
           }}>
-            {/* Cabecera del Calendario */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ fontSize: '18px', fontWeight: 800 }}>
-                  {MESES_NOMBRES[calMes - 1]} {calAnio}
-                </span>
-              </div>
+              <span style={{ fontSize: '18px', fontWeight: 800 }}>
+                {MESES_NOMBRES[calMes - 1]} {calAnio}
+              </span>
 
               <div style={{ display: 'flex', gap: '6px' }}>
                 <button
@@ -927,7 +1002,6 @@ export const AdminGas: React.FC = () => {
               </div>
             </div>
 
-            {/* Días de la semana */}
             <div style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(7, 1fr)',
@@ -941,7 +1015,6 @@ export const AdminGas: React.FC = () => {
               <div>LUN</div><div>MAR</div><div>MIÉ</div><div>JUE</div><div>VIE</div><div>SÁB</div><div>DOM</div>
             </div>
 
-            {/* Grilla de Días */}
             <div style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(7, 1fr)',
@@ -956,7 +1029,6 @@ export const AdminGas: React.FC = () => {
                 const isSelected = diaSeleccionado === celda.fechaIso
                 const hasLlenado = evs.some(e => e.tipo === 'llenado')
                 const hasRecaudacion = evs.some(e => e.tipo === 'recaudacion')
-                const hasCierre = evs.some(e => e.tipo === 'cierre_cobro')
 
                 return (
                   <div
@@ -987,7 +1059,6 @@ export const AdminGas: React.FC = () => {
                       {celda.diaNum}
                     </div>
 
-                    {/* Indicadores en el día */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                       {hasLlenado && (
                         <span style={{
@@ -996,10 +1067,7 @@ export const AdminGas: React.FC = () => {
                           backgroundColor: 'rgba(59, 130, 246, 0.25)',
                           color: '#60a5fa',
                           padding: '1px 3px',
-                          borderRadius: '4px',
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis'
+                          borderRadius: '4px'
                         }}>
                           ⛽ Llenado
                         </span>
@@ -1011,24 +1079,9 @@ export const AdminGas: React.FC = () => {
                           backgroundColor: 'rgba(34, 197, 94, 0.25)',
                           color: '#4ade80',
                           padding: '1px 3px',
-                          borderRadius: '4px',
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis'
-                        }}>
-                          💰 Recaudo
-                        </span>
-                      )}
-                      {hasCierre && (
-                        <span style={{
-                          fontSize: '9px',
-                          fontWeight: 800,
-                          backgroundColor: 'rgba(239, 68, 68, 0.25)',
-                          color: '#f87171',
-                          padding: '1px 3px',
                           borderRadius: '4px'
                         }}>
-                          ⏳ Límite
+                          💰 Recaudo
                         </span>
                       )}
                     </div>
@@ -1038,7 +1091,7 @@ export const AdminGas: React.FC = () => {
             </div>
           </div>
 
-          {/* Columna Derecha: Detalle y Gestión del Día Seleccionado */}
+          {/* Detalle del Día */}
           <div style={{
             background: 'var(--color-bg-card, #12141a)',
             border: '1px solid rgba(255, 255, 255, 0.08)',
@@ -1064,7 +1117,8 @@ export const AdminGas: React.FC = () => {
                     tipo: 'recaudacion',
                     titulo: '',
                     descripcion: '',
-                    montoUsd: ''
+                    moneda: 'BS',
+                    monto: ''
                   })
                   setModalEventoOpen(true)
                 }}
@@ -1083,7 +1137,6 @@ export const AdminGas: React.FC = () => {
               </button>
             </div>
 
-            {/* Lista de eventos del día */}
             <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {eventosDelDia.length === 0 ? (
                 <div style={{
@@ -1095,14 +1148,11 @@ export const AdminGas: React.FC = () => {
                   border: '1px dashed rgba(255, 255, 255, 0.08)'
                 }}>
                   <div style={{ fontSize: '24px', marginBottom: '6px' }}>📅</div>
-                  <div>No hay recaudaciones ni llenados registrados para este día.</div>
-                  <div style={{ fontSize: '11px', marginTop: '4px' }}>Presiona "+ Agregar a este Día" para anotar un ingreso o evento.</div>
+                  <div>No hay registros ni recaudaciones para este día.</div>
+                  <div style={{ fontSize: '11px', marginTop: '4px' }}>Presiona "+ Agregar a este Día" para anotar ingresos o eventos.</div>
                 </div>
               ) : (
                 eventosDelDia.map(ev => {
-                  const isRecaudacion = ev.tipo === 'recaudacion'
-                  const isLlenado = ev.tipo === 'llenado'
-
                   return (
                     <div
                       key={ev.id}
@@ -1119,16 +1169,20 @@ export const AdminGas: React.FC = () => {
                     >
                       <div style={{ display: 'flex', gap: '10px' }}>
                         <span style={{ fontSize: '20px' }}>
-                          {isLlenado ? '⛽' : isRecaudacion ? '💰' : '📌'}
+                          {ev.tipo === 'llenado' ? '⛽' : '💰'}
                         </span>
                         <div>
                           <div style={{ fontWeight: 800, fontSize: '13px' }}>{ev.titulo}</div>
-                          <div style={{ color: '#a1a1aa', fontSize: '12px', marginTop: '2px' }}>
-                            {ev.descripcion}
-                          </div>
-                          {ev.montoUsd !== undefined && ev.montoUsd > 0 && (
+                          {ev.descripcion && (
+                            <div style={{ color: '#a1a1aa', fontSize: '12px', marginTop: '2px' }}>
+                              {ev.descripcion}
+                            </div>
+                          )}
+                          {((ev.montoBs || 0) > 0 || (ev.montoUsd || 0) > 0) && (
                             <div style={{ color: '#22c55e', fontWeight: 800, fontSize: '12px', marginTop: '4px' }}>
-                              +${ev.montoUsd.toFixed(2)} USD (Bs. {ev.montoBs?.toLocaleString('es-VE') || 0})
+                              {ev.moneda === 'BS' || (ev.montoBs || 0) > 0
+                                ? `+Bs. ${(ev.montoBs || 0).toLocaleString('es-VE')} ($${(ev.montoUsd || 0).toFixed(2)} USD)`
+                                : `+$${(ev.montoUsd || 0).toFixed(2)} USD`}
                             </div>
                           )}
                         </div>
@@ -1144,7 +1198,7 @@ export const AdminGas: React.FC = () => {
                           padding: '4px',
                           fontSize: '14px'
                         }}
-                        title="Eliminar evento"
+                        title="Eliminar registro"
                       >
                         🗑️
                       </button>
@@ -1165,7 +1219,7 @@ export const AdminGas: React.FC = () => {
           borderRadius: '20px',
           padding: '24px'
         }}>
-          {/* Barra de Filtros y Búsqueda */}
+          {/* Barra de Filtros */}
           <div style={{
             display: 'flex',
             flexWrap: 'wrap',
@@ -1259,16 +1313,16 @@ export const AdminGas: React.FC = () => {
             </div>
           </div>
 
-          {/* Tabla / Grid de Apartamentos */}
+          {/* Tabla de Apartamentos */}
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.1)', color: '#a1a1aa', textAlign: 'left' }}>
-                  <th style={{ padding: '12px 10px', fontWeight: 800 }}>APARTAMENTO</th>
+                  <th style={{ padding: '12px 10px', fontWeight: 800 }}>APTO</th>
                   <th style={{ padding: '12px 10px', fontWeight: 800 }}>PROPIETARIO</th>
                   <th style={{ padding: '12px 10px', fontWeight: 800 }}>ESTADO</th>
-                  <th style={{ padding: '12px 10px', fontWeight: 800 }}>CUOTA ($ / Bs.)</th>
-                  <th style={{ padding: '12px 10px', fontWeight: 800 }}>MÉTODO / REFERENCIA</th>
+                  <th style={{ padding: '12px 10px', fontWeight: 800 }}>DEUDA / CUOTA</th>
+                  <th style={{ padding: '12px 10px', fontWeight: 800 }}>PAGO / REFERENCIA</th>
                   <th style={{ padding: '12px 10px', fontWeight: 800, textAlign: 'right' }}>ACCIONES</th>
                 </tr>
               </thead>
@@ -1295,7 +1349,7 @@ export const AdminGas: React.FC = () => {
                       </td>
 
                       <td style={{ padding: '12px 10px', color: '#d4d4d8' }}>
-                        {apto.propietario || 'Propietario'}
+                        {apto.propietario || 'Sin asignar'}
                       </td>
 
                       <td style={{ padding: '12px 10px' }}>
@@ -1306,20 +1360,18 @@ export const AdminGas: React.FC = () => {
                           padding: '3px 8px',
                           borderRadius: '999px',
                           fontSize: '11px',
-                          fontWeight: 800,
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '4px'
+                          fontWeight: 800
                         }}>
-                          <span>{isPagado ? '●' : '▲'}</span>
-                          <span>{isPagado ? 'SOLVENTE' : 'DEUDA GAS'}</span>
+                          {isPagado ? '● SOLVENTE' : '▲ DEUDA GAS'}
                         </span>
                       </td>
 
                       <td style={{ padding: '12px 10px' }}>
-                        <div style={{ fontWeight: 700 }}>${(apto.montoUsd || 5).toFixed(2)} USD</div>
+                        <div style={{ fontWeight: 800, color: isPagado ? '#fff' : '#ef4444' }}>
+                          Bs. {(apto.montoBs || (apto.montoUsd * (data?.config.tasaBcv || 859.06))).toLocaleString('es-VE')}
+                        </div>
                         <div style={{ fontSize: '11px', color: '#a1a1aa' }}>
-                          ≈ Bs. {(apto.montoBs || 0).toLocaleString('es-VE')}
+                          ≈ ${(apto.montoUsd || 5).toFixed(2)} USD
                         </div>
                       </td>
 
@@ -1327,16 +1379,16 @@ export const AdminGas: React.FC = () => {
                         {isPagado ? (
                           <div>
                             <span style={{ color: '#22c55e', fontWeight: 700 }}>
-                              {apto.metodoPago === 'pago_movil' ? 'Pago Móvil' : apto.metodoPago || 'Transferencia'}
+                              {apto.metodoPago === 'pago_movil' ? 'Pago Móvil' : apto.metodoPago === 'efectivo_bs' ? 'Efectivo Bs.' : apto.metodoPago || 'Cancelado'}
                             </span>
                             {apto.referencia && (
                               <div style={{ fontSize: '11px', color: '#a1a1aa' }}>
-                                Ref: {apto.referencia} {apto.fechaPago ? `(${apto.fechaPago})` : ''}
+                                Ref: {apto.referencia}
                               </div>
                             )}
                           </div>
                         ) : (
-                          <span style={{ color: '#71717a', fontSize: '12px' }}>Sin registrar</span>
+                          <span style={{ color: '#71717a', fontSize: '12px' }}>Pendiente por cobrar</span>
                         )}
                       </td>
 
@@ -1412,9 +1464,9 @@ export const AdminGas: React.FC = () => {
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
             <div>
-              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800 }}>Historial de Descargas y Cisternas</h3>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800 }}>Historial de Descargas de Gas</h3>
               <p style={{ margin: '4px 0 0', color: '#a1a1aa', fontSize: '12px' }}>
-                Registro cronológico inmutable de llenados de gas del edificio.
+                Registro cronológico de recargas del tanque comunal.
               </p>
             </div>
             <button
@@ -1434,96 +1486,114 @@ export const AdminGas: React.FC = () => {
             </button>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            {data?.llenados.map(ll => {
-              const isCompletado = ll.estado === 'completado'
-              return (
-                <div
-                  key={ll.id}
-                  style={{
-                    padding: '18px',
-                    borderRadius: '14px',
-                    backgroundColor: 'rgba(255, 255, 255, 0.03)',
-                    border: '1px solid rgba(255, 255, 255, 0.08)',
-                    display: 'flex',
-                    flexWrap: 'wrap',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    gap: '16px'
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                    <div style={{
-                      width: '44px',
-                      height: '44px',
-                      borderRadius: '12px',
-                      backgroundColor: isCompletado ? 'rgba(34, 197, 94, 0.15)' : 'rgba(249, 115, 22, 0.15)',
-                      color: isCompletado ? '#22c55e' : 'var(--color-accent, #f97316)',
+          {data?.llenados.length === 0 ? (
+            <div style={{
+              padding: '40px 20px',
+              textAlign: 'center',
+              color: '#71717a',
+              backgroundColor: 'rgba(255, 255, 255, 0.02)',
+              borderRadius: '14px',
+              border: '1px dashed rgba(255, 255, 255, 0.08)'
+            }}>
+              <div style={{ fontSize: '28px', marginBottom: '8px' }}>🚛</div>
+              <div style={{ fontWeight: 700, color: '#d4d4d8' }}>No hay llenados registrados todavía</div>
+              <div style={{ fontSize: '12px', marginTop: '4px' }}>
+                Presiona "+ Nuevo Llenado" cuando una cisterna descargue gas en el edificio.
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              {data?.llenados.map(ll => {
+                return (
+                  <div
+                    key={ll.id}
+                    style={{
+                      padding: '18px',
+                      borderRadius: '14px',
+                      backgroundColor: 'rgba(255, 255, 255, 0.03)',
+                      border: '1px solid rgba(255, 255, 255, 0.08)',
                       display: 'flex',
+                      flexWrap: 'wrap',
+                      justifyContent: 'space-between',
                       alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: '20px'
-                    }}>
-                      ⛽
-                    </div>
-
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontWeight: 800, fontSize: '15px' }}>
-                          {ll.litrosCargados.toLocaleString()} Litros
-                        </span>
-                        <span style={{
-                          fontSize: '11px',
-                          fontWeight: 800,
-                          backgroundColor: isCompletado ? 'rgba(34, 197, 94, 0.15)' : 'rgba(249, 115, 22, 0.15)',
-                          color: isCompletado ? '#22c55e' : 'var(--color-accent, #f97316)',
-                          padding: '2px 8px',
-                          borderRadius: '999px'
-                        }}>
-                          {ll.estado.toUpperCase()}
-                        </span>
+                      gap: '16px'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                      <div style={{
+                        width: '44px',
+                        height: '44px',
+                        borderRadius: '12px',
+                        backgroundColor: 'rgba(34, 197, 94, 0.15)',
+                        color: '#22c55e',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '20px'
+                      }}>
+                        ⛽
                       </div>
 
-                      <div style={{ fontSize: '12px', color: '#a1a1aa', marginTop: '2px' }}>
-                        Fecha: <b>{ll.fecha}</b> · Proveedor: <b>{ll.proveedor}</b>
-                      </div>
-                      {ll.observaciones && (
-                        <div style={{ fontSize: '12px', color: '#71717a', marginTop: '4px' }}>
-                          {ll.observaciones}
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ fontWeight: 800, fontSize: '15px' }}>
+                            {ll.litrosCargados.toLocaleString()} Litros
+                          </span>
+                          <span style={{
+                            fontSize: '11px',
+                            fontWeight: 800,
+                            backgroundColor: 'rgba(34, 197, 94, 0.15)',
+                            color: '#22c55e',
+                            padding: '2px 8px',
+                            borderRadius: '999px'
+                          }}>
+                            {ll.estado.toUpperCase()}
+                          </span>
                         </div>
-                      )}
-                    </div>
-                  </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontWeight: 900, fontSize: '16px', color: '#22c55e' }}>
-                        ${ll.costoTotalUsd.toFixed(2)} USD
-                      </div>
-                      <div style={{ fontSize: '11px', color: '#a1a1aa' }}>
-                        ≈ Bs. {ll.costoTotalBs.toLocaleString('es-VE')}
+                        <div style={{ fontSize: '12px', color: '#a1a1aa', marginTop: '2px' }}>
+                          Fecha: <b>{ll.fecha}</b> · Proveedor: <b>{ll.proveedor || 'Sin especificar'}</b>
+                        </div>
+                        {ll.responsableRecibio && (
+                          <div style={{ fontSize: '11px', color: '#71717a', marginTop: '2px' }}>
+                            Recibido por: {ll.responsableRecibio} {ll.numeroFacturaGuia ? `· Guía: ${ll.numeroFacturaGuia}` : ''}
+                          </div>
+                        )}
                       </div>
                     </div>
 
-                    <button
-                      onClick={() => handleEliminarLlenado(ll.id)}
-                      style={{
-                        backgroundColor: 'transparent',
-                        border: 'none',
-                        color: '#ef4444',
-                        cursor: 'pointer',
-                        padding: '6px',
-                        fontSize: '14px'
-                      }}
-                      title="Eliminar llenado"
-                    >
-                      🗑️
-                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontWeight: 900, fontSize: '16px', color: '#22c55e' }}>
+                          {ll.costoTotalBs > 0 ? `Bs. ${ll.costoTotalBs.toLocaleString('es-VE')}` : `$${ll.costoTotalUsd.toFixed(2)} USD`}
+                        </div>
+                        {ll.costoTotalBs > 0 && ll.costoTotalUsd > 0 && (
+                          <div style={{ fontSize: '11px', color: '#a1a1aa' }}>
+                            ≈ ${ll.costoTotalUsd.toFixed(2)} USD
+                          </div>
+                        )}
+                      </div>
+
+                      <button
+                        onClick={() => handleEliminarLlenado(ll.id)}
+                        style={{
+                          backgroundColor: 'transparent',
+                          border: 'none',
+                          color: '#ef4444',
+                          cursor: 'pointer',
+                          padding: '6px',
+                          fontSize: '14px'
+                        }}
+                        title="Eliminar llenado"
+                      >
+                        🗑️
+                      </button>
+                    </div>
                   </div>
-                </div>
-              )
-            })}
-          </div>
+                )
+              })}
+            </div>
+          )}
         </div>
       )}
 
@@ -1630,7 +1700,7 @@ export const AdminGas: React.FC = () => {
             boxShadow: '0 20px 50px rgba(0,0,0,0.8)'
           }}>
             <h3 style={{ margin: '0 0 16px', fontSize: '18px', fontWeight: 800 }}>
-              🚛 Registrar Llenado de Cisterna
+              🚛 Registrar Descarga de Cisterna
             </h3>
 
             <form onSubmit={handleGuardarLlenado} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
@@ -1675,12 +1745,32 @@ export const AdminGas: React.FC = () => {
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
-                  <label style={{ fontSize: '11px', color: '#a1a1aa', fontWeight: 700 }}>COSTO TOTAL ($ USD)</label>
+                  <label style={{ fontSize: '11px', color: '#a1a1aa', fontWeight: 700 }}>MONEDA DEL COSTO</label>
+                  <select
+                    value={formLlenado.monedaCosto}
+                    onChange={e => setFormLlenado(prev => ({ ...prev, monedaCosto: e.target.value as any }))}
+                    style={{
+                      width: '100%',
+                      backgroundColor: '#1b1d24',
+                      border: '1px solid rgba(255, 255, 255, 0.12)',
+                      padding: '8px 10px',
+                      borderRadius: '8px',
+                      color: '#fff',
+                      marginTop: '4px'
+                    }}
+                  >
+                    <option value="BS">Bolívares (Bs.)</option>
+                    <option value="USD">Dólares ($ USD)</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: '11px', color: '#a1a1aa', fontWeight: 700 }}>COSTO TOTAL</label>
                   <input
                     type="number"
                     step="0.01"
-                    value={formLlenado.costoTotalUsd}
-                    onChange={e => setFormLlenado(prev => ({ ...prev, costoTotalUsd: Number(e.target.value) }))}
+                    value={formLlenado.costoMonto}
+                    onChange={e => setFormLlenado(prev => ({ ...prev, costoMonto: e.target.value }))}
+                    placeholder={formLlenado.monedaCosto === 'BS' ? 'Monto en Bs.' : 'Monto en $'}
                     style={{
                       width: '100%',
                       backgroundColor: 'rgba(255, 255, 255, 0.05)',
@@ -1693,8 +1783,11 @@ export const AdminGas: React.FC = () => {
                     required
                   />
                 </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
-                  <label style={{ fontSize: '11px', color: '#a1a1aa', fontWeight: 700 }}>NIVEL FINAL (%)</label>
+                  <label style={{ fontSize: '11px', color: '#a1a1aa', fontWeight: 700 }}>NIVEL FINAL TANQUE (%)</label>
                   <input
                     type="number"
                     min="1"
@@ -1713,63 +1806,64 @@ export const AdminGas: React.FC = () => {
                     required
                   />
                 </div>
+                <div>
+                  <label style={{ fontSize: '11px', color: '#a1a1aa', fontWeight: 700 }}>PROVEEDOR</label>
+                  <input
+                    type="text"
+                    value={formLlenado.proveedor}
+                    onChange={e => setFormLlenado(prev => ({ ...prev, proveedor: e.target.value }))}
+                    placeholder="Ej: Gas Comunal / PDVSA"
+                    style={{
+                      width: '100%',
+                      backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                      border: '1px solid rgba(255, 255, 255, 0.12)',
+                      padding: '8px 10px',
+                      borderRadius: '8px',
+                      color: '#fff',
+                      marginTop: '4px'
+                    }}
+                    required
+                  />
+                </div>
               </div>
 
-              <div>
-                <label style={{ fontSize: '11px', color: '#a1a1aa', fontWeight: 700 }}>PROVEEDOR / CISTERNA</label>
-                <input
-                  type="text"
-                  value={formLlenado.proveedor}
-                  onChange={e => setFormLlenado(prev => ({ ...prev, proveedor: e.target.value }))}
-                  style={{
-                    width: '100%',
-                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                    border: '1px solid rgba(255, 255, 255, 0.12)',
-                    padding: '8px 10px',
-                    borderRadius: '8px',
-                    color: '#fff',
-                    marginTop: '4px'
-                  }}
-                  required
-                />
-              </div>
-
-              <div>
-                <label style={{ fontSize: '11px', color: '#a1a1aa', fontWeight: 700 }}>RESPONSABLE QUE RECIBIÓ</label>
-                <input
-                  type="text"
-                  value={formLlenado.responsableRecibio}
-                  onChange={e => setFormLlenado(prev => ({ ...prev, responsableRecibio: e.target.value }))}
-                  style={{
-                    width: '100%',
-                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                    border: '1px solid rgba(255, 255, 255, 0.12)',
-                    padding: '8px 10px',
-                    borderRadius: '8px',
-                    color: '#fff',
-                    marginTop: '4px'
-                  }}
-                  required
-                />
-              </div>
-
-              <div>
-                <label style={{ fontSize: '11px', color: '#a1a1aa', fontWeight: 700 }}>OBSERVACIONES</label>
-                <input
-                  type="text"
-                  value={formLlenado.observaciones}
-                  onChange={e => setFormLlenado(prev => ({ ...prev, observaciones: e.target.value }))}
-                  placeholder="N° de guía, precinto o detalles..."
-                  style={{
-                    width: '100%',
-                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                    border: '1px solid rgba(255, 255, 255, 0.12)',
-                    padding: '8px 10px',
-                    borderRadius: '8px',
-                    color: '#fff',
-                    marginTop: '4px'
-                  }}
-                />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ fontSize: '11px', color: '#a1a1aa', fontWeight: 700 }}>RESPONSABLE RECEPTOR</label>
+                  <input
+                    type="text"
+                    value={formLlenado.responsableRecibio}
+                    onChange={e => setFormLlenado(prev => ({ ...prev, responsableRecibio: e.target.value }))}
+                    placeholder="Nombre o conserjería"
+                    style={{
+                      width: '100%',
+                      backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                      border: '1px solid rgba(255, 255, 255, 0.12)',
+                      padding: '8px 10px',
+                      borderRadius: '8px',
+                      color: '#fff',
+                      marginTop: '4px'
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: '11px', color: '#a1a1aa', fontWeight: 700 }}>N° GUÍA / FACTURA</label>
+                  <input
+                    type="text"
+                    value={formLlenado.numeroFacturaGuia}
+                    onChange={e => setFormLlenado(prev => ({ ...prev, numeroFacturaGuia: e.target.value }))}
+                    placeholder="Opcional"
+                    style={{
+                      width: '100%',
+                      backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                      border: '1px solid rgba(255, 255, 255, 0.12)',
+                      padding: '8px 10px',
+                      borderRadius: '8px',
+                      color: '#fff',
+                      marginTop: '4px'
+                    }}
+                  />
+                </div>
               </div>
 
               <div style={{ display: 'flex', gap: '12px', marginTop: '12px' }}>
@@ -1810,7 +1904,7 @@ export const AdminGas: React.FC = () => {
         </div>
       )}
 
-      {/* ── MODAL: CONCILIAR PAGO APTO ────────────────────────────────── */}
+      {/* ── MODAL: CONCILIAR PAGO APTO (EN BS O USD) ─────────────────── */}
       {modalPagoOpen && aptoParaPagar && (
         <div style={{
           position: 'fixed',
@@ -1832,7 +1926,7 @@ export const AdminGas: React.FC = () => {
             padding: '24px',
             boxShadow: '0 20px 50px rgba(0,0,0,0.8)'
           }}>
-            <h3 style={{ margin: '0 0 8px', fontSize: '18px', fontWeight: 800 }}>
+            <h3 style={{ margin: '0 0 4px', fontSize: '18px', fontWeight: 800 }}>
               💰 Conciliar Pago de Gas
             </h3>
             <div style={{ color: 'var(--color-accent, #f97316)', fontWeight: 800, fontSize: '14px', marginBottom: '16px' }}>
@@ -1840,23 +1934,56 @@ export const AdminGas: React.FC = () => {
             </div>
 
             <form onSubmit={handleConfirmarPago} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div>
-                <label style={{ fontSize: '11px', color: '#a1a1aa', fontWeight: 700 }}>FECHA DE PAGO</label>
-                <input
-                  type="date"
-                  value={formPago.fechaPago}
-                  onChange={e => setFormPago(prev => ({ ...prev, fechaPago: e.target.value }))}
-                  style={{
-                    width: '100%',
-                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                    border: '1px solid rgba(255, 255, 255, 0.12)',
-                    padding: '8px 10px',
-                    borderRadius: '8px',
-                    color: '#fff',
-                    marginTop: '4px'
-                  }}
-                  required
-                />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ fontSize: '11px', color: '#a1a1aa', fontWeight: 700 }}>MONEDA RECIBIDA</label>
+                  <select
+                    value={formPago.moneda}
+                    onChange={e => {
+                      const newMoneda = e.target.value as 'BS' | 'USD'
+                      setFormPago(prev => ({
+                        ...prev,
+                        moneda: newMoneda,
+                        monto: newMoneda === 'BS'
+                          ? String(aptoParaPagar.montoBs || data?.config.costoPorAptoDefectoBs || '')
+                          : String(aptoParaPagar.montoUsd || data?.config.costoPorAptoDefectoUsd || '')
+                      }))
+                    }}
+                    style={{
+                      width: '100%',
+                      backgroundColor: '#1b1d24',
+                      border: '1px solid rgba(255, 255, 255, 0.12)',
+                      padding: '8px 10px',
+                      borderRadius: '8px',
+                      color: '#fff',
+                      marginTop: '4px'
+                    }}
+                  >
+                    <option value="BS">Bolívares (Bs.)</option>
+                    <option value="USD">Dólares ($ USD)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '11px', color: '#a1a1aa', fontWeight: 700 }}>MONTO RECIBIDO</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={formPago.monto}
+                    onChange={e => setFormPago(prev => ({ ...prev, monto: e.target.value }))}
+                    placeholder="Monto"
+                    style={{
+                      width: '100%',
+                      backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                      border: '1px solid rgba(255, 255, 255, 0.12)',
+                      padding: '8px 10px',
+                      borderRadius: '8px',
+                      color: '#fff',
+                      marginTop: '4px'
+                    }}
+                    required
+                  />
+                </div>
               </div>
 
               <div>
@@ -1876,8 +2003,8 @@ export const AdminGas: React.FC = () => {
                 >
                   <option value="pago_movil">Pago Móvil</option>
                   <option value="transferencia">Transferencia Bancaria</option>
-                  <option value="efectivo_usd">Efectivo Divisas ($)</option>
                   <option value="efectivo_bs">Efectivo Bolívares</option>
+                  <option value="efectivo_usd">Efectivo Dólares ($)</option>
                   <option value="otro">Otro</option>
                 </select>
               </div>
@@ -1888,7 +2015,7 @@ export const AdminGas: React.FC = () => {
                   type="text"
                   value={formPago.referencia}
                   onChange={e => setFormPago(prev => ({ ...prev, referencia: e.target.value }))}
-                  placeholder="Últimos 4 o 6 dígitos..."
+                  placeholder="Referencia o recibo..."
                   style={{
                     width: '100%',
                     backgroundColor: 'rgba(255, 255, 255, 0.05)',
@@ -1903,12 +2030,11 @@ export const AdminGas: React.FC = () => {
               </div>
 
               <div>
-                <label style={{ fontSize: '11px', color: '#a1a1aa', fontWeight: 700 }}>NOTAS / CONCILIACIÓN</label>
+                <label style={{ fontSize: '11px', color: '#a1a1aa', fontWeight: 700 }}>FECHA DE PAGO</label>
                 <input
-                  type="text"
-                  value={formPago.observaciones}
-                  onChange={e => setFormPago(prev => ({ ...prev, observaciones: e.target.value }))}
-                  placeholder="Opcional..."
+                  type="date"
+                  value={formPago.fechaPago}
+                  onChange={e => setFormPago(prev => ({ ...prev, fechaPago: e.target.value }))}
                   style={{
                     width: '100%',
                     backgroundColor: 'rgba(255, 255, 255, 0.05)',
@@ -1918,6 +2044,7 @@ export const AdminGas: React.FC = () => {
                     color: '#fff',
                     marginTop: '4px'
                   }}
+                  required
                 />
               </div>
 
@@ -1959,7 +2086,7 @@ export const AdminGas: React.FC = () => {
         </div>
       )}
 
-      {/* ── MODAL: REGISTRAR EVENTO DIARIO EN EL CALENDARIO ───────────── */}
+      {/* ── MODAL: REGISTRAR RECAUDACIÓN DIARIA (BS O USD) ───────────── */}
       {modalEventoOpen && (
         <div style={{
           position: 'fixed',
@@ -1982,7 +2109,7 @@ export const AdminGas: React.FC = () => {
             boxShadow: '0 20px 50px rgba(0,0,0,0.8)'
           }}>
             <h3 style={{ margin: '0 0 16px', fontSize: '18px', fontWeight: 800 }}>
-              📅 Registrar Evento en el Calendario
+              💰 Registrar Recaudación por Día
             </h3>
 
             <form onSubmit={handleGuardarEvento} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
@@ -2006,7 +2133,7 @@ export const AdminGas: React.FC = () => {
               </div>
 
               <div>
-                <label style={{ fontSize: '11px', color: '#a1a1aa', fontWeight: 700 }}>TIPO</label>
+                <label style={{ fontSize: '11px', color: '#a1a1aa', fontWeight: 700 }}>TIPO DE REGISTRO</label>
                 <select
                   value={formEvento.tipo}
                   onChange={e => setFormEvento(prev => ({ ...prev, tipo: e.target.value as any }))}
@@ -2021,9 +2148,8 @@ export const AdminGas: React.FC = () => {
                   }}
                 >
                   <option value="recaudacion">💰 Recaudación de Dinero</option>
-                  <option value="llenado">⛽ Llenado de Tanque</option>
-                  <option value="cierre_cobro">⏳ Fecha Límite / Aviso</option>
-                  <option value="mantenimiento">🔧 Mantenimiento / Prueba</option>
+                  <option value="cierre_cobro">⏳ Fecha Límite / Aviso de Cobro</option>
+                  <option value="mantenimiento">🔧 Mantenimiento de Tanque</option>
                   <option value="otro">📌 Otro</option>
                 </select>
               </div>
@@ -2034,7 +2160,7 @@ export const AdminGas: React.FC = () => {
                   type="text"
                   value={formEvento.titulo}
                   onChange={e => setFormEvento(prev => ({ ...prev, titulo: e.target.value }))}
-                  placeholder="Ej: Cobro en efectivo lote 3"
+                  placeholder="Ej: Recaudación lote efectivo / Pago Móvil"
                   style={{
                     width: '100%',
                     backgroundColor: 'rgba(255, 255, 255, 0.05)',
@@ -2048,33 +2174,54 @@ export const AdminGas: React.FC = () => {
                 />
               </div>
 
-              <div>
-                <label style={{ fontSize: '11px', color: '#a1a1aa', fontWeight: 700 }}>MONTO EN DÓLARES ($ USD) - OPCIONAL</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={formEvento.montoUsd}
-                  onChange={e => setFormEvento(prev => ({ ...prev, montoUsd: e.target.value }))}
-                  placeholder="0.00"
-                  style={{
-                    width: '100%',
-                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                    border: '1px solid rgba(255, 255, 255, 0.12)',
-                    padding: '8px 10px',
-                    borderRadius: '8px',
-                    color: '#fff',
-                    marginTop: '4px'
-                  }}
-                />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ fontSize: '11px', color: '#a1a1aa', fontWeight: 700 }}>MONEDA</label>
+                  <select
+                    value={formEvento.moneda}
+                    onChange={e => setFormEvento(prev => ({ ...prev, moneda: e.target.value as any }))}
+                    style={{
+                      width: '100%',
+                      backgroundColor: '#1b1d24',
+                      border: '1px solid rgba(255, 255, 255, 0.12)',
+                      padding: '8px 10px',
+                      borderRadius: '8px',
+                      color: '#fff',
+                      marginTop: '4px'
+                    }}
+                  >
+                    <option value="BS">Bolívares (Bs.)</option>
+                    <option value="USD">Dólares ($ USD)</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: '11px', color: '#a1a1aa', fontWeight: 700 }}>MONTO</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={formEvento.monto}
+                    onChange={e => setFormEvento(prev => ({ ...prev, monto: e.target.value }))}
+                    placeholder={formEvento.moneda === 'BS' ? 'Monto en Bs.' : 'Monto en $'}
+                    style={{
+                      width: '100%',
+                      backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                      border: '1px solid rgba(255, 255, 255, 0.12)',
+                      padding: '8px 10px',
+                      borderRadius: '8px',
+                      color: '#fff',
+                      marginTop: '4px'
+                    }}
+                  />
+                </div>
               </div>
 
               <div>
-                <label style={{ fontSize: '11px', color: '#a1a1aa', fontWeight: 700 }}>DESCRIPCIÓN</label>
+                <label style={{ fontSize: '11px', color: '#a1a1aa', fontWeight: 700 }}>DESCRIPCIÓN / DETALLES</label>
                 <input
                   type="text"
                   value={formEvento.descripcion}
                   onChange={e => setFormEvento(prev => ({ ...prev, descripcion: e.target.value }))}
-                  placeholder="Detalles sobre lo ocurrido o programado..."
+                  placeholder="Detalles del recaudo..."
                   style={{
                     width: '100%',
                     backgroundColor: 'rgba(255, 255, 255, 0.05)',
@@ -2117,7 +2264,7 @@ export const AdminGas: React.FC = () => {
                     fontWeight: 800
                   }}
                 >
-                  Guardar Evento
+                  Guardar Recaudo
                 </button>
               </div>
             </form>
@@ -2125,7 +2272,7 @@ export const AdminGas: React.FC = () => {
         </div>
       )}
 
-      {/* ── MODAL: CONFIGURACIÓN TANQUE & DATOS BANCARIOS ─────────────── */}
+      {/* ── MODAL: CONFIGURACIÓN CUOTA (BS/USD) & DATOS BANCARIOS ─────── */}
       {modalConfigOpen && formConfig && (
         <div style={{
           position: 'fixed',
@@ -2150,13 +2297,99 @@ export const AdminGas: React.FC = () => {
             boxShadow: '0 20px 50px rgba(0,0,0,0.8)'
           }}>
             <h3 style={{ margin: '0 0 16px', fontSize: '18px', fontWeight: 800 }}>
-              ⚙️ Ajustes del Servicio de Gas Comunal
+              ⚙️ Configuración del Recaudo y Tanque
             </h3>
 
             <form onSubmit={handleGuardarConfig} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
-                  <label style={{ fontSize: '11px', color: '#a1a1aa', fontWeight: 700 }}>CAPACIDAD TOTAL (LITROS)</label>
+                  <label style={{ fontSize: '11px', color: '#a1a1aa', fontWeight: 700 }}>MONEDA PRINCIPAL</label>
+                  <select
+                    value={formConfig.monedaCuota}
+                    onChange={e => {
+                      const m = e.target.value as 'BS' | 'USD'
+                      setFormConfig(prev => prev ? ({ ...prev, monedaCuota: m }) : null)
+                    }}
+                    style={{
+                      width: '100%',
+                      backgroundColor: '#1b1d24',
+                      border: '1px solid rgba(255, 255, 255, 0.12)',
+                      padding: '8px 10px',
+                      borderRadius: '8px',
+                      color: '#fff',
+                      marginTop: '4px'
+                    }}
+                  >
+                    <option value="BS">Bolívares (Bs.)</option>
+                    <option value="USD">Dólares ($ USD)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '11px', color: '#a1a1aa', fontWeight: 700 }}>
+                    CUOTA POR APTO ({formConfig.monedaCuota === 'BS' ? 'Bs.' : '$'})
+                  </label>
+                  {formConfig.monedaCuota === 'BS' ? (
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={formConfig.costoPorAptoDefectoBs}
+                      onChange={e => {
+                        const val = Number(e.target.value) || 0
+                        const tasa = formConfig.tasaBcv || 859.06
+                        setFormConfig(prev => prev ? ({
+                          ...prev,
+                          costoPorAptoDefectoBs: val,
+                          costoPorAptoDefectoUsd: tasa > 0 ? Number((val / tasa).toFixed(2)) : 0
+                        }) : null)
+                      }}
+                      style={{
+                        width: '100%',
+                        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                        border: '1px solid rgba(255, 255, 255, 0.12)',
+                        padding: '8px 10px',
+                        borderRadius: '8px',
+                        color: '#fff',
+                        marginTop: '4px'
+                      }}
+                      required
+                    />
+                  ) : (
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={formConfig.costoPorAptoDefectoUsd}
+                      onChange={e => {
+                        const val = Number(e.target.value) || 0
+                        const tasa = formConfig.tasaBcv || 859.06
+                        setFormConfig(prev => prev ? ({
+                          ...prev,
+                          costoPorAptoDefectoUsd: val,
+                          costoPorAptoDefectoBs: Number((val * tasa).toFixed(2))
+                        }) : null)
+                      }}
+                      style={{
+                        width: '100%',
+                        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                        border: '1px solid rgba(255, 255, 255, 0.12)',
+                        padding: '8px 10px',
+                        borderRadius: '8px',
+                        color: '#fff',
+                        marginTop: '4px'
+                      }}
+                      required
+                    />
+                  )}
+                </div>
+              </div>
+
+              <div style={{ fontSize: '11px', color: '#a1a1aa' }}>
+                Equivalente actual: <b>Bs. {(formConfig.costoPorAptoDefectoBs || 0).toLocaleString('es-VE')}</b> ≈ <b>${(formConfig.costoPorAptoDefectoUsd || 0).toFixed(2)} USD</b> (Tasa BCV: {formConfig.tasaBcv})
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ fontSize: '11px', color: '#a1a1aa', fontWeight: 700 }}>CAPACIDAD TANQUE (L)</label>
                   <input
                     type="number"
                     value={formConfig.capacidadLitros}
@@ -2174,12 +2407,12 @@ export const AdminGas: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: '11px', color: '#a1a1aa', fontWeight: 700 }}>CUOTA POR APTO ($ USD)</label>
+                  <label style={{ fontSize: '11px', color: '#a1a1aa', fontWeight: 700 }}>PROVEEDOR ACTUAL</label>
                   <input
-                    type="number"
-                    step="0.1"
-                    value={formConfig.costoPorAptoDefectoUsd}
-                    onChange={e => setFormConfig(prev => prev ? ({ ...prev, costoPorAptoDefectoUsd: Number(e.target.value) }) : null)}
+                    type="text"
+                    value={formConfig.proveedorActual}
+                    onChange={e => setFormConfig(prev => prev ? ({ ...prev, proveedorActual: e.target.value }) : null)}
+                    placeholder="Gas Comunal / PDVSA"
                     style={{
                       width: '100%',
                       backgroundColor: 'rgba(255, 255, 255, 0.05)',
@@ -2189,33 +2422,13 @@ export const AdminGas: React.FC = () => {
                       color: '#fff',
                       marginTop: '4px'
                     }}
-                    required
                   />
                 </div>
               </div>
 
-              <div>
-                <label style={{ fontSize: '11px', color: '#a1a1aa', fontWeight: 700 }}>PROVEEDOR ACTUAL</label>
-                <input
-                  type="text"
-                  value={formConfig.proveedorActual}
-                  onChange={e => setFormConfig(prev => prev ? ({ ...prev, proveedorActual: e.target.value }) : null)}
-                  style={{
-                    width: '100%',
-                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                    border: '1px solid rgba(255, 255, 255, 0.12)',
-                    padding: '8px 10px',
-                    borderRadius: '8px',
-                    color: '#fff',
-                    marginTop: '4px'
-                  }}
-                  required
-                />
-              </div>
-
               <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.1)', paddingTop: '14px', marginTop: '6px' }}>
                 <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--color-accent, #f97316)' }}>
-                  Datos de Pago que verán los Residentes:
+                  Datos de Pago que verá el Residente:
                 </span>
               </div>
 
@@ -2253,7 +2466,6 @@ export const AdminGas: React.FC = () => {
                       color: '#fff',
                       marginTop: '4px'
                     }}
-                    required
                   />
                 </div>
               </div>
@@ -2274,11 +2486,10 @@ export const AdminGas: React.FC = () => {
                       color: '#fff',
                       marginTop: '4px'
                     }}
-                    required
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: '11px', color: '#a1a1aa', fontWeight: 700 }}>TITULAR DE LA CUENTA</label>
+                  <label style={{ fontSize: '11px', color: '#a1a1aa', fontWeight: 700 }}>TITULAR</label>
                   <input
                     type="text"
                     value={formConfig.datosPago.titular}
@@ -2292,7 +2503,6 @@ export const AdminGas: React.FC = () => {
                       color: '#fff',
                       marginTop: '4px'
                     }}
-                    required
                   />
                 </div>
               </div>
