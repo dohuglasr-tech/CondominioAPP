@@ -808,7 +808,234 @@ export const AdminCalendarioDeudas: React.FC = () => {
 
   // ── Render ───────────────────────────────────────────────────────────────
   return (
-    <div style={{ padding: '24px 32px', maxWidth: '100%', margin: '0 auto', color: '#f3f4f6' }}>
+    <div className="calendario-page-root" style={{ padding: '24px 32px', maxWidth: '100%', margin: '0 auto', color: '#f3f4f6' }}>
+      {/* Estilos CSS Scoped para Adaptación Móvil manteniendo Desktop Idéntico */}
+      <style>{`
+        .calendario-mobile-scroll-hint {
+          display: none;
+        }
+
+        @media (max-width: 768px) {
+          .calendario-page-root {
+            padding: 12px 10px !important;
+          }
+
+          .calendario-header-row {
+            flex-direction: column !important;
+            align-items: stretch !important;
+            gap: 12px !important;
+            margin-bottom: 16px !important;
+          }
+
+          .calendario-title-block h1 {
+            font-size: 19px !important;
+            line-height: 1.2 !important;
+          }
+
+          .calendario-title-block p {
+            font-size: 11px !important;
+            line-height: 1.35 !important;
+          }
+
+          .calendario-actions-bar {
+            display: grid !important;
+            grid-template-columns: repeat(2, 1fr) !important;
+            gap: 8px !important;
+            width: 100% !important;
+          }
+
+          .calendario-actions-bar button,
+          .calendario-actions-bar select {
+            width: 100% !important;
+            justify-content: center !important;
+            padding: 9px 8px !important;
+            font-size: 11px !important;
+            white-space: nowrap !important;
+            text-align: center !important;
+            border-radius: 8px !important;
+          }
+
+          .calendario-kpi-grid {
+            grid-template-columns: repeat(2, 1fr) !important;
+            gap: 8px !important;
+            margin-bottom: 14px !important;
+          }
+
+          .calendario-kpi-card {
+            padding: 10px 12px !important;
+            border-radius: 10px !important;
+          }
+
+          .calendario-kpi-card .kpi-num {
+            font-size: 18px !important;
+            margin-top: 4px !important;
+          }
+
+          .calendario-kpi-card .kpi-sub {
+            font-size: 10px !important;
+            margin-top: 4px !important;
+            flex-wrap: wrap !important;
+            gap: 6px !important;
+          }
+
+          .calendario-filter-bar {
+            flex-direction: column !important;
+            align-items: stretch !important;
+            gap: 10px !important;
+            padding: 10px 12px !important;
+            margin-bottom: 12px !important;
+            border-radius: 10px !important;
+          }
+
+          .calendario-filter-search-group {
+            flex-direction: column !important;
+            width: 100% !important;
+            min-width: 100% !important;
+            gap: 8px !important;
+          }
+
+          .calendario-search-wrap {
+            max-width: 100% !important;
+            width: 100% !important;
+          }
+
+          .calendario-status-pills {
+            display: flex !important;
+            width: 100% !important;
+            justify-content: space-between !important;
+          }
+
+          .calendario-status-pills button {
+            flex: 1 !important;
+            text-align: center !important;
+            padding: 6px 4px !important;
+            font-size: 11px !important;
+          }
+
+          .calendario-filter-modes-group {
+            flex-direction: column !important;
+            width: 100% !important;
+            gap: 8px !important;
+          }
+
+          .calendario-view-tabs {
+            display: flex !important;
+            width: 100% !important;
+            overflow-x: auto !important;
+            -webkit-overflow-scrolling: touch !important;
+            scrollbar-width: none !important;
+          }
+
+          .calendario-view-tabs button {
+            flex: 1 !important;
+            white-space: nowrap !important;
+            text-align: center !important;
+            font-size: 10px !important;
+            padding: 6px 8px !important;
+          }
+
+          .calendario-checklist-toggle {
+            width: 100% !important;
+            justify-content: center !important;
+            box-sizing: border-box !important;
+            padding: 8px 12px !important;
+          }
+
+          .calendario-mobile-scroll-hint {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            gap: 6px !important;
+            background: linear-gradient(90deg, rgba(59, 130, 246, 0.08) 0%, rgba(249, 115, 22, 0.08) 100%) !important;
+            border: 1px dashed rgba(59, 130, 246, 0.35) !important;
+            border-radius: 8px !important;
+            padding: 8px 10px !important;
+            font-size: 11px !important;
+            color: #93c5fd !important;
+            font-weight: 600 !important;
+            margin-bottom: 10px !important;
+            text-align: center !important;
+          }
+
+          .calendario-table-wrapper {
+            max-height: 68vh !important;
+            border-radius: 10px !important;
+            -webkit-overflow-scrolling: touch !important;
+            overscroll-behavior-x: contain !important;
+          }
+
+          .calendario-main-table th,
+          .calendario-main-table td {
+            padding: 7px 6px !important;
+            font-size: 11px !important;
+          }
+
+          .calendario-sticky-col {
+            padding: 7px 8px !important;
+            min-width: 80px !important;
+            max-width: 90px !important;
+            box-shadow: 4px 0 10px rgba(0, 0, 0, 0.7) !important;
+          }
+
+          .calendario-modal-overlay {
+            padding: 10px !important;
+          }
+
+          .calendario-modal-card {
+            width: 95vw !important;
+            max-width: 95vw !important;
+            max-height: 92vh !important;
+            border-radius: 14px !important;
+          }
+
+          .calendario-modal-header {
+            padding: 12px 16px !important;
+          }
+
+          .calendario-modal-body {
+            padding: 14px 16px !important;
+            max-height: 70vh !important;
+            overflow-y: auto !important;
+          }
+
+          .calendario-modal-footer {
+            padding: 10px 16px !important;
+            flex-wrap: wrap !important;
+            gap: 8px !important;
+          }
+
+          .calendario-modal-grid-2 {
+            grid-template-columns: 1fr !important;
+            gap: 10px !important;
+          }
+
+          .calendario-organizar-grid {
+            grid-template-columns: 1fr !important;
+            gap: 14px !important;
+            padding: 12px 14px !important;
+          }
+        }
+
+        @media (max-width: 480px) {
+          .calendario-actions-bar {
+            grid-template-columns: 1fr 1fr !important;
+          }
+
+          .calendario-kpi-grid {
+            grid-template-columns: 1fr 1fr !important;
+            gap: 6px !important;
+          }
+
+          .calendario-kpi-card {
+            padding: 8px 10px !important;
+          }
+
+          .calendario-kpi-card .kpi-num {
+            font-size: 16px !important;
+          }
+        }
+      `}</style>
+
       {/* Toast Alert */}
       {toastMsg && (
         <div style={{
@@ -833,8 +1060,8 @@ export const AdminCalendarioDeudas: React.FC = () => {
       )}
 
       {/* Header y Título */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
-        <div>
+      <div className="calendario-header-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
+        <div className="calendario-title-block">
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <span style={{ fontSize: '28px' }}>📊</span>
             <div>
@@ -849,7 +1076,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
         </div>
 
         {/* Acciones principales superiores */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+        <div className="calendario-actions-bar" style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           {/* Botón Nueva Columna */}
           <button
             onClick={() => handleAbrirCrearColumna()}
@@ -871,7 +1098,6 @@ export const AdminCalendarioDeudas: React.FC = () => {
             <span>➕</span> Nueva Columna
           </button>
 
-          {/* Botón Organizar / Mover Columnas */}
           {/* Botón Organizar / Mover Columnas */}
           <button
             onClick={() => setModalOrganizarColumnasOpen(true)}
@@ -975,64 +1201,64 @@ export const AdminCalendarioDeudas: React.FC = () => {
       </div>
 
       {/* KPI Cards */}
-      <div style={{
+      <div className="calendario-kpi-grid" style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
         gap: '14px',
         marginBottom: '24px'
       }}>
-        <div style={{ backgroundColor: '#111827', border: '1px solid #1f2937', borderRadius: '14px', padding: '16px 20px' }}>
+        <div className="calendario-kpi-card" style={{ backgroundColor: '#111827', border: '1px solid #1f2937', borderRadius: '14px', padding: '16px 20px' }}>
           <div style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
             🏢 Apartamentos
           </div>
-          <div style={{ fontSize: '26px', fontWeight: 800, color: '#ffffff', marginTop: '6px' }}>
+          <div className="kpi-num" style={{ fontSize: '26px', fontWeight: 800, color: '#ffffff', marginTop: '6px' }}>
             {resumen?.totalApartamentos || 62}
           </div>
-          <div style={{ display: 'flex', gap: '10px', marginTop: '8px', fontSize: '11px', fontWeight: 600 }}>
+          <div className="kpi-sub" style={{ display: 'flex', gap: '10px', marginTop: '8px', fontSize: '11px', fontWeight: 600 }}>
             <span style={{ color: '#10b981' }}>🟢 {resumen?.apartamentosSolventes || 0} Solventes</span>
             <span style={{ color: '#ef4444' }}>🔴 {resumen?.apartamentosMorosos || 0} Con Deuda</span>
           </div>
         </div>
 
-        <div style={{ backgroundColor: '#111827', border: '1px solid #1f2937', borderRadius: '14px', padding: '16px 20px' }}>
+        <div className="calendario-kpi-card" style={{ backgroundColor: '#111827', border: '1px solid #1f2937', borderRadius: '14px', padding: '16px 20px' }}>
           <div style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
             💵 Deuda Total USD
           </div>
-          <div style={{ fontSize: '26px', fontWeight: 800, color: '#f87171', marginTop: '6px' }}>
+          <div className="kpi-num" style={{ fontSize: '26px', fontWeight: 800, color: '#f87171', marginTop: '6px' }}>
             ${fmtUsd(resumen?.totalDeudaEdificioUsd || 0)}
           </div>
-          <div style={{ color: '#64748b', fontSize: '11px', marginTop: '8px' }}>
+          <div className="kpi-sub" style={{ color: '#64748b', fontSize: '11px', marginTop: '8px' }}>
             Suma de recibos pendientes indexados
           </div>
         </div>
 
-        <div style={{ backgroundColor: '#111827', border: '1px solid #1f2937', borderRadius: '14px', padding: '16px 20px' }}>
+        <div className="calendario-kpi-card" style={{ backgroundColor: '#111827', border: '1px solid #1f2937', borderRadius: '14px', padding: '16px 20px' }}>
           <div style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
             🇻🇪 Deuda Total Bolívares
           </div>
-          <div style={{ fontSize: '24px', fontWeight: 800, color: '#fb923c', marginTop: '6px' }}>
+          <div className="kpi-num" style={{ fontSize: '24px', fontWeight: 800, color: '#fb923c', marginTop: '6px' }}>
             Bs. {fmtBs(resumen?.totalDeudaEdificioBs || 0)}
           </div>
-          <div style={{ color: '#64748b', fontSize: '11px', marginTop: '8px' }}>
+          <div className="kpi-sub" style={{ color: '#64748b', fontSize: '11px', marginTop: '8px' }}>
             2025 + Conceptos fijos en Bs
           </div>
         </div>
 
-        <div style={{ backgroundColor: '#111827', border: '1px solid rgba(16, 185, 129, 0.25)', borderRadius: '14px', padding: '16px 20px' }}>
+        <div className="calendario-kpi-card" style={{ backgroundColor: '#111827', border: '1px solid rgba(16, 185, 129, 0.25)', borderRadius: '14px', padding: '16px 20px' }}>
           <div style={{ color: '#10b981', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
             💚 Depósitos / Saldo a Favor
           </div>
-          <div style={{ fontSize: '24px', fontWeight: 800, color: '#34d399', marginTop: '6px' }}>
+          <div className="kpi-num" style={{ fontSize: '24px', fontWeight: 800, color: '#34d399', marginTop: '6px' }}>
             +${fmtUsd(resumen?.totalSaldoAFavorUsd || 0)}
           </div>
-          <div style={{ color: '#6ee7b7', fontSize: '11px', marginTop: '8px', fontWeight: 600 }}>
+          <div className="kpi-sub" style={{ color: '#6ee7b7', fontSize: '11px', marginTop: '8px', fontWeight: 600 }}>
             {resumen?.totalSaldoAFavorBs && resumen.totalSaldoAFavorBs > 0 ? `+Bs. ${fmtBs(resumen.totalSaldoAFavorBs)}` : 'Saldos positivos registrados'}
           </div>
         </div>
       </div>
 
       {/* Barra de Filtros */}
-      <div style={{
+      <div className="calendario-filter-bar" style={{
         backgroundColor: '#111827',
         border: '1px solid #1f2937',
         borderRadius: '14px',
@@ -1044,8 +1270,8 @@ export const AdminCalendarioDeudas: React.FC = () => {
         flexWrap: 'wrap',
         gap: '14px'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: '260px' }}>
-          <div style={{ position: 'relative', width: '100%', maxWidth: '340px' }}>
+        <div className="calendario-filter-search-group" style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: '260px' }}>
+          <div className="calendario-search-wrap" style={{ position: 'relative', width: '100%', maxWidth: '340px' }}>
             <span style={{ position: 'absolute', left: '12px', top: '10px', color: '#64748b', fontSize: '13px' }}>🔍</span>
             <input
               type="text"
@@ -1066,7 +1292,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
             />
           </div>
 
-          <div style={{ display: 'flex', gap: '4px', backgroundColor: '#030712', padding: '3px', borderRadius: '8px', border: '1px solid #374151' }}>
+          <div className="calendario-status-pills" style={{ display: 'flex', gap: '4px', backgroundColor: '#030712', padding: '3px', borderRadius: '8px', border: '1px solid #374151' }}>
             {(['todos', 'con_deuda', 'solventes'] as const).map(f => (
               <button
                 key={f}
@@ -1088,8 +1314,8 @@ export const AdminCalendarioDeudas: React.FC = () => {
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', gap: '4px', backgroundColor: '#030712', padding: '3px', borderRadius: '8px', border: '1px solid #374151' }}>
+        <div className="calendario-filter-modes-group" style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          <div className="calendario-view-tabs" style={{ display: 'flex', gap: '4px', backgroundColor: '#030712', padding: '3px', borderRadius: '8px', border: '1px solid #374151' }}>
             <button
               onClick={() => setVistaModo('completo')}
               style={{
@@ -1137,7 +1363,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
             </button>
           </div>
 
-          <label style={{
+          <label className="calendario-checklist-toggle" style={{
             display: 'flex',
             alignItems: 'center',
             gap: '8px',
@@ -1161,6 +1387,12 @@ export const AdminCalendarioDeudas: React.FC = () => {
         </div>
       </div>
 
+      {/* Indicador de Desplazamiento Móvil */}
+      <div className="calendario-mobile-scroll-hint">
+        <span style={{ fontSize: '13px' }}>👆</span>
+        <span>Desliza horizontalmente para ver todos los meses y columnas ↔️</span>
+      </div>
+
       {/* TABLA PRINCIPAL DE LA MATRIZ */}
       {loading ? (
         <div style={{ backgroundColor: '#111827', borderRadius: '14px', padding: '24px' }}>
@@ -1174,7 +1406,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
           </button>
         </div>
       ) : (
-        <div style={{
+        <div className="calendario-table-wrapper" style={{
           backgroundColor: '#0b0f19',
           border: '1px solid #1f2937',
           borderRadius: '14px',
@@ -1183,7 +1415,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
           position: 'relative',
           maxHeight: '75vh'
         }}>
-          <table style={{
+          <table className="calendario-main-table" style={{
             width: '100%',
             borderCollapse: 'collapse',
             fontSize: '12px',
@@ -1193,19 +1425,22 @@ export const AdminCalendarioDeudas: React.FC = () => {
             {/* Cabecera Nivel 1: Agrupadores Excel */}
             <thead>
               <tr style={{ backgroundColor: '#070b14', borderBottom: '1px solid #374151' }}>
-                <th style={{
-                  position: 'sticky',
-                  left: 0,
-                  top: 0,
-                  zIndex: 20,
-                  backgroundColor: '#070b14',
-                  padding: '12px 14px',
-                  color: '#94a3b8',
-                  textAlign: 'left',
-                  fontWeight: 800,
-                  borderRight: '2px solid #374151',
-                  minWidth: '95px'
-                }}>
+                <th
+                  className="calendario-sticky-col"
+                  style={{
+                    position: 'sticky',
+                    left: 0,
+                    top: 0,
+                    zIndex: 25,
+                    backgroundColor: '#070b14',
+                    padding: '12px 14px',
+                    color: '#94a3b8',
+                    textAlign: 'left',
+                    fontWeight: 800,
+                    borderRight: '2px solid #374151',
+                    minWidth: '95px'
+                  }}
+                >
                   APTO
                 </th>
                 {(vistaModo === 'completo' || vistaModo === 'historico_2025') && (
@@ -1361,17 +1596,20 @@ export const AdminCalendarioDeudas: React.FC = () => {
 
               {/* Cabecera Nivel 2: Columnas de datos dinámicas limpias */}
               <tr style={{ backgroundColor: '#0f172a', borderBottom: '2px solid #334155', color: '#cbd5e1' }}>
-                <th style={{
-                  position: 'sticky',
-                  left: 0,
-                  top: '37px',
-                  zIndex: 20,
-                  backgroundColor: '#0f172a',
-                  padding: '10px 14px',
-                  textAlign: 'left',
-                  borderRight: '2px solid #374151',
-                  fontWeight: 700
-                }}>
+                <th
+                  className="calendario-sticky-col"
+                  style={{
+                    position: 'sticky',
+                    left: 0,
+                    top: '37px',
+                    zIndex: 25,
+                    backgroundColor: '#0f172a',
+                    padding: '10px 14px',
+                    textAlign: 'left',
+                    borderRight: '2px solid #374151',
+                    fontWeight: 700
+                  }}
+                >
                   Unidad
                 </th>
 
@@ -1765,17 +2003,20 @@ export const AdminCalendarioDeudas: React.FC = () => {
                       onMouseLeave={e => e.currentTarget.style.backgroundColor = bgFila}
                     >
                       {/* Columna APTO Sticky */}
-                      <td style={{
-                        position: 'sticky',
-                        left: 0,
-                        zIndex: 5,
-                        backgroundColor: esPar ? '#090e1a' : '#0d1322',
-                        padding: '10px 14px',
-                        textAlign: 'left',
-                        fontWeight: 800,
-                        color: '#fff',
-                        borderRight: '2px solid #374151'
-                      }}>
+                      <td
+                        className="calendario-sticky-col"
+                        style={{
+                          position: 'sticky',
+                          left: 0,
+                          zIndex: 15,
+                          backgroundColor: esPar ? '#090e1a' : '#0d1322',
+                          padding: '10px 14px',
+                          textAlign: 'left',
+                          fontWeight: 800,
+                          color: '#fff',
+                          borderRight: '2px solid #374151'
+                        }}
+                      >
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                           <span style={{
                             width: '8px',
@@ -1907,17 +2148,20 @@ export const AdminCalendarioDeudas: React.FC = () => {
                 color: '#ffffff',
                 fontWeight: 800
               }}>
-                <td style={{
-                  position: 'sticky',
-                  left: 0,
-                  bottom: 0,
-                  zIndex: 20,
-                  backgroundColor: '#070b14',
-                  padding: '12px 14px',
-                  textAlign: 'left',
-                  borderRight: '2px solid #374151',
-                  color: '#93c5fd'
-                }}>
+                <td
+                  className="calendario-sticky-col"
+                  style={{
+                    position: 'sticky',
+                    left: 0,
+                    bottom: 0,
+                    zIndex: 25,
+                    backgroundColor: '#070b14',
+                    padding: '12px 14px',
+                    textAlign: 'left',
+                    borderRight: '2px solid #374151',
+                    color: '#93c5fd'
+                  }}
+                >
                   TOTALES ({filasFiltradas.length})
                 </td>
 
@@ -1966,7 +2210,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
 
       {/* MODAL EDITAR TÍTULO DE SECCIÓN */}
       {modalEditarTituloOpen && (
-        <div style={{
+        <div className="calendario-modal-overlay" style={{
           position: 'fixed',
           inset: 0,
           backgroundColor: 'rgba(0,0,0,0.75)',
@@ -1977,7 +2221,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
           zIndex: 99999,
           padding: '20px'
         }}>
-          <div style={{
+          <div className="calendario-modal-card" style={{
             backgroundColor: '#111827',
             border: '1px solid #374151',
             borderRadius: '16px',
@@ -1986,7 +2230,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
             boxShadow: '0 25px 60px rgba(0,0,0,0.8)',
             overflow: 'hidden'
           }}>
-            <div style={{ padding: '18px 24px', borderBottom: '1px solid #1f2937', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div className="calendario-modal-header" style={{ padding: '18px 24px', borderBottom: '1px solid #1f2937', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: '#fff' }}>
                 ✏️ Editar Título: {seccionTituloEditando === 'naranja' ? 'Deudas Pasadas' : 'Calendario Mensual'}
               </h3>
@@ -1994,7 +2238,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
                 ✕
               </button>
             </div>
-            <div style={{ padding: '24px' }}>
+            <div className="calendario-modal-body" style={{ padding: '24px' }}>
               <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '8px', fontWeight: 700 }}>
                 Texto del Encabezado
               </label>
@@ -2016,7 +2260,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
                 }}
               />
             </div>
-            <div style={{ padding: '16px 24px', backgroundColor: '#030712', borderTop: '1px solid #1f2937', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+            <div className="calendario-modal-footer" style={{ padding: '16px 24px', backgroundColor: '#030712', borderTop: '1px solid #1f2937', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
               <button
                 type="button"
                 onClick={() => setModalEditarTituloOpen(false)}
@@ -2039,7 +2283,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
 
       {/* MODAL CREAR NUEVA COLUMNA (VERTICAL) */}
       {modalNuevaColumnaOpen && (
-        <div style={{
+        <div className="calendario-modal-overlay" style={{
           position: 'fixed',
           inset: 0,
           backgroundColor: 'rgba(0,0,0,0.75)',
@@ -2050,7 +2294,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
           zIndex: 99999,
           padding: '20px'
         }}>
-          <div style={{
+          <div className="calendario-modal-card" style={{
             backgroundColor: '#111827',
             border: '2px solid #eab308',
             borderRadius: '16px',
@@ -2059,7 +2303,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
             boxShadow: '0 25px 60px rgba(0,0,0,0.8)',
             overflow: 'hidden'
           }}>
-            <div style={{ padding: '18px 24px', borderBottom: '1px solid #1f2937', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'rgba(234, 179, 8, 0.1)' }}>
+            <div className="calendario-modal-header" style={{ padding: '18px 24px', borderBottom: '1px solid #1f2937', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'rgba(234, 179, 8, 0.1)' }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: '#facc15' }}>
                   ➕ Agregar Columna (Vertical)
@@ -2073,7 +2317,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
               </button>
             </div>
 
-            <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div className="calendario-modal-body" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px', fontWeight: 700 }}>
                   Nombre / Título de la Columna *
@@ -2088,7 +2332,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
                 />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div className="calendario-modal-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px', fontWeight: 700 }}>
                     Sección Destino
@@ -2154,7 +2398,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
                 </select>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', alignItems: 'center' }}>
+              <div className="calendario-modal-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', alignItems: 'center' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px', fontWeight: 700 }}>
                     Monto Inicial (Opcional)
@@ -2183,7 +2427,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
               </div>
             </div>
 
-            <div style={{ padding: '16px 24px', backgroundColor: '#030712', borderTop: '1px solid #1f2937', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+            <div className="calendario-modal-footer" style={{ padding: '16px 24px', backgroundColor: '#030712', borderTop: '1px solid #1f2937', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
               <button
                 type="button"
                 onClick={() => setModalNuevaColumnaOpen(false)}
@@ -2206,7 +2450,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
 
       {/* MODAL GESTIONAR Y QUITAR COLUMNAS (VERTICALES) */}
       {modalOrganizarColumnasOpen && (
-        <div style={{
+        <div className="calendario-modal-overlay" style={{
           position: 'fixed',
           inset: 0,
           backgroundColor: 'rgba(0,0,0,0.75)',
@@ -2217,7 +2461,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
           zIndex: 99999,
           padding: '20px'
         }}>
-          <div style={{
+          <div className="calendario-modal-card" style={{
             backgroundColor: '#111827',
             border: '1px solid #374151',
             borderRadius: '16px',
@@ -2229,7 +2473,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
             flexDirection: 'column',
             overflow: 'hidden'
           }}>
-            <div style={{ padding: '18px 24px', borderBottom: '1px solid #1f2937', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div className="calendario-modal-header" style={{ padding: '18px 24px', borderBottom: '1px solid #1f2937', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: '#fff' }}>
                   ⚙️ Gestionar y Quitar Columnas (Verticales)
@@ -2243,7 +2487,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
               </button>
             </div>
 
-            <div style={{ padding: '20px 24px', overflowY: 'auto', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', flex: 1 }}>
+            <div className="calendario-modal-body calendario-organizar-grid" style={{ padding: '20px 24px', overflowY: 'auto', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', flex: 1 }}>
               {/* Sección Deudas Pasadas */}
               <div style={{ backgroundColor: '#090d16', border: '1px solid rgba(234, 88, 12, 0.3)', borderRadius: '12px', padding: '16px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', borderBottom: '1px solid rgba(234, 88, 12, 0.2)', paddingBottom: '8px' }}>
@@ -2419,7 +2663,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
               </div>
             </div>
 
-            <div style={{ padding: '16px 24px', backgroundColor: '#030712', borderTop: '1px solid #1f2937', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div className="calendario-modal-footer" style={{ padding: '16px 24px', backgroundColor: '#030712', borderTop: '1px solid #1f2937', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <button
                 type="button"
                 onClick={handleRestablecerColumnas}
@@ -2453,7 +2697,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
 
       {/* MODAL EDITAR MONTO DE CELDA EN COLUMNA PERSONALIZADA (CUOTA ESPECIAL) */}
       {modalCeldaPersonalizadaOpen && celdaPersApto && celdaPersCol && (
-        <div style={{
+        <div className="calendario-modal-overlay" style={{
           position: 'fixed',
           inset: 0,
           backgroundColor: 'rgba(0,0,0,0.75)',
@@ -2464,7 +2708,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
           zIndex: 99999,
           padding: '20px'
         }}>
-          <div style={{
+          <div className="calendario-modal-card" style={{
             backgroundColor: '#111827',
             border: '2px solid #eab308',
             borderRadius: '16px',
@@ -2473,7 +2717,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
             boxShadow: '0 25px 60px rgba(0,0,0,0.8)',
             overflow: 'hidden'
           }}>
-            <div style={{ padding: '18px 24px', borderBottom: '1px solid #1f2937', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'rgba(234, 179, 8, 0.1)' }}>
+            <div className="calendario-modal-header" style={{ padding: '18px 24px', borderBottom: '1px solid #1f2937', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'rgba(234, 179, 8, 0.1)' }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: '#facc15' }}>
                   ✏️ {celdaPersCol.titulo}
@@ -2487,7 +2731,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
               </button>
             </div>
 
-            <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div className="calendario-modal-body" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px', fontWeight: 700 }}>
                   Monto ({celdaPersCol.moneda === 'USD' ? 'Dólares $' : 'Bolívares Bs'}):
@@ -2579,7 +2823,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
               </label>
             </div>
 
-            <div style={{ padding: '16px 24px', backgroundColor: '#030712', borderTop: '1px solid #1f2937', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+            <div className="calendario-modal-footer" style={{ padding: '16px 24px', backgroundColor: '#030712', borderTop: '1px solid #1f2937', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
               <button
                 type="button"
                 onClick={() => setModalCeldaPersonalizadaOpen(false)}
@@ -2602,7 +2846,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
 
       {/* MODAL DETALLE / EDICIÓN DE MONTO / CHECKLIST DE PAGO */}
       {modalPagoOpen && modalApto && modalCol && (
-        <div style={{
+        <div className="calendario-modal-overlay" style={{
           position: 'fixed',
           inset: 0,
           backgroundColor: 'rgba(0,0,0,0.75)',
@@ -2613,7 +2857,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
           zIndex: 99999,
           padding: '20px'
         }}>
-          <div style={{
+          <div className="calendario-modal-card" style={{
             backgroundColor: '#111827',
             border: '1px solid #374151',
             borderRadius: '16px',
@@ -2622,7 +2866,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
             boxShadow: '0 25px 60px rgba(0,0,0,0.8)',
             overflow: 'hidden'
           }}>
-            <div style={{
+            <div className="calendario-modal-header" style={{
               padding: '18px 24px',
               borderBottom: '1px solid #1f2937',
               display: 'flex',
@@ -2645,7 +2889,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
               </button>
             </div>
 
-            <div style={{ padding: '24px' }}>
+            <div className="calendario-modal-body" style={{ padding: '24px' }}>
               <div style={{
                 backgroundColor: '#030712',
                 border: '1px solid #1f2937',
@@ -2812,7 +3056,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
               {/* Datos complementarios cuando se marca como pagado */}
               {modalEstadoDeseado === 'pagado' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div className="calendario-modal-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                     <div>
                       <label style={{ display: 'block', fontSize: '11px', color: '#94a3b8', marginBottom: '4px', fontWeight: 600 }}>
                         Método de Pago
@@ -2867,7 +3111,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
               )}
             </div>
 
-            <div style={{ padding: '16px 24px', backgroundColor: '#030712', borderTop: '1px solid #1f2937', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+            <div className="calendario-modal-footer" style={{ padding: '16px 24px', backgroundColor: '#030712', borderTop: '1px solid #1f2937', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
               <button
                 type="button"
                 onClick={() => setModalPagoOpen(false)}
@@ -2900,7 +3144,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
 
       {/* MODAL EDICIÓN CONCEPTOS HISTÓRICOS 2025 */}
       {modalHistOpen && modalHistApto && (
-        <div style={{
+        <div className="calendario-modal-overlay" style={{
           position: 'fixed',
           inset: 0,
           backgroundColor: 'rgba(0,0,0,0.75)',
@@ -2911,7 +3155,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
           zIndex: 99999,
           padding: '20px'
         }}>
-          <div style={{
+          <div className="calendario-modal-card" style={{
             backgroundColor: '#111827',
             border: '1px solid #374151',
             borderRadius: '16px',
@@ -2920,7 +3164,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
             boxShadow: '0 25px 60px rgba(0,0,0,0.8)',
             overflow: 'hidden'
           }}>
-            <div style={{ padding: '18px 24px', borderBottom: '1px solid #1f2937', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div className="calendario-modal-header" style={{ padding: '18px 24px', borderBottom: '1px solid #1f2937', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: '#fff' }}>
                   🏛️ Conceptos Deuda Histórica Año 2025
@@ -2934,7 +3178,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
               </button>
             </div>
 
-            <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div className="calendario-modal-body" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '11px', color: '#94a3b8', marginBottom: '4px', fontWeight: 600 }}>
                   Deuda Base al Año 2025 (Bs.)
@@ -2949,7 +3193,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
                 />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div className="calendario-modal-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '11px', color: '#94a3b8', marginBottom: '4px', fontWeight: 600 }}>
                     Cable Viajero ($)
@@ -2993,7 +3237,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
               </div>
             </div>
 
-            <div style={{ padding: '16px 24px', backgroundColor: '#030712', borderTop: '1px solid #1f2937', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+            <div className="calendario-modal-footer" style={{ padding: '16px 24px', backgroundColor: '#030712', borderTop: '1px solid #1f2937', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
               <button
                 type="button"
                 onClick={() => setModalHistOpen(false)}
