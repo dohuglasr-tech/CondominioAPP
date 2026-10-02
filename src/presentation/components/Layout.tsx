@@ -131,6 +131,7 @@ export const Layout: React.FC = () => {
           apartamentoId={apartamentoId}
           onClose={() => setReportarPagoModalOpen(false)}
           onSuccess={() => setReportarPagoModalOpen(false)}
+          config={config}
         />
       )}
 
