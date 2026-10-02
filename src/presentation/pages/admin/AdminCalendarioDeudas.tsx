@@ -4,15 +4,22 @@ import {
   guardarMontoReciboPersonalizado,
   guardarConceptosHistoricos,
   guardarConfiguracionCalendario,
-  guardarFilaCuotaEspecial,
-  eliminarFilaCuotaEspecial,
+  guardarCeldaPersonalizada,
+  agregarColumnaPersonalizada,
+  cambiarSeccionColumna,
+  moverColumnaPosicion,
+  eliminarColumna,
+  agregarFilaPersonalizada,
+  ocultarOEliminarFila,
+  restaurarFilaOculta,
   sincronizarDatosExcelOficial,
   FilaCalendarioApto,
   ColumnaMes,
   ResumenGlobalCalendario,
   ReciboMesItem,
   ConfiguracionCalendario,
-  FilaCuotaEspecial
+  ColumnaCalendarioConfig,
+  PosicionInsercionColumna
 } from '../../../data/calendarioDeudasService'
 import { useAuth } from '../../../application/contexts/AuthContext'
 import { SkeletonTable } from '../../components/Skeleton'
@@ -29,7 +36,10 @@ export const AdminCalendarioDeudas: React.FC = () => {
   const [resumen, setResumen] = useState<ResumenGlobalCalendario | null>(null)
   const [configuracion, setConfiguracion] = useState<ConfiguracionCalendario>({
     tituloSeccionHistorica: 'DEUDA AL AÑO 2025 / CONCEPTOS EXTRAORDINARIOS (BS)',
-    filasCuotasEspeciales: []
+    columnas: [],
+    filasPersonalizadas: [],
+    filasOcultasIds: [],
+    valoresCeldasPersonalizadas: {}
   })
   const [loading, setLoading] = useState<boolean>(true)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
@@ -67,19 +77,34 @@ export const AdminCalendarioDeudas: React.FC = () => {
   const [histGuaya, setHistGuaya] = useState<number | ''>('')
   const [histArreglo, setHistArreglo] = useState<number | ''>('')
 
-  // Modal para Crear / Editar Fila de Cuota Especial
-  const [modalFilaEspecialOpen, setModalFilaEspecialOpen] = useState(false)
-  const [filaEspecialEditandoId, setFilaEspecialEditandoId] = useState<string | null>(null)
-  const [nuevaFilaNombre, setNuevaFilaNombre] = useState('')
-  const [nuevaFilaMoneda, setNuevaFilaMoneda] = useState<'USD' | 'BS'>('USD')
-  const [nuevaFilaMontoDefecto, setNuevaFilaMontoDefecto] = useState<number | ''>(10)
-  const [nuevaFilaAplicarATodos, setNuevaFilaAplicarATodos] = useState(true)
+  // Modal para Crear Nueva Columna (Cuota Especial)
+  const [modalNuevaColumnaOpen, setModalNuevaColumnaOpen] = useState(false)
+  const [nuevaColTitulo, setNuevaColTitulo] = useState('')
+  const [nuevaColSeccion, setNuevaColSeccion] = useState<'naranja' | 'azul'>('naranja')
+  const [nuevaColMoneda, setNuevaColMoneda] = useState<'USD' | 'BS'>('USD')
+  const [nuevaColMontoDefecto, setNuevaColMontoDefecto] = useState<number | ''>('')
+  const [nuevaColAplicarATodos, setNuevaColAplicarATodos] = useState(false)
+  const [nuevaColPosicion, setNuevaColPosicion] = useState<string>('fin_naranja')
 
-  // Modal para Editar Celda de Fila Especial
-  const [modalCeldaEspecialOpen, setModalCeldaEspecialOpen] = useState(false)
-  const [cuotaEspecialSeleccionada, setCuotaEspecialSeleccionada] = useState<FilaCuotaEspecial | null>(null)
-  const [columnaEspecialSeleccionada, setColumnaEspecialSeleccionada] = useState<{ key: string; label: string } | null>(null)
-  const [montoCeldaEspecialInput, setMontoCeldaEspecialInput] = useState<number | ''>('')
+  // Modal para Organizar / Mover Columnas (Naranja ↔ Azul)
+  const [modalOrganizarColumnasOpen, setModalOrganizarColumnasOpen] = useState(false)
+
+  // Modal para Agregar Nueva Fila (Local, Conserjería, Depósito, etc.)
+  const [modalNuevaFilaOpen, setModalNuevaFilaOpen] = useState(false)
+  const [nuevaFilaNumero, setNuevaFilaNumero] = useState('')
+  const [nuevaFilaPropietario, setNuevaFilaPropietario] = useState('')
+  const [nuevaFilaAlicuota, setNuevaFilaAlicuota] = useState<number | ''>(0.0159)
+
+  // Modal para Ver y Restaurar Filas Ocultas
+  const [modalFilasOcultasOpen, setModalFilasOcultasOpen] = useState(false)
+
+  // Modal para Editar Celda de Columna Personalizada (Cuota Especial)
+  const [modalCeldaPersonalizadaOpen, setModalCeldaPersonalizadaOpen] = useState(false)
+  const [celdaPersApto, setCeldaPersApto] = useState<FilaCalendarioApto | null>(null)
+  const [celdaPersCol, setCeldaPersCol] = useState<ColumnaCalendarioConfig | null>(null)
+  const [celdaPersMonto, setCeldaPersMonto] = useState<number | ''>('')
+  const [celdaPersEstado, setCeldaPersEstado] = useState<'pendiente' | 'pagado'>('pendiente')
+  const [celdaPersAplicarATodos, setCeldaPersAplicarATodos] = useState(false)
 
   // Sincronización Inicial Excel
   const [sincronizandoExcel, setSincronizandoExcel] = useState(false)
@@ -116,16 +141,18 @@ export const AdminCalendarioDeudas: React.FC = () => {
     cargarDatos()
   }, [cargarDatos])
 
-  // ── Subconjuntos limpios de columnas sin duplicados ──────────────────────
-  // En el bloque histórico en Bs: Enero y Febrero 2026
-  const colsHistoricasBs = useMemo(() => {
-    return columnasMeses.filter(c => c.moneda === 'BS')
-  }, [columnasMeses])
+  // ── Columnas dinámicas clasificadas por sección ──────────────────────────
+  const columnasNaranja = useMemo(() => {
+    return (configuracion.columnas || [])
+      .filter(c => c.seccion === 'naranja')
+      .sort((a, b) => a.orden - b.orden)
+  }, [configuracion.columnas])
 
-  // En el bloque de dólares 2026: Marzo a Diciembre
-  const colsDolares2026 = useMemo(() => {
-    return columnasMeses.filter(c => c.moneda === 'USD')
-  }, [columnasMeses])
+  const columnasAzul = useMemo(() => {
+    return (configuracion.columnas || [])
+      .filter(c => c.seccion === 'azul')
+      .sort((a, b) => a.orden - b.orden)
+  }, [configuracion.columnas])
 
   // ── Filtrado de filas ────────────────────────────────────────────────────
   const filasFiltradas = useMemo(() => {
@@ -325,57 +352,55 @@ export const AdminCalendarioDeudas: React.FC = () => {
     }
   }
 
-  // ── Gestión de Filas de Cuotas Especiales (Línea Amarilla) ────────────────
-  const handleAbrirCrearFilaEspecial = (cuotaExistente?: FilaCuotaEspecial) => {
-    if (cuotaExistente) {
-      setFilaEspecialEditandoId(cuotaExistente.id)
-      setNuevaFilaNombre(cuotaExistente.nombre)
-      setNuevaFilaMoneda(cuotaExistente.moneda)
-      setNuevaFilaMontoDefecto(cuotaExistente.montoDefecto)
-      setNuevaFilaAplicarATodos(false)
-    } else {
-      setFilaEspecialEditandoId(null)
-      setNuevaFilaNombre('')
-      setNuevaFilaMoneda('USD')
-      setNuevaFilaMontoDefecto(10)
-      setNuevaFilaAplicarATodos(true)
-    }
-    setModalFilaEspecialOpen(true)
+  // ── Gestión de Columnas Dinámicas y Cuotas Especiales ────────────────────
+  const handleAbrirCrearColumna = () => {
+    setNuevaColTitulo('')
+    setNuevaColSeccion('naranja')
+    setNuevaColMoneda('USD')
+    setNuevaColMontoDefecto('')
+    setNuevaColAplicarATodos(false)
+    setNuevaColPosicion('fin_naranja')
+    setModalNuevaColumnaOpen(true)
   }
 
-  const handleGuardarFilaEspecial = async () => {
-    if (!nuevaFilaNombre.trim()) {
-      showToast('⚠️ Ingresa un nombre para la cuota especial')
+  const handleGuardarNuevaColumna = async () => {
+    if (!nuevaColTitulo.trim()) {
+      showToast('⚠️ Ingresa un título para la columna')
       return
     }
 
     setProcesandoAccion(true)
     try {
-      const id = filaEspecialEditandoId || `cuota-${Date.now()}`
-      const montoDefectoNum = Number(nuevaFilaMontoDefecto || 0)
+      let posicionObj: PosicionInsercionColumna = { tipo: 'fin_naranja' }
 
-      // Poblar valores por apartamento
-      const valoresMap: Record<string, { monto: number; estado: 'pendiente' | 'pagado' }> = {}
-      filas.forEach(f => {
-        valoresMap[f.apartamento_id] = {
-          monto: nuevaFilaAplicarATodos ? montoDefectoNum : 0,
-          estado: 'pendiente'
-        }
-      })
-
-      const cuotaPayload: FilaCuotaEspecial = {
-        id,
-        nombre: nuevaFilaNombre.trim(),
-        moneda: nuevaFilaMoneda,
-        montoDefecto: montoDefectoNum,
-        valoresPorApto: valoresMap,
-        created_at: new Date().toISOString()
+      if (nuevaColPosicion === 'inicio_naranja') {
+        posicionObj = { tipo: 'inicio_naranja' }
+      } else if (nuevaColPosicion === 'fin_naranja') {
+        posicionObj = { tipo: 'fin_naranja' }
+      } else if (nuevaColPosicion === 'inicio_azul') {
+        posicionObj = { tipo: 'inicio_azul' }
+      } else if (nuevaColPosicion === 'fin_azul') {
+        posicionObj = { tipo: 'fin_azul' }
+      } else if (nuevaColPosicion.startsWith('despues_de:')) {
+        const refId = nuevaColPosicion.replace('despues_de:', '')
+        posicionObj = { tipo: 'despues_de', colIdReferencia: refId }
+      } else if (nuevaColPosicion.startsWith('antes_de:')) {
+        const refId = nuevaColPosicion.replace('antes_de:', '')
+        posicionObj = { tipo: 'antes_de', colIdReferencia: refId }
       }
 
-      const res = await guardarFilaCuotaEspecial(cuotaPayload)
+      const res = await agregarColumnaPersonalizada({
+        titulo: nuevaColTitulo.trim(),
+        seccion: nuevaColSeccion,
+        moneda: nuevaColMoneda,
+        montoDefecto: Number(nuevaColMontoDefecto || 0),
+        posicion: posicionObj,
+        aplicarATodos: nuevaColAplicarATodos
+      })
+
       if (res.success) {
-        showToast(`✅ Fila de cuota especial "${cuotaPayload.nombre}" guardada`)
-        setModalFilaEspecialOpen(false)
+        showToast(`✅ Columna "${nuevaColTitulo}" creada exitosamente`)
+        setModalNuevaColumnaOpen(false)
         await cargarDatos(true)
       } else {
         showToast(`❌ Error: ${res.error}`)
@@ -385,58 +410,148 @@ export const AdminCalendarioDeudas: React.FC = () => {
     }
   }
 
-  const handleEliminarFilaEspecial = async (id: string, nombre: string) => {
-    if (!window.confirm(`¿Estás seguro de eliminar la cuota especial "${nombre}"?`)) return
-    const res = await eliminarFilaCuotaEspecial(id)
-    if (res.success) {
-      showToast(`🗑️ Fila especial eliminada`)
-      await cargarDatos(true)
-    }
-  }
-
-  const handleAbrirEditarCeldaEspecial = (cuota: FilaCuotaEspecial, colKey: string, colLabel: string) => {
-    const valActual = cuota.montosPorColumna?.[colKey] ?? cuota.montoDefecto
-    setCuotaEspecialSeleccionada(cuota)
-    setColumnaEspecialSeleccionada({ key: colKey, label: colLabel })
-    setMontoCeldaEspecialInput(valActual > 0 ? valActual : '')
-    setModalCeldaEspecialOpen(true)
-  }
-
-  const handleGuardarMontoCeldaEspecial = async () => {
-    if (!cuotaEspecialSeleccionada || !columnaEspecialSeleccionada) return
+  const handleCambiarSeccion = async (colId: string, nuevaSeccion: 'naranja' | 'azul') => {
     setProcesandoAccion(true)
-    const nuevoMonto = montoCeldaEspecialInput === '' ? 0 : Number(montoCeldaEspecialInput)
-    const colKey = columnaEspecialSeleccionada.key
-
     try {
-      const montosActualizados = {
-        ...(cuotaEspecialSeleccionada.montosPorColumna || {}),
-        [colKey]: nuevoMonto
-      }
-
-      const valoresActualizados = { ...cuotaEspecialSeleccionada.valoresPorApto }
-      filas.forEach(f => {
-        const prev = valoresActualizados[f.apartamento_id] || { monto: cuotaEspecialSeleccionada.montoDefecto, estado: 'pendiente' }
-        valoresActualizados[f.apartamento_id] = {
-          ...prev,
-          monto: nuevoMonto > 0 ? nuevoMonto : prev.monto
-        }
-      })
-
-      const res = await guardarFilaCuotaEspecial({
-        ...cuotaEspecialSeleccionada,
-        montoDefecto: nuevoMonto > 0 ? nuevoMonto : cuotaEspecialSeleccionada.montoDefecto,
-        montosPorColumna: montosActualizados,
-        valoresPorApto: valoresActualizados
-      })
-
+      const res = await cambiarSeccionColumna(colId, nuevaSeccion)
       if (res.success) {
-        showToast(`✅ Cuota "${cuotaEspecialSeleccionada.nombre}" en ${columnaEspecialSeleccionada.label} fijada en ${cuotaEspecialSeleccionada.moneda === 'USD' ? `$${nuevoMonto}` : `Bs. ${nuevoMonto}`}`)
-        setModalCeldaEspecialOpen(false)
+        showToast(`↔️ Columna movida a sección ${nuevaSeccion === 'naranja' ? 'Naranja (Deudas Pasadas)' : 'Azul (Calendario)'}`)
         await cargarDatos(true)
       } else {
         showToast(`❌ Error: ${res.error}`)
       }
+    } finally {
+      setProcesandoAccion(false)
+    }
+  }
+
+  const handleMoverColumna = async (colId: string, direccion: 'izquierda' | 'derecha') => {
+    const res = await moverColumnaPosicion(colId, direccion)
+    if (res.success) {
+      await cargarDatos(true)
+    }
+  }
+
+  const handleEliminarColumnaClick = async (colId: string, titulo: string) => {
+    if (!window.confirm(`¿Estás seguro de eliminar la columna "${titulo}"?`)) return
+    setProcesandoAccion(true)
+    try {
+      const res = await eliminarColumna(colId)
+      if (res.success) {
+        showToast(`🗑️ Columna "${titulo}" eliminada`)
+        await cargarDatos(true)
+      } else {
+        showToast(`❌ Error: ${res.error}`)
+      }
+    } finally {
+      setProcesandoAccion(false)
+    }
+  }
+
+  // ── Gestión de Filas Dinámicas (Agregar / Quitar Filas) ───────────────────
+  const handleGuardarNuevaFila = async () => {
+    if (!nuevaFilaNumero.trim()) {
+      showToast('⚠️ Ingresa el número o nombre de la unidad')
+      return
+    }
+
+    setProcesandoAccion(true)
+    try {
+      const res = await agregarFilaPersonalizada({
+        numero: nuevaFilaNumero.trim(),
+        propietario: nuevaFilaPropietario.trim() || undefined,
+        alicuota: Number(nuevaFilaAlicuota || 0.0159)
+      })
+
+      if (res.success) {
+        showToast(`✅ Fila "${nuevaFilaNumero}" agregada correctamente`)
+        setModalNuevaFilaOpen(false)
+        setNuevaFilaNumero('')
+        setNuevaFilaPropietario('')
+        await cargarDatos(true)
+      } else {
+        showToast(`❌ Error: ${res.error}`)
+      }
+    } finally {
+      setProcesandoAccion(false)
+    }
+  }
+
+  const handleOcultarFila = async (filaId: string, aptoNumero: string) => {
+    if (!window.confirm(`¿Deseas quitar o esconder la fila "${aptoNumero}" de la tabla?`)) return
+    setProcesandoAccion(true)
+    try {
+      const res = await ocultarOEliminarFila(filaId)
+      if (res.success) {
+        showToast(`🗑️ Fila "${aptoNumero}" removida. Puedes restaurarla desde "Filas Ocultas"`)
+        await cargarDatos(true)
+      } else {
+        showToast(`❌ Error: ${res.error}`)
+      }
+    } finally {
+      setProcesandoAccion(false)
+    }
+  }
+
+  const handleRestaurarFila = async (filaId: string) => {
+    setProcesandoAccion(true)
+    try {
+      const res = await restaurarFilaOculta(filaId)
+      if (res.success) {
+        showToast('👁️ Fila restaurada a la tabla')
+        await cargarDatos(true)
+      } else {
+        showToast(`❌ Error: ${res.error}`)
+      }
+    } finally {
+      setProcesandoAccion(false)
+    }
+  }
+
+  // ── Gestión de Celdas de Cuotas Especiales (Columnas Personalizadas) ─────
+  const handleAbrirEditarCeldaPersonalizada = (apto: FilaCalendarioApto, col: ColumnaCalendarioConfig) => {
+    const celdasPers = apto.valores_personalizados || {}
+    const valActual = celdasPers[col.id] ?? (col.montoDefecto ? { monto: col.montoDefecto, estado: 'pendiente' } : { monto: 0, estado: 'pendiente' })
+
+    setCeldaPersApto(apto)
+    setCeldaPersCol(col)
+    setCeldaPersMonto(valActual && valActual.monto > 0 ? valActual.monto : (col.montoDefecto || ''))
+    setCeldaPersEstado(valActual?.estado || 'pendiente')
+    setCeldaPersAplicarATodos(false)
+    setModalCeldaPersonalizadaOpen(true)
+  }
+
+  const handleGuardarCeldaPersonalizada = async () => {
+    if (!celdaPersApto || !celdaPersCol) return
+    setProcesandoAccion(true)
+    const nuevoMonto = celdaPersMonto === '' ? 0 : Number(celdaPersMonto)
+
+    try {
+      if (celdaPersAplicarATodos) {
+        for (const filaItem of filas) {
+          await guardarCeldaPersonalizada({
+            filaId: filaItem.apartamento_id,
+            columnaId: celdaPersCol.id,
+            monto: nuevoMonto,
+            estado: celdaPersEstado
+          })
+        }
+        showToast(`✅ Cuota "${celdaPersCol.titulo}" asignada a todos los apartamentos`)
+      } else {
+        const res = await guardarCeldaPersonalizada({
+          filaId: celdaPersApto.apartamento_id,
+          columnaId: celdaPersCol.id,
+          monto: nuevoMonto,
+          estado: celdaPersEstado
+        })
+        if (res.success) {
+          showToast(`✅ Cuota de ${celdaPersCol.titulo} para Apto ${celdaPersApto.apartamento_numero} guardada`)
+        } else {
+          showToast(`❌ Error: ${res.error}`)
+        }
+      }
+      setModalCeldaPersonalizadaOpen(false)
+      await cargarDatos(true)
     } finally {
       setProcesandoAccion(false)
     }
@@ -466,20 +581,217 @@ export const AdminCalendarioDeudas: React.FC = () => {
     }
   }
 
+  // ── Renderizado y cálculo dinámico por celda y columna ───────────────────
+  const renderCeldaColumna = (apto: FilaCalendarioApto, col: ColumnaCalendarioConfig) => {
+    if (col.tipo === 'historico') {
+      let valor = 0
+      let esMonedaBs = col.moneda === 'BS'
+      if (col.id === 'deuda_2025') { valor = apto.deuda_base_2025; esMonedaBs = true }
+      else if (col.id === 'cable_viajero') { valor = apto.cable_viajero; esMonedaBs = false }
+      else if (col.id === 'guaya') { valor = apto.guaya; esMonedaBs = false }
+      else if (col.id === 'arreglo') { valor = apto.arreglo; esMonedaBs = true }
+
+      return (
+        <td
+          key={col.id}
+          onClick={() => handleAbrirModalHist(apto)}
+          style={{
+            padding: '10px 10px',
+            color: valor > 0 ? (esMonedaBs ? '#fb923c' : '#f87171') : '#475569',
+            cursor: 'pointer',
+            textAlign: 'right'
+          }}
+          title={`Clic para editar datos históricos de Apto ${apto.apartamento_numero}`}
+        >
+          {valor > 0 ? (
+            <span style={{ fontWeight: 600 }}>
+              {esMonedaBs ? fmtBs(valor) : fmtUsd(valor)}
+            </span>
+          ) : (
+            <span style={{ color: '#334155' }}>-</span>
+          )}
+        </td>
+      )
+    }
+
+    if (col.tipo === 'mes') {
+      const mesKey = col.mesKey || col.id
+      const colMesObj = columnasMeses.find(cm => cm.key === mesKey) || {
+        key: mesKey,
+        fechaIso: `${mesKey}-01`,
+        mesNum: parseInt(mesKey.slice(5), 10) || 1,
+        anio: parseInt(mesKey.slice(0, 4), 10) || 2026,
+        label: col.titulo,
+        moneda: col.moneda,
+        esEmitido: true,
+        totalMoraUsd: 0,
+        totalMoraBs: 0,
+        totalPagadoUsd: 0,
+        totalPagadoBs: 0,
+        aptosConDeudaCount: 0
+      }
+      const recibo = apto.meses[mesKey]
+
+      if (!recibo) {
+        return (
+          <td
+            key={col.id}
+            onClick={() => handleCellClick(apto, colMesObj)}
+            style={{ padding: '10px 10px', textAlign: 'center', cursor: 'pointer', color: '#334155' }}
+            title={`Sin emitir. Clic para registrar o editar cuota de ${col.titulo}`}
+          >
+            <span style={{ fontSize: '11px', color: '#475569' }}>-</span>
+          </td>
+        )
+      }
+
+      if (recibo.estado === 'pagado') {
+        return (
+          <td
+            key={col.id}
+            onClick={() => handleCellClick(apto, colMesObj)}
+            style={{
+              padding: '10px 10px',
+              backgroundColor: 'rgba(16, 185, 129, 0.08)',
+              color: '#34d399',
+              textAlign: 'center',
+              cursor: 'pointer'
+            }}
+            title={`Solvente / Pagado: ${col.moneda === 'USD' ? `$${fmtUsd(recibo.total_usd)}` : `Bs. ${fmtBs(recibo.total_bs)}`}`}
+          >
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontWeight: 700, fontSize: '11px' }}>
+              <span>✓</span>
+              <span style={{ textDecoration: 'line-through', opacity: 0.75 }}>
+                {col.moneda === 'USD' ? `$${fmtUsd(recibo.total_usd)}` : `Bs. ${fmtBs(recibo.total_bs)}`}
+              </span>
+            </div>
+          </td>
+        )
+      }
+
+      // Pendiente
+      const monto = col.moneda === 'USD' ? recibo.total_usd : recibo.total_bs
+      return (
+        <td
+          key={col.id}
+          onClick={() => handleCellClick(apto, colMesObj)}
+          style={{
+            padding: '10px 10px',
+            backgroundColor: modoChecklistRapido ? 'rgba(239, 68, 68, 0.18)' : 'rgba(239, 68, 68, 0.08)',
+            color: col.moneda === 'USD' ? '#93c5fd' : '#fb923c',
+            fontWeight: 700,
+            cursor: 'pointer',
+            textAlign: 'right'
+          }}
+          title={`Pendiente: ${col.moneda === 'USD' ? `$${fmtUsd(monto)}` : `Bs. ${fmtBs(monto)}`}. Clic para pagar o editar`}
+        >
+          {col.moneda === 'USD' ? `$${fmtUsd(monto)}` : `Bs. ${fmtBs(monto)}`}
+        </td>
+      )
+    }
+
+    // Cuota Especial / Personalizada
+    const celdasPers = apto.valores_personalizados || {}
+    const celdaVal = celdasPers[col.id] ?? (col.montoDefecto ? { monto: col.montoDefecto, estado: 'pendiente' } : { monto: 0, estado: 'pendiente' })
+    const tieneMonto = celdaVal && celdaVal.monto > 0
+    const esPagado = celdaVal?.estado === 'pagado'
+
+    return (
+      <td
+        key={col.id}
+        onClick={() => handleAbrirEditarCeldaPersonalizada(apto, col)}
+        style={{
+          padding: '10px 10px',
+          backgroundColor: tieneMonto ? (esPagado ? 'rgba(16, 185, 129, 0.08)' : 'rgba(234, 179, 8, 0.12)') : 'transparent',
+          color: tieneMonto ? (esPagado ? '#34d399' : '#facc15') : '#475569',
+          fontWeight: tieneMonto ? 700 : 400,
+          cursor: 'pointer',
+          textAlign: 'right'
+        }}
+        title={`Cuota especial "${col.titulo}". Clic para editar monto o marcar pagada`}
+      >
+        {tieneMonto ? (
+          esPagado ? (
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontWeight: 700, fontSize: '11px' }}>
+              <span>✓</span>
+              <span style={{ textDecoration: 'line-through', opacity: 0.75 }}>
+                {col.moneda === 'USD' ? `$${fmtUsd(celdaVal.monto)}` : `Bs. ${fmtBs(celdaVal.monto)}`}
+              </span>
+            </div>
+          ) : (
+            <span>
+              {col.moneda === 'USD' ? `$${fmtUsd(celdaVal.monto)}` : `Bs. ${fmtBs(celdaVal.monto)}`}
+            </span>
+          )
+        ) : (
+          <span style={{ color: '#334155' }}>-</span>
+        )}
+      </td>
+    )
+  }
+
+  const calcularTotalColumna = (col: ColumnaCalendarioConfig) => {
+    if (col.tipo === 'historico') {
+      let sum = 0
+      filasFiltradas.forEach(f => {
+        if (col.id === 'deuda_2025') sum += f.deuda_base_2025
+        else if (col.id === 'cable_viajero') sum += f.cable_viajero
+        else if (col.id === 'guaya') sum += f.guaya
+        else if (col.id === 'arreglo') sum += f.arreglo
+      })
+      return (
+        <td key={col.id} style={{ padding: '12px 10px', color: col.moneda === 'BS' ? '#fb923c' : '#f87171' }}>
+          {sum > 0 ? (col.moneda === 'BS' ? fmtBs(sum) : fmtUsd(sum)) : '-'}
+        </td>
+      )
+    }
+
+    if (col.tipo === 'mes') {
+      const mesKey = col.mesKey || col.id
+      const sum = filasFiltradas.reduce((s, f) => {
+        const rec = f.meses[mesKey]
+        if (rec && rec.estado === 'pendiente') {
+          return s + (col.moneda === 'USD' ? rec.total_usd : rec.total_bs)
+        }
+        return s
+      }, 0)
+      return (
+        <td key={col.id} style={{ padding: '12px 10px', color: col.moneda === 'USD' ? '#f87171' : '#fb923c' }}>
+          {sum > 0 ? (col.moneda === 'USD' ? `$${fmtUsd(sum)}` : fmtBs(sum)) : '-'}
+        </td>
+      )
+    }
+
+    // Cuota Especial
+    const sum = filasFiltradas.reduce((s, f) => {
+      const celdasPers = f.valores_personalizados || {}
+      const celdaVal = celdasPers[col.id] ?? (col.montoDefecto ? { monto: col.montoDefecto, estado: 'pendiente' } : null)
+      if (celdaVal && celdaVal.estado === 'pendiente' && celdaVal.monto > 0) {
+        return s + celdaVal.monto
+      }
+      return s
+    }, 0)
+    return (
+      <td key={col.id} style={{ padding: '12px 10px', color: '#facc15' }}>
+        {sum > 0 ? (col.moneda === 'USD' ? `$${fmtUsd(sum)}` : fmtBs(sum)) : '-'}
+      </td>
+    )
+  }
+
   // ── Exportar a CSV ───────────────────────────────────────────────────────
   const exportarCsv = () => {
     if (filas.length === 0) return
 
+    const colsVisibles = [
+      ...(vistaModo === 'completo' || vistaModo === 'historico_2025' ? columnasNaranja : []),
+      ...(vistaModo === 'completo' || vistaModo === 'solo_2026' ? columnasAzul : [])
+    ]
+
     const headers = [
       'APTO',
       'PROPIETARIO',
-      'DEUDA_2025_BS',
-      'CABLE_VIAJERO',
-      'GUAYA',
-      'ARREGLO_BS',
-      ...colsHistoricasBs.map(c => `${c.label.toUpperCase()}_BS`),
+      ...colsVisibles.map(c => `${c.titulo.toUpperCase().replace(/\s+/g, '_')}_${c.moneda}`),
       'TOTAL_BS',
-      ...colsDolares2026.map(c => `${c.label.toUpperCase()}_USD`),
       'TOTAL_USD',
       'DEPOSITOS_SALDO_USD',
       'DEPOSITOS_SALDO_BS',
@@ -487,22 +799,31 @@ export const AdminCalendarioDeudas: React.FC = () => {
     ]
 
     const rows = filasFiltradas.map(f => {
+      const colVals = colsVisibles.map(col => {
+        if (col.tipo === 'historico') {
+          if (col.id === 'deuda_2025') return f.deuda_base_2025 > 0 ? f.deuda_base_2025.toFixed(2) : '-'
+          if (col.id === 'cable_viajero') return f.cable_viajero > 0 ? f.cable_viajero.toFixed(2) : '-'
+          if (col.id === 'guaya') return f.guaya > 0 ? f.guaya.toFixed(2) : '-'
+          if (col.id === 'arreglo') return f.arreglo > 0 ? f.arreglo.toFixed(2) : '-'
+          return '-'
+        }
+        if (col.tipo === 'mes') {
+          const rec = f.meses[col.mesKey || col.id]
+          if (!rec) return '-'
+          if (rec.estado === 'pagado') return 'PAGADO'
+          return col.moneda === 'USD' ? rec.total_usd.toFixed(2) : rec.total_bs.toFixed(2)
+        }
+        const val = f.valores_personalizados?.[col.id]
+        if (!val || val.monto === 0) return '-'
+        if (val.estado === 'pagado') return 'PAGADO'
+        return val.monto.toFixed(2)
+      })
+
       return [
         f.apartamento_numero,
         `"${(f.propietario_nombre || '').replace(/"/g, '""')}"`,
-        f.deuda_base_2025 > 0 ? f.deuda_base_2025.toFixed(2) : '-',
-        f.cable_viajero > 0 ? f.cable_viajero.toFixed(2) : '-',
-        f.guaya > 0 ? f.guaya.toFixed(2) : '-',
-        f.arreglo > 0 ? f.arreglo.toFixed(2) : '-',
-        ...colsHistoricasBs.map(c => {
-          const rec = f.meses[c.key]
-          return rec && rec.estado === 'pendiente' ? rec.total_bs.toFixed(2) : '-'
-        }),
+        ...colVals,
         f.total_bs > 0 ? f.total_bs.toFixed(2) : '0.00',
-        ...colsDolares2026.map(c => {
-          const rec = f.meses[c.key]
-          return rec && rec.estado === 'pendiente' ? rec.total_usd.toFixed(2) : '-'
-        }),
         f.total_usd > 0 ? f.total_usd.toFixed(2) : '0.00',
         f.saldo_a_favor_usd > 0 ? f.saldo_a_favor_usd.toFixed(2) : '0.00',
         f.saldo_a_favor_bs > 0 ? f.saldo_a_favor_bs.toFixed(2) : '0.00',
@@ -566,9 +887,9 @@ export const AdminCalendarioDeudas: React.FC = () => {
 
         {/* Acciones principales superiores */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-          {/* Botón Nueva Fila de Cuota Especial (Línea Amarilla) */}
+          {/* Botón Nueva Columna (Cuota Especial) */}
           <button
-            onClick={() => handleAbrirCrearFilaEspecial()}
+            onClick={handleAbrirCrearColumna}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -582,10 +903,75 @@ export const AdminCalendarioDeudas: React.FC = () => {
               fontWeight: 800,
               cursor: 'pointer'
             }}
-            title="Crea una fila resaltada en amarillo para cuotas especiales, arreglos o fondos extraordinarios"
+            title="Agregar una columna para cuota especial o concepto extraordinario en la posición exacta deseada"
           >
-            <span>➕</span> Fila de Cuota Especial
+            <span>➕</span> Nueva Columna (Cuota Especial)
           </button>
+
+          {/* Botón Organizar / Mover Columnas */}
+          <button
+            onClick={() => setModalOrganizarColumnasOpen(true)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              backgroundColor: 'rgba(59, 130, 246, 0.12)',
+              color: '#60a5fa',
+              border: '1px solid rgba(59, 130, 246, 0.35)',
+              padding: '9px 16px',
+              borderRadius: '10px',
+              fontSize: '12px',
+              fontWeight: 700,
+              cursor: 'pointer'
+            }}
+            title="Mover columnas entre la sección Naranja y el Calendario Azul, reordenarlas o eliminarlas"
+          >
+            <span>⚙️</span> Organizar Columnas
+          </button>
+
+          {/* Botón Agregar Fila (Local, Conserjería, etc.) */}
+          <button
+            onClick={() => setModalNuevaFilaOpen(true)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              backgroundColor: 'rgba(168, 85, 247, 0.12)',
+              color: '#c084fc',
+              border: '1px solid rgba(168, 85, 247, 0.35)',
+              padding: '9px 16px',
+              borderRadius: '10px',
+              fontSize: '12px',
+              fontWeight: 700,
+              cursor: 'pointer'
+            }}
+            title="Agregar una nueva fila a la tabla (Locales comerciales, Conserjería, Depósitos, etc.)"
+          >
+            <span>➕</span> Agregar Fila
+          </button>
+
+          {/* Botón Filas Ocultas (si hay) */}
+          {(configuracion.filasOcultasIds || []).length > 0 && (
+            <button
+              onClick={() => setModalFilasOcultasOpen(true)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                color: '#f87171',
+                border: '1px solid rgba(239, 68, 68, 0.4)',
+                padding: '9px 14px',
+                borderRadius: '10px',
+                fontSize: '12px',
+                fontWeight: 700,
+                cursor: 'pointer'
+              }}
+              title="Ver y restaurar filas ocultadas o eliminadas"
+            >
+              <span>👁️</span> Filas Ocultas ({(configuracion.filasOcultasIds || []).length})
+            </button>
+          )}
 
           <button
             onClick={() => handleSincronizarExcel()}
@@ -902,11 +1288,9 @@ export const AdminCalendarioDeudas: React.FC = () => {
                 }}>
                   APTO
                 </th>
-
-                {/* Sección 2025 / Conceptos Extraordinarios (Título Editable) */}
                 {(vistaModo === 'completo' || vistaModo === 'historico_2025') && (
                   <th
-                    colSpan={7}
+                    colSpan={columnasNaranja.length + 1}
                     onClick={() => {
                       setNuevoTituloInput(configuracion.tituloSeccionHistorica)
                       setModalEditarTituloOpen(true)
@@ -954,10 +1338,10 @@ export const AdminCalendarioDeudas: React.FC = () => {
                   </th>
                 )}
 
-                {/* Sección 2026 (Marzo a Diciembre en Dólares) */}
+                {/* Sección Azul (Calendario mensual 2026) */}
                 {(vistaModo === 'completo' || vistaModo === 'solo_2026') && (
                   <th
-                    colSpan={colsDolares2026.length + 1}
+                    colSpan={columnasAzul.length + 1}
                     style={{
                       position: 'sticky',
                       top: 0,
@@ -971,7 +1355,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
                       letterSpacing: '0.5px'
                     }}
                   >
-                    📅 AÑO {anioSeleccionado} (EMISIÓN Y LÍNEA DE TIEMPO EN $)
+                    📅 AÑO {anioSeleccionado} (EMISIÓN Y LÍNEA DE TIEMPO MENSUAL)
                   </th>
                 )}
 
@@ -993,7 +1377,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
                 </th>
               </tr>
 
-              {/* Cabecera Nivel 2: Columnas de datos */}
+              {/* Cabecera Nivel 2: Columnas de datos dinámicas con controles */}
               <tr style={{ backgroundColor: '#0f172a', borderBottom: '2px solid #334155', color: '#cbd5e1' }}>
                 <th style={{
                   position: 'sticky',
@@ -1009,27 +1393,86 @@ export const AdminCalendarioDeudas: React.FC = () => {
                   Unidad
                 </th>
 
-                {/* Subcolumnas 2025 + Enero y Febrero (Bs) */}
+                {/* Columnas Sección Naranja */}
                 {(vistaModo === 'completo' || vistaModo === 'historico_2025') && (
                   <>
-                    <th style={{ top: '37px', position: 'sticky', zIndex: 10, backgroundColor: '#0f172a', padding: '10px 12px' }}>
-                      Deuda 2025
-                    </th>
-                    <th style={{ top: '37px', position: 'sticky', zIndex: 10, backgroundColor: '#0f172a', padding: '10px 10px' }}>
-                      Cable Viaj.
-                    </th>
-                    <th style={{ top: '37px', position: 'sticky', zIndex: 10, backgroundColor: '#0f172a', padding: '10px 10px' }}>
-                      Guaya
-                    </th>
-                    <th style={{ top: '37px', position: 'sticky', zIndex: 10, backgroundColor: '#0f172a', padding: '10px 10px' }}>
-                      Arreglo
-                    </th>
-                    <th style={{ top: '37px', position: 'sticky', zIndex: 10, backgroundColor: '#0f172a', padding: '10px 10px', color: '#fb923c' }}>
-                      Ene (Bs)
-                    </th>
-                    <th style={{ top: '37px', position: 'sticky', zIndex: 10, backgroundColor: '#0f172a', padding: '10px 10px', color: '#fb923c' }}>
-                      Feb (Bs)
-                    </th>
+                    {columnasNaranja.map(col => (
+                      <th
+                        key={col.id}
+                        style={{
+                          top: '37px',
+                          position: 'sticky',
+                          zIndex: 10,
+                          backgroundColor: '#0f172a',
+                          padding: '8px 10px',
+                          textAlign: 'center',
+                          verticalAlign: 'bottom'
+                        }}
+                      >
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <span style={{
+                              fontWeight: 700,
+                              color: col.tipo === 'cuota_especial' ? '#facc15' : col.moneda === 'BS' ? '#fb923c' : '#93c5fd'
+                            }}>
+                              {col.titulo}
+                            </span>
+                            {col.esPersonalizada && (
+                              <span style={{ fontSize: '9px', backgroundColor: 'rgba(234, 179, 8, 0.25)', color: '#facc15', padding: '1px 3px', borderRadius: '3px' }}>
+                                Cuota
+                              </span>
+                            )}
+                          </div>
+                          {/* Controles para cambiar de sección y orden */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                            <button
+                              type="button"
+                              onClick={() => handleMoverColumna(col.id, 'izquierda')}
+                              style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: '0 2px', fontSize: '9px' }}
+                              title="Mover columna a la izquierda"
+                            >
+                              ◀
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleCambiarSeccion(col.id, 'azul')}
+                              style={{
+                                background: 'rgba(59, 130, 246, 0.2)',
+                                border: '1px solid rgba(59, 130, 246, 0.4)',
+                                borderRadius: '4px',
+                                color: '#60a5fa',
+                                cursor: 'pointer',
+                                padding: '1px 4px',
+                                fontSize: '8px',
+                                fontWeight: 700
+                              }}
+                              title="Mover esta columna al Calendario Azul (2026)"
+                            >
+                              ➔ Azul
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleMoverColumna(col.id, 'derecha')}
+                              style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: '0 2px', fontSize: '9px' }}
+                              title="Mover columna a la derecha"
+                            >
+                              ▶
+                            </button>
+                            {col.esPersonalizada && (
+                              <button
+                                type="button"
+                                onClick={() => handleEliminarColumnaClick(col.id, col.titulo)}
+                                style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '0 2px', fontSize: '10px' }}
+                                title="Eliminar esta columna personalizada"
+                              >
+                                ✕
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </th>
+                    ))}
+
                     <th style={{
                       top: '37px',
                       position: 'sticky',
@@ -1038,32 +1481,94 @@ export const AdminCalendarioDeudas: React.FC = () => {
                       padding: '10px 12px',
                       borderRight: '2px solid rgba(234, 88, 12, 0.35)',
                       color: '#fb923c',
-                      fontWeight: 800
+                      fontWeight: 800,
+                      verticalAlign: 'middle'
                     }}>
                       TOTAL BS
                     </th>
                   </>
                 )}
 
-                {/* Subcolumnas Meses en Dólares (Marzo a Diciembre) */}
+                {/* Columnas Sección Azul */}
                 {(vistaModo === 'completo' || vistaModo === 'solo_2026') && (
                   <>
-                    {colsDolares2026.map(col => (
+                    {columnasAzul.map(col => (
                       <th
-                        key={col.key}
+                        key={col.id}
                         style={{
                           top: '37px',
                           position: 'sticky',
                           zIndex: 10,
                           backgroundColor: '#0f172a',
-                          padding: '10px 12px',
-                          fontWeight: 700,
-                          color: '#93c5fd'
+                          padding: '8px 10px',
+                          textAlign: 'center',
+                          verticalAlign: 'bottom'
                         }}
                       >
-                        {col.label} $
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <span style={{
+                              fontWeight: 700,
+                              color: col.tipo === 'cuota_especial' ? '#facc15' : '#93c5fd'
+                            }}>
+                              {col.titulo}
+                            </span>
+                            {col.esPersonalizada && (
+                              <span style={{ fontSize: '9px', backgroundColor: 'rgba(234, 179, 8, 0.25)', color: '#facc15', padding: '1px 3px', borderRadius: '3px' }}>
+                                Cuota
+                              </span>
+                            )}
+                          </div>
+                          {/* Controles para cambiar de sección y orden */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                            <button
+                              type="button"
+                              onClick={() => handleMoverColumna(col.id, 'izquierda')}
+                              style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: '0 2px', fontSize: '9px' }}
+                              title="Mover columna a la izquierda"
+                            >
+                              ◀
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleCambiarSeccion(col.id, 'naranja')}
+                              style={{
+                                background: 'rgba(234, 88, 12, 0.2)',
+                                border: '1px solid rgba(234, 88, 12, 0.4)',
+                                borderRadius: '4px',
+                                color: '#fb923c',
+                                cursor: 'pointer',
+                                padding: '1px 4px',
+                                fontSize: '8px',
+                                fontWeight: 700
+                              }}
+                              title="Mover esta columna a la Sección Naranja (Deudas Pasadas)"
+                            >
+                              ➔ Naranja
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleMoverColumna(col.id, 'derecha')}
+                              style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: '0 2px', fontSize: '9px' }}
+                              title="Mover columna a la derecha"
+                            >
+                              ▶
+                            </button>
+                            {col.esPersonalizada && (
+                              <button
+                                type="button"
+                                onClick={() => handleEliminarColumnaClick(col.id, col.titulo)}
+                                style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '0 2px', fontSize: '10px' }}
+                                title="Eliminar esta columna personalizada"
+                              >
+                                ✕
+                              </button>
+                            )}
+                          </div>
+                        </div>
                       </th>
                     ))}
+
                     <th style={{
                       top: '37px',
                       position: 'sticky',
@@ -1072,7 +1577,8 @@ export const AdminCalendarioDeudas: React.FC = () => {
                       padding: '10px 12px',
                       borderRight: '2px solid rgba(59, 130, 246, 0.35)',
                       color: '#60a5fa',
-                      fontWeight: 800
+                      fontWeight: 800,
+                      verticalAlign: 'middle'
                     }}>
                       TOTAL $
                     </th>
@@ -1092,215 +1598,11 @@ export const AdminCalendarioDeudas: React.FC = () => {
               </tr>
             </thead>
 
-            {/* FILAS DE CUOTAS ESPECIALES (LÍNEA AMARILLA) */}
-            {configuracion.filasCuotasEspeciales.length > 0 ? (
-              <tbody>
-                {configuracion.filasCuotasEspeciales.map(cuota => {
-                  return (
-                    <tr
-                      key={cuota.id}
-                      style={{
-                        backgroundColor: 'rgba(234, 179, 8, 0.08)',
-                        borderBottom: '2px solid #eab308',
-                        color: '#facc15'
-                      }}
-                    >
-                      <td style={{
-                        position: 'sticky',
-                        left: 0,
-                        zIndex: 6,
-                        backgroundColor: '#1c1917',
-                        borderLeft: '4px solid #facc15',
-                        borderRight: '2px solid #374151',
-                        padding: '10px 12px',
-                        textAlign: 'left',
-                        fontWeight: 800
-                      }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
-                          <span style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <span>⚡</span>
-                            <span>{cuota.nombre}</span>
-                            <span style={{ fontSize: '9px', backgroundColor: 'rgba(234, 179, 8, 0.25)', padding: '1px 4px', borderRadius: '3px' }}>
-                              {cuota.moneda}
-                            </span>
-                          </span>
-                          <div style={{ display: 'flex', gap: '4px' }}>
-                            <button
-                              type="button"
-                              onClick={() => handleAbrirCrearFilaEspecial(cuota)}
-                              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '12px', color: '#facc15', padding: '2px' }}
-                              title="Editar nombre o moneda de la cuota especial"
-                            >
-                              ✏️
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleEliminarFilaEspecial(cuota.id, cuota.nombre)}
-                              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '12px', color: '#ef4444', padding: '2px' }}
-                              title="Eliminar esta fila de cuota especial"
-                            >
-                              🗑️
-                            </button>
-                          </div>
-                        </div>
-                      </td>
-
-                      {/* Celdas históricas para esta cuota especial */}
-                      {(vistaModo === 'completo' || vistaModo === 'historico_2025') && (
-                        <>
-                          <td
-                            onClick={() => handleAbrirEditarCeldaEspecial(cuota, 'deuda_2025', 'Deuda 2025')}
-                            style={{ padding: '8px 12px', color: '#facc15', cursor: 'pointer', textAlign: 'center' }}
-                            title={`Clic para editar Deuda 2025 de ${cuota.nombre}`}
-                          >
-                            {cuota.montosPorColumna?.['deuda_2025'] ? (
-                              <span style={{ fontWeight: 700 }}>Bs. {fmtBs(cuota.montosPorColumna['deuda_2025'])}</span>
-                            ) : (
-                              <span style={{ color: '#854d0e', fontSize: '11px' }}>-</span>
-                            )}
-                          </td>
-                          <td
-                            onClick={() => handleAbrirEditarCeldaEspecial(cuota, 'cable_viajero', 'Cable Viajero')}
-                            style={{ padding: '8px 10px', color: '#facc15', cursor: 'pointer', textAlign: 'center' }}
-                            title={`Clic para editar Cable Viajero de ${cuota.nombre}`}
-                          >
-                            {cuota.montosPorColumna?.['cable_viajero'] ? (
-                              <span style={{ fontWeight: 700 }}>${fmtUsd(cuota.montosPorColumna['cable_viajero'])}</span>
-                            ) : (
-                              <span style={{ color: '#854d0e', fontSize: '11px' }}>-</span>
-                            )}
-                          </td>
-                          <td
-                            onClick={() => handleAbrirEditarCeldaEspecial(cuota, 'guaya', 'Guaya')}
-                            style={{ padding: '8px 10px', color: '#facc15', cursor: 'pointer', textAlign: 'center' }}
-                            title={`Clic para editar Guaya de ${cuota.nombre}`}
-                          >
-                            {cuota.montosPorColumna?.['guaya'] ? (
-                              <span style={{ fontWeight: 700 }}>${fmtUsd(cuota.montosPorColumna['guaya'])}</span>
-                            ) : (
-                              <span style={{ color: '#854d0e', fontSize: '11px' }}>-</span>
-                            )}
-                          </td>
-                          <td
-                            onClick={() => handleAbrirEditarCeldaEspecial(cuota, 'arreglo', 'Arreglo')}
-                            style={{ padding: '8px 10px', color: '#facc15', cursor: 'pointer', textAlign: 'center' }}
-                            title={`Clic para editar Arreglo de ${cuota.nombre}`}
-                          >
-                            {cuota.montosPorColumna?.['arreglo'] ? (
-                              <span style={{ fontWeight: 700 }}>Bs. {fmtBs(cuota.montosPorColumna['arreglo'])}</span>
-                            ) : (
-                              <span style={{ color: '#854d0e', fontSize: '11px' }}>-</span>
-                            )}
-                          </td>
-                          <td
-                            onClick={() => handleAbrirEditarCeldaEspecial(cuota, `${anioSeleccionado}-01`, 'Enero Bs')}
-                            style={{ padding: '8px 10px', color: '#facc15', cursor: 'pointer', textAlign: 'center' }}
-                            title={`Clic para editar Enero Bs de ${cuota.nombre}`}
-                          >
-                            {cuota.montosPorColumna?.[`${anioSeleccionado}-01`] ? (
-                              <span style={{ fontWeight: 700 }}>Bs. {fmtBs(cuota.montosPorColumna[`${anioSeleccionado}-01`])}</span>
-                            ) : (
-                              <span style={{ color: '#854d0e', fontSize: '11px' }}>-</span>
-                            )}
-                          </td>
-                          <td
-                            onClick={() => handleAbrirEditarCeldaEspecial(cuota, `${anioSeleccionado}-02`, 'Febrero Bs')}
-                            style={{ padding: '8px 10px', color: '#facc15', cursor: 'pointer', textAlign: 'center' }}
-                            title={`Clic para editar Febrero Bs de ${cuota.nombre}`}
-                          >
-                            {cuota.montosPorColumna?.[`${anioSeleccionado}-02`] ? (
-                              <span style={{ fontWeight: 700 }}>Bs. {fmtBs(cuota.montosPorColumna[`${anioSeleccionado}-02`])}</span>
-                            ) : (
-                              <span style={{ color: '#854d0e', fontSize: '11px' }}>-</span>
-                            )}
-                          </td>
-                          <td style={{ padding: '8px 12px', borderRight: '2px solid rgba(234, 88, 12, 0.35)', fontWeight: 800, color: '#facc15' }}>
-                            {cuota.moneda === 'BS' ? `Bs. ${fmtBs(cuota.montoDefecto * (filasFiltradas.length || 1))}` : '-'}
-                          </td>
-                        </>
-                      )}
-
-                      {/* Celdas de meses para la cuota especial */}
-                      {(vistaModo === 'completo' || vistaModo === 'solo_2026') && (
-                        <>
-                          {colsDolares2026.map(col => {
-                            const montoCol = cuota.montosPorColumna?.[col.key] || (cuota.moneda === 'USD' ? cuota.montoDefecto : 0)
-                            return (
-                              <td
-                                key={col.key}
-                                onClick={() => handleAbrirEditarCeldaEspecial(cuota, col.key, `${col.label} ${col.anio}`)}
-                                style={{ padding: '8px 10px', color: '#facc15', cursor: 'pointer', textAlign: 'center' }}
-                                title={`Clic para editar ${col.label} de ${cuota.nombre}`}
-                              >
-                                {montoCol > 0 ? (
-                                  <div style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    padding: '2px 6px',
-                                    borderRadius: '4px',
-                                    backgroundColor: 'rgba(234, 179, 8, 0.25)',
-                                    fontWeight: 700,
-                                    fontSize: '11px'
-                                  }}>
-                                    ${fmtUsd(montoCol)}
-                                  </div>
-                                ) : (
-                                  <span style={{ color: '#854d0e', fontSize: '11px' }}>-</span>
-                                )}
-                              </td>
-                            )
-                          })}
-                          <td style={{ padding: '8px 12px', borderRight: '2px solid rgba(59, 130, 246, 0.35)', fontWeight: 800, color: '#facc15' }}>
-                            {cuota.moneda === 'USD' ? `$${fmtUsd(cuota.montoDefecto * (filasFiltradas.length || 1))}` : '-'}
-                          </td>
-                        </>
-                      )}
-
-                      <td style={{ padding: '8px 12px', color: '#facc15' }}>-</td>
-                      <td style={{ padding: '8px 14px', color: '#facc15' }}>Cuota General</td>
-                      <td style={{ padding: '8px 14px', textAlign: 'center' }}>
-                        <span style={{ backgroundColor: 'rgba(234, 179, 8, 0.2)', padding: '2px 6px', borderRadius: '4px', fontSize: '10px', fontWeight: 800 }}>
-                          Activa
-                        </span>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            ) : (
-              <tbody>
-                <tr style={{ backgroundColor: 'rgba(234, 179, 8, 0.04)', borderBottom: '1px dashed rgba(234, 179, 8, 0.3)' }}>
-                  <td colSpan={24} style={{ padding: '8px 16px', textAlign: 'left' }}>
-                    <button
-                      type="button"
-                      onClick={() => handleAbrirCrearFilaEspecial()}
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        background: 'none',
-                        border: '1px dashed #eab308',
-                        color: '#facc15',
-                        borderRadius: '8px',
-                        padding: '5px 12px',
-                        fontSize: '11px',
-                        fontWeight: 700,
-                        cursor: 'pointer'
-                      }}
-                    >
-                      <span>⚡</span>
-                      <span>+ Agregar Fila para Cuota Especial (Línea Amarilla de Conceptos Extraordinarios)</span>
-                    </button>
-                  </td>
-                </tr>
-              </tbody>
-            )}
-
-            {/* CUERPO DE LA TABLA: FILAS DE APARTAMENTOS */}
+            {/* CUERPO DE LA TABLA: FILAS DE APARTAMENTOS Y FILAS PERSONALIZADAS */}
             <tbody>
               {filasFiltradas.length === 0 ? (
                 <tr>
-                  <td colSpan={24} style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>
+                  <td colSpan={columnasNaranja.length + columnasAzul.length + 5} style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>
                     No se encontraron apartamentos con los filtros seleccionados.
                   </td>
                 </tr>
@@ -1308,9 +1610,6 @@ export const AdminCalendarioDeudas: React.FC = () => {
                 filasFiltradas.map((apto, idx) => {
                   const esPar = idx % 2 === 0
                   const bgFila = esPar ? 'rgba(15, 23, 42, 0.4)' : 'rgba(30, 41, 59, 0.25)'
-
-                  // Totales del apartamento
-                  const totalBsSeccion = apto.total_bs
 
                   return (
                     <tr
@@ -1323,7 +1622,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
                       onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(51, 65, 85, 0.4)'}
                       onMouseLeave={e => e.currentTarget.style.backgroundColor = bgFila}
                     >
-                      {/* Columna APTO Sticky */}
+                      {/* Columna APTO Sticky con acción de quitar fila */}
                       <td style={{
                         position: 'sticky',
                         left: 0,
@@ -1335,174 +1634,71 @@ export const AdminCalendarioDeudas: React.FC = () => {
                         color: '#fff',
                         borderRight: '2px solid #374151'
                       }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span style={{
-                            width: '8px',
-                            height: '8px',
-                            borderRadius: '50%',
-                            backgroundColor: apto.estado_solvente ? '#10b981' : apto.meses_con_deuda >= 4 ? '#ef4444' : '#f59e0b'
-                          }} />
-                          <span style={{ fontSize: '13px' }}>{apto.apartamento_numero}</span>
-                          {apto.alicuota && (
-                            <span style={{ fontSize: '10px', color: '#64748b', fontWeight: 500 }}>
-                              {(apto.alicuota * 100).toFixed(2)}%
-                            </span>
-                          )}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{
+                              width: '8px',
+                              height: '8px',
+                              borderRadius: '50%',
+                              backgroundColor: apto.estado_solvente ? '#10b981' : apto.meses_con_deuda >= 4 ? '#ef4444' : '#f59e0b'
+                            }} />
+                            <span style={{ fontSize: '13px' }}>{apto.apartamento_numero}</span>
+                            {apto.esPersonalizada && (
+                              <span style={{ fontSize: '9px', backgroundColor: 'rgba(168, 85, 247, 0.25)', color: '#c084fc', padding: '1px 4px', borderRadius: '3px' }}>
+                                Personalizada
+                              </span>
+                            )}
+                            {apto.alicuota && (
+                              <span style={{ fontSize: '10px', color: '#64748b', fontWeight: 500 }}>
+                                {(apto.alicuota * 100).toFixed(2)}%
+                              </span>
+                            )}
+                          </div>
+                          {/* Botón para quitar / ocultar fila */}
+                          <button
+                            type="button"
+                            onClick={() => handleOcultarFila(apto.apartamento_id, apto.apartamento_numero)}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              color: '#64748b',
+                              cursor: 'pointer',
+                              padding: '2px 4px',
+                              fontSize: '11px',
+                              borderRadius: '4px',
+                              opacity: 0.5
+                            }}
+                            onMouseEnter={e => { e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.opacity = '1' }}
+                            onMouseLeave={e => { e.currentTarget.style.color = '#64748b'; e.currentTarget.style.opacity = '0.5' }}
+                            title={`Quitar o esconder fila de ${apto.apartamento_numero}`}
+                          >
+                            🗑️
+                          </button>
                         </div>
                       </td>
 
-                      {/* Celdas Históricas 2025 + Enero y Febrero (Bs) */}
+                      {/* Celdas Sección Naranja */}
                       {(vistaModo === 'completo' || vistaModo === 'historico_2025') && (
                         <>
-                          {/* Deuda 2025 Base */}
-                          <td
-                            onClick={() => handleAbrirModalHist(apto)}
-                            style={{
-                              padding: '8px 12px',
-                              cursor: 'pointer',
-                              color: apto.deuda_base_2025 > 0 ? '#fb923c' : '#475569'
-                            }}
-                            title="Clic para editar monto de deuda 2025"
-                          >
-                            {apto.deuda_base_2025 > 0 ? fmtBs(apto.deuda_base_2025) : '-'}
-                          </td>
-
-                          {/* Cable Viajero */}
-                          <td
-                            onClick={() => handleAbrirModalHist(apto)}
-                            style={{
-                              padding: '8px 10px',
-                              cursor: 'pointer',
-                              color: apto.cable_viajero > 0 ? '#f87171' : '#475569'
-                            }}
-                            title="Clic para editar Cable Viajero"
-                          >
-                            {apto.cable_viajero > 0 ? fmtUsd(apto.cable_viajero) : '-'}
-                          </td>
-
-                          {/* Guaya */}
-                          <td
-                            onClick={() => handleAbrirModalHist(apto)}
-                            style={{
-                              padding: '8px 10px',
-                              cursor: 'pointer',
-                              color: apto.guaya > 0 ? '#f87171' : '#475569'
-                            }}
-                            title="Clic para editar Guaya"
-                          >
-                            {apto.guaya > 0 ? fmtUsd(apto.guaya) : '-'}
-                          </td>
-
-                          {/* Arreglo */}
-                          <td
-                            onClick={() => handleAbrirModalHist(apto)}
-                            style={{
-                              padding: '8px 10px',
-                              cursor: 'pointer',
-                              color: apto.arreglo > 0 ? '#fbbf24' : '#475569'
-                            }}
-                            title="Clic para editar Arreglo"
-                          >
-                            {apto.arreglo > 0 ? fmtBs(apto.arreglo) : '-'}
-                          </td>
-
-                          {/* Enero (Bs) */}
-                          {(() => {
-                            const recEne = apto.meses[`${anioSeleccionado}-01`]
-                            const colEne = columnasMeses.find(c => c.key === `${anioSeleccionado}-01`)
-                            const tieneDeuda = recEne && recEne.estado === 'pendiente'
-                            return (
-                              <td
-                                onClick={() => colEne && handleCellClick(apto, colEne)}
-                                style={{
-                                  padding: '8px 10px',
-                                  cursor: 'pointer',
-                                  fontWeight: tieneDeuda ? 700 : 500,
-                                  color: tieneDeuda ? '#fb923c' : '#475569'
-                                }}
-                                title="Clic para editar monto o conciliar Enero (Bs)"
-                              >
-                                {tieneDeuda ? fmtBs(recEne.total_bs) : '-'}
-                              </td>
-                            )
-                          })()}
-
-                          {/* Febrero (Bs) */}
-                          {(() => {
-                            const recFeb = apto.meses[`${anioSeleccionado}-02`]
-                            const colFeb = columnasMeses.find(c => c.key === `${anioSeleccionado}-02`)
-                            const tieneDeuda = recFeb && recFeb.estado === 'pendiente'
-                            return (
-                              <td
-                                onClick={() => colFeb && handleCellClick(apto, colFeb)}
-                                style={{
-                                  padding: '8px 10px',
-                                  cursor: 'pointer',
-                                  fontWeight: tieneDeuda ? 700 : 500,
-                                  color: tieneDeuda ? '#fb923c' : '#475569'
-                                }}
-                                title="Clic para editar monto o conciliar Febrero (Bs)"
-                              >
-                                {tieneDeuda ? fmtBs(recFeb.total_bs) : '-'}
-                              </td>
-                            )
-                          })()}
+                          {columnasNaranja.map(col => renderCeldaColumna(apto, col))}
 
                           {/* TOTAL BS */}
                           <td style={{
                             padding: '8px 12px',
                             fontWeight: 800,
-                            color: totalBsSeccion > 0 ? '#fb923c' : '#475569',
+                            color: apto.total_bs > 0 ? '#fb923c' : '#475569',
                             borderRight: '2px solid rgba(234, 88, 12, 0.35)',
-                            backgroundColor: totalBsSeccion > 0 ? 'rgba(234, 88, 12, 0.04)' : 'transparent'
+                            backgroundColor: apto.total_bs > 0 ? 'rgba(234, 88, 12, 0.04)' : 'transparent'
                           }}>
-                            {totalBsSeccion > 0 ? fmtBs(totalBsSeccion) : '-'}
+                            {apto.total_bs > 0 ? fmtBs(apto.total_bs) : '-'}
                           </td>
                         </>
                       )}
 
-                      {/* Celdas Meses en Dólares (Marzo a Diciembre) */}
+                      {/* Celdas Sección Azul */}
                       {(vistaModo === 'completo' || vistaModo === 'solo_2026') && (
                         <>
-                          {colsDolares2026.map(col => {
-                            const recibo = apto.meses[col.key]
-                            const tieneDeuda = recibo && recibo.estado === 'pendiente'
-                            const monto = recibo?.total_usd || 0
-
-                            return (
-                              <td
-                                key={col.key}
-                                onClick={() => handleCellClick(apto, col)}
-                                style={{
-                                  padding: '6px 8px',
-                                  cursor: 'pointer',
-                                  userSelect: 'none'
-                                }}
-                                title={`Apto ${apto.apartamento_numero}: Clic para editar monto o marcar pago de ${col.label}`}
-                              >
-                                {tieneDeuda ? (
-                                  <div style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    padding: '4px 8px',
-                                    borderRadius: '6px',
-                                    backgroundColor: modoChecklistRapido ? 'rgba(239, 68, 68, 0.2)' : 'rgba(239, 68, 68, 0.12)',
-                                    color: '#f87171',
-                                    border: '1px solid rgba(239, 68, 68, 0.35)',
-                                    fontWeight: 700,
-                                    fontSize: '11px'
-                                  }}>
-                                    ${fmtUsd(monto)}
-                                  </div>
-                                ) : recibo && recibo.estado === 'pagado' ? (
-                                  <span style={{ color: '#334155', fontWeight: 600 }}>-</span>
-                                ) : (
-                                  <span style={{ color: '#334155' }}>-</span>
-                                )}
-                              </td>
-                            )
-                          })}
+                          {columnasAzul.map(col => renderCeldaColumna(apto, col))}
 
                           {/* TOTAL $ */}
                           <td style={{
@@ -1605,33 +1801,10 @@ export const AdminCalendarioDeudas: React.FC = () => {
                   TOTALES ({filasFiltradas.length})
                 </td>
 
-                {/* Totales 2025 + Enero y Febrero (Bs) */}
+                {/* Totales Sección Naranja */}
                 {(vistaModo === 'completo' || vistaModo === 'historico_2025') && (
                   <>
-                    <td style={{ padding: '12px 12px', color: '#fb923c' }}>
-                      {fmtBs(filasFiltradas.reduce((s, f) => s + f.deuda_base_2025, 0))}
-                    </td>
-                    <td style={{ padding: '12px 10px', color: '#f87171' }}>
-                      {fmtUsd(filasFiltradas.reduce((s, f) => s + f.cable_viajero, 0))}
-                    </td>
-                    <td style={{ padding: '12px 10px', color: '#f87171' }}>
-                      {fmtUsd(filasFiltradas.reduce((s, f) => s + f.guaya, 0))}
-                    </td>
-                    <td style={{ padding: '12px 10px', color: '#fbbf24' }}>
-                      {fmtBs(filasFiltradas.reduce((s, f) => s + f.arreglo, 0))}
-                    </td>
-                    <td style={{ padding: '12px 10px', color: '#fb923c' }}>
-                      {fmtBs(filasFiltradas.reduce((s, f) => {
-                        const rec = f.meses[`${anioSeleccionado}-01`]
-                        return s + (rec && rec.estado === 'pendiente' ? rec.total_bs : 0)
-                      }, 0))}
-                    </td>
-                    <td style={{ padding: '12px 10px', color: '#fb923c' }}>
-                      {fmtBs(filasFiltradas.reduce((s, f) => {
-                        const rec = f.meses[`${anioSeleccionado}-02`]
-                        return s + (rec && rec.estado === 'pendiente' ? rec.total_bs : 0)
-                      }, 0))}
-                    </td>
+                    {columnasNaranja.map(col => calcularTotalColumna(col))}
                     <td style={{
                       padding: '12px 12px',
                       color: '#fb923c',
@@ -1643,23 +1816,10 @@ export const AdminCalendarioDeudas: React.FC = () => {
                   </>
                 )}
 
-                {/* Totales Meses en Dólares */}
+                {/* Totales Sección Azul */}
                 {(vistaModo === 'completo' || vistaModo === 'solo_2026') && (
                   <>
-                    {colsDolares2026.map(col => {
-                      const totalCol = filasFiltradas.reduce((s, f) => {
-                        const rec = f.meses[col.key]
-                        if (rec && rec.estado === 'pendiente') {
-                          return s + rec.total_usd
-                        }
-                        return s
-                      }, 0)
-                      return (
-                        <td key={col.key} style={{ padding: '12px 8px', color: totalCol > 0 ? '#f87171' : '#64748b' }}>
-                          {totalCol > 0 ? `$${fmtUsd(totalCol)}` : '-'}
-                        </td>
-                      )
-                    })}
+                    {columnasAzul.map(col => calcularTotalColumna(col))}
                     <td style={{
                       padding: '12px 12px',
                       color: '#60a5fa',
@@ -1757,8 +1917,8 @@ export const AdminCalendarioDeudas: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL CREAR / EDITAR FILA DE CUOTA ESPECIAL (LÍNEA AMARILLA) */}
-      {modalFilaEspecialOpen && (
+      {/* MODAL CREAR NUEVA COLUMNA (CUOTA ESPECIAL) */}
+      {modalNuevaColumnaOpen && (
         <div style={{
           position: 'fixed',
           inset: 0,
@@ -1775,20 +1935,20 @@ export const AdminCalendarioDeudas: React.FC = () => {
             border: '2px solid #eab308',
             borderRadius: '16px',
             width: '100%',
-            maxWidth: '480px',
+            maxWidth: '520px',
             boxShadow: '0 25px 60px rgba(0,0,0,0.8)',
             overflow: 'hidden'
           }}>
             <div style={{ padding: '18px 24px', borderBottom: '1px solid #1f2937', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'rgba(234, 179, 8, 0.1)' }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: '#facc15' }}>
-                  ⚡ Fila de Cuota Especial
+                  ➕ Nueva Columna (Cuota Especial o Concepto)
                 </h3>
                 <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#fde047' }}>
-                  Agrega una fila resaltada en amarillo para conceptos o cuotas adicionales
+                  Elige en qué parte irá exactamente (entre meses, al inicio o al final)
                 </p>
               </div>
-              <button onClick={() => setModalFilaEspecialOpen(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '20px', cursor: 'pointer' }}>
+              <button onClick={() => setModalNuevaColumnaOpen(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '20px', cursor: 'pointer' }}>
                 ✕
               </button>
             </div>
@@ -1796,13 +1956,13 @@ export const AdminCalendarioDeudas: React.FC = () => {
             <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px', fontWeight: 700 }}>
-                  Nombre de la Cuota Especial
+                  Nombre / Título de la Columna
                 </label>
                 <input
                   type="text"
-                  value={nuevaFilaNombre}
-                  onChange={e => setNuevaFilaNombre(e.target.value)}
-                  placeholder="Ej: Reparación de Bomba Hidroneumática, Portón Eléctrico..."
+                  value={nuevaColTitulo}
+                  onChange={e => setNuevaColTitulo(e.target.value)}
+                  placeholder="Ej: Cuota Bombas, Pintura Fachada, Portón Eléctrico..."
                   style={{ width: '100%', backgroundColor: '#030712', border: '1px solid #374151', borderRadius: '8px', padding: '10px 12px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
                 />
               </div>
@@ -1810,69 +1970,522 @@ export const AdminCalendarioDeudas: React.FC = () => {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px', fontWeight: 700 }}>
+                    Sección Destino
+                  </label>
+                  <select
+                    value={nuevaColSeccion}
+                    onChange={e => setNuevaColSeccion(e.target.value as 'naranja' | 'azul')}
+                    style={{ width: '100%', backgroundColor: '#030712', border: '1px solid #374151', borderRadius: '8px', padding: '10px 12px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
+                  >
+                    <option value="naranja">🏛️ Sección Naranja (Deudas Pasadas)</option>
+                    <option value="azul">📅 Sección Azul (Calendario)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px', fontWeight: 700 }}>
                     Moneda
                   </label>
                   <select
-                    value={nuevaFilaMoneda}
-                    onChange={e => setNuevaFilaMoneda(e.target.value as 'USD' | 'BS')}
+                    value={nuevaColMoneda}
+                    onChange={e => setNuevaColMoneda(e.target.value as 'USD' | 'BS')}
                     style={{ width: '100%', backgroundColor: '#030712', border: '1px solid #374151', borderRadius: '8px', padding: '10px 12px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
                   >
                     <option value="USD">Dólares ($ USD)</option>
                     <option value="BS">Bolívares (Bs)</option>
                   </select>
                 </div>
+              </div>
 
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px', fontWeight: 700 }}>
+                  ¿En qué posición / lugar de la tabla irá la columna?
+                </label>
+                <select
+                  value={nuevaColPosicion}
+                  onChange={e => setNuevaColPosicion(e.target.value)}
+                  style={{ width: '100%', backgroundColor: '#030712', border: '1px solid #eab308', borderRadius: '8px', padding: '10px 12px', color: '#fff', fontSize: '13px', boxSizing: 'border-box', fontWeight: 600 }}
+                >
+                  <optgroup label="🏛️ Sección Naranja (Deudas Pasadas / Extraordinarios)">
+                    <option value="inicio_naranja">📍 Al inicio de Sección Naranja</option>
+                    {columnasNaranja.map((c, i) => {
+                      const nextCol = columnasNaranja[i + 1]
+                      return (
+                        <option key={c.id} value={`despues_de:${c.id}`}>
+                          {nextCol ? `Entre [${c.titulo}] y [${nextCol.titulo}]` : `Después de [${c.titulo}]`}
+                        </option>
+                      )
+                    })}
+                    <option value="fin_naranja">📍 Al final de Sección Naranja</option>
+                  </optgroup>
+                  <optgroup label="📅 Sección Azul (Calendario Mensual)">
+                    <option value="inicio_azul">📍 Al inicio del Calendario Azul</option>
+                    {columnasAzul.map((c, i) => {
+                      const nextCol = columnasAzul[i + 1]
+                      return (
+                        <option key={c.id} value={`despues_de:${c.id}`}>
+                          {nextCol ? `Entre [${c.titulo}] y [${nextCol.titulo}]` : `Después de [${c.titulo}]`}
+                        </option>
+                      )
+                    })}
+                    <option value="fin_azul">📍 Al final del Calendario Azul</option>
+                  </optgroup>
+                </select>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', alignItems: 'center' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px', fontWeight: 700 }}>
-                    Monto Cuota
+                    Monto Inicial (Opcional)
                   </label>
                   <input
                     type="number"
                     step="any"
-                    value={nuevaFilaMontoDefecto}
-                    onChange={e => setNuevaFilaMontoDefecto(e.target.value === '' ? '' : parseFloat(e.target.value))}
-                    placeholder="10.00"
+                    value={nuevaColMontoDefecto}
+                    onChange={e => setNuevaColMontoDefecto(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                    placeholder="0.00"
                     style={{ width: '100%', backgroundColor: '#030712', border: '1px solid #374151', borderRadius: '8px', padding: '10px 12px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
                   />
                 </div>
-              </div>
 
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', marginTop: '4px' }}>
-                <input
-                  type="checkbox"
-                  checked={nuevaFilaAplicarATodos}
-                  onChange={e => setNuevaFilaAplicarATodos(e.target.checked)}
-                  style={{ accentColor: '#eab308' }}
-                />
-                <span style={{ fontSize: '12px', color: '#cbd5e1', fontWeight: 600 }}>
-                  Asignar este monto inicialmente a todos los apartamentos
-                </span>
-              </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', marginTop: '16px' }}>
+                  <input
+                    type="checkbox"
+                    checked={nuevaColAplicarATodos}
+                    onChange={e => setNuevaColAplicarATodos(e.target.checked)}
+                    style={{ accentColor: '#eab308' }}
+                  />
+                  <span style={{ fontSize: '12px', color: '#cbd5e1', fontWeight: 600 }}>
+                    Asignar monto a todos los apartamentos
+                  </span>
+                </label>
+              </div>
             </div>
 
             <div style={{ padding: '16px 24px', backgroundColor: '#030712', borderTop: '1px solid #1f2937', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
               <button
                 type="button"
-                onClick={() => setModalFilaEspecialOpen(false)}
+                onClick={() => setModalNuevaColumnaOpen(false)}
                 style={{ padding: '9px 16px', backgroundColor: 'transparent', color: '#cbd5e1', border: '1px solid #374151', borderRadius: '8px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}
               >
                 Cancelar
               </button>
               <button
                 type="button"
-                onClick={handleGuardarFilaEspecial}
+                onClick={handleGuardarNuevaColumna}
                 disabled={procesandoAccion}
                 style={{ padding: '9px 20px', backgroundColor: '#eab308', color: '#000', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 800, cursor: procesandoAccion ? 'not-allowed' : 'pointer' }}
               >
-                {procesandoAccion ? 'Guardando...' : 'Crear Fila Especial'}
+                {procesandoAccion ? 'Guardando...' : 'Crear Columna'}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* MODAL EDITAR MONTO DE CELDA EN FILA ESPECIAL */}
-      {modalCeldaEspecialOpen && cuotaEspecialSeleccionada && columnaEspecialSeleccionada && (
+      {/* MODAL ORGANIZAR / MOVER COLUMNAS ENTRE SECCIONES */}
+      {modalOrganizarColumnasOpen && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          backgroundColor: 'rgba(0,0,0,0.75)',
+          backdropFilter: 'blur(5px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 99999,
+          padding: '20px'
+        }}>
+          <div style={{
+            backgroundColor: '#111827',
+            border: '1px solid #374151',
+            borderRadius: '16px',
+            width: '100%',
+            maxWidth: '780px',
+            maxHeight: '85vh',
+            boxShadow: '0 25px 60px rgba(0,0,0,0.8)',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden'
+          }}>
+            <div style={{ padding: '18px 24px', borderBottom: '1px solid #1f2937', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: '#fff' }}>
+                  ⚙️ Organizar y Mover Columnas
+                </h3>
+                <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#94a3b8' }}>
+                  Pasa columnas entre la sección Naranja (Deudas pasadas) y el Calendario Azul con un solo clic
+                </p>
+              </div>
+              <button onClick={() => setModalOrganizarColumnasOpen(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '20px', cursor: 'pointer' }}>
+                ✕
+              </button>
+            </div>
+
+            <div style={{ padding: '20px 24px', overflowY: 'auto', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', flex: 1 }}>
+              {/* Sección Naranja */}
+              <div style={{ backgroundColor: '#090d16', border: '1px solid rgba(234, 88, 12, 0.3)', borderRadius: '12px', padding: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', borderBottom: '1px solid rgba(234, 88, 12, 0.2)', paddingBottom: '8px' }}>
+                  <span style={{ fontSize: '13px', fontWeight: 800, color: '#fb923c' }}>
+                    🏛️ Sección Naranja ({columnasNaranja.length})
+                  </span>
+                  <span style={{ fontSize: '11px', color: '#94a3b8' }}>Deudas pasadas</span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {columnasNaranja.map((c) => (
+                    <div
+                      key={c.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '8px 10px',
+                        backgroundColor: '#111827',
+                        border: '1px solid #1f2937',
+                        borderRadius: '8px',
+                        fontSize: '12px'
+                      }}
+                    >
+                      <div>
+                        <span style={{ fontWeight: 700, color: c.tipo === 'cuota_especial' ? '#facc15' : '#fff' }}>{c.titulo}</span>
+                        <span style={{ marginLeft: '6px', fontSize: '10px', color: '#94a3b8' }}>({c.moneda})</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <button
+                          type="button"
+                          onClick={() => handleMoverColumna(c.id, 'izquierda')}
+                          style={{ background: '#1f2937', border: 'none', color: '#cbd5e1', borderRadius: '4px', padding: '3px 6px', cursor: 'pointer', fontSize: '10px' }}
+                          title="Subir orden"
+                        >
+                          ▲
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleMoverColumna(c.id, 'derecha')}
+                          style={{ background: '#1f2937', border: 'none', color: '#cbd5e1', borderRadius: '4px', padding: '3px 6px', cursor: 'pointer', fontSize: '10px' }}
+                          title="Bajar orden"
+                        >
+                          ▼
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleCambiarSeccion(c.id, 'azul')}
+                          style={{
+                            background: 'rgba(59, 130, 246, 0.2)',
+                            border: '1px solid rgba(59, 130, 246, 0.4)',
+                            color: '#60a5fa',
+                            borderRadius: '4px',
+                            padding: '3px 8px',
+                            cursor: 'pointer',
+                            fontSize: '11px',
+                            fontWeight: 700
+                          }}
+                          title="Mover esta columna al Calendario Azul"
+                        >
+                          ➔ Azul
+                        </button>
+                        {c.esPersonalizada && (
+                          <button
+                            type="button"
+                            onClick={() => handleEliminarColumnaClick(c.id, c.titulo)}
+                            style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '2px 4px', fontSize: '12px' }}
+                            title="Eliminar columna"
+                          >
+                            🗑️
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Sección Azul */}
+              <div style={{ backgroundColor: '#090d16', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '12px', padding: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', borderBottom: '1px solid rgba(59, 130, 246, 0.2)', paddingBottom: '8px' }}>
+                  <span style={{ fontSize: '13px', fontWeight: 800, color: '#60a5fa' }}>
+                    📅 Sección Azul ({columnasAzul.length})
+                  </span>
+                  <span style={{ fontSize: '11px', color: '#94a3b8' }}>Calendario mensual</span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {columnasAzul.map((c) => (
+                    <div
+                      key={c.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '8px 10px',
+                        backgroundColor: '#111827',
+                        border: '1px solid #1f2937',
+                        borderRadius: '8px',
+                        fontSize: '12px'
+                      }}
+                    >
+                      <div>
+                        <span style={{ fontWeight: 700, color: c.tipo === 'cuota_especial' ? '#facc15' : '#fff' }}>{c.titulo}</span>
+                        <span style={{ marginLeft: '6px', fontSize: '10px', color: '#94a3b8' }}>({c.moneda})</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <button
+                          type="button"
+                          onClick={() => handleMoverColumna(c.id, 'izquierda')}
+                          style={{ background: '#1f2937', border: 'none', color: '#cbd5e1', borderRadius: '4px', padding: '3px 6px', cursor: 'pointer', fontSize: '10px' }}
+                          title="Subir orden"
+                        >
+                          ▲
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleMoverColumna(c.id, 'derecha')}
+                          style={{ background: '#1f2937', border: 'none', color: '#cbd5e1', borderRadius: '4px', padding: '3px 6px', cursor: 'pointer', fontSize: '10px' }}
+                          title="Bajar orden"
+                        >
+                          ▼
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleCambiarSeccion(c.id, 'naranja')}
+                          style={{
+                            background: 'rgba(234, 88, 12, 0.2)',
+                            border: '1px solid rgba(234, 88, 12, 0.4)',
+                            color: '#fb923c',
+                            borderRadius: '4px',
+                            padding: '3px 8px',
+                            cursor: 'pointer',
+                            fontSize: '11px',
+                            fontWeight: 700
+                          }}
+                          title="Mover esta columna a la Sección Naranja"
+                        >
+                          ➔ Naranja
+                        </button>
+                        {c.esPersonalizada && (
+                          <button
+                            type="button"
+                            onClick={() => handleEliminarColumnaClick(c.id, c.titulo)}
+                            style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '2px 4px', fontSize: '12px' }}
+                            title="Eliminar columna"
+                          >
+                            🗑️
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ padding: '16px 24px', backgroundColor: '#030712', borderTop: '1px solid #1f2937', display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={() => setModalOrganizarColumnasOpen(false)}
+                style={{ padding: '9px 20px', backgroundColor: '#374151', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL AGREGAR NUEVA FILA (LOCALES, CONSERJERÍA, ETC.) */}
+      {modalNuevaFilaOpen && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          backgroundColor: 'rgba(0,0,0,0.75)',
+          backdropFilter: 'blur(5px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 99999,
+          padding: '20px'
+        }}>
+          <div style={{
+            backgroundColor: '#111827',
+            border: '2px solid #a855f7',
+            borderRadius: '16px',
+            width: '100%',
+            maxWidth: '460px',
+            boxShadow: '0 25px 60px rgba(0,0,0,0.8)',
+            overflow: 'hidden'
+          }}>
+            <div style={{ padding: '18px 24px', borderBottom: '1px solid #1f2937', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'rgba(168, 85, 247, 0.1)' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: '#c084fc' }}>
+                  ➕ Agregar Fila a la Tabla
+                </h3>
+                <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#d8b4fe' }}>
+                  Agrega unidades especiales como Locales, Conserjería o Depósitos
+                </p>
+              </div>
+              <button onClick={() => setModalNuevaFilaOpen(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '20px', cursor: 'pointer' }}>
+                ✕
+              </button>
+            </div>
+
+            <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px', fontWeight: 700 }}>
+                  Número / Identificador de la Unidad *
+                </label>
+                <input
+                  type="text"
+                  value={nuevaFilaNumero}
+                  onChange={e => setNuevaFilaNumero(e.target.value)}
+                  placeholder="Ej: Local 1, Conserjería, Depósito 1..."
+                  autoFocus
+                  style={{ width: '100%', backgroundColor: '#030712', border: '1px solid #374151', borderRadius: '8px', padding: '10px 12px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px', fontWeight: 700 }}>
+                  Propietario / Responsable (Opcional)
+                </label>
+                <input
+                  type="text"
+                  value={nuevaFilaPropietario}
+                  onChange={e => setNuevaFilaPropietario(e.target.value)}
+                  placeholder="Ej: Inversiones ABC, Administración..."
+                  style={{ width: '100%', backgroundColor: '#030712', border: '1px solid #374151', borderRadius: '8px', padding: '10px 12px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px', fontWeight: 700 }}>
+                  Alícuota (Opcional, defecto: 0.0159)
+                </label>
+                <input
+                  type="number"
+                  step="any"
+                  value={nuevaFilaAlicuota}
+                  onChange={e => setNuevaFilaAlicuota(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                  placeholder="0.0159"
+                  style={{ width: '100%', backgroundColor: '#030712', border: '1px solid #374151', borderRadius: '8px', padding: '10px 12px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
+                />
+              </div>
+            </div>
+
+            <div style={{ padding: '16px 24px', backgroundColor: '#030712', borderTop: '1px solid #1f2937', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                type="button"
+                onClick={() => setModalNuevaFilaOpen(false)}
+                style={{ padding: '9px 16px', backgroundColor: 'transparent', color: '#cbd5e1', border: '1px solid #374151', borderRadius: '8px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleGuardarNuevaFila}
+                disabled={procesandoAccion}
+                style={{ padding: '9px 20px', backgroundColor: '#a855f7', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 800, cursor: procesandoAccion ? 'not-allowed' : 'pointer' }}
+              >
+                {procesandoAccion ? 'Guardando...' : 'Crear Fila'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL GESTIÓN DE FILAS OCULTAS */}
+      {modalFilasOcultasOpen && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          backgroundColor: 'rgba(0,0,0,0.75)',
+          backdropFilter: 'blur(5px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 99999,
+          padding: '20px'
+        }}>
+          <div style={{
+            backgroundColor: '#111827',
+            border: '1px solid #374151',
+            borderRadius: '16px',
+            width: '100%',
+            maxWidth: '480px',
+            maxHeight: '80vh',
+            boxShadow: '0 25px 60px rgba(0,0,0,0.8)',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden'
+          }}>
+            <div style={{ padding: '18px 24px', borderBottom: '1px solid #1f2937', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: '#fff' }}>
+                  👁️ Filas Ocultas del Calendario
+                </h3>
+                <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#94a3b8' }}>
+                  Puedes restaurar cualquier unidad para que vuelva a mostrarse en la tabla
+                </p>
+              </div>
+              <button onClick={() => setModalFilasOcultasOpen(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '20px', cursor: 'pointer' }}>
+                ✕
+              </button>
+            </div>
+
+            <div style={{ padding: '20px 24px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {(configuracion.filasOcultasIds || []).length === 0 ? (
+                <div style={{ textAlign: 'center', color: '#64748b', padding: '30px' }}>
+                  No hay filas ocultas actualmente.
+                </div>
+              ) : (
+                (configuracion.filasOcultasIds || []).map(id => (
+                  <div
+                    key={id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '10px 14px',
+                      backgroundColor: '#030712',
+                      border: '1px solid #1f2937',
+                      borderRadius: '8px'
+                    }}
+                  >
+                    <span style={{ fontWeight: 700, color: '#fff' }}>ID: {id}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleRestaurarFila(id)}
+                      style={{
+                        backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                        border: '1px solid rgba(16, 185, 129, 0.35)',
+                        color: '#10b981',
+                        borderRadius: '6px',
+                        padding: '6px 12px',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Restaurar
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div style={{ padding: '16px 24px', backgroundColor: '#030712', borderTop: '1px solid #1f2937', display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={() => setModalFilasOcultasOpen(false)}
+                style={{ padding: '9px 20px', backgroundColor: '#374151', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL EDITAR MONTO DE CELDA EN COLUMNA PERSONALIZADA (CUOTA ESPECIAL) */}
+      {modalCeldaPersonalizadaOpen && celdaPersApto && celdaPersCol && (
         <div style={{
           position: 'fixed',
           inset: 0,
@@ -1896,13 +2509,13 @@ export const AdminCalendarioDeudas: React.FC = () => {
             <div style={{ padding: '18px 24px', borderBottom: '1px solid #1f2937', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'rgba(234, 179, 8, 0.1)' }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: '#facc15' }}>
-                  ⚡ Editar Cuota Especial
+                  ✏️ {celdaPersCol.titulo}
                 </h3>
                 <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#fde047' }}>
-                  {cuotaEspecialSeleccionada.nombre} · {columnaEspecialSeleccionada.label}
+                  Apto {celdaPersApto.apartamento_numero} · Cuota Especial ({celdaPersCol.moneda})
                 </p>
               </div>
-              <button onClick={() => setModalCeldaEspecialOpen(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '20px', cursor: 'pointer' }}>
+              <button onClick={() => setModalCeldaPersonalizadaOpen(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '20px', cursor: 'pointer' }}>
                 ✕
               </button>
             </div>
@@ -1910,14 +2523,14 @@ export const AdminCalendarioDeudas: React.FC = () => {
             <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px', fontWeight: 700 }}>
-                  Monto a Cobrar ({cuotaEspecialSeleccionada.moneda === 'USD' ? 'Dólares $' : 'Bolívares Bs'}):
+                  Monto ({celdaPersCol.moneda === 'USD' ? 'Dólares $' : 'Bolívares Bs'}):
                 </label>
                 <div style={{ display: 'flex', gap: '10px' }}>
                   <input
                     type="number"
                     step="any"
-                    value={montoCeldaEspecialInput}
-                    onChange={e => setMontoCeldaEspecialInput(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                    value={celdaPersMonto}
+                    onChange={e => setCeldaPersMonto(e.target.value === '' ? '' : parseFloat(e.target.value))}
                     placeholder="0.00"
                     autoFocus
                     style={{
@@ -1943,31 +2556,77 @@ export const AdminCalendarioDeudas: React.FC = () => {
                     fontWeight: 800,
                     fontSize: '14px'
                   }}>
-                    {cuotaEspecialSeleccionada.moneda}
+                    {celdaPersCol.moneda}
                   </div>
                 </div>
               </div>
 
-              <div style={{ fontSize: '11px', color: '#94a3b8', lineHeight: '1.4' }}>
-                💡 Este monto se registrará para la columna <strong>{columnaEspecialSeleccionada.label}</strong> en la fila especial y se actualizará automáticamente en el total de mora del edificio.
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px', fontWeight: 700 }}>
+                  Estado de esta Cuota
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setCeldaPersEstado('pagado')}
+                    style={{
+                      padding: '10px',
+                      borderRadius: '8px',
+                      border: celdaPersEstado === 'pagado' ? '2px solid #10b981' : '1px solid #374151',
+                      backgroundColor: celdaPersEstado === 'pagado' ? 'rgba(16, 185, 129, 0.15)' : '#030712',
+                      color: celdaPersEstado === 'pagado' ? '#34d399' : '#94a3b8',
+                      fontWeight: 800,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    ✓ Pagado
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCeldaPersEstado('pendiente')}
+                    style={{
+                      padding: '10px',
+                      borderRadius: '8px',
+                      border: celdaPersEstado === 'pendiente' ? '2px solid #ef4444' : '1px solid #374151',
+                      backgroundColor: celdaPersEstado === 'pendiente' ? 'rgba(239, 68, 68, 0.15)' : '#030712',
+                      color: celdaPersEstado === 'pendiente' ? '#f87171' : '#94a3b8',
+                      fontWeight: 800,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    ⏳ Pendiente
+                  </button>
+                </div>
               </div>
+
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', marginTop: '6px' }}>
+                <input
+                  type="checkbox"
+                  checked={celdaPersAplicarATodos}
+                  onChange={e => setCeldaPersAplicarATodos(e.target.checked)}
+                  style={{ accentColor: '#eab308' }}
+                />
+                <span style={{ fontSize: '12px', color: '#cbd5e1', fontWeight: 600 }}>
+                  Aplicar este monto a todos los apartamentos del edificio
+                </span>
+              </label>
             </div>
 
             <div style={{ padding: '16px 24px', backgroundColor: '#030712', borderTop: '1px solid #1f2937', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
               <button
                 type="button"
-                onClick={() => setModalCeldaEspecialOpen(false)}
+                onClick={() => setModalCeldaPersonalizadaOpen(false)}
                 style={{ padding: '9px 16px', backgroundColor: 'transparent', color: '#cbd5e1', border: '1px solid #374151', borderRadius: '8px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}
               >
                 Cancelar
               </button>
               <button
                 type="button"
-                onClick={handleGuardarMontoCeldaEspecial}
+                onClick={handleGuardarCeldaPersonalizada}
                 disabled={procesandoAccion}
                 style={{ padding: '9px 20px', backgroundColor: '#eab308', color: '#000', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 800, cursor: procesandoAccion ? 'not-allowed' : 'pointer' }}
               >
-                {procesandoAccion ? 'Guardando...' : 'Guardar Monto'}
+                {procesandoAccion ? 'Guardando...' : 'Guardar Cuota'}
               </button>
             </div>
           </div>

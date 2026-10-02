@@ -27,18 +27,74 @@ export interface FilaCuotaEspecial {
   created_at?: string
 }
 
-export interface ConfiguracionCalendario {
-  tituloSeccionHistorica: string
-  filasCuotasEspeciales: FilaCuotaEspecial[]
+export interface ColumnaCalendarioConfig {
+  id: string
+  titulo: string
+  seccion: 'naranja' | 'azul' // 'naranja' = Deudas pasadas / conceptos extraordinarios, 'azul' = Calendario mensual
+  moneda: 'USD' | 'BS'
+  tipo: 'historico' | 'mes' | 'cuota_especial'
+  mesKey?: string // e.g. '2026-01'
+  orden: number
+  esPersonalizada?: boolean
+  montoDefecto?: number
 }
 
-const CONFIG_STORAGE_KEY = 'condominio_config_calendario_v2'
+export interface FilaPersonalizadaConfig {
+  id: string
+  numero: string
+  propietario?: string
+  alicuota?: number
+}
+
+export interface ConfiguracionCalendario {
+  tituloSeccionHistorica: string
+  tituloSeccionMensual?: string
+  columnas: ColumnaCalendarioConfig[]
+  filasPersonalizadas: FilaPersonalizadaConfig[]
+  filasOcultasIds: string[]
+  // Valores de columnas personalizadas: [filaId][columnaId] = { monto: number, estado: 'pendiente' | 'pagado' }
+  valoresCeldasPersonalizadas: Record<string, Record<string, { monto: number; estado: 'pendiente' | 'pagado' }>>
+  filasCuotasEspeciales?: FilaCuotaEspecial[]
+}
+
+export function obtenerColumnasPorDefecto(anio = 2026): ColumnaCalendarioConfig[] {
+  return [
+    // Sección Naranja (Deudas pasadas / Conceptos anteriores en Bs y $)
+    { id: 'deuda_2025', titulo: 'Deuda 2025', seccion: 'naranja', moneda: 'BS', tipo: 'historico', orden: 1 },
+    { id: 'cable_viajero', titulo: 'Cable Viaj.', seccion: 'naranja', moneda: 'USD', tipo: 'historico', orden: 2 },
+    { id: 'guaya', titulo: 'Guaya', seccion: 'naranja', moneda: 'USD', tipo: 'historico', orden: 3 },
+    { id: 'arreglo', titulo: 'Arreglo', seccion: 'naranja', moneda: 'BS', tipo: 'historico', orden: 4 },
+    { id: `${anio}-01`, titulo: 'Ene (Bs)', seccion: 'naranja', moneda: 'BS', tipo: 'mes', mesKey: `${anio}-01`, orden: 5 },
+    { id: `${anio}-02`, titulo: 'Feb (Bs)', seccion: 'naranja', moneda: 'BS', tipo: 'mes', mesKey: `${anio}-02`, orden: 6 },
+
+    // Sección Azul (Calendario mensual 2026)
+    { id: `${anio}-03`, titulo: 'Marzo $', seccion: 'azul', moneda: 'USD', tipo: 'mes', mesKey: `${anio}-03`, orden: 7 },
+    { id: `${anio}-04`, titulo: 'Abril $', seccion: 'azul', moneda: 'USD', tipo: 'mes', mesKey: `${anio}-04`, orden: 8 },
+    { id: `${anio}-05`, titulo: 'Mayo $', seccion: 'azul', moneda: 'USD', tipo: 'mes', mesKey: `${anio}-05`, orden: 9 },
+    { id: `${anio}-06`, titulo: 'Junio $', seccion: 'azul', moneda: 'USD', tipo: 'mes', mesKey: `${anio}-06`, orden: 10 },
+    { id: `${anio}-07`, titulo: 'Julio $', seccion: 'azul', moneda: 'USD', tipo: 'mes', mesKey: `${anio}-07`, orden: 11 },
+    { id: `${anio}-08`, titulo: 'Agosto $', seccion: 'azul', moneda: 'USD', tipo: 'mes', mesKey: `${anio}-08`, orden: 12 },
+    { id: `${anio}-09`, titulo: 'Septiembre $', seccion: 'azul', moneda: 'USD', tipo: 'mes', mesKey: `${anio}-09`, orden: 13 },
+    { id: `${anio}-10`, titulo: 'Octubre $', seccion: 'azul', moneda: 'USD', tipo: 'mes', mesKey: `${anio}-10`, orden: 14 },
+    { id: `${anio}-11`, titulo: 'Noviembre $', seccion: 'azul', moneda: 'USD', tipo: 'mes', mesKey: `${anio}-11`, orden: 15 },
+    { id: `${anio}-12`, titulo: 'Diciembre $', seccion: 'azul', moneda: 'USD', tipo: 'mes', mesKey: `${anio}-12`, orden: 16 }
+  ]
+}
+
+const CONFIG_STORAGE_KEY = 'condominio_config_calendario_v3'
+
+export const CONFIGURACION_CALENDARIO_DEFECTO: ConfiguracionCalendario = {
+  tituloSeccionHistorica: 'DEUDA AL AÑO 2025 / CONCEPTOS EXTRAORDINARIOS (BS)',
+  tituloSeccionMensual: 'AÑO 2026 (EMISIÓN Y LÍNEA DE TIEMPO MENSUAL)',
+  columnas: obtenerColumnasPorDefecto(),
+  filasPersonalizadas: [],
+  filasOcultasIds: [],
+  valoresCeldasPersonalizadas: {},
+  filasCuotasEspeciales: []
+}
 
 export async function obtenerConfiguracionCalendario(): Promise<ConfiguracionCalendario> {
-  const defaultConfig: ConfiguracionCalendario = {
-    tituloSeccionHistorica: 'DEUDA AL AÑO 2025 / CONCEPTOS EXTRAORDINARIOS (BS)',
-    filasCuotasEspeciales: []
-  }
+  const defaultConfig: ConfiguracionCalendario = { ...CONFIGURACION_CALENDARIO_DEFECTO }
 
   try {
     const raw = localStorage.getItem(CONFIG_STORAGE_KEY)
@@ -47,6 +103,11 @@ export async function obtenerConfiguracionCalendario(): Promise<ConfiguracionCal
       if (parsed && typeof parsed === 'object') {
         return {
           tituloSeccionHistorica: parsed.tituloSeccionHistorica || defaultConfig.tituloSeccionHistorica,
+          tituloSeccionMensual: parsed.tituloSeccionMensual || defaultConfig.tituloSeccionMensual,
+          columnas: Array.isArray(parsed.columnas) && parsed.columnas.length > 0 ? parsed.columnas : defaultConfig.columnas,
+          filasPersonalizadas: Array.isArray(parsed.filasPersonalizadas) ? parsed.filasPersonalizadas : [],
+          filasOcultasIds: Array.isArray(parsed.filasOcultasIds) ? parsed.filasOcultasIds : [],
+          valoresCeldasPersonalizadas: parsed.valoresCeldasPersonalizadas || {},
           filasCuotasEspeciales: Array.isArray(parsed.filasCuotasEspeciales) ? parsed.filasCuotasEspeciales : []
         }
       }
@@ -60,11 +121,17 @@ export async function obtenerConfiguracionCalendario(): Promise<ConfiguracionCal
 
     if (data?.descripcion) {
       const parsed = JSON.parse(data.descripcion)
-      localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(parsed))
-      return {
+      const res: ConfiguracionCalendario = {
         tituloSeccionHistorica: parsed.tituloSeccionHistorica || defaultConfig.tituloSeccionHistorica,
+        tituloSeccionMensual: parsed.tituloSeccionMensual || defaultConfig.tituloSeccionMensual,
+        columnas: Array.isArray(parsed.columnas) && parsed.columnas.length > 0 ? parsed.columnas : defaultConfig.columnas,
+        filasPersonalizadas: Array.isArray(parsed.filasPersonalizadas) ? parsed.filasPersonalizadas : [],
+        filasOcultasIds: Array.isArray(parsed.filasOcultasIds) ? parsed.filasOcultasIds : [],
+        valoresCeldasPersonalizadas: parsed.valoresCeldasPersonalizadas || {},
         filasCuotasEspeciales: Array.isArray(parsed.filasCuotasEspeciales) ? parsed.filasCuotasEspeciales : []
       }
+      localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(res))
+      return res
     }
   } catch (err) {
     console.warn('[calendarioDeudasService] Error cargando config:', err)
@@ -80,6 +147,11 @@ export async function guardarConfiguracionCalendario(
     const actual = await obtenerConfiguracionCalendario()
     const nueva: ConfiguracionCalendario = {
       tituloSeccionHistorica: config.tituloSeccionHistorica !== undefined ? config.tituloSeccionHistorica : actual.tituloSeccionHistorica,
+      tituloSeccionMensual: config.tituloSeccionMensual !== undefined ? config.tituloSeccionMensual : actual.tituloSeccionMensual,
+      columnas: config.columnas !== undefined ? config.columnas : actual.columnas,
+      filasPersonalizadas: config.filasPersonalizadas !== undefined ? config.filasPersonalizadas : actual.filasPersonalizadas,
+      filasOcultasIds: config.filasOcultasIds !== undefined ? config.filasOcultasIds : actual.filasOcultasIds,
+      valoresCeldasPersonalizadas: config.valoresCeldasPersonalizadas !== undefined ? config.valoresCeldasPersonalizadas : actual.valoresCeldasPersonalizadas,
       filasCuotasEspeciales: config.filasCuotasEspeciales !== undefined ? config.filasCuotasEspeciales : actual.filasCuotasEspeciales
     }
 
@@ -148,6 +220,10 @@ export interface FilaCalendarioApto {
   // Depósitos y Saldo a favor
   saldo_a_favor_usd: number
   saldo_a_favor_bs: number
+
+  // Valores de columnas personalizadas (clave: colId)
+  valores_personalizados?: Record<string, { monto: number; estado: 'pendiente' | 'pagado' }>
+  esPersonalizada?: boolean
 
   // Referencia a deudas_mora en DB
   deuda_mora_id?: string
@@ -317,8 +393,11 @@ export async function obtenerMatrizCalendario(
         // Marzo a Diciembre 2026 (en $) van en el bloque de dólares
         const columnasMesesDolares = columnasMeses.filter(c => c.moneda === 'USD')
 
+        // Filtrar apartamentos ocultos
+        const aptosVisibles = aptos.filter(a => !(configCalendario.filasOcultasIds || []).includes(a.id))
+
         // Construir filas por apartamento
-        const filas: FilaCalendarioApto[] = aptos.map(apto => {
+        const filasAptos: FilaCalendarioApto[] = aptosVisibles.map(apto => {
           const perf = perfilesMap.get(apto.id)
           const moraRow = moraMap.get(apto.id)
           const saldo = saldosMap.get(apto.id)
@@ -368,12 +447,18 @@ export async function obtenerMatrizCalendario(
             }
           })
 
-          // Sumar también las cuotas especiales activas configuradas
-          configCalendario.filasCuotasEspeciales.forEach(cuotaEsp => {
-            const val = cuotaEsp.valoresPorApto?.[apto.id] ?? (cuotaEsp.montoDefecto > 0 ? { monto: cuotaEsp.montoDefecto, estado: 'pendiente' } : null)
-            if (val && val.estado === 'pendiente' && val.monto > 0) {
-              if (cuotaEsp.moneda === 'USD') sumPendienteUsd += val.monto
-              else sumPendienteBs += val.monto
+          const celdasPers = configCalendario.valoresCeldasPersonalizadas?.[apto.id] || {}
+
+          // Sumar montos de columnas personalizadas (cuotas especiales en columnas)
+          const colsParaApto = configCalendario.columnas || []
+          colsParaApto.forEach((col: ColumnaCalendarioConfig) => {
+            if (col.tipo === 'cuota_especial') {
+              const val = celdasPers[col.id] ?? (col.montoDefecto ? { monto: col.montoDefecto, estado: 'pendiente' } : null)
+              if (val && val.estado === 'pendiente' && val.monto > 0) {
+                if (col.moneda === 'USD') sumPendienteUsd += val.monto
+                else sumPendienteBs += val.monto
+                mesesConDeuda += 1
+              }
             }
           })
 
@@ -394,6 +479,7 @@ export async function obtenerMatrizCalendario(
             arreglo: arreglo,
 
             meses: mesesMap,
+            valores_personalizados: celdasPers,
             total_bs: Number(sumPendienteBs.toFixed(2)),
             total_usd: Number(sumPendienteUsd.toFixed(2)),
             meses_con_deuda: mesesConDeuda,
@@ -406,6 +492,55 @@ export async function obtenerMatrizCalendario(
             deuda_mora_estado: moraRow?.estado
           }
         })
+
+        // Filas personalizadas adicionales añadidas por el admin
+        const filasPersonalizadasList: FilaCalendarioApto[] = (configCalendario.filasPersonalizadas || [])
+          .filter(f => !(configCalendario.filasOcultasIds || []).includes(f.id))
+          .map(filaPers => {
+          const celdasPers = configCalendario.valoresCeldasPersonalizadas?.[filaPers.id] || {}
+          let sumPendienteBs = 0
+          let sumPendienteUsd = 0
+          let mesesConDeuda = 0
+          const colsParaPers = configCalendario.columnas || []
+
+          colsParaPers.forEach((col: ColumnaCalendarioConfig) => {
+            if (col.tipo === 'cuota_especial') {
+              const val = celdasPers[col.id] ?? (col.montoDefecto ? { monto: col.montoDefecto, estado: 'pendiente' } : null)
+              if (val && val.estado === 'pendiente' && val.monto > 0) {
+                if (col.moneda === 'USD') sumPendienteUsd += val.monto
+                else sumPendienteBs += val.monto
+                mesesConDeuda += 1
+              }
+            }
+          })
+
+          const tieneDeudaTotal = sumPendienteBs > 0.01 || sumPendienteUsd > 0.01
+
+          return {
+            apartamento_id: filaPers.id,
+            apartamento_numero: filaPers.numero,
+            piso: null,
+            alicuota: filaPers.alicuota || 0.0159,
+            propietario_nombre: filaPers.propietario || 'Fila Personalizada',
+            telefono: null,
+            email: null,
+            deuda_base_2025: 0,
+            cable_viajero: 0,
+            guaya: 0,
+            arreglo: 0,
+            meses: {},
+            valores_personalizados: celdasPers,
+            total_bs: Number(sumPendienteBs.toFixed(2)),
+            total_usd: Number(sumPendienteUsd.toFixed(2)),
+            meses_con_deuda: mesesConDeuda,
+            estado_solvente: !tieneDeudaTotal,
+            saldo_a_favor_usd: 0,
+            saldo_a_favor_bs: 0,
+            esPersonalizada: true
+          }
+        })
+
+        const filas = [...filasAptos, ...filasPersonalizadasList]
 
         filas.sort((a, b) => compararApartamentos(a.apartamento_numero, b.apartamento_numero))
 
@@ -456,10 +591,7 @@ export async function obtenerMatrizCalendario(
             mesesDisponibles: [],
             tasaBcvActual: 859.06
           },
-          configuracion: {
-            tituloSeccionHistorica: 'DEUDA AL AÑO 2025 / CONCEPTOS EXTRAORDINARIOS (BS)',
-            filasCuotasEspeciales: []
-          },
+          configuracion: CONFIGURACION_CALENDARIO_DEFECTO,
           error: err.message || 'Error consultando calendario de mora'
         }
       }
@@ -722,6 +854,9 @@ export async function guardarFilaCuotaEspecial(
 ): Promise<{ success: boolean; error: string | null }> {
   try {
     const config = await obtenerConfiguracionCalendario()
+    if (!config.filasCuotasEspeciales) {
+      config.filasCuotasEspeciales = []
+    }
     const existeIndex = config.filasCuotasEspeciales.findIndex(f => f.id === cuota.id)
 
     if (existeIndex >= 0) {
@@ -745,11 +880,290 @@ export async function eliminarFilaCuotaEspecial(
 ): Promise<{ success: boolean; error: string | null }> {
   try {
     const config = await obtenerConfiguracionCalendario()
-    config.filasCuotasEspeciales = config.filasCuotasEspeciales.filter(f => f.id !== cuotaId)
+    config.filasCuotasEspeciales = (config.filasCuotasEspeciales || []).filter(f => f.id !== cuotaId)
     await guardarConfiguracionCalendario(config)
     return { success: true, error: null }
   } catch (err: any) {
     return { success: false, error: err.message || 'Error eliminando cuota especial' }
+  }
+}
+
+/**
+ * Guarda el valor (monto y estado) de una celda para una columna personalizada
+ */
+export async function guardarCeldaPersonalizada(params: {
+  filaId: string
+  columnaId: string
+  monto: number
+  estado: 'pendiente' | 'pagado'
+}): Promise<{ success: boolean; error: string | null }> {
+  try {
+    const config = await obtenerConfiguracionCalendario()
+    if (!config.valoresCeldasPersonalizadas) config.valoresCeldasPersonalizadas = {}
+    if (!config.valoresCeldasPersonalizadas[params.filaId]) {
+      config.valoresCeldasPersonalizadas[params.filaId] = {}
+    }
+    config.valoresCeldasPersonalizadas[params.filaId][params.columnaId] = {
+      monto: params.monto,
+      estado: params.estado
+    }
+    await guardarConfiguracionCalendario(config)
+    return { success: true, error: null }
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Error guardando celda' }
+  }
+}
+
+export type PosicionInsercionColumna =
+  | { tipo: 'inicio_naranja' }
+  | { tipo: 'fin_naranja' }
+  | { tipo: 'inicio_azul' }
+  | { tipo: 'fin_azul' }
+  | { tipo: 'despues_de'; colIdReferencia: string }
+  | { tipo: 'antes_de'; colIdReferencia: string }
+
+/**
+ * Agrega una columna personalizada (Cuota Especial) en la posición exacta indicada
+ */
+export async function agregarColumnaPersonalizada(params: {
+  titulo: string
+  seccion: 'naranja' | 'azul'
+  moneda: 'USD' | 'BS'
+  montoDefecto?: number
+  posicion: PosicionInsercionColumna
+  aplicarATodos?: boolean
+}): Promise<{ success: boolean; nuevaColumna: ColumnaCalendarioConfig | null; error: string | null }> {
+  try {
+    const config = await obtenerConfiguracionCalendario()
+    const id = `cuota_col_${Date.now()}`
+    const nuevaCol: ColumnaCalendarioConfig = {
+      id,
+      titulo: params.titulo.trim(),
+      seccion: params.seccion,
+      moneda: params.moneda,
+      tipo: 'cuota_especial',
+      esPersonalizada: true,
+      montoDefecto: Number(params.montoDefecto || 0),
+      orden: 999
+    }
+
+    const cols = [...(config.columnas || obtenerColumnasPorDefecto())]
+    const pos = params.posicion
+
+    if (pos.tipo === 'inicio_naranja') {
+      const idxPrimerNaranja = cols.findIndex(c => c.seccion === 'naranja')
+      if (idxPrimerNaranja >= 0) cols.splice(idxPrimerNaranja, 0, nuevaCol)
+      else cols.unshift(nuevaCol)
+    } else if (pos.tipo === 'fin_naranja') {
+      let idxUltimoNaranja = -1
+      for (let i = cols.length - 1; i >= 0; i--) {
+        if (cols[i].seccion === 'naranja') {
+          idxUltimoNaranja = i
+          break
+        }
+      }
+      if (idxUltimoNaranja >= 0) cols.splice(idxUltimoNaranja + 1, 0, nuevaCol)
+      else cols.push(nuevaCol)
+    } else if (pos.tipo === 'inicio_azul') {
+      const idxPrimerAzul = cols.findIndex(c => c.seccion === 'azul')
+      if (idxPrimerAzul >= 0) cols.splice(idxPrimerAzul, 0, nuevaCol)
+      else cols.push(nuevaCol)
+    } else if (pos.tipo === 'fin_azul') {
+      cols.push(nuevaCol)
+    } else if (pos.tipo === 'despues_de' && pos.colIdReferencia) {
+      const idx = cols.findIndex(c => c.id === pos.colIdReferencia)
+      if (idx >= 0) cols.splice(idx + 1, 0, nuevaCol)
+      else cols.push(nuevaCol)
+    } else if (pos.tipo === 'antes_de' && pos.colIdReferencia) {
+      const idx = cols.findIndex(c => c.id === pos.colIdReferencia)
+      if (idx >= 0) cols.splice(idx, 0, nuevaCol)
+      else cols.unshift(nuevaCol)
+    } else {
+      cols.push(nuevaCol)
+    }
+
+    // Normalizar números de orden
+    cols.forEach((c, idx) => { c.orden = idx + 1 })
+    config.columnas = cols
+
+    // Si se aplica a todos y hay monto por defecto, poblar valores
+    if (params.aplicarATodos && (params.montoDefecto || 0) > 0) {
+      const { data: aptos } = await supabase.from('apartamentos').select('id')
+      if (!config.valoresCeldasPersonalizadas) config.valoresCeldasPersonalizadas = {}
+      ;(aptos || []).forEach(a => {
+        if (!config.valoresCeldasPersonalizadas[a.id]) config.valoresCeldasPersonalizadas[a.id] = {}
+        config.valoresCeldasPersonalizadas[a.id][id] = {
+          monto: Number(params.montoDefecto || 0),
+          estado: 'pendiente'
+        }
+      })
+    }
+
+    await guardarConfiguracionCalendario(config)
+    return { success: true, nuevaColumna: nuevaCol, error: null }
+  } catch (err: any) {
+    return { success: false, nuevaColumna: null, error: err.message || 'Error agregando columna' }
+  }
+}
+
+/**
+ * Cambia una columna entre la sección Naranja (Deudas pasadas / extraordinarios) y la sección Azul (Calendario)
+ */
+export async function cambiarSeccionColumna(
+  colId: string,
+  nuevaSeccion: 'naranja' | 'azul'
+): Promise<{ success: boolean; error: string | null }> {
+  try {
+    const config = await obtenerConfiguracionCalendario()
+    const cols = [...(config.columnas || obtenerColumnasPorDefecto())]
+    const idx = cols.findIndex(c => c.id === colId)
+    if (idx === -1) return { success: false, error: 'Columna no encontrada' }
+
+    const col = cols[idx]
+    col.seccion = nuevaSeccion
+
+    cols.forEach((c, i) => { c.orden = i + 1 })
+    config.columnas = cols
+
+    await guardarConfiguracionCalendario(config)
+    return { success: true, error: null }
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Error cambiando sección de columna' }
+  }
+}
+
+/**
+ * Mueve una columna hacia la izquierda o derecha en el orden de visualización
+ */
+export async function moverColumnaPosicion(
+  colId: string,
+  direccion: 'izquierda' | 'derecha'
+): Promise<{ success: boolean; error: string | null }> {
+  try {
+    const config = await obtenerConfiguracionCalendario()
+    const cols = [...(config.columnas || obtenerColumnasPorDefecto())]
+    const idx = cols.findIndex(c => c.id === colId)
+    if (idx === -1) return { success: false, error: 'Columna no encontrada' }
+
+    const targetIdx = direccion === 'izquierda' ? idx - 1 : idx + 1
+    if (targetIdx < 0 || targetIdx >= cols.length) {
+      return { success: true, error: null }
+    }
+
+    const temp = cols[idx]
+    cols[idx] = cols[targetIdx]
+    cols[targetIdx] = temp
+
+    cols.forEach((c, i) => { c.orden = i + 1 })
+    config.columnas = cols
+
+    await guardarConfiguracionCalendario(config)
+    return { success: true, error: null }
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Error moviendo columna' }
+  }
+}
+
+/**
+ * Elimina una columna del calendario
+ */
+export async function eliminarColumna(colId: string): Promise<{ success: boolean; error: string | null }> {
+  try {
+    const config = await obtenerConfiguracionCalendario()
+    config.columnas = (config.columnas || obtenerColumnasPorDefecto()).filter(c => c.id !== colId)
+    config.columnas.forEach((c, i) => { c.orden = i + 1 })
+    await guardarConfiguracionCalendario(config)
+    return { success: true, error: null }
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Error eliminando columna' }
+  }
+}
+
+/**
+ * Edita propiedades de una columna (título, moneda, monto por defecto)
+ */
+export async function editarColumna(params: {
+  id: string
+  titulo?: string
+  moneda?: 'USD' | 'BS'
+  montoDefecto?: number
+}): Promise<{ success: boolean; error: string | null }> {
+  try {
+    const config = await obtenerConfiguracionCalendario()
+    const cols = [...(config.columnas || obtenerColumnasPorDefecto())]
+    const idx = cols.findIndex(c => c.id === params.id)
+    if (idx === -1) return { success: false, error: 'Columna no encontrada' }
+
+    if (params.titulo !== undefined) cols[idx].titulo = params.titulo.trim()
+    if (params.moneda !== undefined) cols[idx].moneda = params.moneda
+    if (params.montoDefecto !== undefined) cols[idx].montoDefecto = Number(params.montoDefecto)
+
+    config.columnas = cols
+    await guardarConfiguracionCalendario(config)
+    return { success: true, error: null }
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Error editando columna' }
+  }
+}
+
+/**
+ * Agrega una fila personalizada al calendario (ej: Locales, Conserjería, Depósitos)
+ */
+export async function agregarFilaPersonalizada(params: {
+  numero: string
+  propietario?: string
+  alicuota?: number
+}): Promise<{ success: boolean; fila: FilaPersonalizadaConfig | null; error: string | null }> {
+  try {
+    const config = await obtenerConfiguracionCalendario()
+    const nuevaFila: FilaPersonalizadaConfig = {
+      id: `fila_${Date.now()}`,
+      numero: params.numero.trim(),
+      propietario: params.propietario?.trim() || 'Fila Personalizada',
+      alicuota: Number(params.alicuota || 0.0159)
+    }
+    if (!config.filasPersonalizadas) config.filasPersonalizadas = []
+    config.filasPersonalizadas.push(nuevaFila)
+    await guardarConfiguracionCalendario(config)
+    return { success: true, fila: nuevaFila, error: null }
+  } catch (err: any) {
+    return { success: false, fila: null, error: err.message || 'Error agregando fila' }
+  }
+}
+
+/**
+ * Oculta o elimina una fila del calendario a gusto del administrador
+ */
+export async function ocultarOEliminarFila(filaId: string): Promise<{ success: boolean; error: string | null }> {
+  try {
+    const config = await obtenerConfiguracionCalendario()
+    if (config.filasPersonalizadas?.some(f => f.id === filaId)) {
+      config.filasPersonalizadas = config.filasPersonalizadas.filter(f => f.id !== filaId)
+    } else {
+      if (!config.filasOcultasIds) config.filasOcultasIds = []
+      if (!config.filasOcultasIds.includes(filaId)) {
+        config.filasOcultasIds.push(filaId)
+      }
+    }
+    await guardarConfiguracionCalendario(config)
+    return { success: true, error: null }
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Error ocultando fila' }
+  }
+}
+
+/**
+ * Restaura una fila oculta para que vuelva a ser visible en el calendario
+ */
+export async function restaurarFilaOculta(filaId: string): Promise<{ success: boolean; error: string | null }> {
+  try {
+    const config = await obtenerConfiguracionCalendario()
+    if (!config.filasOcultasIds) config.filasOcultasIds = []
+    config.filasOcultasIds = config.filasOcultasIds.filter(id => id !== filaId)
+    await guardarConfiguracionCalendario(config)
+    return { success: true, error: null }
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Error restaurando fila' }
   }
 }
 
