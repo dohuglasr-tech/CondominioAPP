@@ -34,8 +34,14 @@ export const AdminEdificio: React.FC = () => {
     telefono: '',
     email_contacto: '',
     banco: '',
+    cedula_cuenta: '',
+    tipo_cuenta: '',
     cuenta_bancaria: '',
     titular_cuenta: '',
+    pago_movil_banco: '',
+    pago_movil_cedula: '',
+    pago_movil_telefono: '',
+    zelle_email: '',
     fecha_inicio_gestion: '2026-09-01',
     fecha_fin_administracion_anterior: '2026-08-31',
   })
@@ -80,8 +86,14 @@ export const AdminEdificio: React.FC = () => {
         telefono: config.telefono || '',
         email_contacto: config.email_contacto || '',
         banco: config.banco || '',
+        cedula_cuenta: (config as any).cedula_cuenta || '',
+        tipo_cuenta: (config as any).tipo_cuenta || '',
         cuenta_bancaria: config.cuenta_bancaria || '',
         titular_cuenta: config.titular_cuenta || '',
+        pago_movil_banco: (config as any).pago_movil_banco || '',
+        pago_movil_cedula: (config as any).pago_movil_cedula || '',
+        pago_movil_telefono: (config as any).pago_movil_telefono || '',
+        zelle_email: (config as any).zelle_email || '',
         fecha_inicio_gestion: (config as any)?.fecha_inicio_gestion || '2026-09-01',
         fecha_fin_administracion_anterior: (config as any)?.fecha_fin_administracion_anterior || '2026-08-31',
       })
@@ -215,8 +227,14 @@ export const AdminEdificio: React.FC = () => {
         telefono: info.telefono,
         email_contacto: info.email_contacto,
         banco: info.banco,
+        cedula_cuenta: info.cedula_cuenta,
+        tipo_cuenta: info.tipo_cuenta,
         cuenta_bancaria: info.cuenta_bancaria,
         titular_cuenta: info.titular_cuenta,
+        pago_movil_banco: info.pago_movil_banco,
+        pago_movil_cedula: info.pago_movil_cedula,
+        pago_movil_telefono: info.pago_movil_telefono,
+        zelle_email: info.zelle_email,
         fecha_inicio_gestion: info.fecha_inicio_gestion || '2026-09-01',
         fecha_fin_administracion_anterior: info.fecha_fin_administracion_anterior || '2026-08-31',
         logo_url,
@@ -865,21 +883,65 @@ export const AdminEdificio: React.FC = () => {
 
             {/* Datos Bancarios */}
             <h3 style={{ color: 'var(--color-accent, #f97316)', fontSize: '16px', marginTop: '32px', marginBottom: '16px', borderBottom: '1px solid #2a2a2a', paddingBottom: '8px' }}>
-              Datos Bancarios (Para transferencias de recibos)
+              💳 Cuenta Bancaria para Pagos
             </h3>
-            <div className="admin-grid-2">
-              <div style={groupStyle}>
-                <label style={labelStyle}>Banco</label>
-                <input name="banco" value={info.banco} onChange={handleChange} style={inputStyle} />
+            <div style={{ background: '#101010', border: '1px solid #1e1e1e', borderRadius: '12px', padding: '18px 20px', marginBottom: '16px' }}>
+              <div className="admin-grid-2">
+                <div style={groupStyle}>
+                  <label style={labelStyle}>Banco</label>
+                  <input name="banco" value={info.banco} onChange={handleChange} style={inputStyle} placeholder="Ej: Banco Bicentenario" />
+                </div>
+                <div style={groupStyle}>
+                  <label style={labelStyle}>Cédula del Titular</label>
+                  <input name="cedula_cuenta" value={info.cedula_cuenta} onChange={handleChange} style={inputStyle} placeholder="Ej: V-6089037" />
+                </div>
+              </div>
+              <div className="admin-grid-2">
+                <div style={groupStyle}>
+                  <label style={labelStyle}>Tipo de Cuenta</label>
+                  <input name="tipo_cuenta" value={info.tipo_cuenta} onChange={handleChange} style={inputStyle} placeholder="Ej: Corriente / Ahorro" />
+                </div>
+                <div style={groupStyle}>
+                  <label style={labelStyle}>Número de Cuenta</label>
+                  <input name="cuenta_bancaria" value={info.cuenta_bancaria} onChange={handleChange} style={inputStyle} placeholder="Ej: 0175-0525-4100-7575-1351" />
+                </div>
               </div>
               <div style={groupStyle}>
-                <label style={labelStyle}>Número de Cuenta</label>
-                <input name="cuenta_bancaria" value={info.cuenta_bancaria} onChange={handleChange} style={inputStyle} />
+                <label style={labelStyle}>Titular de la Cuenta</label>
+                <input name="titular_cuenta" value={info.titular_cuenta} onChange={handleChange} style={inputStyle} placeholder="Nombre completo del titular" />
               </div>
             </div>
-            <div style={groupStyle}>
-              <label style={labelStyle}>Titular de la Cuenta</label>
-              <input name="titular_cuenta" value={info.titular_cuenta} onChange={handleChange} style={inputStyle} />
+
+            {/* Pago Móvil */}
+            <h3 style={{ color: 'var(--color-accent, #f97316)', fontSize: '16px', marginTop: '24px', marginBottom: '12px', borderBottom: '1px solid #2a2a2a', paddingBottom: '8px' }}>
+              📱 Pago Móvil
+            </h3>
+            <div style={{ background: '#101010', border: '1px solid #1e1e1e', borderRadius: '12px', padding: '18px 20px', marginBottom: '16px' }}>
+              <div className="admin-grid-2">
+                <div style={groupStyle}>
+                  <label style={labelStyle}>Banco (Pago Móvil)</label>
+                  <input name="pago_movil_banco" value={info.pago_movil_banco} onChange={handleChange} style={inputStyle} placeholder="Ej: Banco Bicentenario" />
+                </div>
+                <div style={groupStyle}>
+                  <label style={labelStyle}>Cédula (Pago Móvil)</label>
+                  <input name="pago_movil_cedula" value={info.pago_movil_cedula} onChange={handleChange} style={inputStyle} placeholder="Ej: V-6089037" />
+                </div>
+              </div>
+              <div style={groupStyle}>
+                <label style={labelStyle}>Número de Teléfono (Pago Móvil)</label>
+                <input name="pago_movil_telefono" value={info.pago_movil_telefono} onChange={handleChange} style={inputStyle} placeholder="Ej: 0414-1234567" />
+              </div>
+            </div>
+
+            {/* Zelle */}
+            <h3 style={{ color: 'var(--color-accent, #f97316)', fontSize: '16px', marginTop: '24px', marginBottom: '12px', borderBottom: '1px solid #2a2a2a', paddingBottom: '8px' }}>
+              💵 Zelle
+            </h3>
+            <div style={{ background: '#101010', border: '1px solid #1e1e1e', borderRadius: '12px', padding: '18px 20px', marginBottom: '16px' }}>
+              <div style={groupStyle}>
+                <label style={labelStyle}>Correo Electrónico Zelle</label>
+                <input name="zelle_email" value={info.zelle_email} onChange={handleChange} style={inputStyle} placeholder="Ej: pagos@ejemplo.com" type="email" />
+              </div>
             </div>
 
             <div style={{ marginTop: '32px', display: 'flex', justifyContent: 'flex-end' }}>

@@ -22,6 +22,12 @@ export interface DatosEmailRecibo {
   cuentaNumero?: string | null
   titularNombre?: string | null
   cedulaRif?: string | null
+  cedula_cuenta?: string | null
+  tipo_cuenta?: string | null
+  pago_movil_banco?: string | null
+  pago_movil_cedula?: string | null
+  pago_movil_telefono?: string | null
+  zelle_email?: string | null
   telefonoPagoMovil?: string | null
   portalUrl?: string
   colorPrimario?: string | null
@@ -124,7 +130,12 @@ export function generarHtmlReciboEmitido(datos: DatosEmailRecibo): { subject: st
   const cuenta = datos.cuentaNumero || DEFAULT_CUENTA
   const titular = datos.titularNombre || DEFAULT_TITULAR
   const rif = datos.cedulaRif || DEFAULT_RIF
-  const pmoTel = datos.telefonoPagoMovil || '0414-XXXXXXX'
+  const cedula = datos.cedula_cuenta || rif
+  const tipoCuenta = datos.tipo_cuenta || 'Cuenta Corriente'
+  const pmoTel = datos.pago_movil_telefono || datos.telefonoPagoMovil || ''
+  const pmoBanco = datos.pago_movil_banco || banco
+  const pmoCedula = datos.pago_movil_cedula || cedula
+  const zelleEmail = datos.zelle_email || ''
 
   const tasaBcvReal = (datos.tasaBcv && datos.tasaBcv > 1)
     ? datos.tasaBcv
@@ -200,19 +211,42 @@ export function generarHtmlReciboEmitido(datos: DatosEmailRecibo): { subject: st
                 </tr>
               </table>
 
-              <!-- DATOS BANCARIOS -->
               <div style="background:#0e131d;border:1px solid #1e293b;border-radius:14px;padding:20px;margin-bottom:28px;">
-                <div style="font-size:12px;color:#38bdf8;font-weight:800;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;">
-                  🏦 Cuentas Recaudadoras para Realizar el Pago:
+                <div style="font-size:12px;color:#38bdf8;font-weight:800;text-transform:uppercase;letter-spacing:1px;margin-bottom:14px;">
+                  🏦 Opciones de Pago Disponibles:
                 </div>
-                <table width="100%" style="font-size:13px;color:#cbd5e1;line-height:1.7;">
-                  <tr><td style="width:110px;color:#64748b;">Banco:</td><td><strong>${banco}</strong></td></tr>
-                  <tr><td style="color:#64748b;">Tipo de Cuenta:</td><td>Cuenta Corriente</td></tr>
-                  <tr><td style="color:#64748b;">Nro de Cuenta:</td><td><strong style="font-family:monospace;letter-spacing:0.5px;color:#fff;">${cuenta}</strong></td></tr>
-                  <tr><td style="color:#64748b;">Titular:</td><td><strong>${titular}</strong></td></tr>
-                  <tr><td style="color:#64748b;">Cédula / RIF:</td><td><strong>${rif}</strong></td></tr>
-                  <tr><td style="color:#64748b;">Pago Móvil:</td><td>${banco} · ${rif} · Tel: ${pmoTel}</td></tr>
-                </table>
+
+                <!-- TRANSFERENCIA BANCARIA -->
+                <div style="margin-bottom:14px;">
+                  <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px;border-bottom:1px solid #1e293b;padding-bottom:4px;">💳 Transferencia Bancaria</div>
+                  <table width="100%" style="font-size:13px;color:#cbd5e1;line-height:1.7;">
+                    <tr><td style="width:130px;color:#64748b;">Banco:</td><td><strong>${banco}</strong></td></tr>
+                    <tr><td style="color:#64748b;">Cédula:</td><td><strong>${cedula}</strong></td></tr>
+                    <tr><td style="color:#64748b;">Tipo de Cuenta:</td><td>${tipoCuenta}</td></tr>
+                    <tr><td style="color:#64748b;">Nro de Cuenta:</td><td><strong style="font-family:monospace;letter-spacing:0.5px;color:#fff;">${cuenta}</strong></td></tr>
+                    <tr><td style="color:#64748b;">Titular:</td><td><strong>${titular}</strong></td></tr>
+                  </table>
+                </div>
+
+                ${(pmoTel || pmoBanco) ? `
+                <!-- PAGO MÓVIL -->
+                <div style="margin-bottom:14px;">
+                  <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px;border-bottom:1px solid #1e293b;padding-bottom:4px;">📱 Pago Móvil</div>
+                  <table width="100%" style="font-size:13px;color:#cbd5e1;line-height:1.7;">
+                    <tr><td style="width:130px;color:#64748b;">Banco:</td><td><strong>${pmoBanco}</strong></td></tr>
+                    <tr><td style="color:#64748b;">Cédula:</td><td><strong>${pmoCedula}</strong></td></tr>
+                    <tr><td style="color:#64748b;">Teléfono:</td><td><strong style="color:#fff;">${pmoTel}</strong></td></tr>
+                  </table>
+                </div>` : ''}
+
+                ${zelleEmail ? `
+                <!-- ZELLE -->
+                <div>
+                  <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px;border-bottom:1px solid #1e293b;padding-bottom:4px;">💵 Zelle</div>
+                  <table width="100%" style="font-size:13px;color:#cbd5e1;line-height:1.7;">
+                    <tr><td style="width:130px;color:#64748b;">Correo:</td><td><strong style="color:#fff;">${zelleEmail}</strong></td></tr>
+                  </table>
+                </div>` : ''}
               </div>
 
               <!-- BOTÓN CTA -->

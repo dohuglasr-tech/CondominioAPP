@@ -65,8 +65,14 @@ export interface ConfigEdificio {
   telefono: string | null
   email_contacto: string | null
   banco: string | null
+  cedula_cuenta: string | null
+  tipo_cuenta: string | null
   cuenta_bancaria: string | null
   titular_cuenta: string | null
+  pago_movil_banco: string | null
+  pago_movil_cedula: string | null
+  pago_movil_telefono: string | null
+  zelle_email: string | null
   ciudad: string | null
   fecha_inicio_gestion?: string | null
   fecha_fin_administracion_anterior?: string | null

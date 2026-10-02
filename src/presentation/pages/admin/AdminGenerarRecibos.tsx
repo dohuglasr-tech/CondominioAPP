@@ -23,7 +23,10 @@ interface CargoEspecial {
 interface ConfigEdificio {
   nombre_edificio: string; rif: string | null; direccion: string | null
   email_contacto: string | null; dominio_email?: string | null; banco: string | null
+  cedula_cuenta?: string | null; tipo_cuenta?: string | null
   cuenta_bancaria: string | null; titular_cuenta: string | null
+  pago_movil_banco?: string | null; pago_movil_cedula?: string | null; pago_movil_telefono?: string | null
+  zelle_email?: string | null
   tasa_bcv_actual: number
   color_primario?: string | null
   fecha_inicio_gestion?: string | null
@@ -305,6 +308,12 @@ export const AdminGenerarRecibos: React.FC = () => {
           cuentaNumero: config?.cuenta_bancaria,
           titularNombre: config?.titular_cuenta,
           cedulaRif: config?.rif,
+          cedula_cuenta: config?.cedula_cuenta,
+          tipo_cuenta: config?.tipo_cuenta,
+          pago_movil_banco: config?.pago_movil_banco,
+          pago_movil_cedula: config?.pago_movil_cedula,
+          pago_movil_telefono: config?.pago_movil_telefono,
+          zelle_email: config?.zelle_email,
           colorPrimario: config?.color_primario
         }).catch(err => console.warn(`[AdminGenerarRecibos] Error despachando email a Apto. ${apto.numero}:`, err))
       }
