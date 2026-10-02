@@ -7,6 +7,7 @@ import {
   guardarCeldaPersonalizada,
   agregarColumnaPersonalizada,
   cambiarSeccionColumna,
+  cambiarMonedaColumna,
   moverColumnaPosicion,
   eliminarColumna,
   restablecerColumnasPorDefecto,
@@ -76,9 +77,13 @@ export const AdminCalendarioDeudas: React.FC = () => {
   const [modalHistOpen, setModalHistOpen] = useState(false)
   const [modalHistApto, setModalHistApto] = useState<FilaCalendarioApto | null>(null)
   const [histBase2025, setHistBase2025] = useState<number | ''>('')
+  const [histMonedaBase2025, setHistMonedaBase2025] = useState<'USD' | 'BS'>('BS')
   const [histCableViajero, setHistCableViajero] = useState<number | ''>('')
+  const [histMonedaCableViajero, setHistMonedaCableViajero] = useState<'USD' | 'BS'>('USD')
   const [histGuaya, setHistGuaya] = useState<number | ''>('')
+  const [histMonedaGuaya, setHistMonedaGuaya] = useState<'USD' | 'BS'>('USD')
   const [histArreglo, setHistArreglo] = useState<number | ''>('')
+  const [histMonedaArreglo, setHistMonedaArreglo] = useState<'USD' | 'BS'>('BS')
 
   // Modal para Crear Nueva Columna (Cuota Especial o concepto vertical)
   const [modalNuevaColumnaOpen, setModalNuevaColumnaOpen] = useState(false)
@@ -98,6 +103,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
   const [celdaPersCol, setCeldaPersCol] = useState<ColumnaCalendarioConfig | null>(null)
   const [celdaPersMonto, setCeldaPersMonto] = useState<number | ''>('')
   const [celdaPersEstado, setCeldaPersEstado] = useState<'pendiente' | 'pagado'>('pendiente')
+  const [celdaPersMoneda, setCeldaPersMoneda] = useState<'USD' | 'BS'>('USD')
   const [celdaPersAplicarATodos, setCeldaPersAplicarATodos] = useState(false)
 
   // Sincronización Inicial Excel
@@ -218,8 +224,17 @@ export const AdminCalendarioDeudas: React.FC = () => {
         }
       }
 
-      let newBs = f.deuda_base_2025 + f.arreglo
-      let newUsd = f.cable_viajero + f.guaya
+      let newBs = 0
+      let newUsd = 0
+      const mDeuda = configuracion.columnas.find(c => c.id === 'deuda_2025')?.moneda || 'BS'
+      const mCable = configuracion.columnas.find(c => c.id === 'cable_viajero')?.moneda || 'USD'
+      const mGuaya = configuracion.columnas.find(c => c.id === 'guaya')?.moneda || 'USD'
+      const mArreglo = configuracion.columnas.find(c => c.id === 'arreglo')?.moneda || 'BS'
+
+      if (mDeuda === 'BS') newBs += f.deuda_base_2025; else newUsd += f.deuda_base_2025
+      if (mCable === 'BS') newBs += f.cable_viajero; else newUsd += f.cable_viajero
+      if (mGuaya === 'BS') newBs += f.guaya; else newUsd += f.guaya
+      if (mArreglo === 'BS') newBs += f.arreglo; else newUsd += f.arreglo
       let pendingCount = 0
       Object.entries(mesesActualizados).forEach(([k, rec]) => {
         if (rec && rec.estado === 'pendiente') {
@@ -255,6 +270,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
       fechaPago: new Date().toISOString().slice(0, 10),
       autorNombre: perfil?.nombre_completo || 'Administrador'
     })
+    await cargarDatos(true)
   }
 
   // ── Guardar cambio de monto o estado desde Modal de Pago ──────────────────
@@ -264,6 +280,80 @@ export const AdminCalendarioDeudas: React.FC = () => {
 
     const mesLabelCompleto = `${modalCol.label} ${modalCol.anio}`
     const montoFinal = modalMontoEditado === '' ? 0 : Number(modalMontoEditado)
+    const targetAptoId = modalApto.apartamento_id
+    const targetColKey = modalCol.key
+    const estadoNuevo = modalEstadoDeseado
+    const monedaNueva = modalMonedaEditada
+
+    // 1. Actualización optimista inmediata en memoria para respuesta instantánea
+    setFilas(prev => prev.map(f => {
+      if (f.apartamento_id !== targetAptoId) return f
+
+      const mesesActualizados = { ...f.meses }
+      const prevRec = mesesActualizados[targetColKey]
+
+      const tasa = 859.06
+      const nuevoMontoBs = monedaNueva === 'BS' ? montoFinal : Number((montoFinal * tasa).toFixed(2))
+      const nuevoMontoUsd = monedaNueva === 'USD' ? montoFinal : Number((montoFinal / tasa).toFixed(2))
+
+      mesesActualizados[targetColKey] = {
+        id: prevRec?.id || `temp-${Date.now()}`,
+        apartamento_id: targetAptoId,
+        mes_facturado: modalCol.fechaIso,
+        total_usd: monedaNueva === 'BS' ? 0 : nuevoMontoUsd,
+        total_bs: nuevoMontoBs,
+        tasa_bcv: tasa,
+        estado: estadoNuevo,
+        emitido_at: prevRec?.emitido_at || new Date().toISOString()
+      }
+
+      let newBs = 0
+      let newUsd = 0
+      const mDeuda = configuracion.columnas.find(c => c.id === 'deuda_2025')?.moneda || 'BS'
+      const mCable = configuracion.columnas.find(c => c.id === 'cable_viajero')?.moneda || 'USD'
+      const mGuaya = configuracion.columnas.find(c => c.id === 'guaya')?.moneda || 'USD'
+      const mArreglo = configuracion.columnas.find(c => c.id === 'arreglo')?.moneda || 'BS'
+
+      if (mDeuda === 'BS') newBs += f.deuda_base_2025; else newUsd += f.deuda_base_2025
+      if (mCable === 'BS') newBs += f.cable_viajero; else newUsd += f.cable_viajero
+      if (mGuaya === 'BS') newBs += f.guaya; else newUsd += f.guaya
+      if (mArreglo === 'BS') newBs += f.arreglo; else newUsd += f.arreglo
+
+      let pendingCount = 0
+      Object.entries(mesesActualizados).forEach(([k, rec]) => {
+        if (rec && rec.estado === 'pendiente') {
+          pendingCount++
+          if (k <= '2026-02') newBs += rec.total_bs
+          else newUsd += rec.total_usd
+        }
+      })
+
+      const celdasPers = f.valores_personalizados || {}
+      configuracion.columnas.forEach(col => {
+        if (col.tipo === 'cuota_especial') {
+          const val = celdasPers[col.id]
+          if (val && val.estado === 'pendiente' && val.monto > 0) {
+            pendingCount++
+            if (col.moneda === 'USD') newUsd += val.monto
+            else newBs += val.monto
+          }
+        }
+      })
+
+      const esSolv = newBs <= 0.01 && newUsd <= 0.01
+
+      return {
+        ...f,
+        meses: mesesActualizados,
+        total_bs: Number(newBs.toFixed(2)),
+        total_usd: Number(newUsd.toFixed(2)),
+        meses_con_deuda: pendingCount,
+        estado_solvente: esSolv
+      }
+    }))
+
+    // Cerrar modal de inmediato para máxima fluidez
+    setModalPagoOpen(false)
 
     try {
       const res = await guardarMontoReciboPersonalizado({
@@ -283,14 +373,15 @@ export const AdminCalendarioDeudas: React.FC = () => {
       })
 
       if (res.success) {
-        showToast(`✅ Apto ${modalApto.apartamento_numero}: Monto actualizado a ${modalMonedaEditada === 'USD' ? `$${montoFinal}` : `Bs. ${montoFinal}`} (${modalEstadoDeseado.toUpperCase()})`)
-        setModalPagoOpen(false)
+        showToast(`✅ Apto ${modalApto.apartamento_numero}: Cuota ${mesLabelCompleto} guardada como ${modalEstadoDeseado === 'pagado' ? 'SOLVENTE' : 'PENDIENTE'}`)
         await cargarDatos(true)
       } else {
         showToast(`❌ Error: ${res.error}`)
+        await cargarDatos(true)
       }
     } catch (e: any) {
       showToast(`❌ Error inesperado: ${e.message}`)
+      await cargarDatos(true)
     } finally {
       setProcesandoAccion(false)
     }
@@ -325,6 +416,17 @@ export const AdminCalendarioDeudas: React.FC = () => {
     setHistCableViajero(apto.cable_viajero || '')
     setHistGuaya(apto.guaya || '')
     setHistArreglo(apto.arreglo || '')
+
+    const mDeuda = apto.monedas_conceptos?.deuda_base_2025 || configuracion.columnas.find(c => c.id === 'deuda_2025')?.moneda || 'BS'
+    const mCable = apto.monedas_conceptos?.cable_viajero || configuracion.columnas.find(c => c.id === 'cable_viajero')?.moneda || 'USD'
+    const mGuaya = apto.monedas_conceptos?.guaya || configuracion.columnas.find(c => c.id === 'guaya')?.moneda || 'USD'
+    const mArreglo = apto.monedas_conceptos?.arreglo || configuracion.columnas.find(c => c.id === 'arreglo')?.moneda || 'BS'
+
+    setHistMonedaBase2025(mDeuda)
+    setHistMonedaCableViajero(mCable)
+    setHistMonedaGuaya(mGuaya)
+    setHistMonedaArreglo(mArreglo)
+
     setModalHistOpen(true)
   }
 
@@ -339,12 +441,34 @@ export const AdminCalendarioDeudas: React.FC = () => {
         cableViajero: Number(histCableViajero || 0),
         guaya: Number(histGuaya || 0),
         arreglo: Number(histArreglo || 0),
+        monedas: {
+          deudaBase2025: histMonedaBase2025,
+          cableViajero: histMonedaCableViajero,
+          guaya: histMonedaGuaya,
+          arreglo: histMonedaArreglo
+        },
         autorNombre: perfil?.nombre_completo || 'Administrador'
       })
 
       if (res.success) {
         showToast(`✅ Deuda histórica de Apto ${modalHistApto.apartamento_numero} actualizada`)
         setModalHistOpen(false)
+        await cargarDatos(true)
+      } else {
+        showToast(`❌ Error: ${res.error}`)
+      }
+    } finally {
+      setProcesandoAccion(false)
+    }
+  }
+
+  const handleCambiarMonedaColumna = async (colId: string, nuevaMoneda: 'USD' | 'BS') => {
+    setProcesandoAccion(true)
+    try {
+      const res = await cambiarMonedaColumna(colId, nuevaMoneda)
+      if (res.success) {
+        showToast(`💱 Moneda cambiada a ${nuevaMoneda === 'USD' ? 'Dólares ($)' : 'Bolívares (Bs)'}`)
+        setMenuColumnaId(null)
         await cargarDatos(true)
       } else {
         showToast(`❌ Error: ${res.error}`)
@@ -480,6 +604,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
     setCeldaPersCol(col)
     setCeldaPersMonto(valActual && valActual.monto > 0 ? valActual.monto : (col.montoDefecto || ''))
     setCeldaPersEstado(valActual?.estado || 'pendiente')
+    setCeldaPersMoneda((valActual as any)?.moneda || col.moneda || 'USD')
     setCeldaPersAplicarATodos(false)
     setModalCeldaPersonalizadaOpen(true)
   }
@@ -496,19 +621,21 @@ export const AdminCalendarioDeudas: React.FC = () => {
             filaId: filaItem.apartamento_id,
             columnaId: celdaPersCol.id,
             monto: nuevoMonto,
-            estado: celdaPersEstado
+            estado: celdaPersEstado,
+            moneda: celdaPersMoneda
           })
         }
-        showToast(`✅ Cuota "${celdaPersCol.titulo}" asignada a todos los apartamentos`)
+        showToast(`✅ Cuota "${celdaPersCol.titulo}" (${celdaPersMoneda === 'BS' ? 'Bs' : '$'}) asignada a todos los apartamentos`)
       } else {
         const res = await guardarCeldaPersonalizada({
           filaId: celdaPersApto.apartamento_id,
           columnaId: celdaPersCol.id,
           monto: nuevoMonto,
-          estado: celdaPersEstado
+          estado: celdaPersEstado,
+          moneda: celdaPersMoneda
         })
         if (res.success) {
-          showToast(`✅ Cuota de ${celdaPersCol.titulo} para Apto ${celdaPersApto.apartamento_numero} guardada`)
+          showToast(`✅ Cuota de ${celdaPersCol.titulo} (${celdaPersMoneda === 'BS' ? 'Bs' : '$'}) para Apto ${celdaPersApto.apartamento_numero} guardada`)
         } else {
           showToast(`❌ Error: ${res.error}`)
         }
@@ -548,11 +675,22 @@ export const AdminCalendarioDeudas: React.FC = () => {
   const renderCeldaColumna = (apto: FilaCalendarioApto, col: ColumnaCalendarioConfig) => {
     if (col.tipo === 'historico') {
       let valor = 0
-      let esMonedaBs = col.moneda === 'BS'
-      if (col.id === 'deuda_2025') { valor = apto.deuda_base_2025; esMonedaBs = true }
-      else if (col.id === 'cable_viajero') { valor = apto.cable_viajero; esMonedaBs = false }
-      else if (col.id === 'guaya') { valor = apto.guaya; esMonedaBs = false }
-      else if (col.id === 'arreglo') { valor = apto.arreglo; esMonedaBs = true }
+      let monedaConcepto: 'USD' | 'BS' = col.moneda
+      if (col.id === 'deuda_2025') {
+        valor = apto.deuda_base_2025
+        if (apto.monedas_conceptos?.deuda_base_2025) monedaConcepto = apto.monedas_conceptos.deuda_base_2025
+      } else if (col.id === 'cable_viajero') {
+        valor = apto.cable_viajero
+        if (apto.monedas_conceptos?.cable_viajero) monedaConcepto = apto.monedas_conceptos.cable_viajero
+      } else if (col.id === 'guaya') {
+        valor = apto.guaya
+        if (apto.monedas_conceptos?.guaya) monedaConcepto = apto.monedas_conceptos.guaya
+      } else if (col.id === 'arreglo') {
+        valor = apto.arreglo
+        if (apto.monedas_conceptos?.arreglo) monedaConcepto = apto.monedas_conceptos.arreglo
+      }
+
+      const esBs = monedaConcepto === 'BS'
 
       return (
         <td
@@ -560,15 +698,15 @@ export const AdminCalendarioDeudas: React.FC = () => {
           onClick={() => handleAbrirModalHist(apto)}
           style={{
             padding: '10px 10px',
-            color: valor > 0 ? (esMonedaBs ? '#fb923c' : '#f87171') : '#475569',
+            color: valor > 0 ? (esBs ? '#fb923c' : '#60a5fa') : '#475569',
             cursor: 'pointer',
             textAlign: 'right'
           }}
-          title={`Clic para editar datos históricos de Apto ${apto.apartamento_numero}`}
+          title={`Clic para editar deuda histórica de Apto ${apto.apartamento_numero} (${esBs ? 'Bolívares' : 'Dólares'})`}
         >
           {valor > 0 ? (
-            <span style={{ fontWeight: 600 }}>
-              {esMonedaBs ? fmtBs(valor) : fmtUsd(valor)}
+            <span style={{ fontWeight: 700 }}>
+              {esBs ? `Bs. ${fmtBs(valor)}` : `$${fmtUsd(valor)}`}
             </span>
           ) : (
             <span style={{ color: '#334155' }}>-</span>
@@ -658,6 +796,8 @@ export const AdminCalendarioDeudas: React.FC = () => {
     const celdaVal = celdasPers[col.id] ?? (col.montoDefecto ? { monto: col.montoDefecto, estado: 'pendiente' } : { monto: 0, estado: 'pendiente' })
     const tieneMonto = celdaVal && celdaVal.monto > 0
     const esPagado = celdaVal?.estado === 'pagado'
+    const monCelda = (celdaVal as any)?.moneda || col.moneda || 'USD'
+    const esBs = monCelda === 'BS'
 
     return (
       <td
@@ -678,12 +818,12 @@ export const AdminCalendarioDeudas: React.FC = () => {
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontWeight: 700, fontSize: '11px' }}>
               <span>✓</span>
               <span style={{ textDecoration: 'line-through', opacity: 0.75 }}>
-                {col.moneda === 'USD' ? `$${fmtUsd(celdaVal.monto)}` : `Bs. ${fmtBs(celdaVal.monto)}`}
+                {esBs ? `Bs. ${fmtBs(celdaVal.monto)}` : `$${fmtUsd(celdaVal.monto)}`}
               </span>
             </div>
           ) : (
             <span>
-              {col.moneda === 'USD' ? `$${fmtUsd(celdaVal.monto)}` : `Bs. ${fmtBs(celdaVal.monto)}`}
+              {esBs ? `Bs. ${fmtBs(celdaVal.monto)}` : `$${fmtUsd(celdaVal.monto)}`}
             </span>
           )
         ) : (
@@ -702,9 +842,10 @@ export const AdminCalendarioDeudas: React.FC = () => {
         else if (col.id === 'guaya') sum += f.guaya
         else if (col.id === 'arreglo') sum += f.arreglo
       })
+      const esBs = col.moneda === 'BS'
       return (
-        <td key={col.id} style={{ padding: '12px 10px', color: col.moneda === 'BS' ? '#fb923c' : '#f87171' }}>
-          {sum > 0 ? (col.moneda === 'BS' ? fmtBs(sum) : fmtUsd(sum)) : '-'}
+        <td key={col.id} style={{ padding: '12px 10px', color: esBs ? '#fb923c' : '#60a5fa', textAlign: 'right' }}>
+          {sum > 0 ? (esBs ? `Bs. ${fmtBs(sum)}` : `$${fmtUsd(sum)}`) : '-'}
         </td>
       )
     }
@@ -1445,9 +1586,9 @@ export const AdminCalendarioDeudas: React.FC = () => {
                 </th>
                 {(vistaModo === 'completo' || vistaModo === 'historico_2025') && (
                   <th
-                    colSpan={columnasNaranja.length + 1}
+                    colSpan={columnasNaranja.length}
                     onClick={() => {
-                      setNuevoTituloInput(configuracion.tituloSeccionHistorica)
+                      setNuevoTituloInput((configuracion.tituloSeccionHistorica || 'DEUDA AL AÑO 2025 / CONCEPTOS EXTRAORDINARIOS').replace(/\s*\(BS\)\s*/gi, '').trim())
                       setModalEditarTituloOpen(true)
                     }}
                     style={{
@@ -1464,13 +1605,13 @@ export const AdminCalendarioDeudas: React.FC = () => {
                     }}
                   >
                     <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
-                      <span>🏛️ {configuracion.tituloSeccionHistorica || 'DEUDAS PASADAS / CONCEPTOS EXTRAORDINARIOS (BS)'}</span>
+                      <span>🏛️ {(configuracion.tituloSeccionHistorica || 'DEUDA AL AÑO 2025 / CONCEPTOS EXTRAORDINARIOS').replace(/\s*\(BS\)\s*/gi, '').trim()}</span>
                       <button
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation()
                           setSeccionTituloEditando('naranja')
-                          setNuevoTituloInput(configuracion.tituloSeccionHistorica || 'DEUDAS PASADAS / CONCEPTOS EXTRAORDINARIOS (BS)')
+                          setNuevoTituloInput((configuracion.tituloSeccionHistorica || 'DEUDA AL AÑO 2025 / CONCEPTOS EXTRAORDINARIOS').replace(/\s*\(BS\)\s*/gi, '').trim())
                           setModalEditarTituloOpen(true)
                         }}
                         style={{
@@ -1514,7 +1655,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
                 {/* Sección Calendario Mensual */}
                 {(vistaModo === 'completo' || vistaModo === 'solo_2026') && (
                   <th
-                    colSpan={columnasAzul.length + 1}
+                    colSpan={columnasAzul.length}
                     style={{
                       position: 'sticky',
                       top: 0,
@@ -1576,9 +1717,9 @@ export const AdminCalendarioDeudas: React.FC = () => {
                   </th>
                 )}
 
-                {/* Resumen */}
+                {/* Totales y Resumen agrupados al final */}
                 <th
-                  colSpan={3}
+                  colSpan={5}
                   style={{
                     position: 'sticky',
                     top: 0,
@@ -1590,7 +1731,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
                     fontWeight: 800
                   }}
                 >
-                  RESUMEN Y CRÉDITO
+                  TOTALES Y RESUMEN
                 </th>
               </tr>
 
@@ -1632,10 +1773,20 @@ export const AdminCalendarioDeudas: React.FC = () => {
                         <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
                           <span style={{
                             fontWeight: 700,
-                            color: col.tipo === 'cuota_especial' ? '#facc15' : '#fb923c',
+                            color: col.tipo === 'cuota_especial' ? '#facc15' : (col.moneda === 'BS' ? '#fb923c' : '#60a5fa'),
                             fontSize: '12px'
                           }}>
                             {col.titulo}
+                          </span>
+                          <span style={{
+                            fontSize: '9px',
+                            backgroundColor: col.moneda === 'BS' ? 'rgba(234, 88, 12, 0.25)' : 'rgba(59, 130, 246, 0.25)',
+                            color: col.moneda === 'BS' ? '#fb923c' : '#93c5fd',
+                            padding: '1px 4px',
+                            borderRadius: '3px',
+                            fontWeight: 700
+                          }}>
+                            {col.moneda === 'BS' ? 'Bs' : '$'}
                           </span>
                           {col.esPersonalizada && (
                             <span style={{ fontSize: '9px', backgroundColor: 'rgba(234, 179, 8, 0.25)', color: '#facc15', padding: '1px 3px', borderRadius: '3px', fontWeight: 600 }}>
@@ -1659,7 +1810,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
                               borderRadius: '4px',
                               lineHeight: 1
                             }}
-                            title="Opciones de columna: Mover a Calendario, cambiar posición o quitar"
+                            title="Opciones de columna: Mover a Calendario, cambiar moneda o posición"
                           >
                             ⋮
                           </button>
@@ -1680,13 +1831,35 @@ export const AdminCalendarioDeudas: React.FC = () => {
                                 boxShadow: '0 10px 25px rgba(0,0,0,0.85)',
                                 padding: '6px',
                                 zIndex: 100,
-                                minWidth: '175px',
+                                minWidth: '185px',
                                 textAlign: 'left',
                                 display: 'flex',
                                 flexDirection: 'column',
                                 gap: '4px'
                               }}
                             >
+                              <button
+                                type="button"
+                                onClick={() => handleCambiarMonedaColumna(col.id, col.moneda === 'BS' ? 'USD' : 'BS')}
+                                style={{
+                                  background: 'transparent',
+                                  border: 'none',
+                                  color: col.moneda === 'BS' ? '#60a5fa' : '#fb923c',
+                                  padding: '6px 8px',
+                                  borderRadius: '4px',
+                                  fontSize: '11px',
+                                  fontWeight: 700,
+                                  textAlign: 'left',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '6px'
+                                }}
+                                onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.08)'}
+                                onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                              >
+                                <span>💱</span> Cambiar a {col.moneda === 'BS' ? 'Dólares ($)' : 'Bolívares (Bs)'}
+                              </button>
                               <button
                                 type="button"
                                 onClick={() => handleCambiarSeccion(col.id, 'azul')}
@@ -1772,20 +1945,6 @@ export const AdminCalendarioDeudas: React.FC = () => {
                         </div>
                       </th>
                     ))}
-
-                    <th style={{
-                      top: '37px',
-                      position: 'sticky',
-                      zIndex: 10,
-                      backgroundColor: '#0f172a',
-                      padding: '10px 12px',
-                      borderRight: '2px solid rgba(234, 88, 12, 0.35)',
-                      color: '#fb923c',
-                      fontWeight: 800,
-                      verticalAlign: 'middle'
-                    }}>
-                      TOTAL BS
-                    </th>
                   </>
                 )}
 
@@ -1863,6 +2022,28 @@ export const AdminCalendarioDeudas: React.FC = () => {
                                 gap: '4px'
                               }}
                             >
+                              <button
+                                type="button"
+                                onClick={() => handleCambiarMonedaColumna(col.id, col.moneda === 'BS' ? 'USD' : 'BS')}
+                                style={{
+                                  background: 'transparent',
+                                  border: 'none',
+                                  color: col.moneda === 'BS' ? '#60a5fa' : '#fb923c',
+                                  padding: '6px 8px',
+                                  borderRadius: '4px',
+                                  fontSize: '11px',
+                                  fontWeight: 700,
+                                  textAlign: 'left',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '6px'
+                                }}
+                                onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.08)'}
+                                onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                              >
+                                <span>💱</span> Cambiar a {col.moneda === 'BS' ? 'Dólares ($)' : 'Bolívares (Bs)'}
+                              </button>
                               <button
                                 type="button"
                                 onClick={() => handleCambiarSeccion(col.id, 'naranja')}
@@ -1948,24 +2129,16 @@ export const AdminCalendarioDeudas: React.FC = () => {
                         </div>
                       </th>
                     ))}
-
-                    <th style={{
-                      top: '37px',
-                      position: 'sticky',
-                      zIndex: 10,
-                      backgroundColor: '#0f172a',
-                      padding: '10px 12px',
-                      borderRight: '2px solid rgba(59, 130, 246, 0.35)',
-                      color: '#60a5fa',
-                      fontWeight: 800,
-                      verticalAlign: 'middle'
-                    }}>
-                      TOTAL $
-                    </th>
                   </>
                 )}
 
-                {/* Subcolumnas Totales */}
+                {/* Subcolumnas Totales y Resumen agrupados al final */}
+                <th style={{ top: '37px', position: 'sticky', zIndex: 10, backgroundColor: '#0f172a', padding: '10px 12px', color: '#fb923c', fontWeight: 800, textAlign: 'right' }}>
+                  TOTAL BS
+                </th>
+                <th style={{ top: '37px', position: 'sticky', zIndex: 10, backgroundColor: '#0f172a', padding: '10px 12px', color: '#60a5fa', fontWeight: 800, textAlign: 'right' }}>
+                  TOTAL $
+                </th>
                 <th style={{ top: '37px', position: 'sticky', zIndex: 10, backgroundColor: '#0f172a', padding: '10px 12px' }}>
                   Apto
                 </th>
@@ -1982,7 +2155,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
             <tbody>
               {filasFiltradas.length === 0 ? (
                 <tr>
-                  <td colSpan={columnasNaranja.length + columnasAzul.length + 5} style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>
+                  <td colSpan={columnasNaranja.length + columnasAzul.length + 6} style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>
                     No se encontraron apartamentos con los filtros seleccionados.
                   </td>
                 </tr>
@@ -2042,17 +2215,6 @@ export const AdminCalendarioDeudas: React.FC = () => {
                       {(vistaModo === 'completo' || vistaModo === 'historico_2025') && (
                         <>
                           {columnasNaranja.map(col => renderCeldaColumna(apto, col))}
-
-                          {/* TOTAL BS */}
-                          <td style={{
-                            padding: '8px 12px',
-                            fontWeight: 800,
-                            color: apto.total_bs > 0 ? '#fb923c' : '#475569',
-                            borderRight: '2px solid rgba(234, 88, 12, 0.35)',
-                            backgroundColor: apto.total_bs > 0 ? 'rgba(234, 88, 12, 0.04)' : 'transparent'
-                          }}>
-                            {apto.total_bs > 0 ? fmtBs(apto.total_bs) : '-'}
-                          </td>
                         </>
                       )}
 
@@ -2060,19 +2222,30 @@ export const AdminCalendarioDeudas: React.FC = () => {
                       {(vistaModo === 'completo' || vistaModo === 'solo_2026') && (
                         <>
                           {columnasAzul.map(col => renderCeldaColumna(apto, col))}
-
-                          {/* TOTAL $ */}
-                          <td style={{
-                            padding: '8px 12px',
-                            fontWeight: 800,
-                            color: apto.total_usd > 0 ? '#60a5fa' : '#475569',
-                            borderRight: '2px solid rgba(59, 130, 246, 0.35)',
-                            backgroundColor: apto.total_usd > 0 ? 'rgba(59, 130, 246, 0.04)' : 'transparent'
-                          }}>
-                            {apto.total_usd > 0 ? fmtUsd(apto.total_usd) : '-'}
-                          </td>
                         </>
                       )}
+
+                      {/* TOTAL BS */}
+                      <td style={{
+                        padding: '8px 12px',
+                        fontWeight: 800,
+                        color: apto.total_bs > 0 ? '#fb923c' : '#475569',
+                        backgroundColor: apto.total_bs > 0 ? 'rgba(234, 88, 12, 0.04)' : 'transparent',
+                        textAlign: 'right'
+                      }}>
+                        {apto.total_bs > 0 ? fmtBs(apto.total_bs) : '-'}
+                      </td>
+
+                      {/* TOTAL $ */}
+                      <td style={{
+                        padding: '8px 12px',
+                        fontWeight: 800,
+                        color: apto.total_usd > 0 ? '#60a5fa' : '#475569',
+                        backgroundColor: apto.total_usd > 0 ? 'rgba(59, 130, 246, 0.04)' : 'transparent',
+                        textAlign: 'right'
+                      }}>
+                        {apto.total_usd > 0 ? fmtUsd(apto.total_usd) : '-'}
+                      </td>
 
                       {/* Apto repetido (Anchor derecho) */}
                       <td style={{ padding: '8px 12px', color: '#64748b', fontWeight: 600 }}>
@@ -2169,14 +2342,6 @@ export const AdminCalendarioDeudas: React.FC = () => {
                 {(vistaModo === 'completo' || vistaModo === 'historico_2025') && (
                   <>
                     {columnasNaranja.map(col => calcularTotalColumna(col))}
-                    <td style={{
-                      padding: '12px 12px',
-                      color: '#fb923c',
-                      borderRight: '2px solid rgba(234, 88, 12, 0.35)',
-                      backgroundColor: 'rgba(234, 88, 12, 0.08)'
-                    }}>
-                      Bs. {fmtBs(filasFiltradas.reduce((s, f) => s + f.total_bs, 0))}
-                    </td>
                   </>
                 )}
 
@@ -2184,16 +2349,30 @@ export const AdminCalendarioDeudas: React.FC = () => {
                 {(vistaModo === 'completo' || vistaModo === 'solo_2026') && (
                   <>
                     {columnasAzul.map(col => calcularTotalColumna(col))}
-                    <td style={{
-                      padding: '12px 12px',
-                      color: '#60a5fa',
-                      borderRight: '2px solid rgba(59, 130, 246, 0.35)',
-                      backgroundColor: 'rgba(59, 130, 246, 0.08)'
-                    }}>
-                      ${fmtUsd(filasFiltradas.reduce((s, f) => s + f.total_usd, 0))}
-                    </td>
                   </>
                 )}
+
+                {/* TOTAL BS GLOBAL */}
+                <td style={{
+                  padding: '12px 12px',
+                  color: '#fb923c',
+                  backgroundColor: 'rgba(234, 88, 12, 0.08)',
+                  textAlign: 'right',
+                  fontWeight: 800
+                }}>
+                  Bs. {fmtBs(filasFiltradas.reduce((s, f) => s + f.total_bs, 0))}
+                </td>
+
+                {/* TOTAL $ GLOBAL */}
+                <td style={{
+                  padding: '12px 12px',
+                  color: '#60a5fa',
+                  backgroundColor: 'rgba(59, 130, 246, 0.08)',
+                  textAlign: 'right',
+                  fontWeight: 800
+                }}>
+                  ${fmtUsd(filasFiltradas.reduce((s, f) => s + f.total_usd, 0))}
+                </td>
 
                 <td style={{ padding: '12px 12px', color: '#64748b' }}>-</td>
                 <td style={{ padding: '12px 14px', color: '#34d399' }}>
@@ -2733,10 +2912,56 @@ export const AdminCalendarioDeudas: React.FC = () => {
 
             <div className="calendario-modal-body" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px', fontWeight: 700 }}>
-                  Monto ({celdaPersCol.moneda === 'USD' ? 'Dólares $' : 'Bolívares Bs'}):
-                </label>
-                <div style={{ display: 'flex', gap: '10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <label style={{ fontSize: '12px', color: '#cbd5e1', fontWeight: 800 }}>
+                    Monto de la Cuota
+                  </label>
+                  {/* Selector de moneda */}
+                  <div style={{ display: 'inline-flex', borderRadius: '8px', overflow: 'hidden', border: '1px solid #374151', backgroundColor: '#030712' }}>
+                    <button
+                      type="button"
+                      onClick={() => setCeldaPersMoneda('BS')}
+                      style={{
+                        padding: '4px 10px',
+                        fontSize: '11px',
+                        fontWeight: 800,
+                        backgroundColor: celdaPersMoneda === 'BS' ? '#f97316' : 'transparent',
+                        color: celdaPersMoneda === 'BS' ? '#fff' : '#94a3b8',
+                        border: 'none',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s'
+                      }}
+                    >
+                      🇻🇪 Bolívares (Bs)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCeldaPersMoneda('USD')}
+                      style={{
+                        padding: '4px 10px',
+                        fontSize: '11px',
+                        fontWeight: 800,
+                        backgroundColor: celdaPersMoneda === 'USD' ? '#3b82f6' : 'transparent',
+                        color: celdaPersMoneda === 'USD' ? '#fff' : '#94a3b8',
+                        border: 'none',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s'
+                      }}
+                    >
+                      💵 Dólares ($)
+                    </button>
+                  </div>
+                </div>
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <span style={{
+                    position: 'absolute',
+                    left: '12px',
+                    fontWeight: 800,
+                    fontSize: '14px',
+                    color: celdaPersMoneda === 'BS' ? '#fb923c' : '#60a5fa'
+                  }}>
+                    {celdaPersMoneda === 'BS' ? 'Bs.' : '$'}
+                  </span>
                   <input
                     type="number"
                     step="any"
@@ -2745,11 +2970,11 @@ export const AdminCalendarioDeudas: React.FC = () => {
                     placeholder="0.00"
                     autoFocus
                     style={{
-                      flex: 1,
+                      width: '100%',
                       backgroundColor: '#030712',
-                      border: '1px solid #eab308',
+                      border: celdaPersMoneda === 'BS' ? '1px solid #f97316' : '1px solid #3b82f6',
                       borderRadius: '8px',
-                      padding: '10px 14px',
+                      padding: '10px 14px 10px 42px',
                       color: '#fff',
                       fontSize: '18px',
                       fontWeight: 800,
@@ -2757,18 +2982,6 @@ export const AdminCalendarioDeudas: React.FC = () => {
                       boxSizing: 'border-box'
                     }}
                   />
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    padding: '0 16px',
-                    backgroundColor: '#1f2937',
-                    borderRadius: '8px',
-                    color: '#facc15',
-                    fontWeight: 800,
-                    fontSize: '14px'
-                  }}>
-                    {celdaPersCol.moneda}
-                  </div>
                 </div>
               </div>
 
@@ -3178,62 +3391,293 @@ export const AdminCalendarioDeudas: React.FC = () => {
               </button>
             </div>
 
-            <div className="calendario-modal-body" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '11px', color: '#94a3b8', marginBottom: '4px', fontWeight: 600 }}>
-                  Deuda Base al Año 2025 (Bs.)
-                </label>
-                <input
-                  type="number"
-                  step="any"
-                  value={histBase2025}
-                  onChange={e => setHistBase2025(e.target.value === '' ? '' : parseFloat(e.target.value))}
-                  placeholder="0.00"
-                  style={{ width: '100%', backgroundColor: '#030712', border: '1px solid #374151', padding: '8px 10px', borderRadius: '8px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
-                />
+            <div className="calendario-modal-body" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {/* Concepto 1: Deuda Base al Año 2025 */}
+              <div style={{ backgroundColor: '#090e1a', border: '1px solid #1f2937', borderRadius: '12px', padding: '14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <label style={{ fontSize: '12px', color: '#f1f5f9', fontWeight: 800 }}>
+                    Deuda Base al Año 2025
+                  </label>
+                  <div style={{ display: 'inline-flex', borderRadius: '8px', overflow: 'hidden', border: '1px solid #374151', backgroundColor: '#030712' }}>
+                    <button
+                      type="button"
+                      onClick={() => setHistMonedaBase2025('BS')}
+                      style={{
+                        padding: '4px 10px',
+                        fontSize: '11px',
+                        fontWeight: 800,
+                        backgroundColor: histMonedaBase2025 === 'BS' ? '#f97316' : 'transparent',
+                        color: histMonedaBase2025 === 'BS' ? '#fff' : '#94a3b8',
+                        border: 'none',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s'
+                      }}
+                    >
+                      🇻🇪 Bolívares (Bs)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setHistMonedaBase2025('USD')}
+                      style={{
+                        padding: '4px 10px',
+                        fontSize: '11px',
+                        fontWeight: 800,
+                        backgroundColor: histMonedaBase2025 === 'USD' ? '#3b82f6' : 'transparent',
+                        color: histMonedaBase2025 === 'USD' ? '#fff' : '#94a3b8',
+                        border: 'none',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s'
+                      }}
+                    >
+                      💵 Dólares ($)
+                    </button>
+                  </div>
+                </div>
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <span style={{
+                    position: 'absolute',
+                    left: '12px',
+                    fontWeight: 800,
+                    fontSize: '14px',
+                    color: histMonedaBase2025 === 'BS' ? '#fb923c' : '#60a5fa'
+                  }}>
+                    {histMonedaBase2025 === 'BS' ? 'Bs.' : '$'}
+                  </span>
+                  <input
+                    type="number"
+                    step="any"
+                    value={histBase2025}
+                    onChange={e => setHistBase2025(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                    placeholder="0.00"
+                    style={{
+                      width: '100%',
+                      backgroundColor: '#030712',
+                      border: histMonedaBase2025 === 'BS' ? '1px solid rgba(249, 115, 22, 0.5)' : '1px solid rgba(59, 130, 246, 0.5)',
+                      padding: '10px 12px 10px 42px',
+                      borderRadius: '8px',
+                      color: '#fff',
+                      fontSize: '15px',
+                      fontWeight: 700,
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                </div>
               </div>
 
-              <div className="calendario-modal-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '11px', color: '#94a3b8', marginBottom: '4px', fontWeight: 600 }}>
-                    Cable Viajero ($)
+              {/* Concepto 2: Cable Viajero */}
+              <div style={{ backgroundColor: '#090e1a', border: '1px solid #1f2937', borderRadius: '12px', padding: '14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <label style={{ fontSize: '12px', color: '#f1f5f9', fontWeight: 800 }}>
+                    Cable Viajero
                   </label>
+                  <div style={{ display: 'inline-flex', borderRadius: '8px', overflow: 'hidden', border: '1px solid #374151', backgroundColor: '#030712' }}>
+                    <button
+                      type="button"
+                      onClick={() => setHistMonedaCableViajero('BS')}
+                      style={{
+                        padding: '4px 10px',
+                        fontSize: '11px',
+                        fontWeight: 800,
+                        backgroundColor: histMonedaCableViajero === 'BS' ? '#f97316' : 'transparent',
+                        color: histMonedaCableViajero === 'BS' ? '#fff' : '#94a3b8',
+                        border: 'none',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s'
+                      }}
+                    >
+                      🇻🇪 Bolívares (Bs)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setHistMonedaCableViajero('USD')}
+                      style={{
+                        padding: '4px 10px',
+                        fontSize: '11px',
+                        fontWeight: 800,
+                        backgroundColor: histMonedaCableViajero === 'USD' ? '#3b82f6' : 'transparent',
+                        color: histMonedaCableViajero === 'USD' ? '#fff' : '#94a3b8',
+                        border: 'none',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s'
+                      }}
+                    >
+                      💵 Dólares ($)
+                    </button>
+                  </div>
+                </div>
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <span style={{
+                    position: 'absolute',
+                    left: '12px',
+                    fontWeight: 800,
+                    fontSize: '14px',
+                    color: histMonedaCableViajero === 'BS' ? '#fb923c' : '#60a5fa'
+                  }}>
+                    {histMonedaCableViajero === 'BS' ? 'Bs.' : '$'}
+                  </span>
                   <input
                     type="number"
                     step="any"
                     value={histCableViajero}
                     onChange={e => setHistCableViajero(e.target.value === '' ? '' : parseFloat(e.target.value))}
                     placeholder="0.00"
-                    style={{ width: '100%', backgroundColor: '#030712', border: '1px solid #374151', padding: '8px 10px', borderRadius: '8px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
+                    style={{
+                      width: '100%',
+                      backgroundColor: '#030712',
+                      border: histMonedaCableViajero === 'BS' ? '1px solid rgba(249, 115, 22, 0.5)' : '1px solid rgba(59, 130, 246, 0.5)',
+                      padding: '10px 12px 10px 42px',
+                      borderRadius: '8px',
+                      color: '#fff',
+                      fontSize: '15px',
+                      fontWeight: 700,
+                      boxSizing: 'border-box'
+                    }}
                   />
                 </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '11px', color: '#94a3b8', marginBottom: '4px', fontWeight: 600 }}>
-                    Guaya ($)
+              </div>
+
+              {/* Concepto 3: Guaya */}
+              <div style={{ backgroundColor: '#090e1a', border: '1px solid #1f2937', borderRadius: '12px', padding: '14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <label style={{ fontSize: '12px', color: '#f1f5f9', fontWeight: 800 }}>
+                    Guaya
                   </label>
+                  <div style={{ display: 'inline-flex', borderRadius: '8px', overflow: 'hidden', border: '1px solid #374151', backgroundColor: '#030712' }}>
+                    <button
+                      type="button"
+                      onClick={() => setHistMonedaGuaya('BS')}
+                      style={{
+                        padding: '4px 10px',
+                        fontSize: '11px',
+                        fontWeight: 800,
+                        backgroundColor: histMonedaGuaya === 'BS' ? '#f97316' : 'transparent',
+                        color: histMonedaGuaya === 'BS' ? '#fff' : '#94a3b8',
+                        border: 'none',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s'
+                      }}
+                    >
+                      🇻🇪 Bolívares (Bs)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setHistMonedaGuaya('USD')}
+                      style={{
+                        padding: '4px 10px',
+                        fontSize: '11px',
+                        fontWeight: 800,
+                        backgroundColor: histMonedaGuaya === 'USD' ? '#3b82f6' : 'transparent',
+                        color: histMonedaGuaya === 'USD' ? '#fff' : '#94a3b8',
+                        border: 'none',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s'
+                      }}
+                    >
+                      💵 Dólares ($)
+                    </button>
+                  </div>
+                </div>
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <span style={{
+                    position: 'absolute',
+                    left: '12px',
+                    fontWeight: 800,
+                    fontSize: '14px',
+                    color: histMonedaGuaya === 'BS' ? '#fb923c' : '#60a5fa'
+                  }}>
+                    {histMonedaGuaya === 'BS' ? 'Bs.' : '$'}
+                  </span>
                   <input
                     type="number"
                     step="any"
                     value={histGuaya}
                     onChange={e => setHistGuaya(e.target.value === '' ? '' : parseFloat(e.target.value))}
                     placeholder="0.00"
-                    style={{ width: '100%', backgroundColor: '#030712', border: '1px solid #374151', padding: '8px 10px', borderRadius: '8px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
+                    style={{
+                      width: '100%',
+                      backgroundColor: '#030712',
+                      border: histMonedaGuaya === 'BS' ? '1px solid rgba(249, 115, 22, 0.5)' : '1px solid rgba(59, 130, 246, 0.5)',
+                      padding: '10px 12px 10px 42px',
+                      borderRadius: '8px',
+                      color: '#fff',
+                      fontSize: '15px',
+                      fontWeight: 700,
+                      boxSizing: 'border-box'
+                    }}
                   />
                 </div>
               </div>
 
-              <div>
-                <label style={{ display: 'block', fontSize: '11px', color: '#94a3b8', marginBottom: '4px', fontWeight: 600 }}>
-                  Arreglo / Cuota Extraordinaria (Bs.)
-                </label>
-                <input
-                  type="number"
-                  step="any"
-                  value={histArreglo}
-                  onChange={e => setHistArreglo(e.target.value === '' ? '' : parseFloat(e.target.value))}
-                  placeholder="0.00"
-                  style={{ width: '100%', backgroundColor: '#030712', border: '1px solid #374151', padding: '8px 10px', borderRadius: '8px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
-                />
+              {/* Concepto 4: Arreglo / Cuota Extraordinaria */}
+              <div style={{ backgroundColor: '#090e1a', border: '1px solid #1f2937', borderRadius: '12px', padding: '14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <label style={{ fontSize: '12px', color: '#f1f5f9', fontWeight: 800 }}>
+                    Arreglo / Cuota Extraordinaria
+                  </label>
+                  <div style={{ display: 'inline-flex', borderRadius: '8px', overflow: 'hidden', border: '1px solid #374151', backgroundColor: '#030712' }}>
+                    <button
+                      type="button"
+                      onClick={() => setHistMonedaArreglo('BS')}
+                      style={{
+                        padding: '4px 10px',
+                        fontSize: '11px',
+                        fontWeight: 800,
+                        backgroundColor: histMonedaArreglo === 'BS' ? '#f97316' : 'transparent',
+                        color: histMonedaArreglo === 'BS' ? '#fff' : '#94a3b8',
+                        border: 'none',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s'
+                      }}
+                    >
+                      🇻🇪 Bolívares (Bs)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setHistMonedaArreglo('USD')}
+                      style={{
+                        padding: '4px 10px',
+                        fontSize: '11px',
+                        fontWeight: 800,
+                        backgroundColor: histMonedaArreglo === 'USD' ? '#3b82f6' : 'transparent',
+                        color: histMonedaArreglo === 'USD' ? '#fff' : '#94a3b8',
+                        border: 'none',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s'
+                      }}
+                    >
+                      💵 Dólares ($)
+                    </button>
+                  </div>
+                </div>
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <span style={{
+                    position: 'absolute',
+                    left: '12px',
+                    fontWeight: 800,
+                    fontSize: '14px',
+                    color: histMonedaArreglo === 'BS' ? '#fb923c' : '#60a5fa'
+                  }}>
+                    {histMonedaArreglo === 'BS' ? 'Bs.' : '$'}
+                  </span>
+                  <input
+                    type="number"
+                    step="any"
+                    value={histArreglo}
+                    onChange={e => setHistArreglo(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                    placeholder="0.00"
+                    style={{
+                      width: '100%',
+                      backgroundColor: '#030712',
+                      border: histMonedaArreglo === 'BS' ? '1px solid rgba(249, 115, 22, 0.5)' : '1px solid rgba(59, 130, 246, 0.5)',
+                      padding: '10px 12px 10px 42px',
+                      borderRadius: '8px',
+                      color: '#fff',
+                      fontSize: '15px',
+                      fontWeight: 700,
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                </div>
               </div>
             </div>
 

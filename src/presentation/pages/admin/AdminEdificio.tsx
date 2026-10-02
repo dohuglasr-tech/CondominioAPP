@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { supabase } from '../../../data/supabase'
+import { appCache } from '../../../data/cacheService'
 import { useAuth } from '../../../application/contexts/AuthContext'
 import { comprimirImagen } from '../../../utils/imageCompressor'
 import {
@@ -256,6 +257,96 @@ export const AdminEdificio: React.FC = () => {
       setErrorMsg('Error al guardar: ' + (err.message || 'Intenta de nuevo.'))
     } finally {
       setSaving(false)
+    }
+  }
+
+  // ── Sincronizar Departamentos de la Torre ─────────────────────────────
+  const [sincronizandoAptos, setSincronizandoAptos] = useState(false)
+
+  const handleSincronizarApartamentos = async () => {
+    if (!confirm('¿Deseas sincronizar los apartamentos del sistema con la estructura configurada de la torre?')) return
+    setSincronizandoAptos(true)
+    setErrorMsg(null)
+    setSuccessMsg(null)
+
+    try {
+      const matchTorre = info.nombre_edificio.match(/\d+/)
+      const prefix = matchTorre ? matchTorre[0] : '5'
+      const totalPisos = Number(info.total_pisos) || 10
+      const aptosPorPiso = Number(info.apartamentos_por_piso) || 6
+      const tienePh = Boolean(info.tiene_ph)
+      const totalPh = tienePh ? (Number(info.total_ph) || 2) : 0
+
+      const aptosEsperados: Array<{ numero: string; piso: number; alicuota: number; estado: string }> = []
+
+      // Pisos regulares: Piso 1 al totalPisos
+      // Piso 1: 511..516, Piso 2: 521..526, ..., Piso 9: 591..596, Piso 10: 5101..5106
+      for (let p = 1; p <= totalPisos; p++) {
+        for (let a = 1; a <= aptosPorPiso; a++) {
+          const numApto = `${prefix}${p < 10 ? `${p}${a}` : `${p}${a}`}`
+          aptosEsperados.push({
+            numero: numApto,
+            piso: p,
+            alicuota: 0.0159,
+            estado: 'habitado'
+          })
+        }
+      }
+
+      // Penthouse (Piso totalPisos + 1)
+      if (tienePh && totalPh > 0) {
+        for (let ph = 1; ph <= totalPh; ph++) {
+          aptosEsperados.push({
+            numero: `${prefix}PH${ph}`,
+            piso: totalPisos + 1,
+            alicuota: 0.0259,
+            estado: 'habitado'
+          })
+        }
+      }
+
+      // Consultar apartamentos existentes
+      const { data: existentes, error: errExistentes } = await supabase.from('apartamentos').select('*')
+      if (errExistentes) throw errExistentes
+
+      const existentesMap = new Map((existentes || []).map(e => [e.numero, e]))
+
+      // Limpiar 501..506 si todavía existieran mapeándolos a 511..516
+      const mapLegacy: Record<string, string> = {
+        [`${prefix}01`]: `${prefix}11`,
+        [`${prefix}02`]: `${prefix}12`,
+        [`${prefix}03`]: `${prefix}13`,
+        [`${prefix}04`]: `${prefix}14`,
+        [`${prefix}05`]: `${prefix}15`,
+        [`${prefix}06`]: `${prefix}16`,
+      }
+      for (const [legNum, targetNum] of Object.entries(mapLegacy)) {
+        const leg = existentesMap.get(legNum)
+        if (leg && !existentesMap.has(targetNum)) {
+          await supabase.from('apartamentos').update({ numero: targetNum, piso: 1 }).eq('id', leg.id)
+          existentesMap.set(targetNum, { ...leg, numero: targetNum, piso: 1 })
+          existentesMap.delete(legNum)
+        }
+      }
+
+      // Insertar o actualizar
+      for (const esp of aptosEsperados) {
+        const existe = existentesMap.get(esp.numero)
+        if (existe) {
+          if (existe.piso !== esp.piso) {
+            await supabase.from('apartamentos').update({ piso: esp.piso }).eq('id', existe.id)
+          }
+        } else {
+          await supabase.from('apartamentos').insert([esp])
+        }
+      }
+
+      appCache.invalidateTags(['apartamentos', 'recibos', 'saldos', 'mora'])
+      setSuccessMsg(`✅ Sincronización exitosa: ${aptosEsperados.length} apartamentos verificados y alineados con la torre.`)
+    } catch (err: any) {
+      setErrorMsg('Error al sincronizar apartamentos: ' + (err.message || 'Intente de nuevo.'))
+    } finally {
+      setSincronizandoAptos(false)
     }
   }
 
@@ -608,6 +699,32 @@ export const AdminEdificio: React.FC = () => {
                     )}
                   </span>
                 </div>
+              </div>
+
+              {/* Botón de Sincronización Manual */}
+              <div style={{ marginTop: '16px', display: 'flex', justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  disabled={sincronizandoAptos}
+                  onClick={handleSincronizarApartamentos}
+                  style={{
+                    backgroundColor: 'rgba(249, 115, 22, 0.12)',
+                    color: 'var(--color-accent, #f97316)',
+                    border: '1px solid var(--color-accent-glow, rgba(249, 115, 22, 0.35))',
+                    padding: '9px 16px',
+                    borderRadius: '8px',
+                    fontSize: '12.5px',
+                    fontWeight: 700,
+                    cursor: sincronizandoAptos ? 'not-allowed' : 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  <span style={{ fontSize: '15px' }}>{sincronizandoAptos ? '⏳' : '🔄'}</span>
+                  {sincronizandoAptos ? 'Sincronizando Torre...' : 'Sincronizar Departamentos de la Torre'}
+                </button>
               </div>
             </div>
 

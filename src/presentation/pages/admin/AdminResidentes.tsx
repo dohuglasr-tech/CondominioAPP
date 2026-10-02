@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../../data/supabase'
 import { appCache } from '../../../data/cacheService'
-import { formatAlicuotaPct, parseAlicuotaInput, getAlicuotaDecimal, getAlicuotaPctNumber } from '../../../utils/alicuota'
+import { formatAlicuotaPct, parseAlicuotaInput, getAlicuotaDecimal, getAlicuotaPctNumber, compararApartamentos } from '../../../utils/alicuota'
 import { useAuth } from '../../../application/contexts/AuthContext'
 import { useBcvRate } from '../../../data/useBcvRate'
 import { obtenerTodosLosSaldosAFavor, SaldoApartamento } from '../../../data/saldoFavorService'
@@ -217,13 +217,8 @@ export const AdminResidentes: React.FC = () => {
         }
       })
 
-      // Ordenar por número de apartamento
-      listaFormateada.sort((a, b) => {
-        const numA = parseInt(a.apartamento.replace(/\D/g, '')) || 0
-        const numB = parseInt(b.apartamento.replace(/\D/g, '')) || 0
-        if (numA !== numB) return numA - numB
-        return a.apartamento.localeCompare(b.apartamento)
-      })
+      // Ordenar por número de apartamento respetando la jerarquía de pisos y PH
+      listaFormateada.sort((a, b) => compararApartamentos(a.apartamento, b.apartamento))
 
       setResidentes(listaFormateada)
 

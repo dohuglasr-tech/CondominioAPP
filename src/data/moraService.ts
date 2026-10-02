@@ -827,16 +827,30 @@ export async function marcarDeudaMoraComoPagada(
           emitido_at: new Date().toISOString()
         }
 
-        const { data: recCreated, error: errRecCreated } = await supabase
+        const { data: recExist } = await supabase
           .from('recibos_generados')
-          .upsert(nuevoRecibo, { onConflict: 'apartamento_id,mes_facturado' })
           .select('id')
+          .eq('apartamento_id', nuevoRecibo.apartamento_id)
+          .eq('mes_facturado', nuevoRecibo.mes_facturado)
           .maybeSingle()
 
-        if (recCreated) {
-          reciboFinalId = recCreated.id
-        } else if (errRecCreated) {
-          console.warn('[moraService] Aviso al insertar recibo de deuda atrasada:', errRecCreated.message)
+        if (recExist?.id) {
+          await supabase
+            .from('recibos_generados')
+            .update(nuevoRecibo)
+            .eq('id', recExist.id)
+          reciboFinalId = recExist.id
+        } else {
+          const { data: recCreated, error: errRecCreated } = await supabase
+            .from('recibos_generados')
+            .insert(nuevoRecibo)
+            .select('id')
+            .maybeSingle()
+          if (recCreated) {
+            reciboFinalId = recCreated.id
+          } else if (errRecCreated) {
+            console.warn('[moraService] Aviso al insertar recibo de deuda atrasada:', errRecCreated.message)
+          }
         }
       }
     }

@@ -513,7 +513,7 @@ export function Register() {
                   onChange={handleChange}
                   list="lista-apartamentos-torre"
                   style={inp}
-                  placeholder="Selecciona o escribe tu apartamento (ej. 501, 565, 5PH1)"
+                  placeholder="Selecciona o escribe tu apartamento (ej. 511, 565, 5PH1)"
                   autoFocus
                 />
                 <datalist id="lista-apartamentos-torre">

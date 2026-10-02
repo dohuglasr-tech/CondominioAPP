@@ -23,6 +23,7 @@ import {
   abrirWhatsApp
 } from '../../../utils/whatsappHelper'
 import { despacharEmailRecordatorioMora, esElegibleRecordatorio3Dias } from '../../../data/emailService'
+import { compararApartamentos } from '../../../utils/alicuota'
 
 export const AdminMora: React.FC = () => {
   const { perfil, config } = useAuth()
@@ -109,6 +110,7 @@ export const AdminMora: React.FC = () => {
             telefono_contacto: a.telefono_contacto || perf?.telefono || null
           }
         })
+        aptosConEmail.sort((a, b) => compararApartamentos(a.numero, b.numero))
         setApartamentos(aptosConEmail)
       }
     } catch (err) {

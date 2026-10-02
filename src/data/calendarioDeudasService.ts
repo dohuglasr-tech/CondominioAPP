@@ -84,7 +84,7 @@ export function obtenerColumnasPorDefecto(anio = 2026): ColumnaCalendarioConfig[
 const CONFIG_STORAGE_KEY = 'condominio_config_calendario_v3'
 
 export const CONFIGURACION_CALENDARIO_DEFECTO: ConfiguracionCalendario = {
-  tituloSeccionHistorica: 'DEUDA AL AÑO 2025 / CONCEPTOS EXTRAORDINARIOS (BS)',
+  tituloSeccionHistorica: 'DEUDA AL AÑO 2025 / CONCEPTOS EXTRAORDINARIOS',
   tituloSeccionMensual: 'AÑO 2026 (EMISIÓN Y LÍNEA DE TIEMPO MENSUAL)',
   columnas: obtenerColumnasPorDefecto(),
   filasPersonalizadas: [],
@@ -93,26 +93,36 @@ export const CONFIGURACION_CALENDARIO_DEFECTO: ConfiguracionCalendario = {
   filasCuotasEspeciales: []
 }
 
+function sanitizarConfiguracion(parsed: any, defaultConfig: ConfiguracionCalendario): ConfiguracionCalendario {
+  let titHist = parsed.tituloSeccionHistorica || defaultConfig.tituloSeccionHistorica
+  if (titHist && typeof titHist === 'string' && titHist.includes('(BS)')) {
+    titHist = titHist.replace(/\s*\(BS\)\s*/gi, '').trim()
+  }
+
+  const colsRaw = Array.isArray(parsed.columnas) && parsed.columnas.length > 0 ? parsed.columnas : defaultConfig.columnas
+  // Filtrar cualquier columna de totales en el medio
+  const columnasLimpias = colsRaw.filter((c: any) => {
+    const id = (c.id || '').toLowerCase()
+    const tit = (c.titulo || '').toLowerCase()
+    return id !== 'total_bs' && id !== 'total_usd' && tit !== 'total bs' && tit !== 'total $' && tit !== 'total'
+  })
+
+  return {
+    tituloSeccionHistorica: titHist,
+    tituloSeccionMensual: parsed.tituloSeccionMensual || defaultConfig.tituloSeccionMensual,
+    columnas: columnasLimpias.length > 0 ? columnasLimpias : defaultConfig.columnas,
+    filasPersonalizadas: Array.isArray(parsed.filasPersonalizadas) ? parsed.filasPersonalizadas : [],
+    filasOcultasIds: Array.isArray(parsed.filasOcultasIds) ? parsed.filasOcultasIds : [],
+    valoresCeldasPersonalizadas: parsed.valoresCeldasPersonalizadas || {},
+    filasCuotasEspeciales: Array.isArray(parsed.filasCuotasEspeciales) ? parsed.filasCuotasEspeciales : []
+  }
+}
+
 export async function obtenerConfiguracionCalendario(): Promise<ConfiguracionCalendario> {
   const defaultConfig: ConfiguracionCalendario = { ...CONFIGURACION_CALENDARIO_DEFECTO }
 
   try {
-    const raw = localStorage.getItem(CONFIG_STORAGE_KEY)
-    if (raw) {
-      const parsed = JSON.parse(raw)
-      if (parsed && typeof parsed === 'object') {
-        return {
-          tituloSeccionHistorica: parsed.tituloSeccionHistorica || defaultConfig.tituloSeccionHistorica,
-          tituloSeccionMensual: parsed.tituloSeccionMensual || defaultConfig.tituloSeccionMensual,
-          columnas: Array.isArray(parsed.columnas) && parsed.columnas.length > 0 ? parsed.columnas : defaultConfig.columnas,
-          filasPersonalizadas: Array.isArray(parsed.filasPersonalizadas) ? parsed.filasPersonalizadas : [],
-          filasOcultasIds: Array.isArray(parsed.filasOcultasIds) ? parsed.filasOcultasIds : [],
-          valoresCeldasPersonalizadas: parsed.valoresCeldasPersonalizadas || {},
-          filasCuotasEspeciales: Array.isArray(parsed.filasCuotasEspeciales) ? parsed.filasCuotasEspeciales : []
-        }
-      }
-    }
-
+    // 1. Prioridad: Consultar directamente de Supabase para tener la configuración más actualizada
     const { data } = await supabase
       .from('casos_comunidad')
       .select('descripcion')
@@ -120,18 +130,25 @@ export async function obtenerConfiguracionCalendario(): Promise<ConfiguracionCal
       .maybeSingle()
 
     if (data?.descripcion) {
-      const parsed = JSON.parse(data.descripcion)
-      const res: ConfiguracionCalendario = {
-        tituloSeccionHistorica: parsed.tituloSeccionHistorica || defaultConfig.tituloSeccionHistorica,
-        tituloSeccionMensual: parsed.tituloSeccionMensual || defaultConfig.tituloSeccionMensual,
-        columnas: Array.isArray(parsed.columnas) && parsed.columnas.length > 0 ? parsed.columnas : defaultConfig.columnas,
-        filasPersonalizadas: Array.isArray(parsed.filasPersonalizadas) ? parsed.filasPersonalizadas : [],
-        filasOcultasIds: Array.isArray(parsed.filasOcultasIds) ? parsed.filasOcultasIds : [],
-        valoresCeldasPersonalizadas: parsed.valoresCeldasPersonalizadas || {},
-        filasCuotasEspeciales: Array.isArray(parsed.filasCuotasEspeciales) ? parsed.filasCuotasEspeciales : []
+      try {
+        const parsed = JSON.parse(data.descripcion)
+        const res = sanitizarConfiguracion(parsed, defaultConfig)
+        localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(res))
+        return res
+      } catch (e) {
+        console.warn('[calendarioDeudasService] Error parseando config de DB:', e)
       }
-      localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(res))
-      return res
+    }
+
+    // 2. Fallback a localStorage si Supabase no tiene el registro o está offline
+    const raw = localStorage.getItem(CONFIG_STORAGE_KEY)
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw)
+        if (parsed && typeof parsed === 'object') {
+          return sanitizarConfiguracion(parsed, defaultConfig)
+        }
+      } catch (e) {}
     }
   } catch (err) {
     console.warn('[calendarioDeudasService] Error cargando config:', err)
@@ -208,6 +225,14 @@ export interface FilaCalendarioApto {
   guaya: number
   arreglo: number
 
+  // Monedas específicas de cada concepto para este apartamento
+  monedas_conceptos?: {
+    deuda_base_2025?: 'USD' | 'BS'
+    cable_viajero?: 'USD' | 'BS'
+    guaya?: 'USD' | 'BS'
+    arreglo?: 'USD' | 'BS'
+  }
+
   // Meses facturados en recibos_generados (clave: "YYYY-MM")
   meses: Record<string, ReciboMesItem | null>
 
@@ -222,7 +247,7 @@ export interface FilaCalendarioApto {
   saldo_a_favor_bs: number
 
   // Valores de columnas personalizadas (clave: colId)
-  valores_personalizados?: Record<string, { monto: number; estado: 'pendiente' | 'pagado' }>
+  valores_personalizados?: Record<string, { monto: number; estado: 'pendiente' | 'pagado'; moneda?: 'USD' | 'BS' }>
   esPersonalizada?: boolean
 
   // Referencia a deudas_mora en DB
@@ -263,14 +288,7 @@ export const MESES_NOMBRES = [
 ]
 
 export function normalizarNumeroApto(num: string): string {
-  const clean = (num || '').trim().toUpperCase()
-  if (clean === '511') return '501'
-  if (clean === '512') return '502'
-  if (clean === '513') return '503'
-  if (clean === '514') return '504'
-  if (clean === '515') return '505'
-  if (clean === '516') return '506'
-  return clean
+  return (num || '').trim().toUpperCase()
 }
 
 export function displayNumeroApto(num: string): string {
@@ -414,9 +432,20 @@ export async function obtenerMatrizCalendario(
           const guaya         = esMoraSolventada ? 0 : Number(conceptosHist.guaya || 0)
           const arreglo       = esMoraSolventada ? 0 : Number(conceptosHist.arreglo || 0)
 
+          const colsParaApto = configCalendario.columnas || []
+          const mDeuda: 'USD' | 'BS' = (conceptosHist.deuda_2025_moneda as ('USD' | 'BS')) || colsParaApto.find(c => c.id === 'deuda_2025')?.moneda || 'BS'
+          const mCable: 'USD' | 'BS' = (conceptosHist.cable_viajero_moneda as ('USD' | 'BS')) || colsParaApto.find(c => c.id === 'cable_viajero')?.moneda || 'USD'
+          const mGuaya: 'USD' | 'BS' = (conceptosHist.guaya_moneda as ('USD' | 'BS')) || colsParaApto.find(c => c.id === 'guaya')?.moneda || 'USD'
+          const mArreglo: 'USD' | 'BS' = (conceptosHist.arreglo_moneda as ('USD' | 'BS')) || colsParaApto.find(c => c.id === 'arreglo')?.moneda || 'BS'
+
           const mesesMap: Record<string, ReciboMesItem | null> = {}
-          let sumPendienteBs = deudaBase2025 + arreglo
-          let sumPendienteUsd = cableViajero + guaya
+          let sumPendienteBs = 0
+          let sumPendienteUsd = 0
+
+          if (mDeuda === 'BS') sumPendienteBs += deudaBase2025; else sumPendienteUsd += deudaBase2025
+          if (mCable === 'BS') sumPendienteBs += cableViajero; else sumPendienteUsd += cableViajero
+          if (mGuaya === 'BS') sumPendienteBs += guaya; else sumPendienteUsd += guaya
+          if (mArreglo === 'BS') sumPendienteBs += arreglo; else sumPendienteUsd += arreglo
           let mesesConDeuda = 0
 
           columnasMeses.forEach(col => {
@@ -447,12 +476,12 @@ export async function obtenerMatrizCalendario(
           const celdasPers = configCalendario.valoresCeldasPersonalizadas?.[apto.id] || {}
 
           // Sumar montos de columnas personalizadas (cuotas especiales en columnas)
-          const colsParaApto = configCalendario.columnas || []
           colsParaApto.forEach((col: ColumnaCalendarioConfig) => {
             if (col.tipo === 'cuota_especial') {
               const val = celdasPers[col.id] ?? (col.montoDefecto ? { monto: col.montoDefecto, estado: 'pendiente' } : null)
               if (val && val.estado === 'pendiente' && val.monto > 0) {
-                if (col.moneda === 'USD') sumPendienteUsd += val.monto
+                const mon = (val as any)?.moneda || col.moneda || 'USD'
+                if (mon === 'USD') sumPendienteUsd += val.monto
                 else sumPendienteBs += val.monto
                 mesesConDeuda += 1
               }
@@ -474,6 +503,12 @@ export async function obtenerMatrizCalendario(
             cable_viajero: cableViajero,
             guaya: guaya,
             arreglo: arreglo,
+            monedas_conceptos: {
+              deuda_base_2025: mDeuda,
+              cable_viajero: mCable,
+              guaya: mGuaya,
+              arreglo: mArreglo
+            },
 
             meses: mesesMap,
             valores_personalizados: celdasPers,
@@ -635,69 +670,147 @@ export async function guardarMontoReciboPersonalizado(params: EditarMontoCuotaPa
       autorNombre
     } = params
 
-    const montoUsd = moneda === 'USD' ? nuevoMonto : Number((nuevoMonto / 859.06).toFixed(2))
-    const montoBs  = moneda === 'BS'  ? nuevoMonto : Number((nuevoMonto * 859.06).toFixed(2))
+    const isBs = moneda === 'BS'
+    let tasaBcvAplicada = 859.06
+    try {
+      const { data: edifConfig } = await supabase.from('configuracion_edificio').select('tasa_bcv_actual').limit(1).maybeSingle()
+      if (edifConfig?.tasa_bcv_actual && Number(edifConfig.tasa_bcv_actual) > 0) {
+        tasaBcvAplicada = Number(edifConfig.tasa_bcv_actual)
+      }
+    } catch (e) {}
+
+    const montoUsd = moneda === 'USD' ? nuevoMonto : Number((nuevoMonto / tasaBcvAplicada).toFixed(2))
+    const montoBs  = moneda === 'BS'  ? nuevoMonto : Number((nuevoMonto * tasaBcvAplicada).toFixed(2))
     const fechaEfectiva = fechaPago || new Date().toISOString().slice(0, 10)
     const refLimpia = referencia?.trim() || (estado === 'pagado' ? `CONCIL-${Date.now().toString().slice(-6)}` : '')
 
-    const payloadRecibo: any = {
-      apartamento_id: apartamentoId,
-      mes_facturado: mesFacturadoIso,
-      total_usd: montoUsd,
-      total_bs: montoBs,
-      estado: estado,
-      tasa_bcv: 859.06,
-      subtotal_usd: montoUsd,
-      alicuota: 0.0159,
-      fondo_reserva_pct: 10,
-      data_json: {
-        editado_manualmente: true,
-        moneda_original: moneda,
-        monto_original: nuevoMonto,
-        editado_por: autorNombre || 'Administrador',
-        editado_at: new Date().toISOString(),
-        pago_info: estado === 'pagado' ? {
-          referencia: refLimpia,
-          metodo: metodo || 'Conciliación Manual Admin',
-          fecha_pago: fechaEfectiva,
-          nota: nota || null
-        } : null
+    // 1. Localizar recibo existente por ID o por (apartamento_id, mes_facturado)
+    let targetReciboId = (reciboId && !reciboId.startsWith('temp-')) ? reciboId : null
+    let reciboExistente: any = null
+
+    if (targetReciboId) {
+      const { data } = await supabase
+        .from('recibos_generados')
+        .select('*')
+        .eq('id', targetReciboId)
+        .maybeSingle()
+      reciboExistente = data
+    } else {
+      const { data } = await supabase
+        .from('recibos_generados')
+        .select('*')
+        .eq('apartamento_id', apartamentoId)
+        .eq('mes_facturado', mesFacturadoIso)
+        .maybeSingle()
+      reciboExistente = data
+      if (reciboExistente?.id) {
+        targetReciboId = reciboExistente.id
       }
     }
 
-    if (reciboId && !reciboId.startsWith('temp-')) {
-      payloadRecibo.id = reciboId
+    const prevJson = (reciboExistente?.data_json && typeof reciboExistente.data_json === 'object') ? reciboExistente.data_json : {}
+
+    const dataJsonMerged = {
+      ...prevJson,
+      editado_manualmente: true,
+      moneda_original: moneda,
+      monto_original: nuevoMonto,
+      es_indexado: !isBs,
+      editado_por: autorNombre || 'Administrador',
+      editado_at: new Date().toISOString(),
+      pago_info: estado === 'pagado' ? {
+        referencia: refLimpia,
+        metodo: metodo || 'Conciliación Manual Admin',
+        fecha_pago: fechaEfectiva,
+        nota: nota || null
+      } : null
     }
 
-    const { error: upsertErr } = await supabase
-      .from('recibos_generados')
-      .upsert(payloadRecibo, { onConflict: 'apartamento_id,mes_facturado' })
+    if (targetReciboId) {
+      const { error: updErr } = await supabase
+        .from('recibos_generados')
+        .update({
+          total_usd: isBs ? 0 : montoUsd,
+          total_bs: montoBs,
+          estado: estado,
+          data_json: dataJsonMerged
+        })
+        .eq('id', targetReciboId)
 
-    if (upsertErr) throw upsertErr
+      if (updErr) throw updErr
+    } else {
+      const { error: insErr } = await supabase
+        .from('recibos_generados')
+        .insert({
+          apartamento_id: apartamentoId,
+          mes_facturado: mesFacturadoIso,
+          total_usd: isBs ? 0 : montoUsd,
+          total_bs: montoBs,
+          estado: estado,
+          tasa_bcv: tasaBcvAplicada,
+          subtotal_usd: isBs ? 0 : montoUsd,
+          alicuota: 0.0159,
+          fondo_reserva_pct: 10,
+          data_json: dataJsonMerged,
+          emitido_at: new Date().toISOString()
+        })
 
-    // Si se marcó como pagado y tiene referencia, asentar en pagos_reportados
+      if (insErr) throw insErr
+    }
+
+    // 2. Si se marcó como pagado, asentar en pagos_reportados para sincronización completa
     if (estado === 'pagado') {
       try {
-        await supabase
-          .from('pagos_reportados')
-          .insert({
-            apartamento_id: apartamentoId,
-            monto_usd: montoUsd > 0 ? montoUsd : null,
-            monto_bs: montoBs,
-            tasa_bcv: 859.06,
-            metodo_pago: (metodo || '').toLowerCase().includes('movil') ? 'pago_movil' : 'transferencia',
-            referencia: refLimpia || 'DIRECTO',
-            banco_origen: metodo || 'Directo Admin',
-            banco_destino: 'Banco Bicentenario',
-            fecha_pago: fechaEfectiva,
-            fecha_revision: new Date().toISOString(),
-            estado: 'aprobado',
-            notas_admin: `Conciliado desde Calendario por ${autorNombre || 'Administrador'}. ${mesLabel}. ${nota || ''}`.trim()
-          })
-      } catch (e) {}
+        let userId: string | null = null
+        const { data: authData } = await supabase.auth.getUser()
+        if (authData?.user?.id) {
+          userId = authData.user.id
+        } else {
+          const { data: adminProf } = await supabase.from('perfiles').select('id').eq('rol', 'administrador').limit(1).maybeSingle()
+          userId = adminProf?.id || null
+        }
+
+        let metodoDb: 'transferencia_bs' | 'pago_movil' | 'efectivo_usd' | 'efectivo_bs' | 'zelle' | 'otro' = 'transferencia_bs'
+        const mLower = (metodo || '').toLowerCase()
+        if (mLower.includes('movil')) metodoDb = 'pago_movil'
+        else if (mLower.includes('efectivo') && moneda === 'USD') metodoDb = 'efectivo_usd'
+        else if (mLower.includes('efectivo')) metodoDb = 'efectivo_bs'
+        else if (mLower.includes('zelle')) metodoDb = 'zelle'
+        else if (mLower.includes('transferencia')) metodoDb = 'transferencia_bs'
+        else metodoDb = 'otro'
+
+        if (userId) {
+          const { data: yaExistePago } = await supabase
+            .from('pagos_reportados')
+            .select('id')
+            .eq('apartamento_id', apartamentoId)
+            .eq('referencia', refLimpia || 'DIRECTO')
+            .maybeSingle()
+
+          if (!yaExistePago?.id) {
+            await supabase
+              .from('pagos_reportados')
+              .insert({
+                apartamento_id: apartamentoId,
+                reportado_por: userId,
+                revisado_por: userId,
+                monto_usd: montoUsd > 0 ? montoUsd : null,
+                monto_bs: montoBs,
+                metodo: metodoDb,
+                referencia: refLimpia || 'DIRECTO',
+                fecha_pago: fechaEfectiva,
+                fecha_revision: new Date().toISOString(),
+                estado: 'aprobado',
+                notas_admin: `Conciliado desde Calendario por ${autorNombre || 'Administrador'}. ${mesLabel}. ${nota || ''}`.trim()
+              })
+          }
+        }
+      } catch (pErr) {
+        console.warn('[calendarioDeudasService] Aviso registrando pago reportado:', pErr)
+      }
     }
 
-    // Revisar si el apartamento queda completamente solvente
+    // 3. Revisar si el apartamento queda completamente solvente y sincronizar deudas_mora
     const { data: recibosRestantes } = await supabase
       .from('recibos_generados')
       .select('id')
@@ -714,12 +827,15 @@ export async function guardarMontoReciboPersonalizado(params: EditarMontoCuotaPa
     const hayPendientes = (recibosRestantes && recibosRestantes.length > 0) ||
       (moraRestante && (Number(moraRestante.monto_bs || 0) > 0.05 || Number(moraRestante.monto_usd || 0) > 0.05))
 
-    await supabase
-      .from('apartamentos')
-      .update({ estado: hayPendientes ? 'moroso' : 'solvente' })
-      .eq('id', apartamentoId)
+    // Si no queda nada pendiente, solventar la mora activa para sincronizar todo el sistema
+    if (!hayPendientes && moraRestante?.id) {
+      await supabase
+        .from('deudas_mora')
+        .update({ estado: 'solventado', updated_at: new Date().toISOString() })
+        .eq('id', moraRestante.id)
+    }
 
-    // Auditoría
+    // 4. Auditoría
     await registrarEventoAuditoria({
       tipo_accion: 'CALENDARIO_CHECKLIST_PAGO',
       titulo: `Apto ${apartamentoNumero}: Cuota ${mesLabel} editada a ${moneda === 'USD' ? `$${montoUsd}` : `Bs. ${montoBs}`}`,
@@ -733,7 +849,8 @@ export async function guardarMontoReciboPersonalizado(params: EditarMontoCuotaPa
       autor_nombre: autorNombre || 'Administrador'
     }).catch(() => {})
 
-    appCache.invalidateTags(['recibos', 'saldos', 'mora', 'apartamentos'])
+    // 5. Invalida todas las etiquetas de caché para sincronización total inmediata
+    appCache.invalidateTags(['recibos', 'saldos', 'mora', 'apartamentos', 'calendario_config', 'pagos'])
 
     return { success: true, error: null }
   } catch (err: any) {
@@ -787,6 +904,12 @@ export async function guardarConceptosHistoricos(params: {
   cableViajero: number
   guaya: number
   arreglo: number
+  monedas?: {
+    deudaBase2025?: 'USD' | 'BS'
+    cableViajero?: 'USD' | 'BS'
+    guaya?: 'USD' | 'BS'
+    arreglo?: 'USD' | 'BS'
+  }
   autorNombre?: string
 }): Promise<{ success: boolean; error: string | null }> {
   try {
@@ -797,18 +920,35 @@ export async function guardarConceptosHistoricos(params: {
       cableViajero,
       guaya,
       arreglo,
+      monedas,
       autorNombre
     } = params
 
-    const totalBs = Number((deudaBase2025 + arreglo).toFixed(2))
-    const totalUsd = Number((cableViajero + guaya).toFixed(2))
+    const mDeuda = monedas?.deudaBase2025 || 'BS'
+    const mCable = monedas?.cableViajero || 'USD'
+    const mGuaya = monedas?.guaya || 'USD'
+    const mArreglo = monedas?.arreglo || 'BS'
+
+    let totalBs = 0
+    let totalUsd = 0
+    if (mDeuda === 'BS') totalBs += deudaBase2025; else totalUsd += deudaBase2025
+    if (mCable === 'BS') totalBs += cableViajero; else totalUsd += cableViajero
+    if (mGuaya === 'BS') totalBs += guaya; else totalUsd += guaya
+    if (mArreglo === 'BS') totalBs += arreglo; else totalUsd += arreglo
+
+    totalBs = Number(totalBs.toFixed(2))
+    totalUsd = Number(totalUsd.toFixed(2))
     const tieneDeuda = totalBs > 0.01 || totalUsd > 0.01
 
     const payloadConceptos = JSON.stringify({
       deuda_2025: deudaBase2025,
+      deuda_2025_moneda: mDeuda,
       cable_viajero: cableViajero,
+      cable_viajero_moneda: mCable,
       guaya: guaya,
+      guaya_moneda: mGuaya,
       arreglo: arreglo,
+      arreglo_moneda: mArreglo,
       actualizado_at: new Date().toISOString()
     })
 
@@ -893,6 +1033,7 @@ export async function guardarCeldaPersonalizada(params: {
   columnaId: string
   monto: number
   estado: 'pendiente' | 'pagado'
+  moneda?: 'USD' | 'BS'
 }): Promise<{ success: boolean; error: string | null }> {
   try {
     const config = await obtenerConfiguracionCalendario()
@@ -902,7 +1043,8 @@ export async function guardarCeldaPersonalizada(params: {
     }
     config.valoresCeldasPersonalizadas[params.filaId][params.columnaId] = {
       monto: params.monto,
-      estado: params.estado
+      estado: params.estado,
+      ...(params.moneda ? { moneda: params.moneda } : {})
     }
     await guardarConfiguracionCalendario(config)
     return { success: true, error: null }
@@ -1026,6 +1168,30 @@ export async function cambiarSeccionColumna(
     return { success: true, error: null }
   } catch (err: any) {
     return { success: false, error: err.message || 'Error cambiando sección de columna' }
+  }
+}
+
+/**
+ * Cambia la moneda de una columna ('USD' o 'BS')
+ */
+export async function cambiarMonedaColumna(
+  colId: string,
+  nuevaMoneda: 'USD' | 'BS'
+): Promise<{ success: boolean; error: string | null }> {
+  try {
+    const config = await obtenerConfiguracionCalendario()
+    const cols = [...(config.columnas || obtenerColumnasPorDefecto())]
+    const idx = cols.findIndex(c => c.id === colId)
+    if (idx === -1) return { success: false, error: 'Columna no encontrada' }
+
+    cols[idx].moneda = nuevaMoneda
+    config.columnas = cols
+
+    await guardarConfiguracionCalendario(config)
+    appCache.invalidateTags(['calendario_config', 'mora'])
+    return { success: true, error: null }
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Error cambiando moneda de columna' }
   }
 }
 
@@ -1266,8 +1432,7 @@ export async function sincronizarDatosExcelOficial(autorNombre?: string): Promis
     let totalRecibosCargados = 0
 
     for (const apto of aptos) {
-      const numExcel = apto.numero.startsWith('50') ? '51' + apto.numero.slice(2) : apto.numero
-      const dataApto = DATOS_EXCEL_ORIGINAL[numExcel] || DATOS_EXCEL_ORIGINAL[apto.numero]
+      const dataApto = DATOS_EXCEL_ORIGINAL[apto.numero]
 
       if (dataApto && (dataApto.deuda_2025 || dataApto.cable_viajero || dataApto.guaya || dataApto.arreglo)) {
         await guardarConceptosHistoricos({
@@ -1290,27 +1455,46 @@ export async function sincronizarDatosExcelOficial(autorNombre?: string): Promis
         const montoUsd = mDef.moneda === 'USD' ? montoReal : Number((montoReal / 859.06).toFixed(2))
         const montoBs  = mDef.moneda === 'BS' ? montoReal : Number((montoReal * 859.06).toFixed(2))
 
-        const { error: insErr } = await supabase
+        const { data: recExistente } = await supabase
           .from('recibos_generados')
-          .upsert({
-            apartamento_id: apto.id,
-            mes_facturado: mDef.mes,
-            tasa_bcv: 859.06,
-            total_gastos_usd: montoUsd,
-            alicuota: Number(apto.alicuota || 0.0159),
-            subtotal_usd: montoUsd,
-            fondo_reserva_pct: 10,
-            fondo_reserva_usd: 0,
-            cargos_extra_usd: 0,
-            total_usd: montoUsd,
-            total_bs: montoBs,
-            estado: estadoFinal,
-            data_json: {
-              origen: 'sincronizacion_excel_inicial',
-              moneda_original: mDef.moneda,
-              notas_residentes: 'Sincronizado con balance oficial'
-            }
-          }, { onConflict: 'apartamento_id,mes_facturado' })
+          .select('id')
+          .eq('apartamento_id', apto.id)
+          .eq('mes_facturado', mDef.mes)
+          .maybeSingle()
+
+        const payloadItem = {
+          apartamento_id: apto.id,
+          mes_facturado: mDef.mes,
+          tasa_bcv: 859.06,
+          total_gastos_usd: montoUsd,
+          alicuota: Number(apto.alicuota || 0.0159),
+          subtotal_usd: montoUsd,
+          fondo_reserva_pct: 10,
+          fondo_reserva_usd: 0,
+          cargos_extra_usd: 0,
+          total_usd: montoUsd,
+          total_bs: montoBs,
+          estado: estadoFinal,
+          data_json: {
+            origen: 'sincronizacion_excel_inicial',
+            moneda_original: mDef.moneda,
+            notas_residentes: 'Sincronizado con balance oficial'
+          }
+        }
+
+        let insErr: any = null
+        if (recExistente?.id) {
+          const resUpd = await supabase
+            .from('recibos_generados')
+            .update(payloadItem)
+            .eq('id', recExistente.id)
+          insErr = resUpd.error
+        } else {
+          const resIns = await supabase
+            .from('recibos_generados')
+            .insert(payloadItem)
+          insErr = resIns.error
+        }
 
         if (!insErr) totalRecibosCargados++
       }
