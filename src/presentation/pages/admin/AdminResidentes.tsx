@@ -6,6 +6,7 @@ import { formatAlicuotaPct, parseAlicuotaInput, getAlicuotaDecimal, getAlicuotaP
 import { useAuth } from '../../../application/contexts/AuthContext'
 import { useBcvRate } from '../../../data/useBcvRate'
 import { obtenerTodosLosSaldosAFavor, SaldoApartamento } from '../../../data/saldoFavorService'
+import { obtenerDeudasMora, DeudaMoraItem, TASA_RIESGO_CONFIG } from '../../../data/moraService'
 import { RetirarSaldoModal } from '../../components/RetirarSaldoModal'
 import { AbonarSaldoModal } from '../../components/AbonarSaldoModal'
 import { CompensarDeudaModal } from '../../components/CompensarDeudaModal'
@@ -21,8 +22,24 @@ interface PagoHistorial {
   fecha: string
   mes: string
   monto: string
+  monto_usd?: number | null
+  monto_bs?: number
   referencia: string
   estado: 'aprobado' | 'pendiente' | 'rechazado'
+  banco?: string
+  comprobante_url?: string | null
+  notas_admin?: string | null
+}
+
+interface ReciboGeneradoItem {
+  id: string
+  apartamento_id: string
+  mes_facturado: string
+  total_usd: number
+  total_bs: number
+  tasa_bcv?: number
+  estado: 'pendiente' | 'pagado'
+  emitido_at?: string
 }
 
 interface Residente {
@@ -37,10 +54,14 @@ interface Residente {
   usuario_id?: string
   estado_ocupacion: 'ocupado_propietario' | 'alquilado' | 'desocupado'
   meses_deuda: number
+  deuda_usd: number
+  deuda_bs: number
   notas_internas: string
   propietario: PersonaContacto
   inquilino?: PersonaContacto
   historial_pagos: PagoHistorial[]
+  recibos_emitidos: ReciboGeneradoItem[]
+  mora_item?: DeudaMoraItem
   reportes_abiertos: number
   created_at?: string
 }
@@ -75,9 +96,11 @@ export const AdminResidentes: React.FC = () => {
   const [saldoModalOpen, setSaldoModalOpen] = useState(false)
   const [abonarModalOpen, setAbonarModalOpen] = useState(false)
   const [compensarModalOpen, setCompensarModalOpen] = useState(false)
+  const [comprobanteModalUrl, setComprobanteModalUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [busqueda, setBusqueda] = useState('')
-  const [filtroTipo, setFiltroTipo] = useState<'todos' | 'con_usuario' | 'ph'>('todos')
+  const [filtroTipo, setFiltroTipo] = useState<'todos' | 'con_deuda' | 'solventes' | 'con_usuario' | 'ph'>('todos')
+  const [tabActiva, setTabActiva] = useState<'deudas' | 'recibos' | 'pagos' | 'datos'>('deudas')
   const [selected, setSelected] = useState<Residente | null>(null)
   const [editMode, setEditMode] = useState(false)
   const [form, setForm] = useState<Residente | null>(null)
@@ -102,42 +125,35 @@ export const AdminResidentes: React.FC = () => {
   const cargarResidentes = useCallback(async (forceRefresh = false) => {
     setLoading(true)
     try {
-      const [aptosRes, perfilesRes, pagosRes, saldosMap, moraRes, recibosPendRes] = await Promise.all([
+      const [aptosRes, perfilesRes, pagosRes, saldosMap, moraRes, recibosGeneradosRes] = await Promise.all([
         supabase.from('apartamentos').select('*'),
         supabase.from('perfiles').select('*'),
-        supabase.from('pagos_reportados').select('id, monto_bs, referencia, estado, fecha_pago, reportado_por, apartamento_id, created_at').order('created_at', { ascending: false }),
+        supabase.from('pagos_reportados').select('id, apartamento_id, monto_bs, monto_usd, referencia, estado, fecha_pago, comprobante_url, created_at, notas_admin').order('created_at', { ascending: false }),
         obtenerTodosLosSaldosAFavor(tasaBcvValida, forceRefresh),
-        supabase.from('deudas_mora').select('apartamento_id, monto_usd, monto_bs').eq('estado', 'activo'),
-        supabase.from('recibos_generados').select('apartamento_id, total_usd, total_bs').eq('estado', 'pendiente'),
+        obtenerDeudasMora(forceRefresh, true),
+        supabase.from('recibos_generados').select('id, apartamento_id, mes_facturado, total_usd, total_bs, tasa_bcv, estado, emitido_at').order('mes_facturado', { ascending: false })
       ])
 
       setSaldosPorApto(saldosMap)
 
+      // Mapa de deudas por apartamento (de moraService)
+      const moraMap = new Map<string, DeudaMoraItem>()
       const dMap = new Map<string, { totalUsd: number; totalBs: number }>()
-      ;(moraRes.data || []).forEach((m: any) => {
+
+      ;(moraRes.data || []).forEach(m => {
         if (!m.apartamento_id) return
+        moraMap.set(m.apartamento_id, m)
         dMap.set(m.apartamento_id, {
           totalUsd: Number(m.monto_usd || 0),
-          totalBs: Number(m.monto_bs || 0),
-        })
-      })
-      ;(recibosPendRes.data || []).forEach((r: any) => {
-        if (!r.apartamento_id) return
-        const prev = dMap.get(r.apartamento_id) || { totalUsd: 0, totalBs: 0 }
-        dMap.set(r.apartamento_id, {
-          totalUsd: prev.totalUsd + Number(r.total_usd || 0),
-          totalBs: prev.totalBs + Number(r.total_bs || 0),
+          totalBs: Number(m.monto_bs || 0)
         })
       })
       setDeudasPorApto(dMap)
 
-      if (aptosRes.error) {
-        console.warn('[AdminResidentes] Error cargando apartamentos:', aptosRes.error.message)
-      }
-
       const aptosList = aptosRes.data || []
       const perfilesList = perfilesRes.data || []
       const pagosList = pagosRes.data || []
+      const recibosList = (recibosGeneradosRes.data || []) as ReciboGeneradoItem[]
 
       // Mapear perfiles por apartamento_id
       const perfilPorApto = new Map<string, any>()
@@ -147,19 +163,40 @@ export const AdminResidentes: React.FC = () => {
         }
       })
 
+      // Mapear recibos por apartamento_id
+      const recibosPorApto = new Map<string, ReciboGeneradoItem[]>()
+      recibosList.forEach(r => {
+        if (!r.apartamento_id) return
+        const list = recibosPorApto.get(r.apartamento_id) || []
+        list.push(r)
+        recibosPorApto.set(r.apartamento_id, list)
+      })
+
       // Mapear pagos por apartamento_id
       const pagosPorApto = new Map<string, PagoHistorial[]>()
       pagosList.forEach((p: any) => {
         const aptoId = p.apartamento_id
         if (aptoId) {
           const list = pagosPorApto.get(aptoId) || []
+          let banco = 'Transferencia'
+          if (p.notas_admin && p.notas_admin.includes('Banco')) {
+            const match = p.notas_admin.match(/Banco(?: Origen)?:\s*([^\n,]+)/i)
+            if (match) banco = match[1].trim()
+          }
           list.push({
             id: p.id,
             fecha: p.fecha_pago || p.created_at,
             mes: p.created_at?.substring(0, 7) || 'Reciente',
-            monto: `Bs. ${Number(p.monto_bs || 0).toLocaleString('es-VE', { minimumFractionDigits: 2 })}`,
+            monto: p.monto_usd && p.monto_usd > 0
+              ? `$${Number(p.monto_usd).toFixed(2)} / Bs. ${Number(p.monto_bs || 0).toLocaleString('es-VE', { minimumFractionDigits: 2 })}`
+              : `Bs. ${Number(p.monto_bs || 0).toLocaleString('es-VE', { minimumFractionDigits: 2 })}`,
+            monto_usd: p.monto_usd,
+            monto_bs: p.monto_bs,
             referencia: p.referencia || 'S/R',
-            estado: p.estado || 'aprobado'
+            estado: p.estado || 'aprobado',
+            banco,
+            comprobante_url: p.comprobante_url,
+            notas_admin: p.notas_admin
           })
           pagosPorApto.set(aptoId, list)
         }
@@ -168,6 +205,7 @@ export const AdminResidentes: React.FC = () => {
       // Unir datos para la vista
       const listaFormateada: Residente[] = aptosList.map((a: any) => {
         const perfil = perfilPorApto.get(a.id)
+        const moraItem = moraMap.get(a.id)
         const esAlquilado = perfil?.condicion_habitacional === 'alquilado'
         const alicuotaPct = getAlicuotaPctNumber(a.alicuota)
         const esPh = a.numero?.toUpperCase().includes('PH') || a.piso === 0 || a.piso === 11 || alicuotaPct > 2.0
@@ -199,7 +237,9 @@ export const AdminResidentes: React.FC = () => {
           estado_ocupacion: a.estado === 'desocupado'
             ? 'desocupado'
             : esAlquilado ? 'alquilado' : 'ocupado_propietario',
-          meses_deuda: 0,
+          meses_deuda: moraItem?.meses_deuda || 0,
+          deuda_usd: moraItem?.monto_usd || 0,
+          deuda_bs: moraItem?.monto_bs || 0,
           notas_internas: a.notas || '',
           propietario: {
             nombre: propNombre,
@@ -212,6 +252,8 @@ export const AdminResidentes: React.FC = () => {
             email: perfil?.email || '',
           } : undefined,
           historial_pagos: pagosPorApto.get(a.id) || [],
+          recibos_emitidos: recibosPorApto.get(a.id) || [],
+          mora_item: moraItem,
           reportes_abiertos: 0,
           created_at: a.created_at
         }
@@ -232,7 +274,7 @@ export const AdminResidentes: React.FC = () => {
     } finally {
       setLoading(false)
     }
-  }, [selected])
+  }, [selected, tasaBcvValida])
 
   useEffect(() => {
     cargarResidentes()
@@ -265,7 +307,7 @@ export const AdminResidentes: React.FC = () => {
         estado: 'habitado'
       }).eq('id', selected.apartamento_id)
 
-      appCache.invalidateTags(['apartamentos', 'residentes', 'pagos', 'saldos'])
+      appCache.invalidateTags(['apartamentos', 'residentes', 'pagos', 'saldos', 'mora'])
 
       setDeleteMessage({
         type: 'success',
@@ -340,7 +382,7 @@ export const AdminResidentes: React.FC = () => {
         text: `Datos del Apto ${form.apartamento} actualizados exitosamente (Alícuota: ${formatAlicuotaPct(alicuotaDecimal)}).`
       })
 
-      appCache.invalidateTags(['apartamentos', 'residentes', 'saldos'])
+      appCache.invalidateTags(['apartamentos', 'residentes', 'saldos', 'mora'])
 
       setEditMode(false)
       await cargarResidentes()
@@ -355,6 +397,12 @@ export const AdminResidentes: React.FC = () => {
     }
   }
 
+  // ── Conteo para filtros ──────
+  const conDeudaCount = residentes.filter(r => r.deuda_usd > 0.01 || r.deuda_bs > 0.01 || r.meses_deuda > 0).length
+  const solventesCount = residentes.filter(r => r.deuda_usd <= 0.01 && r.deuda_bs <= 0.01 && r.meses_deuda === 0).length
+  const conUsuarioCount = residentes.filter(r => r.tiene_usuario).length
+  const phCount = residentes.filter(r => r.es_ph).length
+
   // ── Filtros ──────
   const filtrados = residentes.filter(r => {
     const matchText = (
@@ -364,24 +412,56 @@ export const AdminResidentes: React.FC = () => {
     )
     if (!matchText) return false
 
+    if (filtroTipo === 'con_deuda') return r.deuda_usd > 0.01 || r.deuda_bs > 0.01 || r.meses_deuda > 0
+    if (filtroTipo === 'solventes') return r.deuda_usd <= 0.01 && r.deuda_bs <= 0.01 && r.meses_deuda === 0
     if (filtroTipo === 'con_usuario') return r.tiene_usuario
     if (filtroTipo === 'ph') return r.es_ph
     return true
   })
 
-  const conUsuarioCount = residentes.filter(r => r.tiene_usuario).length
-  const phCount = residentes.filter(r => r.es_ph).length
-
-  const getDeudaColor = (meses: number) => {
-    if (meses === 0) return '#10b981'
-    if (meses === 1) return '#f59e0b'
-    return '#ef4444'
-  }
-
   const getOcupacionLabel = (estado: string) => {
     if (estado === 'ocupado_propietario') return 'Ocupado (Propietario)'
     if (estado === 'alquilado') return 'Alquilado'
     return 'Desocupado'
+  }
+
+  // Generador de mensaje amigable de WhatsApp
+  const generarMensajeWhatsApp = (r: Residente) => {
+    const lineas: string[] = []
+    lineas.push(`Estimado(a) ${r.propietario.nombre} (Apto ${r.apartamento}):`)
+    lineas.push(`Le saludamos cordialmente de la Administración del Condominio.`)
+    
+    if (r.deuda_usd <= 0.01 && r.deuda_bs <= 0.01) {
+      lineas.push(`Le confirmamos que su apartamento se encuentra actualmente SOLVENTE y al día con todas sus cuotas y recibos de condominio. ¡Muchas gracias por su puntualidad! ✨`)
+    } else {
+      lineas.push(`Le compartimos el estado de cuenta y compromisos pendientes a la fecha:`)
+      
+      const items = r.mora_item?.desglose?.items || []
+      if (items.length > 0) {
+        items.forEach(it => {
+          const mon = it.moneda === 'USD' ? `$${it.monto.toFixed(2)}` : `Bs. ${it.monto.toLocaleString('es-VE', { minimumFractionDigits: 2 })}`
+          lineas.push(`• ${it.label}: ${mon}`)
+        })
+      } else {
+        if (r.deuda_usd > 0) lineas.push(`• Cuotas pendientes: $${r.deuda_usd.toFixed(2)} USD`)
+        if (r.deuda_bs > 0) lineas.push(`• Recibos en Bolívares: Bs. ${r.deuda_bs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}`)
+      }
+      
+      lineas.push(``)
+      const totalEquivBs = r.deuda_bs + (r.deuda_usd * tasaBcvValida)
+      lineas.push(`*Total adeudado:* $${r.deuda_usd.toFixed(2)} USD (≈ Bs. ${totalEquivBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} a tasa oficial BCV de Bs. ${tasaBcvValida.toFixed(2)}/$)`)
+    }
+    
+    const saldoInfo = saldosPorApto.get(r.id)
+    const saldoUsd = saldoInfo?.saldo_a_favor_usd || 0
+    if (saldoUsd > 0.01) {
+      lineas.push(`Saldo a favor disponible: +$${saldoUsd.toFixed(2)} USD`)
+    }
+    
+    lineas.push(``)
+    lineas.push(`Para reportar su pago o cualquier consulta, estamos a su total disposición.`)
+    
+    return encodeURIComponent(lineas.join('\n'))
   }
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -397,15 +477,15 @@ export const AdminResidentes: React.FC = () => {
         style={inputStyle}
       />
 
-      {/* Filtros rápidos */}
-      <div style={{ display: 'flex', gap: '6px' }}>
+      {/* Filtros rápidos con Deuda / Solventes */}
+      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
         <button
           onClick={() => setFiltroTipo('todos')}
           style={{
-            flex: 1,
+            flex: '1 1 auto',
             padding: '7px 8px',
             borderRadius: '8px',
-            fontSize: '11.5px',
+            fontSize: '11px',
             fontWeight: 700,
             border: 'none',
             cursor: 'pointer',
@@ -416,30 +496,68 @@ export const AdminResidentes: React.FC = () => {
         >
           Todos ({residentes.length})
         </button>
+
         <button
-          onClick={() => setFiltroTipo('con_usuario')}
+          onClick={() => setFiltroTipo('con_deuda')}
           style={{
-            flex: 1,
+            flex: '1 1 auto',
             padding: '7px 8px',
             borderRadius: '8px',
-            fontSize: '11.5px',
+            fontSize: '11px',
             fontWeight: 700,
             border: 'none',
             cursor: 'pointer',
-            backgroundColor: filtroTipo === 'con_usuario' ? '#10b981' : '#1e1e1e',
+            backgroundColor: filtroTipo === 'con_deuda' ? '#ef4444' : '#1e1e1e',
+            color: filtroTipo === 'con_deuda' ? '#fff' : conDeudaCount > 0 ? '#f87171' : '#888',
+            transition: 'all 0.15s ease'
+          }}
+        >
+          Con Deuda ({conDeudaCount})
+        </button>
+
+        <button
+          onClick={() => setFiltroTipo('solventes')}
+          style={{
+            flex: '1 1 auto',
+            padding: '7px 8px',
+            borderRadius: '8px',
+            fontSize: '11px',
+            fontWeight: 700,
+            border: 'none',
+            cursor: 'pointer',
+            backgroundColor: filtroTipo === 'solventes' ? '#10b981' : '#1e1e1e',
+            color: filtroTipo === 'solventes' ? '#fff' : '#34d399',
+            transition: 'all 0.15s ease'
+          }}
+        >
+          Solventes ({solventesCount})
+        </button>
+
+        <button
+          onClick={() => setFiltroTipo('con_usuario')}
+          style={{
+            flex: '1 1 auto',
+            padding: '7px 8px',
+            borderRadius: '8px',
+            fontSize: '11px',
+            fontWeight: 700,
+            border: 'none',
+            cursor: 'pointer',
+            backgroundColor: filtroTipo === 'con_usuario' ? '#3b82f6' : '#1e1e1e',
             color: filtroTipo === 'con_usuario' ? '#fff' : '#888',
             transition: 'all 0.15s ease'
           }}
         >
-          Con Usuario ({conUsuarioCount})
+          Web ({conUsuarioCount})
         </button>
+
         <button
           onClick={() => setFiltroTipo('ph')}
           style={{
-            flex: 1,
+            flex: '1 1 auto',
             padding: '7px 8px',
             borderRadius: '8px',
-            fontSize: '11.5px',
+            fontSize: '11px',
             fontWeight: 700,
             border: 'none',
             cursor: 'pointer',
@@ -460,93 +578,123 @@ export const AdminResidentes: React.FC = () => {
           </div>
         ) : filtrados.length === 0 ? (
           <div style={{ textAlign: 'center', color: '#666', padding: '40px 20px', backgroundColor: '#141414', borderRadius: '12px', border: '1px solid #1e1e1e' }}>
-            <p style={{ margin: 0, fontSize: '14px' }}>No se encontraron apartamentos.</p>
+            <p style={{ margin: 0, fontSize: '14px' }}>No se encontraron apartamentos con este filtro.</p>
           </div>
         ) : (
           filtrados.map(r => {
             const isSelected = selected?.id === r.id
+            const tieneDeuda = r.deuda_usd > 0.01 || r.deuda_bs > 0.01
+            const saldoInfo = saldosPorApto.get(r.id)
+            const sUsd = saldoInfo?.saldo_a_favor_usd || 0
+            const sBs = saldoInfo?.saldo_a_favor_bs || 0
+
             return (
               <button
                 key={r.id}
                 onClick={() => {
                   setSelected(r)
                   setEditMode(false)
+                  setTabActiva('deudas')
                 }}
                 style={{
                   backgroundColor: '#141414',
                   border: `1px solid ${isSelected ? 'var(--color-accent, #f97316)' : '#1e1e1e'}`,
                   borderRadius: '12px',
-                  padding: '14px 16px',
+                  padding: '12px 14px',
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
                   cursor: 'pointer',
                   textAlign: 'left',
                   transition: 'all 0.15s ease',
-                  borderLeft: `4px solid ${isSelected ? 'var(--color-accent, #f97316)' : r.es_ph ? '#8b5cf6' : '#333'}`,
+                  borderLeft: `4px solid ${
+                    isSelected
+                      ? 'var(--color-accent, #f97316)'
+                      : tieneDeuda
+                      ? '#ef4444'
+                      : r.es_ph
+                      ? '#8b5cf6'
+                      : '#10b981'
+                  }`,
                   width: '100%',
                   boxSizing: 'border-box'
                 }}
               >
-                <div style={{ flex: 1, minWidth: 0, paddingRight: '10px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                    <span style={{ color: '#fff', fontSize: '15px', fontWeight: 800 }}>Apto {r.apartamento}</span>
+                <div style={{ flex: 1, minWidth: 0, paddingRight: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                    <span style={{ color: '#fff', fontSize: '14.5px', fontWeight: 800 }}>Apto {r.apartamento}</span>
                     {r.es_ph && (
-                      <span style={{ fontSize: '10px', fontWeight: 800, backgroundColor: '#8b5cf625', color: '#a78bfa', border: '1px solid #8b5cf640', padding: '1px 6px', borderRadius: '4px' }}>
+                      <span style={{ fontSize: '9.5px', fontWeight: 800, backgroundColor: '#8b5cf625', color: '#a78bfa', border: '1px solid #8b5cf640', padding: '1px 5px', borderRadius: '4px' }}>
                         PH
                       </span>
                     )}
-                    <span style={{ fontSize: '11px', color: 'var(--color-accent, #f97316)', fontWeight: 700, backgroundColor: 'var(--color-accent-light, #f9731615)', padding: '1px 6px', borderRadius: '4px' }}>
+                    <span style={{ fontSize: '10.5px', color: 'var(--color-accent, #f97316)', fontWeight: 700, backgroundColor: 'var(--color-accent-light, #f9731615)', padding: '1px 5px', borderRadius: '4px' }}>
                       {formatAlicuotaPct(r.alicuota)}
                     </span>
-                    {(() => {
-                      const sInfo = saldosPorApto.get(r.id)
-                      const sUsd = sInfo?.saldo_a_favor_usd || 0
-                      const sBs = sInfo?.saldo_a_favor_bs || 0
-                      if (sUsd <= 0.0001 && sBs <= 0.01) return null
-                      return (
-                        <span style={{
-                          fontSize: '11px',
-                          color: '#34d399',
-                          fontWeight: 800,
-                          backgroundColor: 'rgba(16, 185, 129, 0.15)',
-                          border: '1px solid rgba(16, 185, 129, 0.3)',
-                          padding: '1px 6px',
-                          borderRadius: '4px'
-                        }}>
-                          💚 {sUsd >= 1 ? `+$${sUsd.toFixed(2)}` : `+Bs. ${sBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-                        </span>
-                      )
-                    })()}
+                    {sUsd > 0.0001 || sBs > 0.01 ? (
+                      <span style={{
+                        fontSize: '10px',
+                        color: '#34d399',
+                        fontWeight: 800,
+                        backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                        border: '1px solid rgba(16, 185, 129, 0.3)',
+                        padding: '1px 5px',
+                        borderRadius: '4px'
+                      }}>
+                        💚 {sUsd >= 1 ? `+$${sUsd.toFixed(2)}` : `+Bs. ${sBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                      </span>
+                    ) : null}
                   </div>
                   
-                  <p style={{ color: r.tiene_usuario ? '#ccc' : '#666', fontSize: '12px', marginTop: '4px', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <p style={{ color: r.tiene_usuario ? '#ccc' : '#777', fontSize: '12px', marginTop: '3px', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {r.propietario.nombre}
                   </p>
 
-                  <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', gap: '5px', marginTop: '5px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    {tieneDeuda ? (
+                      <span style={{
+                        padding: '1px 6px',
+                        borderRadius: '4px',
+                        fontSize: '10.5px',
+                        fontWeight: 800,
+                        backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                        color: '#ef4444',
+                        border: '1px solid rgba(239, 68, 68, 0.35)',
+                      }}>
+                        🔴 Debe {r.deuda_usd > 0 ? `$${r.deuda_usd.toFixed(2)}` : `Bs. ${r.deuda_bs.toLocaleString('es-VE', { minimumFractionDigits: 0 })}`}
+                        {r.meses_deuda > 0 ? ` (${r.meses_deuda}c)` : ''}
+                      </span>
+                    ) : (
+                      <span style={{
+                        padding: '1px 6px',
+                        borderRadius: '4px',
+                        fontSize: '10px',
+                        fontWeight: 700,
+                        backgroundColor: 'rgba(16, 185, 129, 0.12)',
+                        color: '#34d399',
+                        border: '1px solid rgba(16, 185, 129, 0.25)',
+                      }}>
+                        ✅ Solvente
+                      </span>
+                    )}
+
                     <span style={{
-                      padding: '1px 6px',
+                      padding: '1px 5px',
                       borderRadius: '4px',
-                      fontSize: '10px',
-                      fontWeight: 700,
-                      backgroundColor: r.estado_ocupacion === 'alquilado' ? '#3b82f620' : r.tiene_usuario ? '#10b98120' : '#222',
-                      color: r.estado_ocupacion === 'alquilado' ? '#60a5fa' : r.tiene_usuario ? '#34d399' : '#888',
+                      fontSize: '9.5px',
+                      fontWeight: 600,
+                      backgroundColor: r.estado_ocupacion === 'alquilado' ? '#3b82f620' : '#222',
+                      color: r.estado_ocupacion === 'alquilado' ? '#60a5fa' : '#777',
                     }}>
-                      {r.estado_ocupacion === 'alquilado' ? '🔑 Inquilino' : r.tiene_usuario ? '🏡 Registrado' : '⚪ Sin cuenta'}
+                      {r.estado_ocupacion === 'alquilado' ? '🔑 Alquilado' : 'Propietario'}
                     </span>
                   </div>
                 </div>
 
-                <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-                  <p style={{ color: '#777', fontSize: '11px', margin: 0 }}>
-                    {r.historial_pagos.length} pago{r.historial_pagos.length !== 1 ? 's' : ''}
-                  </p>
-                  {isMobile && (
-                    <span style={{ color: 'var(--color-accent, #f97316)', fontSize: '14px', fontWeight: 800 }}>
-                      →
-                    </span>
-                  )}
+                <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                  <span style={{ color: 'var(--color-accent, #f97316)', fontSize: '13px', fontWeight: 800 }}>
+                    →
+                  </span>
                 </div>
               </button>
             )
@@ -562,9 +710,12 @@ export const AdminResidentes: React.FC = () => {
   const renderContenidoDetalle = () => {
     if (!selected) {
       return (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '300px', height: '100%', color: '#666', flexDirection: 'column', gap: '10px', textAlign: 'center' }}>
-          <span style={{ fontSize: '36px' }}>👥</span>
-          <p style={{ margin: 0, fontSize: '14px' }}>Selecciona un apartamento para ver o editar sus datos</p>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '380px', height: '100%', color: '#666', flexDirection: 'column', gap: '12px', textAlign: 'center' }}>
+          <span style={{ fontSize: '42px' }}>👥</span>
+          <h3 style={{ color: '#fff', fontSize: '16px', margin: 0 }}>Selecciona un apartamento</h3>
+          <p style={{ margin: 0, fontSize: '13px', maxWidth: '340px', lineHeight: 1.5 }}>
+            Podrás ver su balance exacto, todas sus deudas y cuotas extraordinarias, recibos emitidos, pagos reportados y contactos.
+          </p>
         </div>
       )
     }
@@ -660,8 +811,8 @@ export const AdminResidentes: React.FC = () => {
               </select>
             </div>
             <div>
-              <label style={labelStyle}>Meses de Deuda (Control interno)</label>
-              <input type="number" style={inputStyle} value={form.meses_deuda} onChange={e => setForm({ ...form, meses_deuda: parseInt(e.target.value) || 0 })} />
+              <label style={labelStyle}>Notas Internas del Inmueble</label>
+              <input style={inputStyle} value={form.notas_internas} onChange={e => setForm({ ...form, notas_internas: e.target.value })} placeholder="Ej: Puesto de estacionamiento 12..." />
             </div>
           </div>
 
@@ -698,43 +849,60 @@ export const AdminResidentes: React.FC = () => {
               </div>
             </div>
           )}
-
-          <div>
-            <label style={labelStyle}>Notas Internas (Solo Admin)</label>
-            <textarea rows={3} style={{ ...inputStyle, resize: 'none' }} value={form.notas_internas} onChange={e => setForm({ ...form, notas_internas: e.target.value })} placeholder="Escribe detalles importantes sobre este inmueble..." />
-          </div>
         </form>
       )
     }
 
-    // Modo Detalle normal
+    // ── Modo Detalle normal ──────────────────────────────────────────────────
     const cleanPhone = selected.propietario.telefono?.replace(/[^\d+]/g, '') || ''
     const waPhone = cleanPhone.replace(/\D/g, '').startsWith('0')
       ? '58' + cleanPhone.replace(/\D/g, '').substring(1)
       : cleanPhone.replace(/\D/g, '')
 
+    const saldoInfo = saldosPorApto.get(selected.id)
+    const saldoUsd = saldoInfo?.saldo_a_favor_usd || 0
+    const saldoBs = saldoInfo?.saldo_a_favor_bs || (saldoUsd * tasaBcvValida)
+    const tieneSaldo = saldoUsd > 0.0001 || saldoBs > 0.01
+
+    const tieneDeuda = selected.deuda_usd > 0.01 || selected.deuda_bs > 0.01
+    const totalDeudaEquivBs = selected.deuda_bs + (selected.deuda_usd * tasaBcvValida)
+
+    const mora = selected.mora_item
+    const desglose = mora?.desglose
+    const itemsDeuda = desglose?.items || []
+    const tasaInfo = mora ? TASA_RIESGO_CONFIG[mora.tasa_riesgo] : null
+
     return (
-      <div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
         {/* Header del seleccionado */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: isMobile ? 'flex-start' : 'center', flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? '12px' : '0', marginBottom: '20px' }}>
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: isMobile ? 'flex-start' : 'center',
+          flexDirection: isMobile ? 'column' : 'row',
+          gap: isMobile ? '14px' : '0',
+          paddingBottom: '16px',
+          borderBottom: '1px solid #222'
+        }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
               <h2 style={{ color: '#fff', fontSize: isMobile ? '24px' : '28px', fontWeight: 800, margin: 0 }}>
                 Apto {selected.apartamento}
               </h2>
               {selected.es_ph && (
-                <span style={{ fontSize: '11px', fontWeight: 800, backgroundColor: '#8b5cf625', color: '#a78bfa', border: '1px solid #8b5cf640', padding: '2px 8px', borderRadius: '6px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 800, backgroundColor: '#8b5cf625', color: '#a78bfa', border: '1px solid #8b5cf640', padding: '3px 8px', borderRadius: '6px' }}>
                   PENTHOUSE (PH)
                 </span>
               )}
-              {selected.piso && (
-                <span style={{ color: '#888', fontSize: '12px', fontWeight: 600 }}>
+              {selected.piso !== null && (
+                <span style={{ color: '#888', fontSize: '13px', fontWeight: 600 }}>
                   Piso {selected.piso}
                 </span>
               )}
             </div>
             
-            <div style={{ display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+              {/* Badge de ocupación */}
               <span style={{
                 padding: '3px 10px',
                 borderRadius: '6px',
@@ -745,6 +913,8 @@ export const AdminResidentes: React.FC = () => {
               }}>
                 {getOcupacionLabel(selected.estado_ocupacion)}
               </span>
+
+              {/* Badge de usuario */}
               <span style={{
                 padding: '3px 10px',
                 borderRadius: '6px',
@@ -754,481 +924,956 @@ export const AdminResidentes: React.FC = () => {
                 color: selected.tiene_usuario ? '#10b981' : '#888',
                 border: '1px solid #2a2a2a'
               }}>
-                {selected.tiene_usuario ? 'Cuenta de Usuario Activa' : 'Sin Usuario Web'}
+                {selected.tiene_usuario ? 'Cuenta Web Activa' : 'Sin Usuario Web'}
               </span>
-            </div>
-          </div>
 
-          {!isMobile && (
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <button
-                onClick={() => { setForm({ ...selected }); setEditMode(true) }}
-                style={{
-                  backgroundColor: 'var(--color-accent, #f97316)',
-                  color: '#fff',
-                  border: 'none',
-                  padding: '8px 16px',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontSize: '13px',
-                  fontWeight: 700,
-                }}
-              >
-                ✏️ Editar Alícuota y Datos
-              </button>
-
-              {selected.tiene_usuario && (
-                <button
-                  onClick={() => setShowDeleteModal(true)}
-                  style={{
-                    backgroundColor: 'rgba(239, 68, 68, 0.15)',
-                    color: '#ef4444',
-                    border: '1px solid rgba(239, 68, 68, 0.4)',
-                    padding: '8px 14px',
-                    borderRadius: '8px',
-                    cursor: 'pointer',
-                    fontSize: '12px',
-                    fontWeight: 700,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                  }}
-                >
-                  🗑️ Borrar Usuario
-                </button>
+              {/* Badge de Solvencia */}
+              {tieneDeuda ? (
+                <span style={{
+                  padding: '3px 10px',
+                  borderRadius: '6px',
+                  fontSize: '11px',
+                  fontWeight: 800,
+                  backgroundColor: tasaInfo ? tasaInfo.bg : 'rgba(239, 68, 68, 0.15)',
+                  color: tasaInfo ? tasaInfo.color : '#ef4444',
+                  border: `1px solid ${tasaInfo ? tasaInfo.border : 'rgba(239, 68, 68, 0.35)'}`,
+                }}>
+                  {tasaInfo ? tasaInfo.badgeText : `⚠️ En Mora (${selected.meses_deuda} cuotas)`}
+                </span>
+              ) : (
+                <span style={{
+                  padding: '3px 10px',
+                  borderRadius: '6px',
+                  fontSize: '11px',
+                  fontWeight: 800,
+                  backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                  color: '#34d399',
+                  border: '1px solid rgba(16, 185, 129, 0.35)',
+                }}>
+                  ✅ Solvente al día
+                </span>
               )}
             </div>
-          )}
+          </div>
+
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', width: isMobile ? '100%' : 'auto' }}>
+            <button
+              onClick={() => { setForm({ ...selected }); setEditMode(true) }}
+              style={{
+                backgroundColor: 'var(--color-accent, #f97316)',
+                color: '#fff',
+                border: 'none',
+                padding: '8px 14px',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontSize: '12.5px',
+                fontWeight: 700,
+                flex: isMobile ? 1 : 'none'
+              }}
+            >
+              ✏️ Editar Datos
+            </button>
+
+            <button
+              onClick={() => navigate('/admin/calendario-deudas')}
+              style={{
+                backgroundColor: '#1e1e1e',
+                color: '#aaa',
+                border: '1px solid #333',
+                padding: '8px 12px',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontSize: '12px',
+                fontWeight: 600,
+                flex: isMobile ? 1 : 'none'
+              }}
+              title="Abrir Calendario General de Deudas"
+            >
+              📊 Calendario
+            </button>
+
+            {selected.tiene_usuario && (
+              <button
+                onClick={() => setShowDeleteModal(true)}
+                style={{
+                  backgroundColor: 'rgba(239, 68, 68, 0.12)',
+                  color: '#ef4444',
+                  border: '1px solid rgba(239, 68, 68, 0.35)',
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  flex: isMobile ? 1 : 'none'
+                }}
+              >
+                🗑️ Borrar
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* CARD DESTACADO: SALDO A FAVOR / BILLETERA COMUNITARIA */}
-        {(() => {
-          const saldoInfo = saldosPorApto.get(selected.id)
-          const saldoUsd = saldoInfo?.saldo_a_favor_usd || 0
-          const saldoBs = saldoInfo?.saldo_a_favor_bs || (saldoUsd * tasaBcvValida)
-          const tieneSaldo = saldoUsd > 0.0001 || saldoBs > 0.01
-
-          return (
-            <div style={{
-              backgroundColor: tieneSaldo ? 'rgba(16, 185, 129, 0.08)' : '#0a0a0a',
-              border: tieneSaldo ? '1px solid rgba(16, 185, 129, 0.35)' : '1px solid #2a2a2a',
-              borderRadius: '12px',
-              padding: '18px 20px',
-              marginBottom: '16px',
-              display: 'flex',
-              flexDirection: isMobile ? 'column' : 'row',
-              justifyContent: 'space-between',
-              alignItems: isMobile ? 'flex-start' : 'center',
-              gap: '12px',
-              boxShadow: tieneSaldo ? '0 4px 18px rgba(16, 185, 129, 0.12)' : 'none',
-            }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ fontSize: '18px' }}>💚</span>
-                  <span style={{ color: tieneSaldo ? '#4ade80' : '#888', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 800 }}>
-                    Saldo a Favor / Cuenta Corriente
-                  </span>
-                </div>
-
-                <div style={{ color: tieneSaldo ? '#4ade80' : '#fff', fontSize: isMobile ? '24px' : '26px', fontWeight: 900, marginTop: '4px' }}>
-                  {tieneSaldo ? (
-                    saldoUsd >= 1
-                      ? `+$${saldoUsd.toFixed(2)} USD`
-                      : `+Bs. ${saldoBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                  ) : '$0.00 USD'}
-                </div>
-
-                <p style={{ color: '#888', fontSize: '12px', margin: '4px 0 0' }}>
-                  {tieneSaldo
-                    ? (saldoUsd >= 1
-                        ? `≈ Bs. ${saldoBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · Crédito disponible para próximos recibos`
-                        : `≈ $${(saldoUsd > 0 ? saldoUsd : saldoBs / tasaBcvValida).toFixed(2)} USD · Crédito disponible para próximos recibos`)
-                    : 'El apartamento no tiene saldo a favor acumulado actualmente.'}
-                </p>
-              </div>
-
-              {/* Botones de Gestión de Saldo */}
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', width: isMobile ? '100%' : 'auto' }}>
-                <button
-                  type="button"
-                  onClick={() => setAbonarModalOpen(true)}
-                  style={{
-                    backgroundColor: 'rgba(34, 197, 94, 0.15)',
-                    color: '#4ade80',
-                    border: '1px solid rgba(34, 197, 94, 0.4)',
-                    padding: '9px 16px',
-                    borderRadius: '8px',
-                    cursor: 'pointer',
-                    fontSize: '12.5px',
-                    fontWeight: 800,
-                    flex: isMobile ? 1 : 'none',
-                    textAlign: 'center',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '6px',
-                    boxShadow: '0 2px 10px rgba(34, 197, 94, 0.2)',
-                    transition: 'all 0.2s',
-                  }}
-                  title="Abonar saldo positivo a la cuenta del apartamento con motivo obligatorio de auditoría"
-                >
-                  <span>➕</span> Abonar Saldo a Favor
-                </button>
-
-                {tieneSaldo && (deudasPorApto.get(selected.id)?.totalUsd || 0) > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setCompensarModalOpen(true)}
-                    style={{
-                      backgroundColor: 'rgba(59, 130, 246, 0.15)',
-                      color: '#60a5fa',
-                      border: '1px solid rgba(59, 130, 246, 0.4)',
-                      padding: '9px 16px',
-                      borderRadius: '8px',
-                      cursor: 'pointer',
-                      fontSize: '12.5px',
-                      fontWeight: 800,
-                      flex: isMobile ? 1 : 'none',
-                      textAlign: 'center',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '6px',
-                      transition: 'all 0.2s',
-                    }}
-                    title="Aplicar parte o todo el saldo a favor para restar de la deuda pendiente"
-                  >
-                    <span>⚡</span> Compensar Deuda
-                  </button>
-                )}
-
-                {tieneSaldo && (
-                  <button
-                    type="button"
-                    onClick={() => setSaldoModalOpen(true)}
-                    style={{
-                      backgroundColor: 'rgba(239, 68, 68, 0.12)',
-                      color: '#f87171',
-                      border: '1px solid rgba(239, 68, 68, 0.35)',
-                      padding: '9px 14px',
-                      borderRadius: '8px',
-                      cursor: 'pointer',
-                      fontSize: '12.5px',
-                      fontWeight: 700,
-                      width: isMobile ? '100%' : 'auto',
-                      textAlign: 'center',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '6px',
-                      transition: 'all 0.2s',
-                    }}
-                    title="Retirar o anular este saldo a favor con justificación inmutable en Auditoría"
-                  >
-                    <span>🗑️</span> Quitar Saldo
-                  </button>
-                )}
-              </div>
-            </div>
-          )
-        })()}
-
-        {/* CARD DESTACADO: ALÍCUOTA DEL INMUEBLE */}
+        {/* ── 3 KPI CARDS SUPERIORES: DEUDA, SALDO A FAVOR, ALÍCUOTA ── */}
         <div style={{
-          backgroundColor: '#0a0a0a',
-          border: '1px solid #2a2a2a',
-          borderRadius: '12px',
-          padding: '18px 20px',
-          marginBottom: '16px',
-          display: 'flex',
-          flexDirection: isMobile ? 'column' : 'row',
-          justifyContent: 'space-between',
-          alignItems: isMobile ? 'flex-start' : 'center',
+          display: 'grid',
+          gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
           gap: '12px'
         }}>
-          <div>
-            <span style={{ color: '#888', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 700 }}>
-              Alícuota de Condominio
-            </span>
-            <div style={{ color: 'var(--color-accent, #f97316)', fontSize: isMobile ? '26px' : '28px', fontWeight: 900, marginTop: '2px' }}>
-              {formatAlicuotaPct(selected.alicuota)}
+          {/* KPI 1: Deuda Total Pendiente */}
+          <div style={{
+            backgroundColor: tieneDeuda ? 'rgba(239, 68, 68, 0.08)' : 'rgba(16, 185, 129, 0.06)',
+            border: `1px solid ${tieneDeuda ? 'rgba(239, 68, 68, 0.3)' : 'rgba(16, 185, 129, 0.25)'}`,
+            borderRadius: '12px',
+            padding: '16px',
+            boxSizing: 'border-box'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+              <span style={{ color: tieneDeuda ? '#f87171' : '#34d399', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 800 }}>
+                {tieneDeuda ? 'Deuda Total Pendiente' : 'Estado de Cuenta'}
+              </span>
+              <span style={{ fontSize: '16px' }}>{tieneDeuda ? '⚠️' : '✅'}</span>
             </div>
-            <p style={{ color: '#888', fontSize: '12px', margin: '4px 0 0' }}>
-              {selected.es_ph
-                ? '⭐ Tarifa especial Penthouse: cuota superior por metraje total'
-                : 'Cuota de prorrateo para gastos mensuales del edificio'}
+
+            <div style={{ color: tieneDeuda ? '#ef4444' : '#10b981', fontSize: '24px', fontWeight: 900 }}>
+              {tieneDeuda ? (
+                selected.deuda_usd > 0
+                  ? `$${selected.deuda_usd.toFixed(2)} USD`
+                  : `Bs. ${selected.deuda_bs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}`
+              ) : '$0.00 USD'}
+            </div>
+
+            <p style={{ color: '#888', fontSize: '11.5px', margin: '4px 0 0' }}>
+              {tieneDeuda ? (
+                `≈ Bs. ${totalDeudaEquivBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (Tasa: Bs. ${tasaBcvValida.toFixed(2)})`
+              ) : (
+                'El apartamento no debe ninguna cuota ni recibo.'
+              )}
             </p>
           </div>
+
+          {/* KPI 2: Saldo a Favor / Cuenta Corriente */}
+          <div style={{
+            backgroundColor: tieneSaldo ? 'rgba(16, 185, 129, 0.08)' : '#0f0f10',
+            border: `1px solid ${tieneSaldo ? 'rgba(16, 185, 129, 0.35)' : '#222'}`,
+            borderRadius: '12px',
+            padding: '16px',
+            boxSizing: 'border-box'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+              <span style={{ color: tieneSaldo ? '#4ade80' : '#888', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 800 }}>
+                Saldo a Favor / Billetera
+              </span>
+              <span style={{ fontSize: '16px' }}>💚</span>
+            </div>
+
+            <div style={{ color: tieneSaldo ? '#4ade80' : '#fff', fontSize: '24px', fontWeight: 900 }}>
+              {tieneSaldo ? (
+                saldoUsd >= 1
+                  ? `+$${saldoUsd.toFixed(2)} USD`
+                  : `+Bs. ${saldoBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}`
+              ) : '$0.00 USD'}
+            </div>
+
+            <p style={{ color: '#888', fontSize: '11.5px', margin: '4px 0 0' }}>
+              {tieneSaldo ? 'Crédito disponible para amortizar cuotas' : 'Sin saldo positivo acumulado'}
+            </p>
+          </div>
+
+          {/* KPI 3: Alícuota de Condominio */}
+          <div style={{
+            backgroundColor: '#0f0f10',
+            border: '1px solid #222',
+            borderRadius: '12px',
+            padding: '16px',
+            boxSizing: 'border-box'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+              <span style={{ color: 'var(--color-accent, #f97316)', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 800 }}>
+                Alícuota Inmueble
+              </span>
+              <span style={{ fontSize: '16px' }}>📊</span>
+            </div>
+
+            <div style={{ color: '#fff', fontSize: '24px', fontWeight: 900 }}>
+              {formatAlicuotaPct(selected.alicuota)}
+            </div>
+
+            <p style={{ color: '#888', fontSize: '11.5px', margin: '4px 0 0' }}>
+              {selected.es_ph ? 'Penthouse (tarifa especial de metraje)' : 'Cuota de prorrateo mensual estándar'}
+            </p>
+          </div>
+        </div>
+
+        {/* ── BOTONES DE GESTIÓN DE SALDO Y COMPENSACIÓN ── */}
+        <div style={{
+          backgroundColor: '#0a0a0a',
+          border: '1px solid #1f1f1f',
+          borderRadius: '10px',
+          padding: '10px 14px',
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: '8px',
+          alignItems: 'center',
+          justifyContent: 'space-between'
+        }}>
+          <span style={{ color: '#888', fontSize: '12px', fontWeight: 600 }}>
+            Acciones de Saldo:
+          </span>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+            <button
+              type="button"
+              onClick={() => setAbonarModalOpen(true)}
+              style={{
+                backgroundColor: 'rgba(34, 197, 94, 0.15)',
+                color: '#4ade80',
+                border: '1px solid rgba(34, 197, 94, 0.4)',
+                padding: '6px 12px',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '11.5px',
+                fontWeight: 700,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px'
+              }}
+            >
+              <span>➕</span> Abonar Saldo a Favor
+            </button>
+
+            {tieneSaldo && tieneDeuda && (
+              <button
+                type="button"
+                onClick={() => setCompensarModalOpen(true)}
+                style={{
+                  backgroundColor: 'rgba(59, 130, 246, 0.15)',
+                  color: '#60a5fa',
+                  border: '1px solid rgba(59, 130, 246, 0.4)',
+                  padding: '6px 12px',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '11.5px',
+                  fontWeight: 700,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px'
+                }}
+              >
+                <span>⚡</span> Compensar Deuda
+              </button>
+            )}
+
+            {tieneSaldo && (
+              <button
+                type="button"
+                onClick={() => setSaldoModalOpen(true)}
+                style={{
+                  backgroundColor: 'rgba(239, 68, 68, 0.12)',
+                  color: '#f87171',
+                  border: '1px solid rgba(239, 68, 68, 0.35)',
+                  padding: '6px 10px',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '11.5px',
+                  fontWeight: 600
+                }}
+              >
+                <span>🗑️</span> Quitar Saldo
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* ── BARRA DE PESTAÑAS DEL APARTAMENTO ── */}
+        <div style={{
+          display: 'flex',
+          borderBottom: '1px solid #2a2a2a',
+          gap: '6px',
+          overflowX: 'auto',
+          paddingBottom: '2px'
+        }}>
           <button
-            onClick={() => { setForm({ ...selected }); setEditMode(true) }}
+            onClick={() => setTabActiva('deudas')}
             style={{
-              backgroundColor: '#1e1e1e',
-              color: 'var(--color-accent, #f97316)',
-              border: '1px solid var(--border-accent, #f9731640)',
-              padding: '8px 14px',
-              borderRadius: '8px',
+              padding: '10px 16px',
+              backgroundColor: 'transparent',
+              border: 'none',
+              borderBottom: `3px solid ${tabActiva === 'deudas' ? 'var(--color-accent, #f97316)' : 'transparent'}`,
+              color: tabActiva === 'deudas' ? '#fff' : '#888',
+              fontSize: '13px',
+              fontWeight: tabActiva === 'deudas' ? 800 : 600,
               cursor: 'pointer',
-              fontSize: '12px',
-              fontWeight: 700,
-              width: isMobile ? '100%' : 'auto',
-              textAlign: 'center'
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              whiteSpace: 'nowrap'
             }}
           >
-            Modificar %
+            <span>💰</span>
+            <span>Deudas y Cuotas Extras</span>
+            {itemsDeuda.length > 0 && (
+              <span style={{
+                backgroundColor: '#ef4444',
+                color: '#fff',
+                fontSize: '10.5px',
+                padding: '1px 6px',
+                borderRadius: '10px',
+                fontWeight: 800
+              }}>
+                {itemsDeuda.length}
+              </span>
+            )}
+          </button>
+
+          <button
+            onClick={() => setTabActiva('recibos')}
+            style={{
+              padding: '10px 16px',
+              backgroundColor: 'transparent',
+              border: 'none',
+              borderBottom: `3px solid ${tabActiva === 'recibos' ? 'var(--color-accent, #f97316)' : 'transparent'}`,
+              color: tabActiva === 'recibos' ? '#fff' : '#888',
+              fontSize: '13px',
+              fontWeight: tabActiva === 'recibos' ? 800 : 600,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            <span>📄</span>
+            <span>Recibos Emitidos ({selected.recibos_emitidos.length})</span>
+          </button>
+
+          <button
+            onClick={() => setTabActiva('pagos')}
+            style={{
+              padding: '10px 16px',
+              backgroundColor: 'transparent',
+              border: 'none',
+              borderBottom: `3px solid ${tabActiva === 'pagos' ? 'var(--color-accent, #f97316)' : 'transparent'}`,
+              color: tabActiva === 'pagos' ? '#fff' : '#888',
+              fontSize: '13px',
+              fontWeight: tabActiva === 'pagos' ? 800 : 600,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            <span>💳</span>
+            <span>Historial de Pagos ({selected.historial_pagos.length})</span>
+          </button>
+
+          <button
+            onClick={() => setTabActiva('datos')}
+            style={{
+              padding: '10px 16px',
+              backgroundColor: 'transparent',
+              border: 'none',
+              borderBottom: `3px solid ${tabActiva === 'datos' ? 'var(--color-accent, #f97316)' : 'transparent'}`,
+              color: tabActiva === 'datos' ? '#fff' : '#888',
+              fontSize: '13px',
+              fontWeight: tabActiva === 'datos' ? 800 : 600,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            <span>👤</span>
+            <span>Contacto y Habitabilidad</span>
           </button>
         </div>
 
-        {/* Status Banner Financiero */}
-        <div style={{
-          backgroundColor: `${getDeudaColor(selected.meses_deuda)}15`,
-          border: `1px solid ${getDeudaColor(selected.meses_deuda)}30`,
-          padding: '14px 16px',
-          borderRadius: '12px',
-          marginBottom: '16px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '14px'
-        }}>
-          <div style={{ fontSize: '24px' }}>{selected.meses_deuda === 0 ? '✅' : '⚠️'}</div>
-          <div>
-            <h3 style={{ color: getDeudaColor(selected.meses_deuda), margin: 0, fontSize: '14px', fontWeight: 700 }}>
-              {selected.meses_deuda === 0 ? 'Solvente' : `En mora (${selected.meses_deuda} mes${selected.meses_deuda > 1 ? 'es' : ''})`}
-            </h3>
-            <p style={{ color: '#aaa', fontSize: '12px', margin: '2px 0 0' }}>
-              {selected.meses_deuda === 0 ? 'El apartamento se encuentra solvente con sus cuotas.' : 'Presenta compromisos pendientes de pago.'}
-            </p>
-          </div>
-        </div>
+        {/* ── CONTENIDO DE LAS PESTAÑAS ── */}
 
-        {/* Info Grid Propietario / Inquilino */}
-        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '14px', marginBottom: '16px' }}>
-          <div style={{ backgroundColor: '#0a0a0a', padding: '16px', borderRadius: '12px', border: '1px solid #2a2a2a' }}>
-            <h3 style={{ color: '#888', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '10px', marginTop: 0 }}>
-              👤 Propietario
-            </h3>
-            <p style={{ color: '#fff', fontWeight: 700, fontSize: '15px', margin: '0 0 6px' }}>{selected.propietario.nombre}</p>
-            <p style={{ color: '#aaa', fontSize: '13px', margin: '0 0 4px' }}>📞 {selected.propietario.telefono}</p>
-            {selected.propietario.email && (
-              <p style={{ color: '#aaa', fontSize: '13px', margin: 0 }}>✉️ {selected.propietario.email}</p>
-            )}
-
-            {/* Botones de contacto directo */}
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '12px', paddingTop: '10px', borderTop: '1px solid #1a1a1a' }}>
-              {cleanPhone && selected.propietario.telefono !== 'Sin teléfono' && (
-                <>
-                  <a
-                    href={`tel:${cleanPhone}`}
-                    style={{
-                      backgroundColor: '#18181b',
-                      color: '#10b981',
-                      border: '1px solid #10b98140',
-                      padding: '6px 12px',
-                      borderRadius: '8px',
-                      fontSize: '12px',
-                      fontWeight: 600,
-                      textDecoration: 'none',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px'
-                    }}
-                  >
-                    📞 Llamar
-                  </a>
-                  <a
-                    href={`https://wa.me/${waPhone}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{
-                      backgroundColor: '#18181b',
-                      color: '#22c55e',
-                      border: '1px solid #22c55e40',
-                      padding: '6px 12px',
-                      borderRadius: '8px',
-                      fontSize: '12px',
-                      fontWeight: 600,
-                      textDecoration: 'none',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px'
-                    }}
-                  >
-                    💬 WhatsApp
-                  </a>
-                </>
-              )}
-              {selected.propietario.email && (
-                <a
-                  href={`mailto:${selected.propietario.email}`}
-                  style={{
-                    backgroundColor: '#18181b',
-                    color: '#3b82f6',
-                    border: '1px solid #3b82f640',
-                    padding: '6px 12px',
-                    borderRadius: '8px',
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    textDecoration: 'none',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '4px'
-                  }}
-                >
-                  ✉️ Email
-                </a>
-              )}
-            </div>
-          </div>
-
-          {selected.estado_ocupacion === 'alquilado' && selected.inquilino && (
-            <div style={{ backgroundColor: '#0a0a0a', padding: '16px', borderRadius: '12px', border: '1px solid #2a2a2a' }}>
-              <h3 style={{ color: '#60a5fa', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '10px', marginTop: 0 }}>
-                🔑 Inquilino / Responsable
-              </h3>
-              <p style={{ color: '#fff', fontWeight: 700, fontSize: '15px', margin: '0 0 6px' }}>{selected.inquilino.nombre}</p>
-              <p style={{ color: '#aaa', fontSize: '13px', margin: 0 }}>📞 {selected.inquilino.telefono}</p>
-
-              {selected.inquilino.telefono && selected.inquilino.telefono !== 'N/D' && (
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '12px', paddingTop: '10px', borderTop: '1px solid #1a1a1a' }}>
-                  <a
-                    href={`tel:${selected.inquilino.telefono.replace(/[^\d+]/g, '')}`}
-                    style={{
-                      backgroundColor: '#18181b',
-                      color: '#10b981',
-                      border: '1px solid #10b98140',
-                      padding: '6px 12px',
-                      borderRadius: '8px',
-                      fontSize: '12px',
-                      fontWeight: 600,
-                      textDecoration: 'none',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px'
-                    }}
-                  >
-                    📞 Llamar
-                  </a>
-                  <a
-                    href={`https://wa.me/${selected.inquilino.telefono.replace(/\D/g, '').startsWith('0') ? '58' + selected.inquilino.telefono.replace(/\D/g, '').substring(1) : selected.inquilino.telefono.replace(/\D/g, '')}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{
-                      backgroundColor: '#18181b',
-                      color: '#22c55e',
-                      border: '1px solid #22c55e40',
-                      padding: '6px 12px',
-                      borderRadius: '8px',
-                      fontSize: '12px',
-                      fontWeight: 600,
-                      textDecoration: 'none',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px'
-                    }}
-                  >
-                    💬 WhatsApp
-                  </a>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Botón borrar usuario en vista móvil */}
-        {isMobile && selected.tiene_usuario && (
-          <div style={{ marginBottom: '18px' }}>
-            <button
-              onClick={() => setShowDeleteModal(true)}
-              style={{
-                width: '100%',
-                backgroundColor: 'rgba(239, 68, 68, 0.12)',
-                color: '#ef4444',
-                border: '1px solid rgba(239, 68, 68, 0.35)',
-                padding: '11px',
-                borderRadius: '10px',
-                cursor: 'pointer',
-                fontSize: '13px',
-                fontWeight: 700,
+        {/* 1. TAB: DEUDAS Y CUOTAS EXTRAS */}
+        {tabActiva === 'deudas' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {!tieneDeuda ? (
+              <div style={{
+                backgroundColor: 'rgba(16, 185, 129, 0.08)',
+                border: '1px solid rgba(16, 185, 129, 0.3)',
+                borderRadius: '12px',
+                padding: '28px 20px',
+                textAlign: 'center',
                 display: 'flex',
+                flexDirection: 'column',
                 alignItems: 'center',
-                justifyContent: 'center',
-                gap: '6px',
-              }}
-            >
-              🗑️ Borrar Usuario Registrado
-            </button>
+                gap: '10px'
+              }}>
+                <span style={{ fontSize: '42px' }}>🎉</span>
+                <h3 style={{ color: '#34d399', fontSize: '18px', fontWeight: 800, margin: 0 }}>
+                  ¡Apto {selected.apartamento} está completamente solvente!
+                </h3>
+                <p style={{ color: '#aaa', fontSize: '13px', margin: 0, maxWidth: '480px', lineHeight: 1.5 }}>
+                  No presenta deudas históricas del 2025, cuotas extras de ascensor ni recibos mensuales pendientes.
+                </p>
+                {cleanPhone && (
+                  <a
+                    href={`https://wa.me/${waPhone}?text=${generarMensajeWhatsApp(selected)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{
+                      marginTop: '8px',
+                      backgroundColor: 'rgba(34, 197, 94, 0.15)',
+                      color: '#4ade80',
+                      border: '1px solid rgba(34, 197, 94, 0.4)',
+                      padding: '8px 16px',
+                      borderRadius: '8px',
+                      fontSize: '12.5px',
+                      fontWeight: 700,
+                      textDecoration: 'none',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}
+                  >
+                    💬 Enviar Constancia de Solvencia por WhatsApp
+                  </a>
+                )}
+              </div>
+            ) : (
+              <>
+                {/* Banner de alerta de mora */}
+                <div style={{
+                  backgroundColor: tasaInfo ? tasaInfo.bg : 'rgba(239, 68, 68, 0.1)',
+                  border: `1px solid ${tasaInfo ? tasaInfo.border : 'rgba(239, 68, 68, 0.3)'}`,
+                  borderRadius: '12px',
+                  padding: '14px 16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: '12px'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <span style={{ fontSize: '24px' }}>⚠️</span>
+                    <div>
+                      <h4 style={{ color: tasaInfo ? tasaInfo.color : '#ef4444', margin: 0, fontSize: '14.5px', fontWeight: 800 }}>
+                        {tasaInfo ? tasaInfo.label : 'En estado de mora'} · {itemsDeuda.length} concepto{itemsDeuda.length !== 1 ? 's' : ''} pendiente{itemsDeuda.length !== 1 ? 's' : ''}
+                      </h4>
+                      <p style={{ color: '#aaa', margin: '2px 0 0', fontSize: '12px' }}>
+                        Acción administrativa recomendada: <strong style={{ color: '#fff' }}>{mora?.accion_legal?.replace(/_/g, ' ') || 'Notificación'}</strong>
+                      </p>
+                    </div>
+                  </div>
+
+                  {cleanPhone && (
+                    <a
+                      href={`https://wa.me/${waPhone}?text=${generarMensajeWhatsApp(selected)}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{
+                        backgroundColor: '#22c55e',
+                        color: '#000',
+                        padding: '8px 14px',
+                        borderRadius: '8px',
+                        fontSize: '12px',
+                        fontWeight: 800,
+                        textDecoration: 'none',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                      }}
+                    >
+                      💬 Cobrar / Enviar Desglose WhatsApp
+                    </a>
+                  )}
+                </div>
+
+                {/* LISTA COMPLETA DE CONCEPTOS PENDIENTES */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <h3 style={{ color: '#fff', fontSize: '14px', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span>📋</span> Desglose de Compromisos Pendientes
+                  </h3>
+
+                  {itemsDeuda.map((item, idx) => (
+                    <div
+                      key={item.id || idx}
+                      style={{
+                        backgroundColor: '#0a0a0a',
+                        border: '1px solid #262626',
+                        borderRadius: '10px',
+                        padding: '12px 16px',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        gap: '8px'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <span style={{ fontSize: '20px' }}>{item.icono || '📌'}</span>
+                        <div>
+                          <p style={{ color: '#fff', fontSize: '13.5px', fontWeight: 700, margin: 0 }}>
+                            {item.label}
+                          </p>
+                          <span style={{
+                            fontSize: '10px',
+                            fontWeight: 700,
+                            color: item.categoria === 'deuda_2025' ? '#f59e0b' : item.categoria === 'cuota_especial' ? '#8b5cf6' : '#3b82f6',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.5px'
+                          }}>
+                            {item.categoria === 'deuda_2025' ? 'Deuda Pasada' : item.categoria === 'cuota_especial' ? 'Cuota Extra / Especial' : 'Recibo Mensual'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ color: '#fff', fontSize: '15px', fontWeight: 800 }}>
+                          {item.moneda === 'USD' ? `$${item.monto.toFixed(2)} USD` : `Bs. ${item.monto.toLocaleString('es-VE', { minimumFractionDigits: 2 })}`}
+                        </div>
+                        <span style={{
+                          fontSize: '10px',
+                          fontWeight: 700,
+                          backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                          color: '#ef4444',
+                          padding: '1px 6px',
+                          borderRadius: '4px'
+                        }}>
+                          PENDIENTE
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Acciones directas sobre la deuda */}
+                <div style={{
+                  display: 'flex',
+                  gap: '8px',
+                  flexWrap: 'wrap',
+                  paddingTop: '10px',
+                  borderTop: '1px solid #222'
+                }}>
+                  <button
+                    onClick={() => navigate('/admin/mora')}
+                    style={{
+                      backgroundColor: '#1c1c1e',
+                      color: '#fff',
+                      border: '1px solid #333',
+                      padding: '8px 14px',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px'
+                    }}
+                  >
+                    ⚖️ Gestionar en Módulo de Mora
+                  </button>
+
+                  <button
+                    onClick={() => navigate('/admin/calendario-deudas')}
+                    style={{
+                      backgroundColor: '#1c1c1e',
+                      color: 'var(--color-accent, #f97316)',
+                      border: '1px solid var(--border-accent, #f9731640)',
+                      padding: '8px 14px',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px'
+                    }}
+                  >
+                    📊 Ver en Matriz del Calendario
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         )}
 
-        {/* Historial de Pagos del Residente */}
-        <div>
-          <h3 style={{ color: '#fff', fontSize: '15px', marginBottom: '14px', borderBottom: '1px solid #2a2a2a', paddingBottom: '8px' }}>
-            💳 Historial de Pagos ({selected.historial_pagos.length})
-          </h3>
-          {selected.historial_pagos.length === 0 ? (
-            <div style={{ backgroundColor: '#0a0a0a', padding: '20px', borderRadius: '12px', border: '1px solid #2a2a2a', color: '#666', fontSize: '13px', textAlign: 'center' }}>
-              No hay pagos registrados para este apartamento todavía.
+        {/* 2. TAB: RECIBOS EMITIDOS */}
+        {tabActiva === 'recibos' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ color: '#fff', fontSize: '14.5px', fontWeight: 700, margin: 0 }}>
+                Recibos de Condominio Emitidos ({selected.recibos_emitidos.length})
+              </h3>
+              <button
+                onClick={() => navigate('/admin/recibos-emitidos')}
+                style={{
+                  backgroundColor: 'transparent',
+                  color: 'var(--color-accent, #f97316)',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  fontWeight: 700
+                }}
+              >
+                Ver todos los recibos emitidos →
+              </button>
             </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {selected.historial_pagos.map((p) => (
-                <div key={p.id} style={{
-                  backgroundColor: '#0a0a0a',
-                  padding: '12px 14px',
-                  borderRadius: '10px',
-                  border: '1px solid #2a2a2a',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  flexWrap: isMobile ? 'wrap' : 'nowrap',
-                  gap: '8px'
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
-                    <div style={{
-                      width: '9px',
-                      height: '9px',
-                      borderRadius: '50%',
-                      backgroundColor: p.estado === 'aprobado' ? '#10b981' : p.estado === 'pendiente' ? '#f59e0b' : '#ef4444',
-                      flexShrink: 0
-                    }} />
-                    <div>
-                      <p style={{ color: '#fff', fontSize: '13.5px', fontWeight: 700, margin: 0 }}>{p.monto}</p>
-                      <p style={{ color: '#777', fontSize: '11px', margin: '2px 0 0' }}>Ref: {p.referencia} · {new Date(p.fecha).toLocaleDateString()}</p>
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{
-                      padding: '3px 8px',
-                      borderRadius: '5px',
-                      fontSize: '10.5px',
-                      fontWeight: 700,
-                      backgroundColor: p.estado === 'aprobado' ? '#10b98120' : p.estado === 'pendiente' ? '#f59e0b20' : '#ef444420',
-                      color: p.estado === 'aprobado' ? '#10b981' : p.estado === 'pendiente' ? '#f59e0b' : '#ef4444',
-                    }}>
-                      {p.estado.toUpperCase()}
-                    </span>
-                    {p.estado === 'pendiente' && (
-                      <button
-                        onClick={() => navigate('/admin/recibos?filtro=pendiente')}
-                        style={{
-                          backgroundColor: '#f59e0b',
-                          color: '#000',
-                          border: 'none',
-                          padding: '4px 8px',
+
+            {selected.recibos_emitidos.length === 0 ? (
+              <div style={{
+                backgroundColor: '#0a0a0a',
+                border: '1px solid #222',
+                borderRadius: '10px',
+                padding: '24px',
+                textAlign: 'center',
+                color: '#666',
+                fontSize: '13px'
+              }}>
+                No hay recibos generados todavía para este apartamento.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {selected.recibos_emitidos.map((rec) => {
+                  const esPagado = rec.estado === 'pagado'
+                  return (
+                    <div
+                      key={rec.id}
+                      style={{
+                        backgroundColor: '#0a0a0a',
+                        border: '1px solid #222',
+                        borderRadius: '10px',
+                        padding: '12px 16px',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        gap: '8px'
+                      }}
+                    >
+                      <div>
+                        <p style={{ color: '#fff', fontSize: '13.5px', fontWeight: 700, margin: 0 }}>
+                          Mes Facturado: {rec.mes_facturado}
+                        </p>
+                        <p style={{ color: '#777', fontSize: '11px', margin: '2px 0 0' }}>
+                          Emitido: {rec.emitido_at ? new Date(rec.emitido_at).toLocaleDateString() : 'N/D'} · Tasa BCV: Bs. {rec.tasa_bcv || tasaBcvValida}
+                        </p>
+                      </div>
+
+                      <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div>
+                          <div style={{ color: '#fff', fontSize: '14px', fontWeight: 800 }}>
+                            {rec.total_usd > 0 ? `$${rec.total_usd.toFixed(2)} USD` : ''}
+                            {rec.total_usd > 0 && rec.total_bs > 0 ? ' · ' : ''}
+                            {rec.total_bs > 0 ? `Bs. ${rec.total_bs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}` : ''}
+                          </div>
+                        </div>
+
+                        <span style={{
+                          padding: '3px 8px',
                           borderRadius: '5px',
                           fontSize: '10.5px',
-                          fontWeight: 700,
-                          cursor: 'pointer',
+                          fontWeight: 800,
+                          backgroundColor: esPagado ? '#10b98120' : '#f59e0b20',
+                          color: esPagado ? '#10b981' : '#f59e0b',
+                        }}>
+                          {rec.estado.toUpperCase()}
+                        </span>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 3. TAB: HISTORIAL DE PAGOS */}
+        {tabActiva === 'pagos' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ color: '#fff', fontSize: '14.5px', fontWeight: 700, margin: 0 }}>
+                Pagos Reportados ({selected.historial_pagos.length})
+              </h3>
+              <button
+                onClick={() => navigate('/admin/recibos')}
+                style={{
+                  backgroundColor: 'transparent',
+                  color: 'var(--color-accent, #f97316)',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  fontWeight: 700
+                }}
+              >
+                Panel de Aprobación de Pagos →
+              </button>
+            </div>
+
+            {selected.historial_pagos.length === 0 ? (
+              <div style={{
+                backgroundColor: '#0a0a0a',
+                border: '1px solid #222',
+                borderRadius: '10px',
+                padding: '24px',
+                textAlign: 'center',
+                color: '#666',
+                fontSize: '13px'
+              }}>
+                No hay pagos reportados todavía para este apartamento.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {selected.historial_pagos.map((p) => (
+                  <div
+                    key={p.id}
+                    style={{
+                      backgroundColor: '#0a0a0a',
+                      padding: '12px 14px',
+                      borderRadius: '10px',
+                      border: '1px solid #2a2a2a',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      flexWrap: isMobile ? 'wrap' : 'nowrap',
+                      gap: '8px'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                      <div style={{
+                        width: '9px',
+                        height: '9px',
+                        borderRadius: '50%',
+                        backgroundColor: p.estado === 'aprobado' ? '#10b981' : p.estado === 'pendiente' ? '#f59e0b' : '#ef4444',
+                        flexShrink: 0
+                      }} />
+                      <div>
+                        <p style={{ color: '#fff', fontSize: '13.5px', fontWeight: 700, margin: 0 }}>{p.monto}</p>
+                        <p style={{ color: '#777', fontSize: '11px', margin: '2px 0 0' }}>
+                          Ref: {p.referencia} · {p.banco} · {new Date(p.fecha).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      {p.comprobante_url && (
+                        <button
+                          type="button"
+                          onClick={() => setComprobanteModalUrl(p.comprobante_url || null)}
+                          style={{
+                            backgroundColor: '#1e1e1e',
+                            color: '#60a5fa',
+                            border: '1px solid #3b82f640',
+                            padding: '4px 8px',
+                            borderRadius: '5px',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            cursor: 'pointer'
+                          }}
+                        >
+                          🖼️ Comprobante
+                        </button>
+                      )}
+
+                      <span style={{
+                        padding: '3px 8px',
+                        borderRadius: '5px',
+                        fontSize: '10.5px',
+                        fontWeight: 700,
+                        backgroundColor: p.estado === 'aprobado' ? '#10b98120' : p.estado === 'pendiente' ? '#f59e0b20' : '#ef444420',
+                        color: p.estado === 'aprobado' ? '#10b981' : p.estado === 'pendiente' ? '#f59e0b' : '#ef4444',
+                      }}>
+                        {p.estado.toUpperCase()}
+                      </span>
+
+                      {p.estado === 'pendiente' && (
+                        <button
+                          onClick={() => navigate('/admin/recibos?filtro=pendiente')}
+                          style={{
+                            backgroundColor: '#f59e0b',
+                            color: '#000',
+                            border: 'none',
+                            padding: '4px 8px',
+                            borderRadius: '5px',
+                            fontSize: '10.5px',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Revisar →
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 4. TAB: CONTACTO Y HABITABILIDAD */}
+        {tabActiva === 'datos' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '14px' }}>
+              {/* Propietario */}
+              <div style={{ backgroundColor: '#0a0a0a', padding: '16px', borderRadius: '12px', border: '1px solid #2a2a2a' }}>
+                <h3 style={{ color: '#888', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '10px', marginTop: 0 }}>
+                  👤 Propietario
+                </h3>
+                <p style={{ color: '#fff', fontWeight: 700, fontSize: '15px', margin: '0 0 6px' }}>{selected.propietario.nombre}</p>
+                <p style={{ color: '#aaa', fontSize: '13px', margin: '0 0 4px' }}>📞 {selected.propietario.telefono}</p>
+                {selected.propietario.email && (
+                  <p style={{ color: '#aaa', fontSize: '13px', margin: 0 }}>✉️ {selected.propietario.email}</p>
+                )}
+
+                {/* Botones de contacto directo */}
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '12px', paddingTop: '10px', borderTop: '1px solid #1a1a1a' }}>
+                  {cleanPhone && selected.propietario.telefono !== 'Sin teléfono' && (
+                    <>
+                      <a
+                        href={`tel:${cleanPhone}`}
+                        style={{
+                          backgroundColor: '#18181b',
+                          color: '#10b981',
+                          border: '1px solid #10b98140',
+                          padding: '6px 12px',
+                          borderRadius: '8px',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          textDecoration: 'none',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px'
                         }}
                       >
-                        Gestionar →
-                      </button>
-                    )}
-                  </div>
+                        📞 Llamar
+                      </a>
+                      <a
+                        href={`https://wa.me/${waPhone}?text=${generarMensajeWhatsApp(selected)}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{
+                          backgroundColor: '#18181b',
+                          color: '#22c55e',
+                          border: '1px solid #22c55e40',
+                          padding: '6px 12px',
+                          borderRadius: '8px',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          textDecoration: 'none',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                      >
+                        💬 WhatsApp
+                      </a>
+                    </>
+                  )}
+                  {selected.propietario.email && (
+                    <a
+                      href={`mailto:${selected.propietario.email}`}
+                      style={{
+                        backgroundColor: '#18181b',
+                        color: '#3b82f6',
+                        border: '1px solid #3b82f640',
+                        padding: '6px 12px',
+                        borderRadius: '8px',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        textDecoration: 'none',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px'
+                      }}
+                    >
+                      ✉️ Email
+                    </a>
+                  )}
                 </div>
-              ))}
+              </div>
+
+              {/* Inquilino */}
+              {selected.estado_ocupacion === 'alquilado' && selected.inquilino ? (
+                <div style={{ backgroundColor: '#0a0a0a', padding: '16px', borderRadius: '12px', border: '1px solid #2a2a2a' }}>
+                  <h3 style={{ color: '#60a5fa', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '10px', marginTop: 0 }}>
+                    🔑 Inquilino / Responsable
+                  </h3>
+                  <p style={{ color: '#fff', fontWeight: 700, fontSize: '15px', margin: '0 0 6px' }}>{selected.inquilino.nombre}</p>
+                  <p style={{ color: '#aaa', fontSize: '13px', margin: 0 }}>📞 {selected.inquilino.telefono}</p>
+
+                  {selected.inquilino.telefono && selected.inquilino.telefono !== 'N/D' && (
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '12px', paddingTop: '10px', borderTop: '1px solid #1a1a1a' }}>
+                      <a
+                        href={`tel:${selected.inquilino.telefono.replace(/[^\d+]/g, '')}`}
+                        style={{
+                          backgroundColor: '#18181b',
+                          color: '#10b981',
+                          border: '1px solid #10b98140',
+                          padding: '6px 12px',
+                          borderRadius: '8px',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          textDecoration: 'none',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                      >
+                        📞 Llamar
+                      </a>
+                      <a
+                        href={`https://wa.me/${selected.inquilino.telefono.replace(/\D/g, '').startsWith('0') ? '58' + selected.inquilino.telefono.replace(/\D/g, '').substring(1) : selected.inquilino.telefono.replace(/\D/g, '')}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{
+                          backgroundColor: '#18181b',
+                          color: '#22c55e',
+                          border: '1px solid #22c55e40',
+                          padding: '6px 12px',
+                          borderRadius: '8px',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          textDecoration: 'none',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                      >
+                        💬 WhatsApp
+                      </a>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div style={{ backgroundColor: '#0a0a0a', padding: '16px', borderRadius: '12px', border: '1px solid #2a2a2a', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                  <h3 style={{ color: '#888', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', marginTop: 0 }}>
+                    Condición de Ocupación
+                  </h3>
+                  <p style={{ color: '#fff', fontSize: '14px', fontWeight: 600, margin: '0 0 6px' }}>
+                    {getOcupacionLabel(selected.estado_ocupacion)}
+                  </p>
+                  <p style={{ color: '#666', fontSize: '12px', margin: 0 }}>
+                    {selected.estado_ocupacion === 'ocupado_propietario'
+                      ? 'El inmueble es habitado por su propietario registrado.'
+                      : 'El apartamento se encuentra desocupado actualmente.'}
+                  </p>
+                </div>
+              )}
             </div>
-          )}
-        </div>
+
+            {/* Notas internas */}
+            {selected.notas_internas && (
+              <div style={{ backgroundColor: '#0a0a0a', padding: '14px 16px', borderRadius: '10px', border: '1px solid #262626' }}>
+                <span style={{ color: '#888', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 700 }}>
+                  Notas Internas (Solo Administración)
+                </span>
+                <p style={{ color: '#ccc', fontSize: '13px', margin: '4px 0 0', lineHeight: 1.5 }}>
+                  {selected.notas_internas}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
 
       </div>
     )
@@ -1252,10 +1897,10 @@ export const AdminResidentes: React.FC = () => {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '18px', gap: '12px' }}>
           <div>
             <h1 style={{ color: '#fff', fontSize: isMobile ? '20px' : '24px', fontWeight: 800, margin: 0 }}>
-              🏠 Gestión de Residentes
+              🏠 Gestión de Residentes e Inmuebles
             </h1>
             <p style={{ color: '#888', fontSize: '12.5px', marginTop: '4px', lineHeight: 1.4 }}>
-              {residentes.length} apartamentos · Alícuotas de cobro y residentes registrados
+              {residentes.length} apartamentos · Deudas, cuotas extraordinarias, saldos y alícuotas
             </p>
           </div>
           <button
@@ -1366,7 +2011,7 @@ export const AdminResidentes: React.FC = () => {
         )
       ) : (
         /* Vista Desktop: 2 columnas lado a lado */
-        <div style={{ display: 'grid', gridTemplateColumns: '360px 1fr', gap: '24px', flex: 1, minHeight: 0 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '370px 1fr', gap: '24px', flex: 1, minHeight: 0 }}>
           {/* Columna Izquierda: Lista de Apartamentos */}
           {renderLista()}
 
@@ -1375,7 +2020,7 @@ export const AdminResidentes: React.FC = () => {
             backgroundColor: '#141414',
             border: '1px solid #1e1e1e',
             borderRadius: '16px',
-            padding: '28px',
+            padding: '24px 28px',
             overflowY: 'auto'
           }}>
             {renderContenidoDetalle()}
@@ -1427,6 +2072,72 @@ export const AdminResidentes: React.FC = () => {
                 {deleting ? 'Eliminando...' : 'Sí, Eliminar Usuario'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Previsualización de Comprobante de Pago */}
+      {comprobanteModalUrl && (
+        <div
+          onClick={() => setComprobanteModalUrl(null)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0,0,0,0.88)',
+            backdropFilter: 'blur(8px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            padding: '20px',
+            cursor: 'zoom-out'
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              backgroundColor: '#18181b',
+              border: '1px solid #333',
+              borderRadius: '16px',
+              padding: '16px',
+              maxWidth: '600px',
+              width: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ color: '#fff', fontSize: '15px', fontWeight: 700, margin: 0 }}>
+                🖼️ Comprobante de Pago
+              </h3>
+              <button
+                onClick={() => setComprobanteModalUrl(null)}
+                style={{
+                  backgroundColor: '#27272a',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '50%',
+                  width: '28px',
+                  height: '28px',
+                  cursor: 'pointer',
+                  fontWeight: 700
+                }}
+              >
+                ✕
+              </button>
+            </div>
+            <img
+              src={comprobanteModalUrl}
+              alt="Comprobante de pago"
+              style={{
+                width: '100%',
+                maxHeight: '75vh',
+                objectFit: 'contain',
+                borderRadius: '8px',
+                backgroundColor: '#000'
+              }}
+            />
           </div>
         </div>
       )}

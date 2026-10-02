@@ -559,6 +559,28 @@ export async function obtenerDeudasMora(
             })
           }
 
+          if (Array.isArray(configCalendario?.filasCuotasEspeciales)) {
+            configCalendario.filasCuotasEspeciales.forEach((fila: any) => {
+              const val = fila.valoresPorApto?.[apto.id] ?? (fila.montoDefecto ? { monto: fila.montoDefecto, estado: 'pendiente' } : null)
+              if (val && val.estado === 'pendiente' && val.monto > 0) {
+                const mon = fila.moneda || 'USD'
+                if (mon === 'USD') sumUsd += val.monto
+                else sumBs += val.monto
+                const cuotaItem: DesgloseConceptoItem = {
+                  id: fila.id,
+                  label: fila.nombre || 'Cuota Extraordinaria',
+                  categoria: 'cuota_especial',
+                  monto: Number(val.monto.toFixed(2)),
+                  moneda: mon,
+                  estado: 'pendiente',
+                  icono: '⭐'
+                }
+                cuotasAdicionales.push(cuotaItem)
+                itemsList.push(cuotaItem)
+              }
+            })
+          }
+
           const totalBs = Number(sumBs.toFixed(2))
           const totalUsd = Number(sumUsd.toFixed(2))
           const tieneDeuda = totalBs > 0.01 || totalUsd > 0.01
