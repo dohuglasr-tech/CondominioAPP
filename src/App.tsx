@@ -278,6 +278,11 @@ function AppShell() {
         <Route path="/register" element={<Register />} />
         <Route path="/reset-password" element={<ResetPassword />} />
 
+        {/* ── Rutas Multi-tenant con Slug (/e/:tenantSlug) ── */}
+        <Route path="/e/:tenantSlug" element={<Login />} />
+        <Route path="/e/:tenantSlug/login" element={<Login />} />
+        <Route path="/e/:tenantSlug/register" element={<Register />} />
+
         <Route
           path="/cambiar-password"
           element={

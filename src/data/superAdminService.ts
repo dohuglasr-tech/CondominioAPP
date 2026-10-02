@@ -1,5 +1,6 @@
 import { supabase, ConfigEdificio } from './supabase'
 import { appCache } from './cacheService'
+import { slugifyBuildingName } from './tenantService'
 
 export interface TableStats {
   name: string
@@ -38,6 +39,7 @@ export interface MasterUserData {
 export interface BuildingData {
   id: string
   nombre_edificio: string
+  slug?: string | null
   rif_edificio?: string | null
   direccion?: string | null
   ciudad?: string | null
@@ -231,8 +233,10 @@ export async function getAllBuildings(): Promise<BuildingData[]> {
   return (buildings || []).map((b: any) => {
     const aptosCount = aptos ? aptos.filter((a: any) => a.edificio_id === b.id).length : 0
     const perfsCount = perfs ? perfs.filter((p: any) => p.edificio_id === b.id).length : 0
+    const buildingSlug = b.slug || slugifyBuildingName(b.nombre_edificio)
     return {
       ...b,
+      slug: buildingSlug,
       total_apartamentos_registrados: aptosCount,
       total_usuarios_registrados: perfsCount
     }
@@ -246,9 +250,13 @@ export async function createBuilding(
 ): Promise<{ success: boolean; data?: any; error?: string }> {
   try {
     const newId = crypto.randomUUID()
-    const record = {
+    const buildingName = payload.nombre_edificio?.trim() || 'Nuevo Edificio'
+    const buildingSlug = payload.slug?.trim() || slugifyBuildingName(buildingName)
+
+    const record: any = {
       id: newId,
-      nombre_edificio: payload.nombre_edificio?.trim() || 'Nuevo Edificio',
+      nombre_edificio: buildingName,
+      slug: buildingSlug,
       rif_edificio: payload.rif_edificio?.trim() || null,
       direccion: payload.direccion?.trim() || '',
       ciudad: payload.ciudad?.trim() || '',
@@ -345,10 +353,15 @@ export async function updateBuilding(
   adminEmail = 'superadmin'
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    const cleanPayload: any = { ...payload }
+    if (cleanPayload.nombre_edificio && !cleanPayload.slug) {
+      cleanPayload.slug = slugifyBuildingName(cleanPayload.nombre_edificio)
+    }
+
     const { error } = await supabase
       .from('configuracion_edificio')
       .update({
-        ...payload,
+        ...cleanPayload,
         updated_at: new Date().toISOString()
       })
       .eq('id', buildingId)

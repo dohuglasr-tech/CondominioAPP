@@ -27,6 +27,7 @@ import {
   SystemDiagnosticReport,
   DiagnosticFinding
 } from '../../../data/superAdminService'
+import { slugifyBuildingName } from '../../../data/tenantService'
 
 export const SuperAdminDashboard: React.FC = () => {
   const navigate = useNavigate()
@@ -51,6 +52,7 @@ export const SuperAdminDashboard: React.FC = () => {
   const [editingBuilding, setEditingBuilding] = useState<BuildingData | null>(null)
   const [buildingForm, setBuildingForm] = useState<Partial<BuildingData>>({
     nombre_edificio: '',
+    slug: '',
     rif_edificio: '',
     direccion: '',
     ciudad: '',
@@ -380,6 +382,7 @@ export const SuperAdminDashboard: React.FC = () => {
     setEditingBuilding(null)
     setBuildingForm({
       nombre_edificio: '',
+      slug: '',
       rif_edificio: '',
       direccion: '',
       ciudad: '',
@@ -405,7 +408,10 @@ export const SuperAdminDashboard: React.FC = () => {
 
   const handleOpenEditBuilding = (b: BuildingData) => {
     setEditingBuilding(b)
-    setBuildingForm({ ...b })
+    setBuildingForm({
+      ...b,
+      slug: b.slug || slugifyBuildingName(b.nombre_edificio)
+    })
     setAutoGenerateApartments(false)
     setBuildingModalOpen(true)
   }
@@ -419,9 +425,13 @@ export const SuperAdminDashboard: React.FC = () => {
 
     setSavingBuilding(true)
     const adminEmail = user?.email || 'superadmin'
+    const finalForm = {
+      ...buildingForm,
+      slug: buildingForm.slug?.trim() || slugifyBuildingName(buildingForm.nombre_edificio || '')
+    }
 
     if (editingBuilding) {
-      const res = await updateBuilding(editingBuilding.id, buildingForm, adminEmail)
+      const res = await updateBuilding(editingBuilding.id, finalForm, adminEmail)
       if (res.success) {
         showNotification(`✓ Edificio ${buildingForm.nombre_edificio} actualizado.`)
         setBuildingModalOpen(false)
@@ -430,7 +440,7 @@ export const SuperAdminDashboard: React.FC = () => {
         alert(res.error || 'Error actualizando edificio')
       }
     } else {
-      const res = await createBuilding(buildingForm, autoGenerateApartments, adminEmail)
+      const res = await createBuilding(finalForm, autoGenerateApartments, adminEmail)
       if (res.success) {
         showNotification(`✓ Edificio ${buildingForm.nombre_edificio} registrado con éxito.`)
         setBuildingModalOpen(false)
@@ -1085,6 +1095,35 @@ export const SuperAdminDashboard: React.FC = () => {
                               🚨 ALERTA
                             </span>
                           )}
+                        </div>
+
+                        {/* Subdominio y Link de Acceso */}
+                        <div style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          background: 'rgba(56, 189, 248, 0.08)', border: '1px solid rgba(56, 189, 248, 0.25)',
+                          borderRadius: '8px', padding: '6px 10px', marginBottom: '12px', fontSize: '11px'
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#38bdf8', fontWeight: 700 }}>
+                            <span>🌐</span>
+                            <span style={{ fontFamily: 'monospace' }}>{b.slug || slugifyBuildingName(b.nombre_edificio)}.domus.ve</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              const slug = b.slug || slugifyBuildingName(b.nombre_edificio)
+                              const url = `${window.location.origin}/e/${slug}`
+                              navigator.clipboard.writeText(url)
+                              showNotification(`📋 Link de acceso copiado: ${url}`)
+                            }}
+                            style={{
+                              background: 'rgba(56, 189, 248, 0.2)', border: '1px solid rgba(56, 189, 248, 0.4)',
+                              color: '#fff', borderRadius: '4px', padding: '2px 8px', fontSize: '10px',
+                              cursor: 'pointer', fontWeight: 800
+                            }}
+                          >
+                            Copiar Link
+                          </button>
                         </div>
 
                         {/* Detalles */}
@@ -2548,7 +2587,17 @@ export const SuperAdminDashboard: React.FC = () => {
                       type="text"
                       required
                       value={buildingForm.nombre_edificio || ''}
-                      onChange={e => setBuildingForm({ ...buildingForm, nombre_edificio: e.target.value })}
+                      onChange={e => {
+                        const newName = e.target.value
+                        const autoSlug = !editingBuilding && (!buildingForm.slug || buildingForm.slug === slugifyBuildingName(buildingForm.nombre_edificio || ''))
+                          ? slugifyBuildingName(newName)
+                          : buildingForm.slug
+                        setBuildingForm({
+                          ...buildingForm,
+                          nombre_edificio: newName,
+                          slug: autoSlug
+                        })
+                      }}
                       placeholder="Ej: Condominio Ocutuy 6"
                       style={{
                         width: '100%', boxSizing: 'border-box', background: '#070a10',
@@ -2556,6 +2605,34 @@ export const SuperAdminDashboard: React.FC = () => {
                         color: '#fff', padding: '10px', fontSize: '13px'
                       }}
                     />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', color: '#94a3b8', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>
+                      Subdominio Asignado * (ej: ocutuy5)
+                    </label>
+                    <div style={{
+                      display: 'flex', alignItems: 'center', background: '#070a10',
+                      border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '8px', overflow: 'hidden'
+                    }}>
+                      <input
+                        type="text"
+                        required
+                        value={buildingForm.slug || ''}
+                        onChange={e => setBuildingForm({
+                          ...buildingForm,
+                          slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '')
+                        })}
+                        placeholder="ocutuy5"
+                        style={{
+                          flex: 1, background: 'transparent', border: 'none',
+                          color: '#38bdf8', padding: '10px', fontSize: '13px', fontFamily: 'monospace', fontWeight: 700
+                        }}
+                      />
+                      <span style={{ padding: '0 10px', color: '#64748b', fontSize: '12px', fontWeight: 600 }}>
+                        .domus.ve
+                      </span>
+                    </div>
                   </div>
 
                   <div>

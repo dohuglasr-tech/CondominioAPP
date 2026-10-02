@@ -3,6 +3,7 @@ import { Session, User } from '@supabase/supabase-js'
 import { supabase, Perfil, ConfigEdificio, Rol } from '../../data/supabase'
 import { appCache } from '../../data/cacheService'
 import { applyTheme } from '../../utils/themeManager'
+import { extractTenantSubdomain, resolveTenantBuilding } from '../../data/tenantService'
 
 // ── Tipos del contexto ────────────────────────────────────────────
 interface AuthContextType {
@@ -12,12 +13,15 @@ interface AuthContextType {
   perfil: Perfil | null
   config: ConfigEdificio | null
   loading: boolean
+  // Subdominio & Multi-tenant
+  tenantSubdomain: string | null
+  isSubdomainMode: boolean
   // Acciones
   signIn: (apartamento: string, password: string) => Promise<{ error: string | null }>
   signOut: () => Promise<void>
   updatePassword: (newPassword: string, email?: string) => Promise<{ error: string | null }>
   refreshPerfil: () => Promise<void>
-  refreshConfig: () => Promise<void>
+  refreshConfig: (forceRefresh?: boolean, explicitBuildingId?: string) => Promise<void>
   // Helpers de rol
   isSuperAdmin: boolean
   isAdmin: boolean
@@ -50,16 +54,50 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     sessionStorage.removeItem('condominio_is_recovery')
   }
 
-  // ── Cargar configuración del edificio con caché (30 min TTL) ──
-  const cargarConfig = useCallback(async (forceRefresh = false) => {
+  const [tenantSubdomain, setTenantSubdomain] = useState<string | null>(() => extractTenantSubdomain())
+
+  // ── Cargar configuración del edificio con resolución de subdominio & multi-tenant ──
+  const cargarConfig = useCallback(async (forceRefresh = false, explicitBuildingId?: string) => {
     try {
+      const urlTenant = extractTenantSubdomain()
+      setTenantSubdomain(urlTenant)
+
+      // 1. Si hay subdominio o parámetro en URL, resolver ese edificio
+      if (urlTenant) {
+        const tenantBuilding = await resolveTenantBuilding(urlTenant)
+        if (tenantBuilding) {
+          if (!tenantBuilding.tasa_bcv_actual || tenantBuilding.tasa_bcv_actual <= 1) {
+            tenantBuilding.tasa_bcv_actual = 859.06
+          }
+          setConfig(tenantBuilding)
+          applyTheme(tenantBuilding.color_primario)
+          return
+        }
+      }
+
+      // 2. Si se especifica un edificio explícito (ej. desde el perfil del usuario autenticado)
+      if (explicitBuildingId) {
+        const tenantBuilding = await resolveTenantBuilding(explicitBuildingId)
+        if (tenantBuilding) {
+          if (!tenantBuilding.tasa_bcv_actual || tenantBuilding.tasa_bcv_actual <= 1) {
+            tenantBuilding.tasa_bcv_actual = 859.06
+          }
+          setConfig(tenantBuilding)
+          applyTheme(tenantBuilding.color_primario)
+          return
+        }
+      }
+
+      // 3. Fallback: cargar el primer edificio registrado o configuración existente
       const data = await appCache.fetch<ConfigEdificio | null>(
-        'configuracion_edificio',
+        'configuracion_edificio_default',
         async () => {
           const { data } = await supabase
             .from('configuracion_edificio')
             .select('*')
-            .single()
+            .limit(1)
+            .maybeSingle()
+
           if (data) {
             if (!data.tasa_bcv_actual || data.tasa_bcv_actual <= 1) {
               data.tasa_bcv_actual = 859.06
@@ -76,7 +114,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         applyTheme()
       }
     } catch (e) {
-      console.warn('[Auth] Error cargando config con caché:', e)
+      console.warn('[Auth] Error cargando config multi-tenant:', e)
       applyTheme()
     }
   }, [])
@@ -100,11 +138,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           .single()
         if (fallbackData) {
           setPerfil(fallbackData)
+          if ((fallbackData as any).edificio_id) {
+            cargarConfig(false, (fallbackData as any).edificio_id)
+          }
         }
         return
       }
       if (data) {
         setPerfil(data)
+        // Sincronizar tema y configuración del edificio asociado al usuario
+        if ((data as any).edificio_id) {
+          cargarConfig(false, (data as any).edificio_id)
+        }
+
         // Registrar último acceso y sincronizar email oficial con el que se registró el propietario
         const updatePayload: Record<string, any> = { ultimo_acceso: new Date().toISOString() }
         if (userEmail && (!data.propietario_email || data.propietario_email !== userEmail) && data.condicion_habitacional !== 'alquilado') {
@@ -121,14 +167,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (e) {
       console.warn('[Auth] Excepción en cargarPerfil:', e)
     }
-  }, [])
+  }, [cargarConfig])
 
   const refreshPerfil = useCallback(async () => {
     if (user) await cargarPerfil(user.id, user.email)
   }, [user, cargarPerfil])
 
-  const refreshConfig = useCallback(async () => {
-    await cargarConfig(true)
+  const refreshConfig = useCallback(async (forceRefresh = true, explicitBuildingId?: string) => {
+    await cargarConfig(forceRefresh, explicitBuildingId)
   }, [cargarConfig])
 
   // ── Inicializar sesión y Realtime Sync al montar ───────────────
@@ -286,6 +332,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         perfil,
         config,
         loading,
+        tenantSubdomain,
+        isSubdomainMode: !!tenantSubdomain,
         signIn,
         signOut,
         updatePassword,

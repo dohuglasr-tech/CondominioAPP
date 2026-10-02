@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useAuth } from '../../application/contexts/AuthContext'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate, useLocation, useParams } from 'react-router-dom'
 import { supabase } from '../../data/supabase'
 import { AuthHeroPanel } from '../components/AuthHeroPanel'
 import {
@@ -68,8 +68,16 @@ export function Login() {
   const [bioSuccessMessage, setBioSuccessMessage] = useState<string | null>(null)
   const [enableBiometricOnLogin, setEnableBiometricOnLogin] = useState(true)
   
-  const { signIn, config, session, isAdmin } = useAuth()
+  const { tenantSlug } = useParams<{ tenantSlug?: string }>()
+  const { signIn, config, session, isAdmin, tenantSubdomain, refreshConfig } = useAuth()
+  const activeTenantSlug = tenantSlug || tenantSubdomain
   const nombreEdificio = config?.nombre_edificio || 'DOMUS'
+
+  useEffect(() => {
+    if (tenantSlug) {
+      refreshConfig(false, tenantSlug)
+    }
+  }, [tenantSlug, refreshConfig])
 
   // Redirigir si ya existe sesión activa
   useEffect(() => {
@@ -378,24 +386,47 @@ export function Login() {
           
           {/* Header del formulario */}
           <div style={{ marginBottom: '24px' }}>
-            <div style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '4px 10px',
-              borderRadius: '9999px',
-              backgroundColor: 'var(--color-accent-light, rgba(249, 115, 22, 0.12))',
-              border: '1px solid var(--border-accent, rgba(249, 115, 22, 0.25))',
-              color: 'var(--color-accent, #f97316)',
-              fontSize: '11px',
-              fontWeight: 700,
-              letterSpacing: '0.6px',
-              textTransform: 'uppercase',
-              marginBottom: '10px'
-            }}>
-              <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: 'var(--color-accent, #f97316)' }} />
-              Portal Residente
-            </div>
+            {activeTenantSlug ? (
+              <div style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '4px 12px',
+                borderRadius: '9999px',
+                backgroundColor: 'rgba(56, 189, 248, 0.12)',
+                border: '1px solid rgba(56, 189, 248, 0.3)',
+                color: '#38bdf8',
+                fontSize: '11px',
+                fontWeight: 700,
+                letterSpacing: '0.4px',
+                marginBottom: '10px'
+              }}>
+                <span>🏢</span>
+                <span>{config?.nombre_edificio || activeTenantSlug}</span>
+                <span style={{ color: '#94a3b8', fontSize: '10px' }}>
+                  ({activeTenantSlug}.domus.ve)
+                </span>
+              </div>
+            ) : (
+              <div style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '4px 10px',
+                borderRadius: '9999px',
+                backgroundColor: 'var(--color-accent-light, rgba(249, 115, 22, 0.12))',
+                border: '1px solid var(--border-accent, rgba(249, 115, 22, 0.25))',
+                color: 'var(--color-accent, #f97316)',
+                fontSize: '11px',
+                fontWeight: 700,
+                letterSpacing: '0.6px',
+                textTransform: 'uppercase',
+                marginBottom: '10px'
+              }}>
+                <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: 'var(--color-accent, #f97316)' }} />
+                Portal Residente
+              </div>
+            )}
             <h1 style={{
               fontSize: '28px',
               fontWeight: 800,
