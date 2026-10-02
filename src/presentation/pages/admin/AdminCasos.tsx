@@ -8,8 +8,8 @@ import {
   TipoCaso,
   EstadoCaso,
   MonedaCaso,
-  TIPO_CASO_INFO,
-  ESTADO_CASO_INFO,
+  getTipoCasoInfo,
+  getEstadoCasoInfo,
   obtenerCasos,
   guardarCaso,
   eliminarCaso
@@ -197,18 +197,19 @@ export const AdminCasos: React.FC = () => {
 
   const handleCambiarEstadoRapido = async (c: CasoComunidad, nuevoEstado: EstadoCaso) => {
     await guardarCaso({ ...c, estado: nuevoEstado })
-    showToast(`Estado cambiado a: ${ESTADO_CASO_INFO[nuevoEstado].label}`)
+    showToast(`Estado cambiado a: ${getEstadoCasoInfo(nuevoEstado).label}`)
     cargarDatos()
   }
 
   // Filtrado
   const casosFiltrados = useMemo(() => {
     return casos.filter(c => {
+      if (c.tipo?.startsWith('config_') || c.tipo?.startsWith('configuracion_')) return false
       if (filtroTipo !== 'todos' && c.tipo !== filtroTipo) return false
       if (filtroEstado !== 'todos' && c.estado !== filtroEstado) return false
       if (busqueda.trim()) {
         const q = busqueda.toLowerCase()
-        const matchTitulo = c.titulo.toLowerCase().includes(q)
+        const matchTitulo = (c.titulo || '').toLowerCase().includes(q)
         const matchApto = (c.apartamento_numero || '').toLowerCase().includes(q)
         const matchInvolucrado = (c.involucrado_nombre || '').toLowerCase().includes(q)
         const matchDesc = (c.descripcion || '').toLowerCase().includes(q)
@@ -225,8 +226,11 @@ export const AdminCasos: React.FC = () => {
     let multasAbiertas = 0
     let acuerdosActivos = 0
     let ingresosExternosUsd = 0
+    let totalCasosReales = 0
 
     casos.forEach(c => {
+      if (c.tipo?.startsWith('config_') || c.tipo?.startsWith('configuracion_')) return
+      totalCasosReales++
       totalUsd += c.monto_usd || 0
       totalBs += c.monto_bs || 0
       if (c.tipo === 'multa' && c.estado !== 'resuelto') multasAbiertas++
@@ -237,7 +241,7 @@ export const AdminCasos: React.FC = () => {
     })
 
     return {
-      totalCasos: casos.length,
+      totalCasos: totalCasosReales,
       multasAbiertas,
       acuerdosActivos,
       ingresosExternosUsd,
@@ -454,8 +458,8 @@ export const AdminCasos: React.FC = () => {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {casosFiltrados.map(c => {
-            const tipoMeta = TIPO_CASO_INFO[c.tipo]
-            const estadoMeta = ESTADO_CASO_INFO[c.estado]
+            const tipoMeta = getTipoCasoInfo(c.tipo)
+            const estadoMeta = getEstadoCasoInfo(c.estado)
 
             return (
               <div
@@ -642,7 +646,7 @@ export const AdminCasos: React.FC = () => {
                 </label>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '8px' }}>
                   {(['multa', 'acuerdo_pago', 'alquiler_local', 'asignacion', 'ingreso_externo'] as TipoCaso[]).map(t => {
-                    const info = TIPO_CASO_INFO[t]
+                    const info = getTipoCasoInfo(t)
                     const active = formTipo === t
                     return (
                       <button

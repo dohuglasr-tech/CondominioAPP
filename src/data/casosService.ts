@@ -65,6 +65,33 @@ export const ESTADO_CASO_INFO: Record<EstadoCaso, { label: string; color: string
   cancelado: { label: 'Cancelado', color: '#71717a', bg: 'rgba(113, 113, 122, 0.15)' }
 }
 
+export const DEFAULT_TIPO_INFO = {
+  label: 'Caso General',
+  icon: '📋',
+  color: '#94a3b8',
+  desc: 'Asunto o gestión comunitaria'
+}
+
+export const DEFAULT_ESTADO_INFO = {
+  label: 'Abierto',
+  color: '#f59e0b',
+  bg: 'rgba(245, 158, 11, 0.15)'
+}
+
+export function getTipoCasoInfo(tipo?: string) {
+  if (tipo && tipo in TIPO_CASO_INFO) {
+    return TIPO_CASO_INFO[tipo as TipoCaso]
+  }
+  return DEFAULT_TIPO_INFO
+}
+
+export function getEstadoCasoInfo(estado?: string) {
+  if (estado && estado in ESTADO_CASO_INFO) {
+    return ESTADO_CASO_INFO[estado as EstadoCaso]
+  }
+  return DEFAULT_ESTADO_INFO
+}
+
 const STORAGE_KEY = 'condominio_casos_comunidad_cache'
 
 // Casos semilla representativos para el edificio
@@ -158,7 +185,10 @@ function getLocalCache(): CasoComunidad[] {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (raw) {
       const parsed = JSON.parse(raw)
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        const clean = parsed.filter((c: any) => !c.tipo?.startsWith('config_') && !c.tipo?.startsWith('configuracion_'))
+        if (clean.length > 0) return clean
+      }
     }
   } catch (e) {
     console.warn('[casosService] Error reading localStorage cache:', e)
@@ -168,7 +198,8 @@ function getLocalCache(): CasoComunidad[] {
 
 function saveLocalCache(casos: CasoComunidad[]) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(casos))
+    const clean = (casos || []).filter(c => !c.tipo?.startsWith('config_') && !c.tipo?.startsWith('configuracion_'))
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(clean))
   } catch (e) {
     console.warn('[casosService] Error saving localStorage cache:', e)
   }
@@ -187,7 +218,16 @@ export async function obtenerCasos(): Promise<{ data: CasoComunidad[]; error: st
       return { data: cached, error: null, fromDb: false }
     }
 
-    const mapped: CasoComunidad[] = (dbData || []).map((row: any) => ({
+    // Filtrar configuraciones del sistema (como config_calendario_mora) para que no se muestren como casos
+    const rowsCasos = (dbData || []).filter((row: any) => !row.tipo?.startsWith('config_') && !row.tipo?.startsWith('configuracion_'))
+
+    // Si la tabla no tiene casos reales registrados en DB todavía, mostrar los casos de ejemplo/semilla
+    if (rowsCasos.length === 0) {
+      const cached = getLocalCache()
+      return { data: cached, error: null, fromDb: false }
+    }
+
+    const mapped: CasoComunidad[] = rowsCasos.map((row: any) => ({
       id: row.id,
       apartamento_id: row.apartamento_id,
       apartamento_numero: row.apartamentos?.numero || row.involucrado_nombre || 'N/D',
