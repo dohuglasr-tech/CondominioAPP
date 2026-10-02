@@ -93,6 +93,41 @@
   --transition-slow: 400ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* ── Variables de Modo Claro (Activadas por selector .theme-light o data-theme="light") ── */
+:root[data-theme='light'],
+html.theme-light,
+body.theme-light {
+  /* Paleta principal clara */
+  --color-bg-deep:       #f8fafc;
+  --color-bg-base:       #f1f5f9;
+  --color-bg-surface:    #ffffff;
+  --color-bg-elevated:   #ffffff;
+  --color-bg-card:       #ffffff;
+
+  /* Texto de alto contraste y legibilidad */
+  --text-primary:   #0f172a;
+  --text-secondary: #475569;
+  --text-muted:     #64748b;
+  --text-disabled:  #94a3b8;
+
+  /* Bordes sutiles para tema claro */
+  --border-subtle:   rgba(0, 0, 0, 0.05);
+  --border-default:  rgba(0, 0, 0, 0.10);
+  --border-strong:   rgba(0, 0, 0, 0.18);
+  --border-accent:   rgba(249, 115, 22, 0.35);
+
+  /* Glassmorphism claro */
+  --glass-bg:     rgba(255, 255, 255, 0.85);
+  --glass-bg-md:  rgba(255, 255, 255, 0.92);
+  --glass-bg-lg:  rgba(255, 255, 255, 0.98);
+
+  /* Sombras suaves para tema claro */
+  --shadow-sm:    0 1px 3px rgba(0,0,0,0.06);
+  --shadow-md:    0 4px 16px rgba(15, 23, 42, 0.06);
+  --shadow-lg:    0 8px 30px rgba(15, 23, 42, 0.08);
+  --shadow-xl:    0 16px 40px rgba(15, 23, 42, 0.10);
+}
+
 /* ── Reset y base ────────────────────────────────────────────── */
 *, *::before, *::after {
   box-sizing: border-box;
@@ -883,5 +918,488 @@ p  { color: var(--text-secondary); }
 .skeleton-pulse {
   animation: skeleton-pulse 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
+
+/* ════════════════════════════════════════════════════════════════
+   SISTEMA DE DISEÑO — MODO CLARO (MINIMALISTA Y PREMIUM)
+   Activado globalmente mediante clase .theme-light en <html> y <body>
+   ════════════════════════════════════════════════════════════════ */
+
+body.theme-light,
+html.theme-light {
+  background-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+/* Transición suave al alternar tema */
+body,
+.layout-container,
+.layout-sidebar,
+.admin-sidebar,
+.admin-layout-container,
+.resident-page,
+.admin-main,
+.layout-main,
+.card,
+.desktop-card,
+.glass,
+.glass--md,
+.glass--lg {
+  transition: background-color 0.25s ease, border-color 0.25s ease, color 0.2s ease, box-shadow 0.25s ease;
+}
+
+/* Scrollbar en Modo Claro */
+body.theme-light ::-webkit-scrollbar-track {
+  background: #f1f5f9 !important;
+}
+body.theme-light ::-webkit-scrollbar-thumb {
+  background: #cbd5e1 !important;
+  border-radius: 4px !important;
+}
+body.theme-light ::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8 !important;
+}
+
+/* Contenedores y Lienzo Principal */
+body.theme-light #root,
+body.theme-light .layout-container,
+body.theme-light .admin-layout-container,
+body.theme-light .resident-page,
+body.theme-light .admin-main,
+body.theme-light .layout-main,
+body.theme-light .page-content {
+  background-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+/* ── Tarjetas y Superficies Vidriadas (Cards & Glassmorphism) ── */
+body.theme-light .glass,
+body.theme-light .glass--md,
+body.theme-light .glass--lg,
+body.theme-light .card,
+body.theme-light .premium-card,
+body.theme-light .desktop-card,
+body.theme-light .perfil-card {
+  background: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  border-top-color: #f1f5f9 !important;
+  box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.05), 0 2px 6px -1px rgba(15, 23, 42, 0.03) !important;
+  color: #0f172a !important;
+}
+
+body.theme-light .card:hover,
+body.theme-light .premium-card:hover,
+body.theme-light .desktop-card:hover,
+body.theme-light .card-interactive:hover {
+  border-color: #cbd5e1 !important;
+  box-shadow: 0 10px 25px -4px rgba(15, 23, 42, 0.08), 0 4px 10px -2px rgba(15, 23, 42, 0.04) !important;
+}
+
+/* ── Barras Laterales (Sidebars Desktop) ── */
+body.theme-light .layout-sidebar,
+body.theme-light .admin-sidebar {
+  background: #ffffff !important;
+  border-right: 1px solid #e2e8f0 !important;
+  color: #0f172a !important;
+  box-shadow: 4px 0 20px rgba(15, 23, 42, 0.02) !important;
+}
+
+body.theme-light .brand-title,
+body.theme-light .sidebar-user-name,
+body.theme-light .admin-sidebar h1 {
+  color: #0f172a !important;
+}
+
+body.theme-light .sidebar-user-card {
+  background: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+}
+body.theme-light .sidebar-user-card:hover {
+  background: #f1f5f9 !important;
+  border-color: var(--color-accent, #f97316) !important;
+}
+
+body.theme-light .nav-btn,
+body.theme-light .admin-sidebar nav button {
+  color: #475569 !important;
+}
+
+body.theme-light .nav-btn:hover,
+body.theme-light .admin-sidebar nav button:hover {
+  background-color: #f1f5f9 !important;
+  color: #0f172a !important;
+}
+
+body.theme-light .nav-btn.active,
+body.theme-light .admin-sidebar nav button[style*="borderLeft: 3px solid var(--color-accent"] {
+  background-color: var(--color-accent-light, rgba(249, 115, 22, 0.12)) !important;
+  color: var(--color-accent, #f97316) !important;
+}
+
+body.theme-light .nav-desc,
+body.theme-light .admin-sidebar nav button div div:last-child {
+  color: #64748b !important;
+}
+
+body.theme-light .sidebar-footer,
+body.theme-light .admin-sidebar > div:last-child {
+  border-top: 1px solid #e2e8f0 !important;
+}
+
+body.theme-light .logout-btn,
+body.theme-light .admin-sidebar button[onClick*="handleLogout"],
+body.theme-light .admin-sidebar button:last-child {
+  background-color: #fff1f2 !important;
+  border-color: #fecdd3 !important;
+  color: #ef4444 !important;
+}
+
+/* ── Barras Superiores e Inferiores Móviles (Header & Bottom Docks) ── */
+body.theme-light .mobile-top-bar,
+body.theme-light .admin-mobile-top-bar,
+body.theme-light .page-header {
+  background: rgba(255, 255, 255, 0.94) !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+  box-shadow: 0 2px 12px rgba(15, 23, 42, 0.05) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+}
+
+body.theme-light .mobile-header-building,
+body.theme-light .admin-mobile-top-bar span {
+  color: #0f172a !important;
+}
+
+body.theme-light .mobile-hamburger-btn,
+body.theme-light .admin-mobile-top-bar button {
+  color: #334155 !important;
+}
+
+body.theme-light .layout-bottom-bar,
+body.theme-light .admin-mobile-bottom-bar,
+body.theme-light .nav-bottom {
+  background: rgba(255, 255, 255, 0.96) !important;
+  border-top: 1px solid #e2e8f0 !important;
+  box-shadow: 0 -4px 20px rgba(15, 23, 42, 0.06) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+}
+
+body.theme-light .bottom-nav-btn,
+body.theme-light .admin-bottom-btn,
+body.theme-light .nav-bottom__item {
+  color: #64748b !important;
+}
+
+body.theme-light .bottom-nav-btn.active,
+body.theme-light .admin-bottom-btn.active,
+body.theme-light .nav-bottom__item--active {
+  color: var(--color-accent, #f97316) !important;
+}
+
+body.theme-light .center-btn-circle,
+body.theme-light .admin-bottom-center-btn {
+  border-color: #f8fafc !important;
+}
+
+/* ── Menú Fuera de Lienzo (Off-Canvas Drawer) ── */
+body.theme-light .admin-offcanvas-drawer,
+body.theme-light .resident-offcanvas-drawer {
+  background-color: #ffffff !important;
+  border-right: 1px solid #e2e8f0 !important;
+  box-shadow: 10px 0 40px rgba(15, 23, 42, 0.12) !important;
+  color: #0f172a !important;
+}
+
+body.theme-light .admin-offcanvas-overlay,
+body.theme-light .resident-offcanvas-overlay {
+  background: rgba(15, 23, 42, 0.45) !important;
+  backdrop-filter: blur(6px) !important;
+  -webkit-backdrop-filter: blur(6px) !important;
+}
+
+body.theme-light .drawer-header,
+body.theme-light .admin-offcanvas-drawer > div:first-child {
+  border-bottom: 1px solid #e2e8f0 !important;
+}
+
+body.theme-light .drawer-close-btn,
+body.theme-light .admin-offcanvas-drawer button[onClick*="setDrawerOpen(false)"] {
+  background-color: #f1f5f9 !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #64748b !important;
+}
+
+body.theme-light .drawer-user-card,
+body.theme-light .admin-offcanvas-drawer > div:nth-child(2) {
+  border-color: #e2e8f0 !important;
+}
+
+body.theme-light .offcanvas-circle-icon,
+body.theme-light .drawer-circle-icon {
+  background-color: #f1f5f9 !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #334155 !important;
+}
+
+body.theme-light .offcanvas-item-btn:hover .offcanvas-circle-icon,
+body.theme-light .drawer-item-btn:hover .drawer-circle-icon {
+  background-color: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+body.theme-light .offcanvas-label,
+body.theme-light .drawer-label {
+  color: #475569 !important;
+}
+
+body.theme-light .offcanvas-section-title,
+body.theme-light .drawer-section-title {
+  color: #64748b !important;
+}
+
+body.theme-light .drawer-logout-btn {
+  background-color: #fff1f2 !important;
+  border: 1px solid #fecdd3 !important;
+  color: #ef4444 !important;
+}
+
+/* ── Entradas de Texto, Selects y Formularios (Inputs) ── */
+body.theme-light input,
+body.theme-light select,
+body.theme-light textarea,
+body.theme-light .input {
+  background-color: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+body.theme-light input::placeholder,
+body.theme-light textarea::placeholder,
+body.theme-light .input::placeholder {
+  color: #94a3b8 !important;
+}
+
+body.theme-light input:focus,
+body.theme-light select:focus,
+body.theme-light textarea:focus,
+body.theme-light .input:focus {
+  border-color: var(--color-accent, #f97316) !important;
+  box-shadow: 0 0 0 3px var(--color-accent-light, rgba(249, 115, 22, 0.15)) !important;
+  background-color: #ffffff !important;
+}
+
+body.theme-light .input-label,
+body.theme-light label {
+  color: #475569 !important;
+}
+
+/* ── Modales y Cuadros de Diálogo ── */
+body.theme-light .modal-card,
+body.theme-light .calendario-modal-card {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18) !important;
+  color: #0f172a !important;
+}
+
+body.theme-light .modal-overlay,
+body.theme-light .calendario-modal-overlay {
+  background: rgba(15, 23, 42, 0.5) !important;
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+}
+
+/* ── Tablas y Matrices (Calendario, Recibos, Gastos) ── */
+body.theme-light table,
+body.theme-light .calendario-main-table {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+}
+
+body.theme-light thead tr,
+body.theme-light th {
+  background-color: #f8fafc !important;
+  color: #475569 !important;
+  border-color: #e2e8f0 !important;
+}
+
+body.theme-light td {
+  border-color: #e2e8f0 !important;
+  color: #1e293b !important;
+}
+
+body.theme-light tbody tr:hover {
+  background-color: #f8fafc !important;
+}
+
+body.theme-light .calendario-page-root {
+  color: #0f172a !important;
+}
+
+body.theme-light .calendario-sticky-col {
+  background-color: #ffffff !important;
+  box-shadow: 4px 0 10px rgba(15, 23, 42, 0.05) !important;
+  color: #0f172a !important;
+}
+
+body.theme-light .calendario-table-wrapper {
+  background-color: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 4px 20px rgba(15, 23, 42, 0.04) !important;
+}
+
+body.theme-light .calendario-kpi-card {
+  background-color: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04) !important;
+}
+
+body.theme-light .calendario-filter-bar {
+  background-color: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+}
+
+body.theme-light .calendario-actions-bar button,
+body.theme-light .calendario-actions-bar select {
+  background-color: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #1e293b !important;
+}
+
+/* Panel Desplegable de Notificaciones */
+body.theme-light .notification-dropdown-panel,
+body.theme-light div[style*="top: calc(100% + 10px)"] {
+  background-color: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.12) !important;
+  color: #0f172a !important;
+}
+
+/* Esqueletos de Carga en Modo Claro */
+body.theme-light .skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    #e2e8f0 0%,
+    #f8fafc 50%,
+    #e2e8f0 100%
+  ) !important;
+  background-size: 200% 100% !important;
+}
+
+body.theme-light .skeleton {
+  background: linear-gradient(
+    90deg,
+    #f1f5f9 25%,
+    #e2e8f0 50%,
+    #f1f5f9 75%
+  ) !important;
+  background-size: 800px 100% !important;
+}
+
+/* ── Mapeo Meticuloso de Colores Oscuros en Línea a Modo Claro ── */
+/* Transforma contenedores oscuros (#070b14, #090a0d, #141519, #151922, etc.) en superficies limpias */
+body.theme-light div[style*="background-color: #070b14"],
+body.theme-light div[style*="background-color: rgb(7, 11, 20)"],
+body.theme-light div[style*="background-color: #090a0d"],
+body.theme-light div[style*="background-color: rgb(9, 10, 13)"],
+body.theme-light div[style*="background-color: #0a0a0a"],
+body.theme-light div[style*="background-color: rgb(10, 10, 10)"],
+body.theme-light div[style*="background-color: #0c0d10"],
+body.theme-light div[style*="background-color: rgb(12, 13, 16)"],
+body.theme-light div[style*="background-color: #0d1117"],
+body.theme-light div[style*="background-color: rgb(13, 17, 23)"],
+body.theme-light div[style*="background-color: #0f0f10"],
+body.theme-light div[style*="background-color: rgb(15, 15, 16)"],
+body.theme-light div[style*="background-color: #111216"],
+body.theme-light div[style*="background-color: rgb(17, 18, 22)"],
+body.theme-light div[style*="background-color: #111827"],
+body.theme-light div[style*="background-color: rgb(17, 24, 39)"],
+body.theme-light div[style*="background-color: #121620"],
+body.theme-light div[style*="background-color: rgb(18, 22, 32)"],
+body.theme-light div[style*="background-color: #141414"],
+body.theme-light div[style*="background-color: rgb(20, 20, 20)"],
+body.theme-light div[style*="background-color: #141519"],
+body.theme-light div[style*="background-color: rgb(20, 21, 25)"],
+body.theme-light div[style*="background-color: #151922"],
+body.theme-light div[style*="background-color: rgb(21, 25, 34)"],
+body.theme-light div[style*="background-color: #18191e"],
+body.theme-light div[style*="background-color: rgb(24, 25, 30)"],
+body.theme-light div[style*="background-color: #1a1a1a"],
+body.theme-light div[style*="background-color: rgb(26, 26, 26)"],
+body.theme-light div[style*="background-color: #1a1b20"],
+body.theme-light div[style*="background-color: rgb(26, 27, 32)"],
+body.theme-light div[style*="background-color: #1c1d22"],
+body.theme-light div[style*="background-color: rgb(28, 29, 34)"],
+body.theme-light div[style*="background-color: #1e1e1e"],
+body.theme-light div[style*="background-color: rgb(30, 30, 30)"],
+body.theme-light div[style*="background-color: #24252d"],
+body.theme-light div[style*="background-color: rgb(36, 37, 45)"],
+body.theme-light div[style*="linear-gradient(180deg, #151922"],
+body.theme-light div[style*="linear-gradient(180deg, rgb(21, 25, 34)"] {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #e2e8f0 !important;
+  box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.05), 0 2px 6px -1px rgba(15, 23, 42, 0.03) !important;
+}
+
+/* Bordes oscuros en línea transformados a gris claro moderno */
+body.theme-light [style*="border: 1px solid #1e1e1e"],
+body.theme-light [style*="border: 1px solid #222"],
+body.theme-light [style*="border: 1px solid #262626"],
+body.theme-light [style*="border: 1px solid #2a2a2a"],
+body.theme-light [style*="border: 1px solid #374151"],
+body.theme-light [style*="border-bottom: 1px solid #1a1a1a"],
+body.theme-light [style*="border-bottom: 1px solid #222"],
+body.theme-light [style*="border-bottom: 1px solid #2a2a2a"],
+body.theme-light [style*="border-bottom: 1px solid #1e1e1e"],
+body.theme-light [style*="border-top: 1px solid #1e1e1e"],
+body.theme-light [style*="border-top: 1px solid #222"] {
+  border-color: #e2e8f0 !important;
+}
+
+/* Tipografía en Modo Claro (Excluyendo botones de acción y badges de estado) */
+body.theme-light h1,
+body.theme-light h2,
+body.theme-light h3,
+body.theme-light h4,
+body.theme-light h5,
+body.theme-light h6 {
+  color: #0f172a !important;
+}
+
+body.theme-light :not(button):not(a):not(.btn):not(.btn-premium):not(.badge):not(.center-btn-circle):not(.pulse-badge):not([class*="badge"])[style*="color: #fff"],
+body.theme-light :not(button):not(a):not(.btn):not(.btn-premium):not(.badge):not(.center-btn-circle):not(.pulse-badge):not([class*="badge"])[style*="color: #ffffff"],
+body.theme-light :not(button):not(a):not(.btn):not(.btn-premium):not(.badge):not(.center-btn-circle):not(.pulse-badge):not([class*="badge"])[style*="color: rgb(255, 255, 255)"],
+body.theme-light :not(button):not(a):not(.btn):not(.btn-premium):not(.badge):not(.center-btn-circle):not(.pulse-badge):not([class*="badge"])[style*="color: #f8fafc"],
+body.theme-light :not(button):not(a):not(.btn):not(.btn-premium):not(.badge):not(.center-btn-circle):not(.pulse-badge):not([class*="badge"])[style*="color: #e0e0e0"],
+body.theme-light :not(button):not(a):not(.btn):not(.btn-premium):not(.badge):not(.center-btn-circle):not(.pulse-badge):not([class*="badge"])[style*="color: #e2e8f0"],
+body.theme-light :not(button):not(a):not(.btn):not(.btn-premium):not(.badge):not(.center-btn-circle):not(.pulse-badge):not([class*="badge"])[style*="color: #ccc"],
+body.theme-light :not(button):not(a):not(.btn):not(.btn-premium):not(.badge):not(.center-btn-circle):not(.pulse-badge):not([class*="badge"])[style*="color: #d4d4d8"],
+body.theme-light :not(button):not(a):not(.btn):not(.btn-premium):not(.badge):not(.center-btn-circle):not(.pulse-badge):not([class*="badge"])[style*="color: #f3f4f6"] {
+  color: #0f172a !important;
+}
+
+body.theme-light [style*="color: #888"],
+body.theme-light [style*="color: #777"],
+body.theme-light [style*="color: #666"],
+body.theme-light [style*="color: #555"],
+body.theme-light [style*="color: #71717a"],
+body.theme-light [style*="color: #8e8e93"],
+body.theme-light [style*="color: #94a3b8"],
+body.theme-light [style*="color: #a1a1aa"],
+body.theme-light [style*="color: #7e8b9b"] {
+  color: #64748b !important;
+}
+
+/* Preservar texto blanco en botones primarios y botones de resalte */
+body.theme-light .btn--primary,
+body.theme-light .btn--success,
+body.theme-light .btn--danger,
+body.theme-light .btn-premium,
+body.theme-light .sidebar-reportar-pago-btn,
+body.theme-light button[type="submit"] {
+  color: #ffffff !important;
+}
+
 
 

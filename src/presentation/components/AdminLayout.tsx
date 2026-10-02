@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../application/contexts/AuthContext'
 import { supabase } from '../../data/supabase'
+import { ThemeToggle } from './ThemeToggle'
 
 // ── Minimalist SVG Line Icons para Admin ──
 const ADMIN_ICONS: Record<string, React.ReactNode> = {
@@ -515,6 +516,9 @@ export const AdminLayout: React.FC = () => {
 
           {/* Derecha: Buscador, Notificaciones y Avatar DG */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            {/* Selector de Modo Claro / Nativo */}
+            <ThemeToggle variant="icon" />
+
             {/* Buscador */}
             <button
               onClick={() => navigate('/admin/residentes')}
@@ -887,6 +891,16 @@ export const AdminLayout: React.FC = () => {
             </div>
           </div>
 
+          {/* SECCIÓN APARIENCIA (MODO CLARO / OSCURO) */}
+          <div style={{ marginTop: '16px', paddingTop: '14px', borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}>
+            <div className="offcanvas-section-title">
+              <span>🎨</span> APARIENCIA
+            </div>
+            <div style={{ background: 'rgba(255, 255, 255, 0.04)', borderRadius: '12px', padding: '4px 10px' }}>
+              <ThemeToggle variant="switch" />
+            </div>
+          </div>
+
           {/* BOTÓN CERRAR SESIÓN */}
           <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid rgba(255, 255, 255, 0.06)' }}>
             <button
@@ -1058,6 +1072,9 @@ export const AdminLayout: React.FC = () => {
 
         {/* Footer */}
         <div style={{ padding: '12px 20px', borderTop: '1px solid #1e1e1e' }}>
+          <div style={{ marginBottom: '10px' }}>
+            <ThemeToggle variant="button" />
+          </div>
           <p style={{ color: '#555', fontSize: '11px', marginBottom: '8px' }}>{adminNombre}</p>
           <button
             onClick={handleLogout}

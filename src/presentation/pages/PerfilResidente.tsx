@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useAuth } from '../../application/contexts/AuthContext'
 import { useNavigate } from 'react-router-dom'
+import { ThemeToggle } from '../components/ThemeToggle'
 
 export const PerfilResidente: React.FC = () => {
   const navigate = useNavigate()
@@ -255,6 +256,12 @@ export const PerfilResidente: React.FC = () => {
         >
           <span>🔑</span> Cambiar mi contraseña
         </button>
+      </div>
+
+      {/* ── CARD 4: PREFERENCIAS Y APARIENCIA ── */}
+      <div style={s.card} className="perfil-card">
+        <div style={s.cardTitle}>🎨 APARIENCIA DE LA APLICACIÓN</div>
+        <ThemeToggle variant="switch" />
       </div>
 
       {/* ── MODAL CAMBIAR CONTRASEÑA ── */}

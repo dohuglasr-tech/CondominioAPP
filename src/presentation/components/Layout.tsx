@@ -3,6 +3,7 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../application/contexts/AuthContext'
 import { ReportarPagoModal } from './ReportarPagoModal'
 import { NotificationBell } from './NotificationBell'
+import { ThemeToggle } from './ThemeToggle'
 
 // ── Minimalist SVG Line Icons monocolor stroke delgado ──────────────────
 const SVG = {
@@ -215,6 +216,9 @@ export const Layout: React.FC = () => {
 
         {/* Footer Sidebar */}
         <div className="sidebar-footer">
+          <div style={{ marginBottom: '10px' }}>
+            <ThemeToggle variant="button" />
+          </div>
           <button className="logout-btn" onClick={() => signOut()}>
             {SVG.salir} Cerrar Sesión
           </button>
@@ -265,8 +269,11 @@ export const Layout: React.FC = () => {
             </div>
           </div>
 
-          {/* Derecha: Campanita de Notificaciones + Chat + Avatar */}
+          {/* Derecha: Campanita de Notificaciones + Toggle Tema + Chat + Avatar */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {/* Toggle Modo Claro / Oscuro */}
+            <ThemeToggle variant="icon" />
+
             {/* Notificaciones */}
             <NotificationBell apartamentoId={apartamentoId || null} iconColor="#a1a1aa" />
 
@@ -530,6 +537,16 @@ export const Layout: React.FC = () => {
                 </div>
                 <span className={`drawer-label ${pathname.startsWith('/reportes') ? 'active' : ''}`}>Avisos</span>
               </button>
+            </div>
+          </div>
+
+          {/* SECCIÓN APARIENCIA (MODO CLARO / OSCURO) */}
+          <div style={{ marginTop: '16px', paddingTop: '14px', borderTop: '1px solid rgba(255, 255, 255, 0.08)' }} className="drawer-theme-section">
+            <div className="drawer-section-title">
+              <span>🎨</span> APARIENCIA
+            </div>
+            <div style={{ background: 'rgba(255, 255, 255, 0.04)', borderRadius: '12px', padding: '4px 10px' }} className="drawer-theme-box">
+              <ThemeToggle variant="switch" />
             </div>
           </div>
 

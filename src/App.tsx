@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from './application/contexts/AuthContext'
+import { ThemeProvider } from './application/contexts/ThemeContext'
 import { Loader } from './presentation/components/Loader'
 import { SplashScreen } from './presentation/components/SplashScreen'
 import { InstallAppPrompt } from './presentation/components/InstallAppPrompt'
@@ -337,11 +338,13 @@ function AppShell() {
 export function App() {
   return (
     <ErrorBoundary>
-      <AuthProvider>
-        <BrowserRouter>
-          <AppShell />
-        </BrowserRouter>
-      </AuthProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <BrowserRouter>
+            <AppShell />
+          </BrowserRouter>
+        </AuthProvider>
+      </ThemeProvider>
     </ErrorBoundary>
   )
 }
