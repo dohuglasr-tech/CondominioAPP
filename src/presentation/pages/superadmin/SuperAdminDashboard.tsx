@@ -652,51 +652,90 @@ export const SuperAdminDashboard: React.FC = () => {
 
             {/* Bento Grid KPIs */}
             <div style={{
-              display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+              display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
               gap: '16px', marginBottom: '24px'
             }}>
+              {/* Card 1: Estado DB */}
               <div style={{
-                background: 'rgba(15, 23, 42, 0.6)', border: '1px solid rgba(6, 182, 212, 0.25)',
+                background: 'rgba(15, 23, 42, 0.65)',
+                border: `1px solid ${
+                  healthData?.status === 'healthy'
+                    ? 'rgba(34, 197, 94, 0.35)'
+                    : healthData?.status === 'degraded'
+                    ? 'rgba(251, 191, 36, 0.35)'
+                    : 'rgba(239, 68, 68, 0.35)'
+                }`,
                 borderRadius: '16px', padding: '20px', position: 'relative'
               }}>
-                <div style={{ color: '#94a3b8', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase' }}>
-                  Estado de la Base de Datos
+                <div style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>Estado de la Base de Datos</span>
+                  <span style={{
+                    width: '8px', height: '8px', borderRadius: '50%',
+                    background: healthData?.status === 'healthy' ? '#22c55e' : healthData?.status === 'degraded' ? '#fbbf24' : '#ef4444',
+                    boxShadow: `0 0 10px ${healthData?.status === 'healthy' ? '#22c55e' : '#fbbf24'}`
+                  }} />
                 </div>
-                <div style={{ fontSize: '26px', fontWeight: 900, color: '#22c55e', marginTop: '6px' }}>
-                  {healthData?.status === 'healthy' ? '✓ Operativa y Saludable' : '⚠️ Atención Requerida'}
+                <div style={{
+                  fontSize: '22px', fontWeight: 900, marginTop: '8px',
+                  color: healthData?.status === 'healthy' ? '#22c55e' : healthData?.status === 'degraded' ? '#fbbf24' : '#ef4444'
+                }}>
+                  {healthData?.status === 'healthy' && '✓ Operativa y Saludable'}
+                  {healthData?.status === 'degraded' && '⚡ Conectada (Red Moderada)'}
+                  {healthData?.status === 'error' && '⚠️ Incidencia en Tablas'}
+                  {healthData?.status === 'offline' && '🔴 Desconectada'}
                 </div>
-                <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
-                  Conectada a db.kevslcecttfxifcplgzx
+                <div style={{ fontSize: '12px', color: '#64748b', marginTop: '6px' }}>
+                  {healthData?.statusMessage || 'Conectada a db.kevslcecttfxifcplgzx'}
                 </div>
               </div>
 
+              {/* Card 2: Latencia */}
               <div style={{
-                background: 'rgba(15, 23, 42, 0.6)', border: '1px solid rgba(139, 92, 246, 0.25)',
+                background: 'rgba(15, 23, 42, 0.65)', border: '1px solid rgba(139, 92, 246, 0.25)',
                 borderRadius: '16px', padding: '20px'
               }}>
-                <div style={{ color: '#94a3b8', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase' }}>
+                <div style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                   Latencia de Petición
                 </div>
-                <div style={{ fontSize: '26px', fontWeight: 900, color: '#a78bfa', marginTop: '6px' }}>
-                  {healthData?.latencyMs ?? 0} ms
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', marginTop: '8px' }}>
+                  <span style={{ fontSize: '26px', fontWeight: 900, color: '#c084fc' }}>
+                    {healthData?.latencyMs ?? 0} ms
+                  </span>
+                  {(healthData?.latencyMs ?? 0) < 600 ? (
+                    <span style={{ background: 'rgba(34, 197, 94, 0.15)', color: '#4ade80', padding: '2px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 700 }}>
+                      🟢 Rápida
+                    </span>
+                  ) : (healthData?.latencyMs ?? 0) <= 2000 ? (
+                    <span style={{ background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', padding: '2px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 700 }}>
+                      🌐 Normal (Red Móvil / Int.)
+                    </span>
+                  ) : (
+                    <span style={{ background: 'rgba(251, 191, 36, 0.15)', color: '#fbbf24', padding: '2px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 700 }}>
+                      🟡 Moderada
+                    </span>
+                  )}
                 </div>
-                <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                <div style={{ fontSize: '12px', color: '#64748b', marginTop: '6px' }}>
                   Tiempo de respuesta HTTP PostgREST
                 </div>
               </div>
 
+              {/* Card 3: Registros */}
               <div style={{
-                background: 'rgba(15, 23, 42, 0.6)', border: '1px solid rgba(34, 197, 94, 0.25)',
+                background: 'rgba(15, 23, 42, 0.65)', border: '1px solid rgba(34, 197, 94, 0.25)',
                 borderRadius: '16px', padding: '20px'
               }}>
-                <div style={{ color: '#94a3b8', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase' }}>
-                  Total de Registros en Tablas
+                <div style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>Total de Registros en Tablas</span>
+                  <span style={{ background: 'rgba(34, 197, 94, 0.15)', color: '#4ade80', padding: '1px 6px', borderRadius: '4px', fontSize: '10px', fontWeight: 700 }}>
+                    11/11 Tablas
+                  </span>
                 </div>
-                <div style={{ fontSize: '26px', fontWeight: 900, color: '#4ade80', marginTop: '6px' }}>
+                <div style={{ fontSize: '26px', fontWeight: 900, color: '#4ade80', marginTop: '8px' }}>
                   {healthData?.totalRecords?.toLocaleString() ?? 0}
                 </div>
-                <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
-                  Suma global en las 11 entidades
+                <div style={{ fontSize: '12px', color: '#64748b', marginTop: '6px' }}>
+                  Suma global en todas las entidades activas
                 </div>
               </div>
             </div>

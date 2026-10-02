@@ -11,7 +11,8 @@ export interface TableStats {
 
 export interface SystemHealthData {
   latencyMs: number
-  status: 'healthy' | 'degraded' | 'offline'
+  status: 'healthy' | 'degraded' | 'error' | 'offline'
+  statusMessage?: string
   timestamp: string
   tables: TableStats[]
   totalRecords: number
@@ -95,10 +96,29 @@ export async function getSystemHealth(): Promise<SystemHealthData> {
   )
 
   const totalRecords = tableResults.reduce((acc, curr) => acc + (curr.count || 0), 0)
+  const hasTableErrors = tableResults.some(t => t.status === 'error')
+
+  let status: 'healthy' | 'degraded' | 'error' | 'offline' = 'healthy'
+  let statusMessage = 'Conectada · 100% de tablas y servicios en línea'
+
+  if (!isConnected) {
+    status = 'offline'
+    statusMessage = 'Sin conexión al servidor PostgREST'
+  } else if (hasTableErrors) {
+    status = 'error'
+    statusMessage = 'Una o más tablas presentan incidencias de lectura'
+  } else if (latencyMs > 2500) {
+    status = 'degraded'
+    statusMessage = 'Conectada · Latencia de red moderada / alta'
+  } else {
+    status = 'healthy'
+    statusMessage = 'Conectada a db.kevslcecttfxifcplgzx · Operativa'
+  }
 
   return {
     latencyMs,
-    status: !isConnected ? 'offline' : latencyMs > 800 ? 'degraded' : 'healthy',
+    status,
+    statusMessage,
     timestamp: new Date().toLocaleTimeString(),
     tables: tableResults,
     totalRecords
