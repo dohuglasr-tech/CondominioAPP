@@ -57,6 +57,69 @@ export interface ConfiguracionCalendario {
   filasCuotasEspeciales?: FilaCuotaEspecial[]
 }
 
+/**
+ * Parsea montos flexibles admitiendo formatos con separador de miles latino (14.304,23 o 14304,23)
+ * o anglosajón (14,304.23 o 14304.23), eliminando símbolos monetarios y manejando entradas de usuario.
+ */
+export function parsearMontoFlexible(val: string | number | undefined | null, moneda: 'USD' | 'BS' = 'BS'): number {
+  if (val === undefined || val === null || val === '') return 0
+  if (typeof val === 'number') return isNaN(val) ? 0 : val
+
+  let s = String(val).trim()
+  if (!s) return 0
+
+  // Quitar símbolos de moneda y espacios
+  s = s.replace(/^(Bs\.?|USD|\$)\s*/i, '').replace(/\s*(Bs\.?|USD|\$)$/i, '').trim()
+
+  // Caso 1: Tiene tanto punto como coma:
+  // "14.304,23" -> punto es miles, coma es decimal
+  // "14,304.23" -> coma es miles, punto es decimal
+  if (s.includes('.') && s.includes(',')) {
+    const lastDot = s.lastIndexOf('.')
+    const lastComma = s.lastIndexOf(',')
+    if (lastDot < lastComma) {
+      s = s.replace(/\./g, '').replace(',', '.')
+    } else {
+      s = s.replace(/,/g, '')
+    }
+    const n = parseFloat(s)
+    return isNaN(n) ? 0 : n
+  }
+
+  // Caso 2: Más de una coma -> separadores de miles
+  const comas = s.split(',')
+  if (comas.length > 2) {
+    s = s.replace(/,/g, '')
+    const n = parseFloat(s)
+    return isNaN(n) ? 0 : n
+  }
+
+  // Caso 3: Solo una coma -> separador decimal
+  if (s.includes(',')) {
+    s = s.replace(',', '.')
+    const n = parseFloat(s)
+    return isNaN(n) ? 0 : n
+  }
+
+  // Caso 4: Múltiples puntos -> separadores de miles
+  const puntos = s.split('.')
+  if (puntos.length > 2) {
+    s = s.replace(/\./g, '')
+    const n = parseFloat(s)
+    return isNaN(n) ? 0 : n
+  }
+
+  // Caso 5: Exactamente un punto con 3 dígitos al final en Bolívares (ej: "14.304" = 14304)
+  if (puntos.length === 2 && puntos[1].length === 3 && moneda === 'BS') {
+    s = s.replace(/\./g, '')
+    const n = parseFloat(s)
+    return isNaN(n) ? 0 : n
+  }
+
+  const n = parseFloat(s)
+  return isNaN(n) ? 0 : n
+}
+
 export function obtenerColumnasPorDefecto(anio = 2026): ColumnaCalendarioConfig[] {
   return [
     // Sección Naranja (Deudas pasadas / Conceptos anteriores en Bs y $)
@@ -638,7 +701,7 @@ export interface EditarMontoCuotaParams {
   apartamentoNumero: string
   mesFacturadoIso: string
   mesLabel: string
-  nuevoMonto: number
+  nuevoMonto: number | string
   moneda: 'USD' | 'BS'
   estado: 'pendiente' | 'pagado'
   referencia?: string
@@ -679,8 +742,9 @@ export async function guardarMontoReciboPersonalizado(params: EditarMontoCuotaPa
       }
     } catch (e) {}
 
-    const montoUsd = moneda === 'USD' ? nuevoMonto : Number((nuevoMonto / tasaBcvAplicada).toFixed(2))
-    const montoBs  = moneda === 'BS'  ? nuevoMonto : Number((nuevoMonto * tasaBcvAplicada).toFixed(2))
+    const montoNum = parsearMontoFlexible(nuevoMonto, moneda)
+    const montoUsd = moneda === 'USD' ? montoNum : Number((montoNum / tasaBcvAplicada).toFixed(2))
+    const montoBs  = moneda === 'BS'  ? montoNum : Number((montoNum * tasaBcvAplicada).toFixed(2))
     const fechaEfectiva = fechaPago || new Date().toISOString().slice(0, 10)
     const refLimpia = referencia?.trim() || (estado === 'pagado' ? `CONCIL-${Date.now().toString().slice(-6)}` : '')
 
@@ -900,10 +964,10 @@ export async function marcarReciboSolvente(params: MarcarSolventeParams): Promis
 export async function guardarConceptosHistoricos(params: {
   apartamentoId: string
   apartamentoNumero: string
-  deudaBase2025: number
-  cableViajero: number
-  guaya: number
-  arreglo: number
+  deudaBase2025: number | string
+  cableViajero: number | string
+  guaya: number | string
+  arreglo: number | string
   monedas?: {
     deudaBase2025?: 'USD' | 'BS'
     cableViajero?: 'USD' | 'BS'
@@ -929,25 +993,30 @@ export async function guardarConceptosHistoricos(params: {
     const mGuaya = monedas?.guaya || 'USD'
     const mArreglo = monedas?.arreglo || 'BS'
 
+    const numDeuda = parsearMontoFlexible(deudaBase2025, mDeuda)
+    const numCable = parsearMontoFlexible(cableViajero, mCable)
+    const numGuaya = parsearMontoFlexible(guaya, mGuaya)
+    const numArreglo = parsearMontoFlexible(arreglo, mArreglo)
+
     let totalBs = 0
     let totalUsd = 0
-    if (mDeuda === 'BS') totalBs += deudaBase2025; else totalUsd += deudaBase2025
-    if (mCable === 'BS') totalBs += cableViajero; else totalUsd += cableViajero
-    if (mGuaya === 'BS') totalBs += guaya; else totalUsd += guaya
-    if (mArreglo === 'BS') totalBs += arreglo; else totalUsd += arreglo
+    if (mDeuda === 'BS') totalBs += numDeuda; else totalUsd += numDeuda
+    if (mCable === 'BS') totalBs += numCable; else totalUsd += numCable
+    if (mGuaya === 'BS') totalBs += numGuaya; else totalUsd += numGuaya
+    if (mArreglo === 'BS') totalBs += numArreglo; else totalUsd += numArreglo
 
     totalBs = Number(totalBs.toFixed(2))
     totalUsd = Number(totalUsd.toFixed(2))
     const tieneDeuda = totalBs > 0.01 || totalUsd > 0.01
 
     const payloadConceptos = JSON.stringify({
-      deuda_2025: deudaBase2025,
+      deuda_2025: numDeuda,
       deuda_2025_moneda: mDeuda,
-      cable_viajero: cableViajero,
+      cable_viajero: numCable,
       cable_viajero_moneda: mCable,
-      guaya: guaya,
+      guaya: numGuaya,
       guaya_moneda: mGuaya,
-      arreglo: arreglo,
+      arreglo: numArreglo,
       arreglo_moneda: mArreglo,
       actualizado_at: new Date().toISOString()
     })
@@ -1031,7 +1100,7 @@ export async function eliminarFilaCuotaEspecial(
 export async function guardarCeldaPersonalizada(params: {
   filaId: string
   columnaId: string
-  monto: number
+  monto: number | string
   estado: 'pendiente' | 'pagado'
   moneda?: 'USD' | 'BS'
 }): Promise<{ success: boolean; error: string | null }> {
@@ -1041,8 +1110,9 @@ export async function guardarCeldaPersonalizada(params: {
     if (!config.valoresCeldasPersonalizadas[params.filaId]) {
       config.valoresCeldasPersonalizadas[params.filaId] = {}
     }
+    const montoNum = parsearMontoFlexible(params.monto, params.moneda)
     config.valoresCeldasPersonalizadas[params.filaId][params.columnaId] = {
-      monto: params.monto,
+      monto: montoNum,
       estado: params.estado,
       ...(params.moneda ? { moneda: params.moneda } : {})
     }

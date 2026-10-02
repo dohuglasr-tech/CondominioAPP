@@ -12,6 +12,7 @@ import {
   eliminarColumna,
   restablecerColumnasPorDefecto,
   sincronizarDatosExcelOficial,
+  parsearMontoFlexible,
   FilaCalendarioApto,
   ColumnaMes,
   ResumenGlobalCalendario,
@@ -64,7 +65,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
   const [modalApto, setModalApto] = useState<FilaCalendarioApto | null>(null)
   const [modalCol, setModalCol] = useState<ColumnaMes | null>(null)
   const [modalRecibo, setModalRecibo] = useState<ReciboMesItem | null>(null)
-  const [modalMontoEditado, setModalMontoEditado] = useState<number | ''>('')
+  const [modalMontoEditado, setModalMontoEditado] = useState<string>('')
   const [modalMonedaEditada, setModalMonedaEditada] = useState<'USD' | 'BS'>('USD')
   const [modalEstadoDeseado, setModalEstadoDeseado] = useState<'pagado' | 'pendiente'>('pagado')
   const [modalReferencia, setModalReferencia] = useState('')
@@ -76,13 +77,13 @@ export const AdminCalendarioDeudas: React.FC = () => {
   // Modal Edición Concepto Histórico (2025 / Guaya / Cable / Arreglo)
   const [modalHistOpen, setModalHistOpen] = useState(false)
   const [modalHistApto, setModalHistApto] = useState<FilaCalendarioApto | null>(null)
-  const [histBase2025, setHistBase2025] = useState<number | ''>('')
+  const [histBase2025, setHistBase2025] = useState<string>('')
   const [histMonedaBase2025, setHistMonedaBase2025] = useState<'USD' | 'BS'>('BS')
-  const [histCableViajero, setHistCableViajero] = useState<number | ''>('')
+  const [histCableViajero, setHistCableViajero] = useState<string>('')
   const [histMonedaCableViajero, setHistMonedaCableViajero] = useState<'USD' | 'BS'>('USD')
-  const [histGuaya, setHistGuaya] = useState<number | ''>('')
+  const [histGuaya, setHistGuaya] = useState<string>('')
   const [histMonedaGuaya, setHistMonedaGuaya] = useState<'USD' | 'BS'>('USD')
-  const [histArreglo, setHistArreglo] = useState<number | ''>('')
+  const [histArreglo, setHistArreglo] = useState<string>('')
   const [histMonedaArreglo, setHistMonedaArreglo] = useState<'USD' | 'BS'>('BS')
 
   // Modal para Crear Nueva Columna (Cuota Especial o concepto vertical)
@@ -90,7 +91,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
   const [nuevaColTitulo, setNuevaColTitulo] = useState('')
   const [nuevaColSeccion, setNuevaColSeccion] = useState<'naranja' | 'azul'>('naranja')
   const [nuevaColMoneda, setNuevaColMoneda] = useState<'USD' | 'BS'>('USD')
-  const [nuevaColMontoDefecto, setNuevaColMontoDefecto] = useState<number | ''>('')
+  const [nuevaColMontoDefecto, setNuevaColMontoDefecto] = useState<string>('')
   const [nuevaColAplicarATodos, setNuevaColAplicarATodos] = useState(false)
   const [nuevaColPosicion, setNuevaColPosicion] = useState<string>('fin_naranja')
 
@@ -101,7 +102,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
   const [modalCeldaPersonalizadaOpen, setModalCeldaPersonalizadaOpen] = useState(false)
   const [celdaPersApto, setCeldaPersApto] = useState<FilaCalendarioApto | null>(null)
   const [celdaPersCol, setCeldaPersCol] = useState<ColumnaCalendarioConfig | null>(null)
-  const [celdaPersMonto, setCeldaPersMonto] = useState<number | ''>('')
+  const [celdaPersMonto, setCeldaPersMonto] = useState<string>('')
   const [celdaPersEstado, setCeldaPersEstado] = useState<'pendiente' | 'pagado'>('pendiente')
   const [celdaPersMoneda, setCeldaPersMoneda] = useState<'USD' | 'BS'>('USD')
   const [celdaPersAplicarATodos, setCeldaPersAplicarATodos] = useState(false)
@@ -193,7 +194,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
     setModalApto(apto)
     setModalCol(col)
     setModalRecibo(recibo)
-    setModalMontoEditado(montoActual)
+    setModalMontoEditado(montoActual > 0 ? (col.moneda === 'BS' ? fmtBs(montoActual) : montoActual.toFixed(2)) : '')
     setModalMonedaEditada(col.moneda)
     setModalEstadoDeseado(recibo ? recibo.estado : 'pendiente')
     setModalReferencia('')
@@ -279,11 +280,11 @@ export const AdminCalendarioDeudas: React.FC = () => {
     setProcesandoAccion(true)
 
     const mesLabelCompleto = `${modalCol.label} ${modalCol.anio}`
-    const montoFinal = modalMontoEditado === '' ? 0 : Number(modalMontoEditado)
+    const monedaNueva = modalMonedaEditada
+    const montoFinal = parsearMontoFlexible(modalMontoEditado, monedaNueva)
     const targetAptoId = modalApto.apartamento_id
     const targetColKey = modalCol.key
     const estadoNuevo = modalEstadoDeseado
-    const monedaNueva = modalMonedaEditada
 
     // 1. Actualización optimista inmediata en memoria para respuesta instantánea
     setFilas(prev => prev.map(f => {
@@ -412,10 +413,6 @@ export const AdminCalendarioDeudas: React.FC = () => {
   // ── Modal Conceptos Históricos ───────────────────────────────────────────
   const handleAbrirModalHist = (apto: FilaCalendarioApto) => {
     setModalHistApto(apto)
-    setHistBase2025(apto.deuda_base_2025 || '')
-    setHistCableViajero(apto.cable_viajero || '')
-    setHistGuaya(apto.guaya || '')
-    setHistArreglo(apto.arreglo || '')
 
     const mDeuda = apto.monedas_conceptos?.deuda_base_2025 || configuracion.columnas.find(c => c.id === 'deuda_2025')?.moneda || 'BS'
     const mCable = apto.monedas_conceptos?.cable_viajero || configuracion.columnas.find(c => c.id === 'cable_viajero')?.moneda || 'USD'
@@ -427,6 +424,11 @@ export const AdminCalendarioDeudas: React.FC = () => {
     setHistMonedaGuaya(mGuaya)
     setHistMonedaArreglo(mArreglo)
 
+    setHistBase2025(apto.deuda_base_2025 > 0 ? (mDeuda === 'BS' ? fmtBs(apto.deuda_base_2025) : apto.deuda_base_2025.toFixed(2)) : '')
+    setHistCableViajero(apto.cable_viajero > 0 ? (mCable === 'BS' ? fmtBs(apto.cable_viajero) : apto.cable_viajero.toFixed(2)) : '')
+    setHistGuaya(apto.guaya > 0 ? (mGuaya === 'BS' ? fmtBs(apto.guaya) : apto.guaya.toFixed(2)) : '')
+    setHistArreglo(apto.arreglo > 0 ? (mArreglo === 'BS' ? fmtBs(apto.arreglo) : apto.arreglo.toFixed(2)) : '')
+
     setModalHistOpen(true)
   }
 
@@ -437,10 +439,10 @@ export const AdminCalendarioDeudas: React.FC = () => {
       const res = await guardarConceptosHistoricos({
         apartamentoId: modalHistApto.apartamento_id,
         apartamentoNumero: modalHistApto.apartamento_numero,
-        deudaBase2025: Number(histBase2025 || 0),
-        cableViajero: Number(histCableViajero || 0),
-        guaya: Number(histGuaya || 0),
-        arreglo: Number(histArreglo || 0),
+        deudaBase2025: parsearMontoFlexible(histBase2025, histMonedaBase2025),
+        cableViajero: parsearMontoFlexible(histCableViajero, histMonedaCableViajero),
+        guaya: parsearMontoFlexible(histGuaya, histMonedaGuaya),
+        arreglo: parsearMontoFlexible(histArreglo, histMonedaArreglo),
         monedas: {
           deudaBase2025: histMonedaBase2025,
           cableViajero: histMonedaCableViajero,
@@ -599,12 +601,14 @@ export const AdminCalendarioDeudas: React.FC = () => {
   const handleAbrirEditarCeldaPersonalizada = (apto: FilaCalendarioApto, col: ColumnaCalendarioConfig) => {
     const celdasPers = apto.valores_personalizados || {}
     const valActual = celdasPers[col.id] ?? (col.montoDefecto ? { monto: col.montoDefecto, estado: 'pendiente' } : { monto: 0, estado: 'pendiente' })
+    const m = (valActual as any)?.moneda || col.moneda || 'USD'
+    const montoVal = valActual && valActual.monto > 0 ? valActual.monto : (col.montoDefecto || 0)
 
     setCeldaPersApto(apto)
     setCeldaPersCol(col)
-    setCeldaPersMonto(valActual && valActual.monto > 0 ? valActual.monto : (col.montoDefecto || ''))
+    setCeldaPersMonto(montoVal > 0 ? (m === 'BS' ? fmtBs(montoVal) : montoVal.toFixed(2)) : '')
     setCeldaPersEstado(valActual?.estado || 'pendiente')
-    setCeldaPersMoneda((valActual as any)?.moneda || col.moneda || 'USD')
+    setCeldaPersMoneda(m)
     setCeldaPersAplicarATodos(false)
     setModalCeldaPersonalizadaOpen(true)
   }
@@ -612,7 +616,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
   const handleGuardarCeldaPersonalizada = async () => {
     if (!celdaPersApto || !celdaPersCol) return
     setProcesandoAccion(true)
-    const nuevoMonto = celdaPersMonto === '' ? 0 : Number(celdaPersMonto)
+    const nuevoMonto = parsearMontoFlexible(celdaPersMonto, celdaPersMoneda)
 
     try {
       if (celdaPersAplicarATodos) {
@@ -861,7 +865,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
       }, 0)
       return (
         <td key={col.id} style={{ padding: '12px 10px', color: col.moneda === 'USD' ? '#f87171' : '#fb923c' }}>
-          {sum > 0 ? (col.moneda === 'USD' ? `$${fmtUsd(sum)}` : fmtBs(sum)) : '-'}
+          {sum > 0 ? (col.moneda === 'USD' ? `$${fmtUsd(sum)}` : `Bs. ${fmtBs(sum)}`) : '-'}
         </td>
       )
     }
@@ -877,7 +881,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
     }, 0)
     return (
       <td key={col.id} style={{ padding: '12px 10px', color: '#facc15' }}>
-        {sum > 0 ? (col.moneda === 'USD' ? `$${fmtUsd(sum)}` : fmtBs(sum)) : '-'}
+        {sum > 0 ? (col.moneda === 'USD' ? `$${fmtUsd(sum)}` : `Bs. ${fmtBs(sum)}`) : '-'}
       </td>
     )
   }
@@ -2233,7 +2237,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
                         backgroundColor: apto.total_bs > 0 ? 'rgba(234, 88, 12, 0.04)' : 'transparent',
                         textAlign: 'right'
                       }}>
-                        {apto.total_bs > 0 ? fmtBs(apto.total_bs) : '-'}
+                        {apto.total_bs > 0 ? `Bs. ${fmtBs(apto.total_bs)}` : '-'}
                       </td>
 
                       {/* TOTAL $ */}
@@ -2244,7 +2248,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
                         backgroundColor: apto.total_usd > 0 ? 'rgba(59, 130, 246, 0.04)' : 'transparent',
                         textAlign: 'right'
                       }}>
-                        {apto.total_usd > 0 ? fmtUsd(apto.total_usd) : '-'}
+                        {apto.total_usd > 0 ? `$${fmtUsd(apto.total_usd)}` : '-'}
                       </td>
 
                       {/* Apto repetido (Anchor derecho) */}
@@ -2583,13 +2587,22 @@ export const AdminCalendarioDeudas: React.FC = () => {
                     Monto Inicial (Opcional)
                   </label>
                   <input
-                    type="number"
-                    step="any"
+                    type="text"
+                    inputMode="decimal"
                     value={nuevaColMontoDefecto}
-                    onChange={e => setNuevaColMontoDefecto(e.target.value === '' ? '' : parseFloat(e.target.value))}
-                    placeholder="0.00"
+                    onChange={e => setNuevaColMontoDefecto(e.target.value)}
+                    onBlur={() => {
+                      const num = parsearMontoFlexible(nuevaColMontoDefecto, nuevaColMoneda)
+                      if (num > 0) setNuevaColMontoDefecto(nuevaColMoneda === 'BS' ? fmtBs(num) : num.toFixed(2))
+                    }}
+                    placeholder={nuevaColMoneda === 'BS' ? 'Ej: 14.304,23' : '0.00'}
                     style={{ width: '100%', backgroundColor: '#030712', border: '1px solid #374151', borderRadius: '8px', padding: '10px 12px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
                   />
+                  {nuevaColMontoDefecto !== '' && parsearMontoFlexible(nuevaColMontoDefecto, nuevaColMoneda) > 0 && (
+                    <div style={{ fontSize: '11px', color: nuevaColMoneda === 'BS' ? '#fb923c' : '#60a5fa', marginTop: '4px', fontWeight: 700 }}>
+                      {nuevaColMoneda === 'BS' ? `Bs. ${fmtBs(parsearMontoFlexible(nuevaColMontoDefecto, 'BS'))}` : `$${fmtUsd(parsearMontoFlexible(nuevaColMontoDefecto, 'USD'))}`}
+                    </div>
+                  )}
                 </div>
 
                 <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', marginTop: '16px' }}>
@@ -2920,7 +2933,11 @@ export const AdminCalendarioDeudas: React.FC = () => {
                   <div style={{ display: 'inline-flex', borderRadius: '8px', overflow: 'hidden', border: '1px solid #374151', backgroundColor: '#030712' }}>
                     <button
                       type="button"
-                      onClick={() => setCeldaPersMoneda('BS')}
+                      onClick={() => {
+                        setCeldaPersMoneda('BS')
+                        const num = parsearMontoFlexible(celdaPersMonto, 'BS')
+                        if (num > 0) setCeldaPersMonto(fmtBs(num))
+                      }}
                       style={{
                         padding: '4px 10px',
                         fontSize: '11px',
@@ -2936,7 +2953,11 @@ export const AdminCalendarioDeudas: React.FC = () => {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setCeldaPersMoneda('USD')}
+                      onClick={() => {
+                        setCeldaPersMoneda('USD')
+                        const num = parsearMontoFlexible(celdaPersMonto, 'USD')
+                        if (num > 0) setCeldaPersMonto(num.toFixed(2))
+                      }}
                       style={{
                         padding: '4px 10px',
                         fontSize: '11px',
@@ -2963,11 +2984,15 @@ export const AdminCalendarioDeudas: React.FC = () => {
                     {celdaPersMoneda === 'BS' ? 'Bs.' : '$'}
                   </span>
                   <input
-                    type="number"
-                    step="any"
+                    type="text"
+                    inputMode="decimal"
                     value={celdaPersMonto}
-                    onChange={e => setCeldaPersMonto(e.target.value === '' ? '' : parseFloat(e.target.value))}
-                    placeholder="0.00"
+                    onChange={e => setCeldaPersMonto(e.target.value)}
+                    onBlur={() => {
+                      const num = parsearMontoFlexible(celdaPersMonto, celdaPersMoneda)
+                      if (num > 0) setCeldaPersMonto(celdaPersMoneda === 'BS' ? fmtBs(num) : num.toFixed(2))
+                    }}
+                    placeholder={celdaPersMoneda === 'BS' ? 'Ej: 14.304,23' : '0.00'}
                     autoFocus
                     style={{
                       width: '100%',
@@ -2982,6 +3007,16 @@ export const AdminCalendarioDeudas: React.FC = () => {
                       boxSizing: 'border-box'
                     }}
                   />
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px', fontSize: '11px', padding: '0 2px' }}>
+                  <span style={{ color: '#94a3b8' }}>
+                    {celdaPersMoneda === 'BS' ? 'Separador de miles (.) y decimales (,)' : 'Formato numérico en dólares ($)'}
+                  </span>
+                  <span style={{ fontWeight: 800, color: celdaPersMoneda === 'BS' ? '#fb923c' : '#60a5fa' }}>
+                    {celdaPersMoneda === 'BS'
+                      ? `Monto: Bs. ${fmtBs(parsearMontoFlexible(celdaPersMonto, 'BS'))}`
+                      : `Monto: $${fmtUsd(parsearMontoFlexible(celdaPersMonto, 'USD'))}`}
+                  </span>
                 </div>
               </div>
 
@@ -3139,11 +3174,15 @@ export const AdminCalendarioDeudas: React.FC = () => {
                 </label>
                 <div style={{ display: 'flex', gap: '10px' }}>
                   <input
-                    type="number"
-                    step="any"
+                    type="text"
+                    inputMode="decimal"
                     value={modalMontoEditado}
-                    onChange={e => setModalMontoEditado(e.target.value === '' ? '' : parseFloat(e.target.value))}
-                    placeholder="0.00"
+                    onChange={e => setModalMontoEditado(e.target.value)}
+                    onBlur={() => {
+                      const num = parsearMontoFlexible(modalMontoEditado, modalMonedaEditada)
+                      if (num > 0) setModalMontoEditado(modalMonedaEditada === 'BS' ? fmtBs(num) : num.toFixed(2))
+                    }}
+                    placeholder={modalMonedaEditada === 'BS' ? 'Ej: 14.304,23' : '0.00'}
                     style={{
                       flex: 1,
                       backgroundColor: '#030712',
@@ -3159,7 +3198,12 @@ export const AdminCalendarioDeudas: React.FC = () => {
                   />
                   <select
                     value={modalMonedaEditada}
-                    onChange={e => setModalMonedaEditada(e.target.value as 'USD' | 'BS')}
+                    onChange={e => {
+                      const m = e.target.value as 'USD' | 'BS'
+                      setModalMonedaEditada(m)
+                      const num = parsearMontoFlexible(modalMontoEditado, m)
+                      if (num > 0) setModalMontoEditado(m === 'BS' ? fmtBs(num) : num.toFixed(2))
+                    }}
                     style={{
                       backgroundColor: '#030712',
                       border: '1px solid #374151',
@@ -3174,6 +3218,16 @@ export const AdminCalendarioDeudas: React.FC = () => {
                     <option value="USD">USD ($)</option>
                     <option value="BS">Bolívares (Bs)</option>
                   </select>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px', fontSize: '11px', padding: '0 2px' }}>
+                  <span style={{ color: '#94a3b8' }}>
+                    {modalMonedaEditada === 'BS' ? 'Separador de miles (.) y decimales (,)' : 'Formato numérico en dólares ($)'}
+                  </span>
+                  <span style={{ fontWeight: 800, color: modalMonedaEditada === 'BS' ? '#fb923c' : '#60a5fa' }}>
+                    {modalMonedaEditada === 'BS'
+                      ? `Monto: Bs. ${fmtBs(parsearMontoFlexible(modalMontoEditado, 'BS'))}`
+                      : `Monto: $${fmtUsd(parsearMontoFlexible(modalMontoEditado, 'USD'))}`}
+                  </span>
                 </div>
               </div>
 
@@ -3417,7 +3471,31 @@ export const AdminCalendarioDeudas: React.FC = () => {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setHistMonedaBase2025('USD')}
+                      onClick={() => {
+                        setHistMonedaBase2025('BS')
+                        const num = parsearMontoFlexible(histBase2025, 'BS')
+                        if (num > 0) setHistBase2025(fmtBs(num))
+                      }}
+                      style={{
+                        padding: '4px 10px',
+                        fontSize: '11px',
+                        fontWeight: 800,
+                        backgroundColor: histMonedaBase2025 === 'BS' ? '#f97316' : 'transparent',
+                        color: histMonedaBase2025 === 'BS' ? '#fff' : '#94a3b8',
+                        border: 'none',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s'
+                      }}
+                    >
+                      🇻🇪 Bolívares (Bs)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setHistMonedaBase2025('USD')
+                        const num = parsearMontoFlexible(histBase2025, 'USD')
+                        if (num > 0) setHistBase2025(num.toFixed(2))
+                      }}
                       style={{
                         padding: '4px 10px',
                         fontSize: '11px',
@@ -3444,11 +3522,15 @@ export const AdminCalendarioDeudas: React.FC = () => {
                     {histMonedaBase2025 === 'BS' ? 'Bs.' : '$'}
                   </span>
                   <input
-                    type="number"
-                    step="any"
+                    type="text"
+                    inputMode="decimal"
                     value={histBase2025}
-                    onChange={e => setHistBase2025(e.target.value === '' ? '' : parseFloat(e.target.value))}
-                    placeholder="0.00"
+                    onChange={e => setHistBase2025(e.target.value)}
+                    onBlur={() => {
+                      const num = parsearMontoFlexible(histBase2025, histMonedaBase2025)
+                      if (num > 0) setHistBase2025(histMonedaBase2025 === 'BS' ? fmtBs(num) : num.toFixed(2))
+                    }}
+                    placeholder={histMonedaBase2025 === 'BS' ? 'Ej: 14.304,23' : '0.00'}
                     style={{
                       width: '100%',
                       backgroundColor: '#030712',
@@ -3462,6 +3544,16 @@ export const AdminCalendarioDeudas: React.FC = () => {
                     }}
                   />
                 </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '5px', fontSize: '11px', padding: '0 2px' }}>
+                  <span style={{ color: '#94a3b8' }}>
+                    {histMonedaBase2025 === 'BS' ? 'Separador de miles (.) y decimales (,)' : 'Formato numérico en dólares ($)'}
+                  </span>
+                  <span style={{ fontWeight: 800, color: histMonedaBase2025 === 'BS' ? '#fb923c' : '#60a5fa' }}>
+                    {histMonedaBase2025 === 'BS'
+                      ? `Monto: Bs. ${fmtBs(parsearMontoFlexible(histBase2025, 'BS'))}`
+                      : `Monto: $${fmtUsd(parsearMontoFlexible(histBase2025, 'USD'))}`}
+                  </span>
+                </div>
               </div>
 
               {/* Concepto 2: Cable Viajero */}
@@ -3473,7 +3565,11 @@ export const AdminCalendarioDeudas: React.FC = () => {
                   <div style={{ display: 'inline-flex', borderRadius: '8px', overflow: 'hidden', border: '1px solid #374151', backgroundColor: '#030712' }}>
                     <button
                       type="button"
-                      onClick={() => setHistMonedaCableViajero('BS')}
+                      onClick={() => {
+                        setHistMonedaCableViajero('BS')
+                        const num = parsearMontoFlexible(histCableViajero, 'BS')
+                        if (num > 0) setHistCableViajero(fmtBs(num))
+                      }}
                       style={{
                         padding: '4px 10px',
                         fontSize: '11px',
@@ -3489,7 +3585,11 @@ export const AdminCalendarioDeudas: React.FC = () => {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setHistMonedaCableViajero('USD')}
+                      onClick={() => {
+                        setHistMonedaCableViajero('USD')
+                        const num = parsearMontoFlexible(histCableViajero, 'USD')
+                        if (num > 0) setHistCableViajero(num.toFixed(2))
+                      }}
                       style={{
                         padding: '4px 10px',
                         fontSize: '11px',
@@ -3516,11 +3616,15 @@ export const AdminCalendarioDeudas: React.FC = () => {
                     {histMonedaCableViajero === 'BS' ? 'Bs.' : '$'}
                   </span>
                   <input
-                    type="number"
-                    step="any"
+                    type="text"
+                    inputMode="decimal"
                     value={histCableViajero}
-                    onChange={e => setHistCableViajero(e.target.value === '' ? '' : parseFloat(e.target.value))}
-                    placeholder="0.00"
+                    onChange={e => setHistCableViajero(e.target.value)}
+                    onBlur={() => {
+                      const num = parsearMontoFlexible(histCableViajero, histMonedaCableViajero)
+                      if (num > 0) setHistCableViajero(histMonedaCableViajero === 'BS' ? fmtBs(num) : num.toFixed(2))
+                    }}
+                    placeholder={histMonedaCableViajero === 'BS' ? 'Ej: 14.304,23' : '0.00'}
                     style={{
                       width: '100%',
                       backgroundColor: '#030712',
@@ -3534,6 +3638,16 @@ export const AdminCalendarioDeudas: React.FC = () => {
                     }}
                   />
                 </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '5px', fontSize: '11px', padding: '0 2px' }}>
+                  <span style={{ color: '#94a3b8' }}>
+                    {histMonedaCableViajero === 'BS' ? 'Separador de miles (.) y decimales (,)' : 'Formato numérico en dólares ($)'}
+                  </span>
+                  <span style={{ fontWeight: 800, color: histMonedaCableViajero === 'BS' ? '#fb923c' : '#60a5fa' }}>
+                    {histMonedaCableViajero === 'BS'
+                      ? `Monto: Bs. ${fmtBs(parsearMontoFlexible(histCableViajero, 'BS'))}`
+                      : `Monto: $${fmtUsd(parsearMontoFlexible(histCableViajero, 'USD'))}`}
+                  </span>
+                </div>
               </div>
 
               {/* Concepto 3: Guaya */}
@@ -3545,7 +3659,11 @@ export const AdminCalendarioDeudas: React.FC = () => {
                   <div style={{ display: 'inline-flex', borderRadius: '8px', overflow: 'hidden', border: '1px solid #374151', backgroundColor: '#030712' }}>
                     <button
                       type="button"
-                      onClick={() => setHistMonedaGuaya('BS')}
+                      onClick={() => {
+                        setHistMonedaGuaya('BS')
+                        const num = parsearMontoFlexible(histGuaya, 'BS')
+                        if (num > 0) setHistGuaya(fmtBs(num))
+                      }}
                       style={{
                         padding: '4px 10px',
                         fontSize: '11px',
@@ -3561,7 +3679,11 @@ export const AdminCalendarioDeudas: React.FC = () => {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setHistMonedaGuaya('USD')}
+                      onClick={() => {
+                        setHistMonedaGuaya('USD')
+                        const num = parsearMontoFlexible(histGuaya, 'USD')
+                        if (num > 0) setHistGuaya(num.toFixed(2))
+                      }}
                       style={{
                         padding: '4px 10px',
                         fontSize: '11px',
@@ -3588,11 +3710,15 @@ export const AdminCalendarioDeudas: React.FC = () => {
                     {histMonedaGuaya === 'BS' ? 'Bs.' : '$'}
                   </span>
                   <input
-                    type="number"
-                    step="any"
+                    type="text"
+                    inputMode="decimal"
                     value={histGuaya}
-                    onChange={e => setHistGuaya(e.target.value === '' ? '' : parseFloat(e.target.value))}
-                    placeholder="0.00"
+                    onChange={e => setHistGuaya(e.target.value)}
+                    onBlur={() => {
+                      const num = parsearMontoFlexible(histGuaya, histMonedaGuaya)
+                      if (num > 0) setHistGuaya(histMonedaGuaya === 'BS' ? fmtBs(num) : num.toFixed(2))
+                    }}
+                    placeholder={histMonedaGuaya === 'BS' ? 'Ej: 14.304,23' : '0.00'}
                     style={{
                       width: '100%',
                       backgroundColor: '#030712',
@@ -3606,6 +3732,16 @@ export const AdminCalendarioDeudas: React.FC = () => {
                     }}
                   />
                 </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '5px', fontSize: '11px', padding: '0 2px' }}>
+                  <span style={{ color: '#94a3b8' }}>
+                    {histMonedaGuaya === 'BS' ? 'Separador de miles (.) y decimales (,)' : 'Formato numérico en dólares ($)'}
+                  </span>
+                  <span style={{ fontWeight: 800, color: histMonedaGuaya === 'BS' ? '#fb923c' : '#60a5fa' }}>
+                    {histMonedaGuaya === 'BS'
+                      ? `Monto: Bs. ${fmtBs(parsearMontoFlexible(histGuaya, 'BS'))}`
+                      : `Monto: $${fmtUsd(parsearMontoFlexible(histGuaya, 'USD'))}`}
+                  </span>
+                </div>
               </div>
 
               {/* Concepto 4: Arreglo / Cuota Extraordinaria */}
@@ -3617,7 +3753,11 @@ export const AdminCalendarioDeudas: React.FC = () => {
                   <div style={{ display: 'inline-flex', borderRadius: '8px', overflow: 'hidden', border: '1px solid #374151', backgroundColor: '#030712' }}>
                     <button
                       type="button"
-                      onClick={() => setHistMonedaArreglo('BS')}
+                      onClick={() => {
+                        setHistMonedaArreglo('BS')
+                        const num = parsearMontoFlexible(histArreglo, 'BS')
+                        if (num > 0) setHistArreglo(fmtBs(num))
+                      }}
                       style={{
                         padding: '4px 10px',
                         fontSize: '11px',
@@ -3633,7 +3773,11 @@ export const AdminCalendarioDeudas: React.FC = () => {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setHistMonedaArreglo('USD')}
+                      onClick={() => {
+                        setHistMonedaArreglo('USD')
+                        const num = parsearMontoFlexible(histArreglo, 'USD')
+                        if (num > 0) setHistArreglo(num.toFixed(2))
+                      }}
                       style={{
                         padding: '4px 10px',
                         fontSize: '11px',
@@ -3660,11 +3804,15 @@ export const AdminCalendarioDeudas: React.FC = () => {
                     {histMonedaArreglo === 'BS' ? 'Bs.' : '$'}
                   </span>
                   <input
-                    type="number"
-                    step="any"
+                    type="text"
+                    inputMode="decimal"
                     value={histArreglo}
-                    onChange={e => setHistArreglo(e.target.value === '' ? '' : parseFloat(e.target.value))}
-                    placeholder="0.00"
+                    onChange={e => setHistArreglo(e.target.value)}
+                    onBlur={() => {
+                      const num = parsearMontoFlexible(histArreglo, histMonedaArreglo)
+                      if (num > 0) setHistArreglo(histMonedaArreglo === 'BS' ? fmtBs(num) : num.toFixed(2))
+                    }}
+                    placeholder={histMonedaArreglo === 'BS' ? 'Ej: 14.304,23' : '0.00'}
                     style={{
                       width: '100%',
                       backgroundColor: '#030712',
@@ -3677,6 +3825,16 @@ export const AdminCalendarioDeudas: React.FC = () => {
                       boxSizing: 'border-box'
                     }}
                   />
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '5px', fontSize: '11px', padding: '0 2px' }}>
+                  <span style={{ color: '#94a3b8' }}>
+                    {histMonedaArreglo === 'BS' ? 'Separador de miles (.) y decimales (,)' : 'Formato numérico en dólares ($)'}
+                  </span>
+                  <span style={{ fontWeight: 800, color: histMonedaArreglo === 'BS' ? '#fb923c' : '#60a5fa' }}>
+                    {histMonedaArreglo === 'BS'
+                      ? `Monto: Bs. ${fmtBs(parsearMontoFlexible(histArreglo, 'BS'))}`
+                      : `Monto: $${fmtUsd(parsearMontoFlexible(histArreglo, 'USD'))}`}
+                  </span>
                 </div>
               </div>
             </div>
