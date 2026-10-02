@@ -24,3 +24,4 @@ android/
 ios/
 node_modules
 *.xlsx
+scratch/

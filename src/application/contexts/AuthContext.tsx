@@ -19,6 +19,7 @@ interface AuthContextType {
   refreshPerfil: () => Promise<void>
   refreshConfig: () => Promise<void>
   // Helpers de rol
+  isSuperAdmin: boolean
   isAdmin: boolean
   isResidente: boolean
   isConserje: boolean
@@ -265,7 +266,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // ── Helpers de rol ────────────────────────────────────────────
   const rol: Rol | null = perfil?.rol ?? null
-  const isAdmin = rol === 'administrador'
+  const isSuperAdmin = rol === 'superadmin'
+  const isAdmin = rol === 'administrador' || rol === 'superadmin'
   const isResidente = rol === 'residente'
   const isConserje = rol === 'conserje'
   // Solo evaluar si ya tenemos perfil cargado (evita falso positivo durante carga)
@@ -289,6 +291,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         updatePassword,
         refreshPerfil,
         refreshConfig,
+        isSuperAdmin,
         isAdmin,
         isResidente,
         isConserje,

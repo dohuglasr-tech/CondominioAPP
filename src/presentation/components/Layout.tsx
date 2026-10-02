@@ -592,6 +592,39 @@ export const Layout: React.FC = () => {
 
       {/* ── MAIN CONTENT ──────────────────────────────────── */}
       <main className="layout-main">
+        {config?.banner_emergencia_activo && config?.banner_emergencia_texto && (
+          <div style={{
+            background: config.banner_emergencia_nivel === 'critical'
+              ? 'linear-gradient(135deg, rgba(239, 68, 68, 0.25) 0%, rgba(185, 28, 28, 0.35) 100%)'
+              : config.banner_emergencia_nivel === 'warning'
+              ? 'linear-gradient(135deg, rgba(234, 179, 8, 0.25) 0%, rgba(161, 98, 7, 0.35) 100%)'
+              : 'linear-gradient(135deg, rgba(59, 130, 246, 0.25) 0%, rgba(29, 78, 216, 0.35) 100%)',
+            border: `1px solid ${
+              config.banner_emergencia_nivel === 'critical' ? '#ef4444' :
+              config.banner_emergencia_nivel === 'warning' ? '#eab308' : '#3b82f6'
+            }`,
+            borderRadius: '14px',
+            padding: '14px 18px',
+            margin: '16px 20px 0',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            color: '#fff',
+            fontSize: '13px',
+            fontWeight: 600,
+            boxShadow: '0 8px 25px rgba(0,0,0,0.5)'
+          }}>
+            <span style={{ fontSize: '22px' }}>
+              {config.banner_emergencia_nivel === 'critical' ? '🚨' : config.banner_emergencia_nivel === 'warning' ? '⚠️' : '📢'}
+            </span>
+            <div style={{ flex: 1, lineHeight: 1.4 }}>
+              <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.8px', color: config.banner_emergencia_nivel === 'critical' ? '#fca5a5' : config.banner_emergencia_nivel === 'warning' ? '#fde047' : '#93c5fd', fontWeight: 800 }}>
+                COMUNICADO OFICIAL
+              </div>
+              <div>{config.banner_emergencia_texto}</div>
+            </div>
+          </div>
+        )}
         <div className="page-transition">
           <Outlet />
         </div>

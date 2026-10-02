@@ -7,6 +7,7 @@ import {
   formatWhatsappUrl
 } from '../../data/juntaService'
 import { useNavigate } from 'react-router-dom'
+import { supabase } from '../../data/supabase'
 
 export const JuntaCondominioResidente: React.FC = () => {
   const navigate = useNavigate()
@@ -28,6 +29,17 @@ export const JuntaCondominioResidente: React.FC = () => {
 
   useEffect(() => {
     cargarDatos()
+
+    const channel = supabase
+      .channel('realtime_junta_residente')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'junta_condominio' }, () => {
+        cargarDatos()
+      })
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
   }, [cargarDatos])
 
   // Agrupar miembros por categoría jerárquica

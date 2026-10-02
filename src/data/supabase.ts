@@ -19,7 +19,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 })
 
 // Tipos que coinciden con la BD
-export type Rol = 'administrador' | 'residente' | 'conserje'
+export type Rol = 'superadmin' | 'administrador' | 'residente' | 'conserje'
 export type EstadoCuenta = 'activa' | 'suspendida' | 'pendiente_cambio_clave'
 
 export interface Perfil {
@@ -76,6 +76,11 @@ export interface ConfigEdificio {
   ciudad: string | null
   fecha_inicio_gestion?: string | null
   fecha_fin_administracion_anterior?: string | null
+  banner_emergencia_activo?: boolean
+  banner_emergencia_texto?: string
+  banner_emergencia_nivel?: 'info' | 'warning' | 'critical'
+  modo_mantenimiento?: boolean
+  modo_mantenimiento_motivo?: string
   updated_at: string | null
 }
 

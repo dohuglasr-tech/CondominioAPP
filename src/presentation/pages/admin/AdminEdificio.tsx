@@ -119,6 +119,17 @@ export const AdminEdificio: React.FC = () => {
 
   useEffect(() => {
     cargarJunta()
+
+    const channel = supabase
+      .channel('realtime_admin_junta')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'junta_condominio' }, () => {
+        cargarJunta()
+      })
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
   }, [cargarJunta])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -417,14 +428,24 @@ export const AdminEdificio: React.FC = () => {
       orden: Number(formOrden) || 1
     }
 
-    await guardarMiembroJunta(payload)
+    const res = await guardarMiembroJunta(payload)
+    if (res.error) {
+      setErrorMsg(res.error)
+    } else {
+      setSuccessMsg(miembroEditar ? '✓ Integrante del organigrama actualizado exitosamente.' : '✓ Nuevo integrante agregado al organigrama exitosamente.')
+    }
     setModalMiembroOpen(false)
     cargarJunta()
   }
 
   const handleEliminarMiembro = async (id: string, nombre: string) => {
     if (window.confirm(`¿Estás seguro de eliminar a ${nombre} del organigrama?`)) {
-      await eliminarMiembroJunta(id)
+      const res = await eliminarMiembroJunta(id)
+      if (res.error) {
+        setErrorMsg(res.error)
+      } else {
+        setSuccessMsg(`✓ Integrante ${nombre} eliminado del organigrama.`)
+      }
       cargarJunta()
     }
   }

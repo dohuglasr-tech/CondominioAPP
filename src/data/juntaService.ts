@@ -70,16 +70,16 @@ export const CATEGORIA_ORGANIGRAMA_CONFIG: Record<
 
 const STORAGE_JUNTA_KEY = 'condominio_junta_organigrama_cache'
 
-// Datos semilla iniciales
+// Datos semilla iniciales actualizados con la junta real del condominio
 const JUNTA_SEMILLA: MiembroJunta[] = [
   {
     id: 'junta-1',
     nombre: 'Dohuglas Guevara',
     cargo: 'Administrador General',
     categoria: 'administracion',
-    telefono: '0414-1234567',
-    email: 'administracion@torre5.com',
-    apartamento: 'Oficina PB',
+    telefono: '04227283213',
+    email: 'dohuglas.r@gmail.com',
+    apartamento: '565',
     descripcion_rol: 'Gestión administrativa, cobranza, emisión de recibos y contrataciones',
     horario_atencion: 'Lunes a Viernes 8:00 AM - 5:00 PM',
     orden: 1,
@@ -87,12 +87,12 @@ const JUNTA_SEMILLA: MiembroJunta[] = [
   },
   {
     id: 'junta-2',
-    nombre: 'Carlos Eduardo Mendoza',
-    cargo: 'Presidente de la Junta',
+    nombre: 'Rafael Eduardo Malvares',
+    cargo: 'Presidente',
     categoria: 'junta_directiva',
-    telefono: '0424-9876543',
-    email: 'presidencia@torre5.com',
-    apartamento: 'Apto 521',
+    telefono: '04120788270',
+    email: 'remr123@gmail.com',
+    apartamento: 'Apto 584',
     descripcion_rol: 'Representación legal de la comunidad y supervisión de proyectos',
     horario_atencion: 'Previa cita / Reuniones de Junta',
     orden: 2,
@@ -100,25 +100,25 @@ const JUNTA_SEMILLA: MiembroJunta[] = [
   },
   {
     id: 'junta-3',
-    nombre: 'Mariana Castillo',
-    cargo: 'Tesorera',
+    nombre: 'Eudorina Figueroa',
+    cargo: 'Vice-Presidenta',
     categoria: 'junta_directiva',
-    telefono: '0412-5554321',
-    email: 'tesoreria@torre5.com',
-    apartamento: 'Apto 510',
-    descripcion_rol: 'Control presupuestario, revisión de cuentas y auditoría de egresos',
-    horario_atencion: 'Lunes a Jueves 4:00 PM - 6:00 PM',
+    telefono: '04141108274',
+    email: 'eudorinafigueroa@gmail.com',
+    apartamento: 'Apto',
+    descripcion_rol: 'Apoyo a la presidencia y coordinación comunitaria',
+    horario_atencion: 'Disponibilidad a disponer',
     orden: 3,
     created_at: '2026-09-01T10:00:00Z'
   },
   {
     id: 'junta-4',
-    nombre: 'Roberto Villasmil',
-    cargo: 'Secretario',
+    nombre: 'Letty Plaza de Prim',
+    cargo: 'Secretaria',
     categoria: 'junta_directiva',
     telefono: '0416-3332211',
-    email: 'secretaria@torre5.com',
-    apartamento: 'Apto 506',
+    email: 'fernandezplazaangela@gmail.com',
+    apartamento: 'Apto',
     descripcion_rol: 'Redacción de actas de asamblea, citaciones y archivo documental',
     horario_atencion: 'Horario de oficina',
     orden: 4,
@@ -126,27 +126,41 @@ const JUNTA_SEMILLA: MiembroJunta[] = [
   },
   {
     id: 'junta-5',
-    nombre: 'Ing. Fernando Páez',
-    cargo: 'Vocal Principal de Mantenimiento',
+    nombre: 'Ana Suarez Gonzalez',
+    cargo: 'Vocal N2',
     categoria: 'comite_vocal',
-    telefono: '0414-7778899',
-    email: 'mantenimiento@torre5.com',
-    apartamento: 'Apto 515',
-    descripcion_rol: 'Inspección técnica de ascensores, bombas hidroneumáticas y áreas comunes',
-    horario_atencion: 'Atención de emergencias técnicas',
+    telefono: '04142619932',
+    email: 'caracas41beisbol@gmail.com',
+    apartamento: 'PH52',
+    descripcion_rol: 'Atención de mantenciones y recreativas',
+    horario_atencion: 'Atención de mantenciones y recreativas',
     orden: 5,
     created_at: '2026-09-01T10:00:00Z'
   },
   {
     id: 'junta-6',
-    nombre: 'José Ramos',
-    cargo: 'Conserje y Mantenimiento Operativo',
-    categoria: 'operativo',
+    nombre: 'Hilda Toledo',
+    cargo: 'Vocal N1',
+    categoria: 'comite_vocal',
     telefono: '0424-1110022',
-    apartamento: 'Conserjería PB',
-    descripcion_rol: 'Aseo de áreas comunes, control de llaves y mantenimiento diario',
+    email: 'hildatole@hotmail.com',
+    apartamento: '',
+    descripcion_rol: 'Comité de vocales y enlace vecinal',
     horario_atencion: 'Lunes a Sábado 7:00 AM - 4:00 PM',
     orden: 6,
+    created_at: '2026-09-01T10:00:00Z'
+  },
+  {
+    id: 'junta-7',
+    nombre: 'Barinia Lopez',
+    cargo: 'Vocal N3',
+    categoria: 'comite_vocal',
+    telefono: '04143967343',
+    email: 'barinialf@gmail.com',
+    apartamento: 'Apto',
+    descripcion_rol: 'Apoyo a comités y vocales de convivencia',
+    horario_atencion: 'Horario de oficina',
+    orden: 7,
     created_at: '2026-09-01T10:00:00Z'
   }
 ]
@@ -224,9 +238,8 @@ export async function obtenerJunta(): Promise<{ data: MiembroJunta[]; error: str
 
 export async function guardarMiembroJunta(item: Partial<MiembroJunta>): Promise<{ data: MiembroJunta | null; error: string | null }> {
   try {
-    const id = item.id || `junta-${Date.now()}`
     const nuevoMiembro: MiembroJunta = {
-      id,
+      id: item.id || `junta-${Date.now()}`,
       nombre: item.nombre?.trim() || 'Sin nombre',
       cargo: item.cargo?.trim() || 'Sin cargo',
       categoria: item.categoria || 'junta_directiva',
@@ -241,9 +254,56 @@ export async function guardarMiembroJunta(item: Partial<MiembroJunta>): Promise<
       updated_at: new Date().toISOString()
     }
 
+    const payload = {
+      nombre: nuevoMiembro.nombre,
+      cargo: nuevoMiembro.cargo,
+      categoria: nuevoMiembro.categoria,
+      telefono: nuevoMiembro.telefono || null,
+      email: nuevoMiembro.email || null,
+      apartamento: nuevoMiembro.apartamento || null,
+      descripcion_rol: nuevoMiembro.descripcion_rol || null,
+      horario_atencion: nuevoMiembro.horario_atencion || null,
+      orden: nuevoMiembro.orden,
+      avatar_url: nuevoMiembro.avatar_url || null,
+      updated_at: new Date().toISOString()
+    }
+
+    // Persistir en Supabase
+    try {
+      const isExistingDbId = item.id && !item.id.startsWith('junta-')
+      if (isExistingDbId) {
+        const { data: dbData, error: dbErr } = await supabase
+          .from('junta_condominio')
+          .update(payload)
+          .eq('id', item.id)
+          .select()
+          .maybeSingle()
+
+        if (dbErr) {
+          console.warn('[juntaService] Error actualizando en Supabase:', dbErr.message)
+        } else if (dbData) {
+          nuevoMiembro.id = dbData.id
+        }
+      } else {
+        const { data: dbData, error: dbErr } = await supabase
+          .from('junta_condominio')
+          .insert([payload])
+          .select()
+          .single()
+
+        if (dbErr) {
+          console.warn('[juntaService] Error insertando en Supabase:', dbErr.message)
+        } else if (dbData) {
+          nuevoMiembro.id = dbData.id
+        }
+      }
+    } catch (dbErr) {
+      console.info('[juntaService] Excepción guardando en Supabase (usando local):', dbErr)
+    }
+
     // Actualizar cache local
     const cached = getLocalJuntaCache()
-    const index = cached.findIndex(m => m.id === id)
+    const index = cached.findIndex(m => m.id === item.id || m.id === nuevoMiembro.id)
     if (index >= 0) {
       cached[index] = nuevoMiembro
     } else {
@@ -251,32 +311,6 @@ export async function guardarMiembroJunta(item: Partial<MiembroJunta>): Promise<
     }
     cached.sort((a, b) => a.orden - b.orden)
     saveLocalJuntaCache(cached)
-
-    // Intentar persistir en Supabase
-    try {
-      const payload = {
-        nombre: nuevoMiembro.nombre,
-        cargo: nuevoMiembro.cargo,
-        categoria: nuevoMiembro.categoria,
-        telefono: nuevoMiembro.telefono || null,
-        email: nuevoMiembro.email || null,
-        apartamento: nuevoMiembro.apartamento || null,
-        descripcion_rol: nuevoMiembro.descripcion_rol || null,
-        horario_atencion: nuevoMiembro.horario_atencion || null,
-        orden: nuevoMiembro.orden,
-        avatar_url: nuevoMiembro.avatar_url || null,
-        updated_at: new Date().toISOString()
-      }
-
-      if (item.id && !item.id.startsWith('junta-')) {
-        await supabase.from('junta_condominio').update(payload).eq('id', item.id)
-      } else {
-        const { data: dbData } = await supabase.from('junta_condominio').insert([payload]).select().single()
-        if (dbData) nuevoMiembro.id = dbData.id
-      }
-    } catch (dbErr) {
-      console.info('[juntaService] No se pudo guardar en Supabase (guardado en local):', dbErr)
-    }
 
     return { data: nuevoMiembro, error: null }
   } catch (err: any) {
@@ -289,9 +323,19 @@ export async function eliminarMiembroJunta(id: string): Promise<{ success: boole
     const cached = getLocalJuntaCache().filter(m => m.id !== id)
     saveLocalJuntaCache(cached)
 
-    if (!id.startsWith('junta-')) {
-      await supabase.from('junta_condominio').delete().eq('id', id)
+    try {
+      if (!id.startsWith('junta-')) {
+        await supabase.from('junta_condominio').delete().eq('id', id)
+      } else {
+        const target = getLocalJuntaCache().find(m => m.id === id)
+        if (target) {
+          await supabase.from('junta_condominio').delete().eq('nombre', target.nombre).eq('cargo', target.cargo)
+        }
+      }
+    } catch (dbErr) {
+      console.warn('[juntaService] Error eliminando en Supabase:', dbErr)
     }
+
     return { success: true, error: null }
   } catch (err: any) {
     return { success: false, error: err.message || 'Error eliminando miembro' }

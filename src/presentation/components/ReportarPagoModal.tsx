@@ -505,6 +505,16 @@ export function ReportarPagoModal({ apartamentoId, onClose, onSuccess, config: c
         <p style={{ color: '#666', fontSize: '13px', marginBottom: '18px' }}>Selecciona los conceptos que vas a pagar.</p>
         <StepIndicator current={0} total={4} />
 
+        {config?.modo_mantenimiento && (
+          <div style={{ background: 'rgba(234,179,8,0.12)', border: '1px solid rgba(234,179,8,0.35)', borderRadius: '10px', padding: '12px 14px', marginBottom: '14px', fontSize: '12px', color: '#fde047', display: 'flex', gap: '10px', alignItems: 'center' }}>
+            <span style={{ fontSize: '20px' }}>🔒</span>
+            <div>
+              <strong>Mantenimiento del Sistema de Cobranzas:</strong>
+              <div>{config.modo_mantenimiento_motivo || 'El módulo de pagos está en pausa temporal por auditoría contable. Intenta nuevamente más tarde.'}</div>
+            </div>
+          </div>
+        )}
+
         {saldoAFavor > 0 && (
           <div style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: '10px', padding: '10px 14px', marginBottom: '14px', fontSize: '12px', color: '#6ee7b7', display: 'flex', gap: '8px', alignItems: 'center' }}>
             <span style={{ fontSize: '16px' }}>💚</span>

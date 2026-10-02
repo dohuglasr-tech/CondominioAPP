@@ -40,6 +40,7 @@ import { JuntaCondominioResidente } from './presentation/pages/JuntaCondominioRe
 import { GasResidente } from './presentation/pages/GasResidente'
 import { Register } from './presentation/pages/Register'
 import { InactivityManager } from './presentation/components/InactivityManager'
+import { SuperAdminDashboard } from './presentation/pages/superadmin/SuperAdminDashboard'
 
 // ── Error Boundary para prevenir pantalla en negro ante errores imprevistos ──
 interface ErrorBoundaryState {
@@ -127,7 +128,7 @@ export class ErrorBoundary extends React.Component<{ children: React.ReactNode }
 
 // ── Protege rutas privadas ────────────────────────────────────────
 const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
-  const { session, perfil, loading, needsPasswordChange, needsProfileSetup, isAdmin, refreshPerfil, signOut, isPasswordRecovery } = useAuth()
+  const { session, perfil, loading, needsPasswordChange, needsProfileSetup, isAdmin, isSuperAdmin, refreshPerfil, signOut, isPasswordRecovery } = useAuth()
 
   if (loading) return <Loader />
   if (!session) return <Navigate to="/login" replace />
@@ -190,7 +191,8 @@ const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
   }
   // Si el usuario llega de un enlace de recuperación de contraseña, obligar a definir su nueva clave
   if (isPasswordRecovery) return <Navigate to="/reset-password" replace />
-  // Si el usuario autenticado tiene rol de administrador, redirigir a su panel
+  // Redirigir a panel maestro si es superadmin o administrador
+  if (isSuperAdmin) return <Navigate to="/superadmin" replace />
   if (isAdmin) return <Navigate to="/admin" replace />
   if (needsPasswordChange) return <Navigate to="/cambiar-password" replace />
   if (needsProfileSetup) return <Navigate to="/completar-perfil" replace />
@@ -228,8 +230,8 @@ const AdminRoute = ({ children }: { children: React.ReactNode }) => {
   if (loading) return <Loader />
   // Si hay sesión activa pero el perfil aún se está cargando, esperar
   if (session && perfil === null) return <Loader />
-  // Sin sesión o sin rol de administrador → ir al login de admin
-  if (!session || perfil?.rol !== 'administrador') return <Navigate to="/admin-login" replace />
+  // Sin sesión o sin rol de administrador / superadmin → ir al login de admin
+  if (!session || (perfil?.rol !== 'administrador' && perfil?.rol !== 'superadmin')) return <Navigate to="/admin-login" replace />
 
   return <>{children}</>
 }
@@ -258,17 +260,19 @@ function AppShell() {
     }
   }, [location.pathname, isPasswordRecovery, navigate])
 
+  const isSuperAdminRoute = location.pathname.startsWith('/superadmin')
+
   return (
     <>
       <InactivityManager />
-      {!splashDone && (
+      {!splashDone && !isSuperAdminRoute && (
         <SplashScreen
           logoUrl={config?.logo_url}
           buildingName={config?.nombre_edificio}
           onDone={handleSplashDone}
         />
       )}
-      {splashDone && <InstallAppPrompt />}
+      {splashDone && !isSuperAdminRoute && <InstallAppPrompt />}
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
@@ -293,6 +297,7 @@ function AppShell() {
         />
 
         <Route path="/admin-login" element={<AdminLogin />} />
+        <Route path="/superadmin" element={<SuperAdminDashboard />} />
 
         <Route
           path="/admin/*"
