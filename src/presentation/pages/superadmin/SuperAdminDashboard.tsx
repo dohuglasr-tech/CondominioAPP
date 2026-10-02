@@ -5,7 +5,13 @@ import { supabase } from '../../../data/supabase'
 import {
   getSystemHealth,
   purgeGlobalCache,
+  getAllBuildings,
+  createBuilding,
+  updateBuilding,
   getMasterUsers,
+  getApartmentsList,
+  superAdminUpdateUserProfile,
+  superAdminChangePassword,
   updateUserRole,
   toggleUserStatus,
   getMasterAuditLogs,
@@ -15,6 +21,7 @@ import {
   generateFullDatabaseSnapshot,
   SystemHealthData,
   MasterUserData,
+  BuildingData,
   FinancialSanityCheck
 } from '../../../data/superAdminService'
 
@@ -29,7 +36,39 @@ export const SuperAdminDashboard: React.FC = () => {
   const [loginError, setLoginError] = useState<string | null>(null)
 
   // Pestaña activa del Command Center
-  const [activeTab, setActiveTab] = useState<'health' | 'users' | 'audit' | 'emergency' | 'backups'>('health')
+  const [activeTab, setActiveTab] = useState<'buildings' | 'health' | 'users' | 'audit' | 'emergency' | 'backups'>('buildings')
+
+  // ── MULTIEDIFICIO & FILTRO GLOBAL ──
+  const [buildings, setBuildings] = useState<BuildingData[]>([])
+  const [selectedBuildingId, setSelectedBuildingId] = useState<string>('todos')
+  const [loadingBuildings, setLoadingBuildings] = useState(false)
+
+  // Modal Edificio (Crear / Editar)
+  const [buildingModalOpen, setBuildingModalOpen] = useState(false)
+  const [editingBuilding, setEditingBuilding] = useState<BuildingData | null>(null)
+  const [buildingForm, setBuildingForm] = useState<Partial<BuildingData>>({
+    nombre_edificio: '',
+    rif_edificio: '',
+    direccion: '',
+    ciudad: '',
+    telefono: '',
+    email_admin: '',
+    total_apartamentos: 60,
+    total_pisos: 15,
+    apartamentos_por_piso: 4,
+    tiene_ph: false,
+    total_ph: 0,
+    color_primario: '#f97316',
+    banco: '',
+    cuenta_bancaria: '',
+    titular_cuenta: '',
+    pago_movil_banco: '',
+    pago_movil_cedula: '',
+    pago_movil_telefono: '',
+    zelle_email: ''
+  })
+  const [autoGenerateApartments, setAutoGenerateApartments] = useState(true)
+  const [savingBuilding, setSavingBuilding] = useState(false)
 
   // Datos en vivo
   const [healthData, setHealthData] = useState<SystemHealthData | null>(null)
@@ -39,6 +78,37 @@ export const SuperAdminDashboard: React.FC = () => {
   const [userSearch, setUserSearch] = useState('')
   const [userRoleFilter, setUserRoleFilter] = useState<string>('todos')
   const [userStatusFilter, setUserStatusFilter] = useState<string>('todos')
+
+  // Modal Editar Perfil de Usuario Completo
+  const [editUserModal, setEditUserModal] = useState<MasterUserData | null>(null)
+  const [userForm, setUserForm] = useState<{
+    nombre_completo: string
+    cedula: string
+    telefono: string
+    email: string
+    rol: 'superadmin' | 'administrador' | 'residente' | 'conserje'
+    estado_cuenta: 'activa' | 'suspendida' | 'pendiente_cambio_clave'
+    apartamento_id: string
+    edificio_id: string
+    condicion_habitacional: string
+  }>({
+    nombre_completo: '',
+    cedula: '',
+    telefono: '',
+    email: '',
+    rol: 'residente',
+    estado_cuenta: 'activa',
+    apartamento_id: '',
+    edificio_id: '',
+    condicion_habitacional: 'propietario'
+  })
+  const [availableApartments, setAvailableApartments] = useState<{ id: string; numero: string; piso: number; edificio_id?: string }[]>([])
+  const [savingUser, setSavingUser] = useState(false)
+
+  // Modal Cambio Directo de Contraseña
+  const [passwordModalUser, setPasswordModalUser] = useState<MasterUserData | null>(null)
+  const [newPasswordInput, setNewPasswordInput] = useState('')
+  const [savingPassword, setSavingPassword] = useState(false)
 
   // Auditoría y Finanzas
   const [auditLogs, setAuditLogs] = useState<any[]>([])
@@ -55,7 +125,7 @@ export const SuperAdminDashboard: React.FC = () => {
   const [savingEmergency, setSavingEmergency] = useState(false)
   const [emergencySuccess, setEmergencySuccess] = useState<string | null>(null)
 
-  // Modal Cambio de Rol
+  // Modal Cambio de Rol Rápido
   const [roleModalUser, setRoleModalUser] = useState<MasterUserData | null>(null)
   const [newSelectedRole, setNewSelectedRole] = useState<'residente' | 'administrador' | 'conserje' | 'superadmin'>('residente')
   const [savingRole, setSavingRole] = useState(false)
@@ -69,6 +139,17 @@ export const SuperAdminDashboard: React.FC = () => {
     setTimeout(() => setNotification(null), 4000)
   }
 
+  // ── 0. Cargar Edificios ──
+  const refreshBuildings = useCallback(async () => {
+    setLoadingBuildings(true)
+    try {
+      const data = await getAllBuildings()
+      setBuildings(data)
+    } finally {
+      setLoadingBuildings(false)
+    }
+  }, [])
+
   // ── 1. Cargar Salud del Sistema ──
   const refreshHealth = useCallback(async () => {
     setLoadingHealth(true)
@@ -80,16 +161,17 @@ export const SuperAdminDashboard: React.FC = () => {
     }
   }, [])
 
-  // ── 2. Cargar Usuarios ──
-  const refreshUsers = useCallback(async () => {
+  // ── 2. Cargar Usuarios (con filtro de edificio opcional) ──
+  const refreshUsers = useCallback(async (bldgId?: string) => {
     setLoadingUsers(true)
     try {
-      const data = await getMasterUsers()
+      const targetBldg = bldgId !== undefined ? bldgId : selectedBuildingId
+      const data = await getMasterUsers(targetBldg)
       setUsers(data)
     } finally {
       setLoadingUsers(false)
     }
-  }, [])
+  }, [selectedBuildingId])
 
   // ── 3. Cargar Auditoría y Finanzas ──
   const refreshAudit = useCallback(async () => {
@@ -131,8 +213,9 @@ export const SuperAdminDashboard: React.FC = () => {
   // Inicialización cuando el usuario es superadmin
   useEffect(() => {
     if (isSuperAdmin) {
+      refreshBuildings()
       refreshHealth()
-      refreshUsers()
+      refreshUsers(selectedBuildingId)
       refreshAudit()
       loadEmergencySettings()
 
@@ -142,7 +225,7 @@ export const SuperAdminDashboard: React.FC = () => {
 
       return () => clearInterval(interval)
     }
-  }, [isSuperAdmin, refreshHealth, refreshUsers, refreshAudit, loadEmergencySettings])
+  }, [isSuperAdmin, refreshBuildings, refreshHealth, refreshUsers, selectedBuildingId, refreshAudit, loadEmergencySettings])
 
   // Manejar Login Directo en /superadmin
   const handleSuperAdminLogin = async (e: React.FormEvent) => {
@@ -176,6 +259,153 @@ export const SuperAdminDashboard: React.FC = () => {
     purgeGlobalCache()
     showNotification('⚡ Caché global invalidada en memoria y sesión.')
     refreshHealth()
+  }
+
+  // ── MANEJADORES DE EDIFICIOS ──
+  const handleOpenCreateBuilding = () => {
+    setEditingBuilding(null)
+    setBuildingForm({
+      nombre_edificio: '',
+      rif_edificio: '',
+      direccion: '',
+      ciudad: '',
+      telefono: '',
+      email_admin: '',
+      total_apartamentos: 60,
+      total_pisos: 15,
+      apartamentos_por_piso: 4,
+      tiene_ph: false,
+      total_ph: 0,
+      color_primario: '#f97316',
+      banco: '',
+      cuenta_bancaria: '',
+      titular_cuenta: '',
+      pago_movil_banco: '',
+      pago_movil_cedula: '',
+      pago_movil_telefono: '',
+      zelle_email: ''
+    })
+    setAutoGenerateApartments(true)
+    setBuildingModalOpen(true)
+  }
+
+  const handleOpenEditBuilding = (b: BuildingData) => {
+    setEditingBuilding(b)
+    setBuildingForm({ ...b })
+    setAutoGenerateApartments(false)
+    setBuildingModalOpen(true)
+  }
+
+  const handleSaveBuilding = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!buildingForm.nombre_edificio?.trim()) {
+      alert('Ingresa el nombre del edificio')
+      return
+    }
+
+    setSavingBuilding(true)
+    const adminEmail = user?.email || 'superadmin'
+
+    if (editingBuilding) {
+      const res = await updateBuilding(editingBuilding.id, buildingForm, adminEmail)
+      if (res.success) {
+        showNotification(`✓ Edificio ${buildingForm.nombre_edificio} actualizado.`)
+        setBuildingModalOpen(false)
+        refreshBuildings()
+      } else {
+        alert(res.error || 'Error actualizando edificio')
+      }
+    } else {
+      const res = await createBuilding(buildingForm, autoGenerateApartments, adminEmail)
+      if (res.success) {
+        showNotification(`✓ Edificio ${buildingForm.nombre_edificio} registrado con éxito.`)
+        setBuildingModalOpen(false)
+        refreshBuildings()
+        refreshHealth()
+      } else {
+        alert(res.error || 'Error registrando edificio')
+      }
+    }
+    setSavingBuilding(false)
+  }
+
+  // ── MANEJADORES DE USUARIO (EDICIÓN Y CONTRASEÑA) ──
+  const handleOpenEditUser = async (u: MasterUserData) => {
+    setEditUserModal(u)
+    const bldgToUse = u.edificio_id || (selectedBuildingId !== 'todos' ? selectedBuildingId : (buildings[0]?.id || ''))
+    setUserForm({
+      nombre_completo: u.nombre_completo || '',
+      cedula: u.cedula === 'N/A' ? '' : (u.cedula || ''),
+      telefono: u.telefono === 'N/A' ? '' : (u.telefono || ''),
+      email: u.email === 'Sin correo' ? '' : (u.email || ''),
+      rol: u.rol,
+      estado_cuenta: u.estado_cuenta,
+      apartamento_id: u.apartamento_id || '',
+      edificio_id: bldgToUse,
+      condicion_habitacional: u.condicion_habitacional || 'propietario'
+    })
+
+    const aptos = await getApartmentsList(bldgToUse)
+    setAvailableApartments(aptos)
+  }
+
+  const handleBuildingChangeInUserForm = async (newBldgId: string) => {
+    setUserForm(prev => ({ ...prev, edificio_id: newBldgId, apartamento_id: '' }))
+    const aptos = await getApartmentsList(newBldgId)
+    setAvailableApartments(aptos)
+  }
+
+  const handleSaveUser = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!editUserModal) return
+
+    setSavingUser(true)
+    const adminEmail = user?.email || 'superadmin'
+    const res = await superAdminUpdateUserProfile(editUserModal.id, userForm, adminEmail)
+
+    if (res.success) {
+      showNotification(`✓ Perfil de ${userForm.nombre_completo || editUserModal.email} guardado.`)
+      setEditUserModal(null)
+      refreshUsers()
+    } else {
+      alert(res.error || 'Error actualizando usuario')
+    }
+    setSavingUser(false)
+  }
+
+  const handleOpenPasswordModal = (u: MasterUserData) => {
+    setPasswordModalUser(u)
+    setNewPasswordInput('')
+  }
+
+  const handleGenerateRandomPassword = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$'
+    let generated = ''
+    for (let i = 0; i < 10; i++) {
+      generated += chars.charAt(Math.floor(Math.random() * chars.length))
+    }
+    setNewPasswordInput(generated)
+  }
+
+  const handleSavePassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!passwordModalUser) return
+    if (newPasswordInput.length < 6) {
+      alert('La contraseña debe tener al menos 6 caracteres.')
+      return
+    }
+
+    setSavingPassword(true)
+    const res = await superAdminChangePassword(passwordModalUser.id, newPasswordInput)
+
+    if (res.success) {
+      showNotification(`✓ Contraseña de ${passwordModalUser.nombre_completo || passwordModalUser.email} actualizada con éxito.`)
+      setPasswordModalUser(null)
+      setNewPasswordInput('')
+    } else {
+      alert(res.error || 'Error cambiando contraseña')
+    }
+    setSavingPassword(false)
   }
 
   const handleOpenRoleModal = (u: MasterUserData) => {
@@ -535,8 +765,39 @@ export const SuperAdminDashboard: React.FC = () => {
             </div>
           </div>
 
-          {/* Quick Stats & User Profile HUD */}
+          {/* Quick Stats, Building Selector & User Profile HUD */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+            {/* Selector Global de Edificio */}
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '8px',
+              background: 'rgba(15, 23, 42, 0.85)', border: '1px solid rgba(6, 182, 212, 0.35)',
+              padding: '5px 12px', borderRadius: '10px'
+            }}>
+              <span style={{ fontSize: '13px' }}>🏢</span>
+              <select
+                value={selectedBuildingId}
+                onChange={(e) => {
+                  const val = e.target.value
+                  setSelectedBuildingId(val)
+                  refreshUsers(val)
+                  showNotification(val === 'todos' ? '🌐 Mostrando todos los edificios' : `🏢 Filtro aplicado: ${buildings.find(b => b.id === val)?.nombre_edificio || 'Edificio'}`)
+                }}
+                style={{
+                  background: 'transparent', border: 'none', color: '#38bdf8',
+                  fontSize: '12px', fontWeight: 800, outline: 'none', cursor: 'pointer'
+                }}
+              >
+                <option value="todos" style={{ background: '#0a0d14', color: '#fff' }}>
+                  🌐 Todos los Edificios
+                </option>
+                {buildings.map(b => (
+                  <option key={b.id} value={b.id} style={{ background: '#0a0d14', color: '#fff' }}>
+                    🏢 {b.nombre_edificio}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             {/* Ping Pulse */}
             <div style={{
               display: 'flex', alignItems: 'center', gap: '8px',
@@ -578,8 +839,9 @@ export const SuperAdminDashboard: React.FC = () => {
         <div style={{ maxWidth: '1360px', margin: '14px auto 0', overflowX: 'auto', scrollbarWidth: 'none' }}>
           <div style={{ display: 'flex', gap: '8px', minWidth: 'max-content' }}>
             {[
+              { id: 'buildings', label: 'Edificios & Sedes', icon: '🏢' },
               { id: 'health',    label: 'Telemetría & Salud', icon: '⚡' },
-              { id: 'users',     label: 'Directorio & Roles', icon: '👥' },
+              { id: 'users',     label: 'Directorio & Gobernanza', icon: '👥' },
               { id: 'audit',     label: 'Auditoría & Finanzas', icon: '🛡️' },
               { id: 'emergency', label: 'Centro de Contingencias', icon: '🚨' },
               { id: 'backups',   label: 'Respaldos & Snapshot', icon: '💾' }
@@ -612,6 +874,185 @@ export const SuperAdminDashboard: React.FC = () => {
 
       {/* ── CUERPO PRINCIPAL DEL DASHBOARD ── */}
       <main style={{ maxWidth: '1360px', width: '100%', margin: '0 auto', padding: '24px 20px', flex: 1 }}>
+
+        {/* ── TAB 0: GESTIÓN MULTIEDIFICIO & SEDES ── */}
+        {activeTab === 'buildings' && (
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+              <div>
+                <h2 style={{ fontSize: '20px', fontWeight: 800, margin: '0 0 4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span>🏢</span>
+                  <span>Gestión Multiedificio & Complejos Residenciales</span>
+                </h2>
+                <p style={{ margin: 0, fontSize: '13px', color: '#94a3b8' }}>
+                  Crea, supervisa y configura sedes, torres y urbanismos independientes con su propia contabilidad y residentes.
+                </p>
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  onClick={refreshBuildings}
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.06)', border: '1px solid rgba(255, 255, 255, 0.12)',
+                    color: '#fff', padding: '8px 14px', borderRadius: '10px', fontSize: '12px',
+                    fontWeight: 600, cursor: 'pointer'
+                  }}
+                >
+                  🔄 Actualizar
+                </button>
+                <button
+                  onClick={handleOpenCreateBuilding}
+                  style={{
+                    background: 'linear-gradient(135deg, #06b6d4, #3b82f6)',
+                    border: 'none', color: '#fff', padding: '8px 16px', borderRadius: '10px',
+                    fontSize: '12px', fontWeight: 800, cursor: 'pointer',
+                    boxShadow: '0 4px 15px rgba(6, 182, 212, 0.35)', display: 'flex', alignItems: 'center', gap: '6px'
+                  }}
+                >
+                  <span>+</span>
+                  <span>Registrar Nuevo Edificio</span>
+                </button>
+              </div>
+            </div>
+
+            {loadingBuildings ? (
+              <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>
+                Cargando edificios y sedes registradas...
+              </div>
+            ) : buildings.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>
+                No hay edificios registrados en el sistema.
+              </div>
+            ) : (
+              <div style={{
+                display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+                gap: '16px', marginBottom: '24px'
+              }}>
+                {buildings.map(b => {
+                  const isSelected = selectedBuildingId === b.id
+
+                  return (
+                    <div
+                      key={b.id}
+                      style={{
+                        background: isSelected ? 'rgba(6, 182, 212, 0.06)' : 'rgba(10, 14, 23, 0.8)',
+                        border: isSelected ? '2px solid #06b6d4' : '1px solid rgba(255, 255, 255, 0.08)',
+                        borderRadius: '16px', padding: '20px', display: 'flex', flexDirection: 'column',
+                        justifyContent: 'space-between', position: 'relative',
+                        boxShadow: isSelected ? '0 0 25px rgba(6, 182, 212, 0.2)' : 'none'
+                      }}
+                    >
+                      <div>
+                        {/* Header de tarjeta */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <div style={{
+                              width: '40px', height: '40px', borderRadius: '10px',
+                              background: 'rgba(6, 182, 212, 0.15)', border: '1px solid rgba(6, 182, 212, 0.3)',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px'
+                            }}>
+                              🏢
+                            </div>
+                            <div>
+                              <h3 style={{ fontSize: '16px', fontWeight: 800, margin: 0, color: '#fff' }}>
+                                {b.nombre_edificio}
+                              </h3>
+                              <span style={{ fontSize: '11px', color: '#64748b' }}>
+                                {b.rif_edificio ? `RIF: ${b.rif_edificio}` : (b.ciudad || 'Sede principal')}
+                              </span>
+                            </div>
+                          </div>
+
+                          {b.banner_emergencia_activo && (
+                            <span style={{
+                              background: 'rgba(239, 68, 68, 0.2)', border: '1px solid rgba(239, 68, 68, 0.4)',
+                              color: '#f87171', padding: '2px 8px', borderRadius: '6px', fontSize: '10px', fontWeight: 800
+                            }}>
+                              🚨 ALERTA
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Detalles */}
+                        <div style={{ fontSize: '12px', color: '#94a3b8', display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '16px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span>📍</span>
+                            <span style={{ color: '#cbd5e1' }}>{b.direccion || 'Sin dirección registrada'}</span>
+                          </div>
+                          {b.telefono && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span>📞</span>
+                              <span>{b.telefono}</span>
+                            </div>
+                          )}
+                          {b.email_admin && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span>✉️</span>
+                              <span>{b.email_admin}</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Métricas rápidas */}
+                        <div style={{
+                          display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px',
+                          background: 'rgba(0, 0, 0, 0.3)', padding: '10px', borderRadius: '10px', marginBottom: '16px'
+                        }}>
+                          <div>
+                            <div style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>
+                              Apartamentos
+                            </div>
+                            <div style={{ fontSize: '15px', fontWeight: 800, color: '#38bdf8' }}>
+                              {b.total_apartamentos_registrados ?? 0}
+                              <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 400 }}> / {b.total_apartamentos || '?'}</span>
+                            </div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>
+                              Usuarios
+                            </div>
+                            <div style={{ fontSize: '15px', fontWeight: 800, color: '#4ade80' }}>
+                              {b.total_usuarios_registrados ?? 0}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Botones de acción */}
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button
+                          onClick={() => handleOpenEditBuilding(b)}
+                          style={{
+                            flex: 1, background: 'rgba(255, 255, 255, 0.05)',
+                            border: '1px solid rgba(255, 255, 255, 0.1)', color: '#fff',
+                            padding: '8px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer'
+                          }}
+                        >
+                          ✏️ Editar
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSelectedBuildingId(b.id)
+                            refreshUsers(b.id)
+                            setActiveTab('users')
+                            showNotification(`✓ Filtrando consola por: ${b.nombre_edificio}`)
+                          }}
+                          style={{
+                            flex: 1.2, background: isSelected ? 'rgba(6, 182, 212, 0.2)' : 'linear-gradient(135deg, rgba(6, 182, 212, 0.2), rgba(139, 92, 246, 0.2))',
+                            border: '1px solid #06b6d4', color: '#38bdf8',
+                            padding: '8px', borderRadius: '8px', fontSize: '12px', fontWeight: 800, cursor: 'pointer'
+                          }}
+                        >
+                          {isSelected ? '✓ Seleccionado' : '🎯 Gestionar'}
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ── TAB 1: TELEMETRÍA & SALUD DEL SISTEMA ── */}
         {activeTab === 'health' && (
@@ -930,6 +1371,18 @@ export const SuperAdminDashboard: React.FC = () => {
                                 Apto {u.apartamento_numero}
                               </span>
                             )}
+
+                            {u.edificio_nombre && (
+                              <span style={{ fontSize: '11px', color: '#38bdf8', background: 'rgba(6, 182, 212, 0.1)', border: '1px solid rgba(6, 182, 212, 0.25)', padding: '2px 6px', borderRadius: '4px' }}>
+                                🏢 {u.edificio_nombre}
+                              </span>
+                            )}
+
+                            {u.condicion_habitacional && (
+                              <span style={{ fontSize: '10px', color: '#a78bfa', textTransform: 'capitalize' }}>
+                                ({u.condicion_habitacional})
+                              </span>
+                            )}
                           </div>
 
                           <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px', display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
@@ -942,29 +1395,58 @@ export const SuperAdminDashboard: React.FC = () => {
                       </div>
 
                       {/* Botones de Acción */}
-                      <div style={{ display: 'flex', gap: '8px' }}>
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                         <button
-                          onClick={() => handleOpenRoleModal(u)}
+                          onClick={() => handleOpenEditUser(u)}
+                          title="Editar información completa del usuario"
                           style={{
-                            background: 'rgba(6, 182, 212, 0.12)', border: '1px solid rgba(6, 182, 212, 0.3)',
-                            color: '#38bdf8', padding: '6px 12px', borderRadius: '8px', fontSize: '12px',
-                            fontWeight: 700, cursor: 'pointer'
+                            background: 'rgba(59, 130, 246, 0.12)', border: '1px solid rgba(59, 130, 246, 0.3)',
+                            color: '#60a5fa', padding: '6px 10px', borderRadius: '8px', fontSize: '12px',
+                            fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px'
                           }}
                         >
-                          ⚙️ Cambiar Rol
+                          <span>✏️</span>
+                          <span>Editar</span>
+                        </button>
+
+                        <button
+                          onClick={() => handleOpenPasswordModal(u)}
+                          title="Asignar o restablecer contraseña directamente"
+                          style={{
+                            background: 'rgba(234, 179, 8, 0.12)', border: '1px solid rgba(234, 179, 8, 0.3)',
+                            color: '#facc15', padding: '6px 10px', borderRadius: '8px', fontSize: '12px',
+                            fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px'
+                          }}
+                        >
+                          <span>🔑</span>
+                          <span>Clave</span>
+                        </button>
+
+                        <button
+                          onClick={() => handleOpenRoleModal(u)}
+                          title="Cambiar nivel de acceso"
+                          style={{
+                            background: 'rgba(6, 182, 212, 0.12)', border: '1px solid rgba(6, 182, 212, 0.3)',
+                            color: '#38bdf8', padding: '6px 10px', borderRadius: '8px', fontSize: '12px',
+                            fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px'
+                          }}
+                        >
+                          <span>⚙️</span>
+                          <span>Rol</span>
                         </button>
 
                         <button
                           onClick={() => handleToggleStatus(u)}
+                          title={isSuspended ? 'Reactivar acceso' : 'Suspender acceso a la plataforma'}
                           style={{
                             background: isSuspended ? 'rgba(34, 197, 94, 0.12)' : 'rgba(239, 68, 68, 0.12)',
                             border: isSuspended ? '1px solid rgba(34, 197, 94, 0.3)' : '1px solid rgba(239, 68, 68, 0.3)',
                             color: isSuspended ? '#4ade80' : '#f87171',
-                            padding: '6px 12px', borderRadius: '8px', fontSize: '12px',
+                            padding: '6px 10px', borderRadius: '8px', fontSize: '12px',
                             fontWeight: 700, cursor: 'pointer'
                           }}
                         >
-                          {isSuspended ? '✓ Activar' : '🚫 Suspender'}
+                          {isSuspended ? '✓ Activar' : '🚫 Bloquear'}
                         </button>
                       </div>
                     </div>
@@ -1426,6 +1908,652 @@ export const SuperAdminDashboard: React.FC = () => {
                 {savingRole ? 'Guardando...' : 'Confirmar Rol'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+      {/* ── MODAL 1: REGISTRAR / EDITAR EDIFICIO ── */}
+      {buildingModalOpen && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 10000,
+          background: 'rgba(0, 0, 0, 0.85)', backdropFilter: 'blur(10px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px'
+        }}>
+          <div style={{
+            background: '#0d111a', border: '1px solid rgba(6, 182, 212, 0.35)',
+            borderRadius: '20px', padding: '28px', maxWidth: '680px', width: '100%',
+            maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 25px 60px rgba(0,0,0,0.9)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ fontSize: '18px', fontWeight: 900, margin: 0, color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span>🏢</span>
+                <span>{editingBuilding ? 'Editar Edificio / Sede' : 'Registrar Nuevo Edificio'}</span>
+              </h3>
+              <button
+                onClick={() => setBuildingModalOpen(false)}
+                style={{ background: 'transparent', border: 'none', color: '#94a3b8', fontSize: '18px', cursor: 'pointer' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveBuilding}>
+              {/* Sección 1: Datos Generales */}
+              <div style={{ marginBottom: '18px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: '#38bdf8', textTransform: 'uppercase', letterSpacing: '0.8px', display: 'block', marginBottom: '10px' }}>
+                  1. Identificación y Localización
+                </span>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '12px' }}>
+                  <div>
+                    <label style={{ display: 'block', color: '#94a3b8', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>
+                      Nombre del Edificio / Conjunto *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={buildingForm.nombre_edificio || ''}
+                      onChange={e => setBuildingForm({ ...buildingForm, nombre_edificio: e.target.value })}
+                      placeholder="Ej: Condominio Ocutuy 6"
+                      style={{
+                        width: '100%', boxSizing: 'border-box', background: '#070a10',
+                        border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '8px',
+                        color: '#fff', padding: '10px', fontSize: '13px'
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', color: '#94a3b8', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>
+                      RIF Fiscal
+                    </label>
+                    <input
+                      type="text"
+                      value={buildingForm.rif_edificio || ''}
+                      onChange={e => setBuildingForm({ ...buildingForm, rif_edificio: e.target.value })}
+                      placeholder="Ej: J-12345678-9"
+                      style={{
+                        width: '100%', boxSizing: 'border-box', background: '#070a10',
+                        border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '8px',
+                        color: '#fff', padding: '10px', fontSize: '13px'
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <label style={{ display: 'block', color: '#94a3b8', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>
+                      Dirección Completa
+                    </label>
+                    <input
+                      type="text"
+                      value={buildingForm.direccion || ''}
+                      onChange={e => setBuildingForm({ ...buildingForm, direccion: e.target.value })}
+                      placeholder="Calle, Sector, Municipio, Estado"
+                      style={{
+                        width: '100%', boxSizing: 'border-box', background: '#070a10',
+                        border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '8px',
+                        color: '#fff', padding: '10px', fontSize: '13px'
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', color: '#94a3b8', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>
+                      Ciudad / Localidad
+                    </label>
+                    <input
+                      type="text"
+                      value={buildingForm.ciudad || ''}
+                      onChange={e => setBuildingForm({ ...buildingForm, ciudad: e.target.value })}
+                      placeholder="Ej: Caracas / Ocumare del Tuy"
+                      style={{
+                        width: '100%', boxSizing: 'border-box', background: '#070a10',
+                        border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '8px',
+                        color: '#fff', padding: '10px', fontSize: '13px'
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', color: '#94a3b8', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>
+                      Teléfono Administrativo
+                    </label>
+                    <input
+                      type="text"
+                      value={buildingForm.telefono || ''}
+                      onChange={e => setBuildingForm({ ...buildingForm, telefono: e.target.value })}
+                      placeholder="Ej: 0412-1234567"
+                      style={{
+                        width: '100%', boxSizing: 'border-box', background: '#070a10',
+                        border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '8px',
+                        color: '#fff', padding: '10px', fontSize: '13px'
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Sección 2: Estructura Arquitectónica */}
+              <div style={{ marginBottom: '18px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: '#38bdf8', textTransform: 'uppercase', letterSpacing: '0.8px', display: 'block', marginBottom: '10px' }}>
+                  2. Estructura y Capacidad
+                </span>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px' }}>
+                  <div>
+                    <label style={{ display: 'block', color: '#94a3b8', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>
+                      Total Pisos
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={buildingForm.total_pisos || 1}
+                      onChange={e => {
+                        const pisos = Number(e.target.value)
+                        const porPiso = buildingForm.apartamentos_por_piso || 1
+                        setBuildingForm({
+                          ...buildingForm,
+                          total_pisos: pisos,
+                          total_apartamentos: pisos * porPiso + (buildingForm.tiene_ph ? (buildingForm.total_ph || 0) : 0)
+                        })
+                      }}
+                      style={{
+                        width: '100%', boxSizing: 'border-box', background: '#070a10',
+                        border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '8px',
+                        color: '#fff', padding: '8px', fontSize: '13px'
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', color: '#94a3b8', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>
+                      Aptos por Piso
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={buildingForm.apartamentos_por_piso || 1}
+                      onChange={e => {
+                        const porPiso = Number(e.target.value)
+                        const pisos = buildingForm.total_pisos || 1
+                        setBuildingForm({
+                          ...buildingForm,
+                          apartamentos_por_piso: porPiso,
+                          total_apartamentos: pisos * porPiso + (buildingForm.tiene_ph ? (buildingForm.total_ph || 0) : 0)
+                        })
+                      }}
+                      style={{
+                        width: '100%', boxSizing: 'border-box', background: '#070a10',
+                        border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '8px',
+                        color: '#fff', padding: '8px', fontSize: '13px'
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', color: '#94a3b8', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>
+                      Total Apartamentos
+                    </label>
+                    <input
+                      type="number"
+                      value={buildingForm.total_apartamentos || 0}
+                      onChange={e => setBuildingForm({ ...buildingForm, total_apartamentos: Number(e.target.value) })}
+                      style={{
+                        width: '100%', boxSizing: 'border-box', background: '#070a10',
+                        border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '8px',
+                        color: '#fff', padding: '8px', fontSize: '13px', fontWeight: 800
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', color: '#94a3b8', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>
+                      ¿Tiene PH?
+                    </label>
+                    <select
+                      value={buildingForm.tiene_ph ? 'si' : 'no'}
+                      onChange={e => setBuildingForm({ ...buildingForm, tiene_ph: e.target.value === 'si' })}
+                      style={{
+                        width: '100%', boxSizing: 'border-box', background: '#070a10',
+                        border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '8px',
+                        color: '#fff', padding: '8px', fontSize: '13px'
+                      }}
+                    >
+                      <option value="no">No</option>
+                      <option value="si">Sí</option>
+                    </select>
+                  </div>
+                </div>
+
+                {!editingBuilding && (
+                  <div style={{ marginTop: '12px', background: 'rgba(6, 182, 212, 0.1)', border: '1px solid rgba(6, 182, 212, 0.25)', padding: '10px 14px', borderRadius: '10px' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={autoGenerateApartments}
+                        onChange={e => setAutoGenerateApartments(e.target.checked)}
+                        style={{ accentColor: '#06b6d4', width: '16px', height: '16px' }}
+                      />
+                      <span style={{ fontSize: '12px', color: '#38bdf8', fontWeight: 700 }}>
+                        Generar automáticamente la cuadrícula de apartamentos (1-1, 1-2... {buildingForm.total_pisos}-{buildingForm.apartamentos_por_piso})
+                      </span>
+                    </label>
+                  </div>
+                )}
+              </div>
+
+              {/* Sección 3: Datos de Cobranza */}
+              <div style={{ marginBottom: '22px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: '#38bdf8', textTransform: 'uppercase', letterSpacing: '0.8px', display: 'block', marginBottom: '10px' }}>
+                  3. Datos Bancarios del Condominio
+                </span>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px' }}>
+                  <div>
+                    <label style={{ display: 'block', color: '#94a3b8', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>
+                      Banco Principal
+                    </label>
+                    <input
+                      type="text"
+                      value={buildingForm.banco || ''}
+                      onChange={e => setBuildingForm({ ...buildingForm, banco: e.target.value })}
+                      placeholder="Ej: Banesco / Mercantil"
+                      style={{
+                        width: '100%', boxSizing: 'border-box', background: '#070a10',
+                        border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '8px',
+                        color: '#fff', padding: '8px', fontSize: '12px'
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', color: '#94a3b8', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>
+                      Número de Cuenta
+                    </label>
+                    <input
+                      type="text"
+                      value={buildingForm.cuenta_bancaria || ''}
+                      onChange={e => setBuildingForm({ ...buildingForm, cuenta_bancaria: e.target.value })}
+                      placeholder="20 dígitos"
+                      style={{
+                        width: '100%', boxSizing: 'border-box', background: '#070a10',
+                        border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '8px',
+                        color: '#fff', padding: '8px', fontSize: '12px'
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', color: '#94a3b8', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>
+                      Pago Móvil: Teléfono
+                    </label>
+                    <input
+                      type="text"
+                      value={buildingForm.pago_movil_telefono || ''}
+                      onChange={e => setBuildingForm({ ...buildingForm, pago_movil_telefono: e.target.value })}
+                      placeholder="0414-XXXXXXX"
+                      style={{
+                        width: '100%', boxSizing: 'border-box', background: '#070a10',
+                        border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '8px',
+                        color: '#fff', padding: '8px', fontSize: '12px'
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', color: '#94a3b8', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>
+                      Zelle Email
+                    </label>
+                    <input
+                      type="text"
+                      value={buildingForm.zelle_email || ''}
+                      onChange={e => setBuildingForm({ ...buildingForm, zelle_email: e.target.value })}
+                      placeholder="pagos@condominio.com"
+                      style={{
+                        width: '100%', boxSizing: 'border-box', background: '#070a10',
+                        border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '8px',
+                        color: '#fff', padding: '8px', fontSize: '12px'
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Botones de acción */}
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setBuildingModalOpen(false)}
+                  style={{
+                    flex: 1, background: 'rgba(255, 255, 255, 0.06)',
+                    border: '1px solid rgba(255, 255, 255, 0.12)', color: '#fff',
+                    borderRadius: '10px', padding: '12px', fontWeight: 700, cursor: 'pointer'
+                  }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingBuilding}
+                  style={{
+                    flex: 1.5, background: 'linear-gradient(135deg, #06b6d4, #3b82f6)',
+                    border: 'none', color: '#fff', borderRadius: '10px',
+                    padding: '12px', fontWeight: 800, cursor: savingBuilding ? 'not-allowed' : 'pointer',
+                    boxShadow: '0 4px 20px rgba(6, 182, 212, 0.35)'
+                  }}
+                >
+                  {savingBuilding ? 'Guardando en Base de Datos...' : (editingBuilding ? 'Actualizar Edificio' : 'Crear Edificio')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL 2: EDITAR PERFIL DE USUARIO INTEGRAL ── */}
+      {editUserModal && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 10000,
+          background: 'rgba(0, 0, 0, 0.85)', backdropFilter: 'blur(10px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px'
+        }}>
+          <div style={{
+            background: '#0d111a', border: '1px solid rgba(59, 130, 246, 0.35)',
+            borderRadius: '20px', padding: '28px', maxWidth: '580px', width: '100%',
+            maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 25px 60px rgba(0,0,0,0.9)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ fontSize: '18px', fontWeight: 900, margin: 0, color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span>✏️</span>
+                <span>Editar Información de Usuario</span>
+              </h3>
+              <button
+                onClick={() => setEditUserModal(null)}
+                style={{ background: 'transparent', border: 'none', color: '#94a3b8', fontSize: '18px', cursor: 'pointer' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveUser}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px', marginBottom: '18px' }}>
+                <div>
+                  <label style={{ display: 'block', color: '#94a3b8', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>
+                    Nombre Completo
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={userForm.nombre_completo}
+                    onChange={e => setUserForm({ ...userForm, nombre_completo: e.target.value })}
+                    style={{
+                      width: '100%', boxSizing: 'border-box', background: '#070a10',
+                      border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '8px',
+                      color: '#fff', padding: '10px', fontSize: '13px'
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', color: '#94a3b8', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>
+                    Cédula de Identidad
+                  </label>
+                  <input
+                    type="text"
+                    value={userForm.cedula}
+                    onChange={e => setUserForm({ ...userForm, cedula: e.target.value })}
+                    placeholder="V-12345678"
+                    style={{
+                      width: '100%', boxSizing: 'border-box', background: '#070a10',
+                      border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '8px',
+                      color: '#fff', padding: '10px', fontSize: '13px'
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', color: '#94a3b8', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>
+                    Teléfono
+                  </label>
+                  <input
+                    type="text"
+                    value={userForm.telefono}
+                    onChange={e => setUserForm({ ...userForm, telefono: e.target.value })}
+                    placeholder="0412-1234567"
+                    style={{
+                      width: '100%', boxSizing: 'border-box', background: '#070a10',
+                      border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '8px',
+                      color: '#fff', padding: '10px', fontSize: '13px'
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', color: '#94a3b8', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>
+                    Correo Electrónico
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={userForm.email}
+                    onChange={e => setUserForm({ ...userForm, email: e.target.value })}
+                    style={{
+                      width: '100%', boxSizing: 'border-box', background: '#070a10',
+                      border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '8px',
+                      color: '#fff', padding: '10px', fontSize: '13px'
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', color: '#94a3b8', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>
+                    Edificio Asignado
+                  </label>
+                  <select
+                    value={userForm.edificio_id}
+                    onChange={e => handleBuildingChangeInUserForm(e.target.value)}
+                    style={{
+                      width: '100%', boxSizing: 'border-box', background: '#070a10',
+                      border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '8px',
+                      color: '#38bdf8', padding: '10px', fontSize: '13px', fontWeight: 700
+                    }}
+                  >
+                    <option value="">Sin edificio asignado</option>
+                    {buildings.map(b => (
+                      <option key={b.id} value={b.id}>🏢 {b.nombre_edificio}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', color: '#94a3b8', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>
+                    Apartamento
+                  </label>
+                  <select
+                    value={userForm.apartamento_id}
+                    onChange={e => setUserForm({ ...userForm, apartamento_id: e.target.value })}
+                    style={{
+                      width: '100%', boxSizing: 'border-box', background: '#070a10',
+                      border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '8px',
+                      color: '#fff', padding: '10px', fontSize: '13px'
+                    }}
+                  >
+                    <option value="">Sin apartamento asignado</option>
+                    {availableApartments.map(a => (
+                      <option key={a.id} value={a.id}>Apto {a.numero} (Piso {a.piso})</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', color: '#94a3b8', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>
+                    Condición Habitacional
+                  </label>
+                  <select
+                    value={userForm.condicion_habitacional}
+                    onChange={e => setUserForm({ ...userForm, condicion_habitacional: e.target.value })}
+                    style={{
+                      width: '100%', boxSizing: 'border-box', background: '#070a10',
+                      border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '8px',
+                      color: '#fff', padding: '10px', fontSize: '13px'
+                    }}
+                  >
+                    <option value="propietario">Propietario</option>
+                    <option value="inquilino">Inquilino / Arrendatario</option>
+                    <option value="familiar">Familiar Residente</option>
+                    <option value="apoderado">Apoderado Legal</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', color: '#94a3b8', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>
+                    Rol en la Plataforma
+                  </label>
+                  <select
+                    value={userForm.rol}
+                    onChange={e => setUserForm({ ...userForm, rol: e.target.value as any })}
+                    style={{
+                      width: '100%', boxSizing: 'border-box', background: '#070a10',
+                      border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '8px',
+                      color: '#c084fc', padding: '10px', fontSize: '13px', fontWeight: 800
+                    }}
+                  >
+                    <option value="residente">Residente</option>
+                    <option value="administrador">Administrador</option>
+                    <option value="conserje">Conserje</option>
+                    <option value="superadmin">Super Admin</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', color: '#94a3b8', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>
+                    Estado de Cuenta
+                  </label>
+                  <select
+                    value={userForm.estado_cuenta}
+                    onChange={e => setUserForm({ ...userForm, estado_cuenta: e.target.value as any })}
+                    style={{
+                      width: '100%', boxSizing: 'border-box', background: '#070a10',
+                      border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '8px',
+                      color: userForm.estado_cuenta === 'activa' ? '#4ade80' : '#f87171', padding: '10px', fontSize: '13px', fontWeight: 800
+                    }}
+                  >
+                    <option value="activa">Activa (Acceso Permitido)</option>
+                    <option value="suspendida">Suspendida (Bloqueo de Acceso)</option>
+                    <option value="pendiente_cambio_clave">Pendiente Cambio Clave</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setEditUserModal(null)}
+                  style={{
+                    flex: 1, background: 'rgba(255, 255, 255, 0.06)',
+                    border: '1px solid rgba(255, 255, 255, 0.12)', color: '#fff',
+                    borderRadius: '10px', padding: '12px', fontWeight: 700, cursor: 'pointer'
+                  }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingUser}
+                  style={{
+                    flex: 1.5, background: 'linear-gradient(135deg, #3b82f6, #06b6d4)',
+                    border: 'none', color: '#fff', borderRadius: '10px',
+                    padding: '12px', fontWeight: 800, cursor: savingUser ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  {savingUser ? 'Guardando...' : 'Guardar Cambios de Perfil'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL 3: CAMBIAR CONTRASEÑA DIRECTA ── */}
+      {passwordModalUser && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 10000,
+          background: 'rgba(0, 0, 0, 0.85)', backdropFilter: 'blur(10px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px'
+        }}>
+          <div style={{
+            background: '#0d111a', border: '1px solid rgba(234, 179, 8, 0.4)',
+            borderRadius: '20px', padding: '28px', maxWidth: '440px', width: '100%',
+            boxShadow: '0 25px 60px rgba(0,0,0,0.9)'
+          }}>
+            <h3 style={{ fontSize: '18px', fontWeight: 900, margin: '0 0 6px', color: '#fef08a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span>🔑</span>
+              <span>Cambiar Contraseña de Acceso</span>
+            </h3>
+            <p style={{ fontSize: '13px', color: '#94a3b8', margin: '0 0 18px', lineHeight: 1.5 }}>
+              Definiendo nueva contraseña para <strong>{passwordModalUser.nombre_completo}</strong> ({passwordModalUser.email}).
+            </p>
+
+            <form onSubmit={handleSavePassword}>
+              <div style={{ marginBottom: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <label style={{ color: '#cbd5e1', fontSize: '12px', fontWeight: 700 }}>
+                    Nueva Contraseña
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleGenerateRandomPassword}
+                    style={{
+                      background: 'transparent', border: 'none', color: '#38bdf8',
+                      fontSize: '11px', fontWeight: 700, cursor: 'pointer', textDecoration: 'underline'
+                    }}
+                  >
+                    🎲 Generar Segura
+                  </button>
+                </div>
+
+                <input
+                  type="text"
+                  required
+                  value={newPasswordInput}
+                  onChange={e => setNewPasswordInput(e.target.value)}
+                  placeholder="Mínimo 6 caracteres"
+                  style={{
+                    width: '100%', boxSizing: 'border-box', background: '#070a10',
+                    border: '1px solid rgba(255, 255, 255, 0.15)', borderRadius: '10px',
+                    color: '#fff', padding: '12px 14px', fontSize: '15px', fontWeight: 700, outline: 'none'
+                  }}
+                />
+              </div>
+
+              <div style={{
+                background: 'rgba(234, 179, 8, 0.1)', border: '1px solid rgba(234, 179, 8, 0.25)',
+                borderRadius: '10px', padding: '10px 12px', marginBottom: '20px', fontSize: '11px', color: '#fef08a', lineHeight: 1.4
+              }}>
+                ⚡ <strong>Acción Inmediata</strong>: La contraseña se actualizará directamente en la base de datos de autenticación sin requerir correo ni confirmación previa del residente.
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setPasswordModalUser(null)}
+                  style={{
+                    flex: 1, background: 'rgba(255, 255, 255, 0.06)',
+                    border: '1px solid rgba(255, 255, 255, 0.12)', color: '#fff',
+                    borderRadius: '10px', padding: '10px', fontWeight: 700, cursor: 'pointer'
+                  }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingPassword}
+                  style={{
+                    flex: 1.5, background: 'linear-gradient(135deg, #eab308, #f97316)',
+                    border: 'none', color: '#000', borderRadius: '10px',
+                    padding: '10px', fontWeight: 900, cursor: savingPassword ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  {savingPassword ? 'Actualizando...' : 'Confirmar Nueva Clave'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

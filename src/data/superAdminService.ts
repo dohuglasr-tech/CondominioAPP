@@ -26,9 +26,46 @@ export interface MasterUserData {
   email: string | null
   rol: 'superadmin' | 'administrador' | 'residente' | 'conserje'
   estado_cuenta: 'activa' | 'suspendida' | 'pendiente_cambio_clave'
+  apartamento_id: string | null
   apartamento_numero: string | null
+  edificio_id: string | null
+  edificio_nombre?: string | null
+  condicion_habitacional: string | null
   ultimo_acceso: string | null
   created_at: string
+}
+
+export interface BuildingData {
+  id: string
+  nombre_edificio: string
+  rif_edificio?: string | null
+  direccion?: string | null
+  ciudad?: string | null
+  email_admin?: string | null
+  telefono?: string | null
+  total_apartamentos?: number
+  total_pisos?: number
+  apartamentos_por_piso?: number
+  tiene_ph?: boolean
+  total_ph?: number
+  color_primario?: string | null
+  logo_url?: string | null
+  banco?: string | null
+  cuenta_bancaria?: string | null
+  titular_cuenta?: string | null
+  pago_movil_banco?: string | null
+  pago_movil_cedula?: string | null
+  pago_movil_telefono?: string | null
+  zelle_email?: string | null
+  tasa_bcv_actual?: number | null
+  banner_emergencia_activo?: boolean
+  banner_emergencia_texto?: string | null
+  banner_emergencia_nivel?: 'info' | 'warning' | 'critical'
+  modo_mantenimiento?: boolean
+  modo_mantenimiento_motivo?: string | null
+  created_at?: string
+  total_apartamentos_registrados?: number
+  total_usuarios_registrados?: number
 }
 
 export interface FinancialSanityCheck {
@@ -139,10 +176,172 @@ export function purgeGlobalCache(): void {
 }
 
 /**
- * 3. OBTENER DIRECTORIO MAESTRO DE USUARIOS
+ * 3. GESTIÓN MULTIEDIFICIO (OBTENER, CREAR, ACTUALIZAR)
  */
-export async function getMasterUsers(): Promise<MasterUserData[]> {
-  const { data, error } = await supabase
+export async function getAllBuildings(): Promise<BuildingData[]> {
+  const { data: buildings, error } = await supabase
+    .from('configuracion_edificio')
+    .select('*')
+    .order('nombre_edificio', { ascending: true })
+
+  if (error) {
+    console.error('[SuperAdmin] Error cargando edificios:', error)
+    return []
+  }
+
+  // Obtener recuentos de apartamentos y perfiles por edificio
+  const { data: aptos } = await supabase.from('apartamentos').select('id, edificio_id')
+  const { data: perfs } = await supabase.from('perfiles').select('id, edificio_id')
+
+  return (buildings || []).map((b: any) => {
+    const aptosCount = aptos ? aptos.filter((a: any) => a.edificio_id === b.id).length : 0
+    const perfsCount = perfs ? perfs.filter((p: any) => p.edificio_id === b.id).length : 0
+    return {
+      ...b,
+      total_apartamentos_registrados: aptosCount,
+      total_usuarios_registrados: perfsCount
+    }
+  })
+}
+
+export async function createBuilding(
+  payload: Partial<BuildingData>,
+  generateApartments = false,
+  adminEmail = 'superadmin'
+): Promise<{ success: boolean; data?: any; error?: string }> {
+  try {
+    const newId = crypto.randomUUID()
+    const record = {
+      id: newId,
+      nombre_edificio: payload.nombre_edificio?.trim() || 'Nuevo Edificio',
+      rif_edificio: payload.rif_edificio?.trim() || null,
+      direccion: payload.direccion?.trim() || '',
+      ciudad: payload.ciudad?.trim() || '',
+      email_admin: payload.email_admin?.trim() || null,
+      telefono: payload.telefono?.trim() || null,
+      total_apartamentos: payload.total_apartamentos || 0,
+      total_pisos: payload.total_pisos || 1,
+      apartamentos_por_piso: payload.apartamentos_por_piso || 1,
+      tiene_ph: Boolean(payload.tiene_ph),
+      total_ph: payload.total_ph || 0,
+      color_primario: payload.color_primario || '#f97316',
+      banco: payload.banco || null,
+      cuenta_bancaria: payload.cuenta_bancaria || null,
+      titular_cuenta: payload.titular_cuenta || null,
+      pago_movil_banco: payload.pago_movil_banco || null,
+      pago_movil_cedula: payload.pago_movil_cedula || null,
+      pago_movil_telefono: payload.pago_movil_telefono || null,
+      zelle_email: payload.zelle_email || null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    }
+
+    const { data, error } = await supabase
+      .from('configuracion_edificio')
+      .insert([record])
+      .select()
+      .single()
+
+    if (error) throw error
+
+    // Generar apartamentos automáticamente si fue solicitado
+    if (generateApartments && payload.total_pisos && payload.apartamentos_por_piso) {
+      const aptosToInsert: any[] = []
+      const pisos = Number(payload.total_pisos)
+      const porPiso = Number(payload.apartamentos_por_piso)
+
+      for (let piso = 1; piso <= pisos; piso++) {
+        for (let num = 1; num <= porPiso; num++) {
+          const numeroApto = `${piso}-${num}`
+          aptosToInsert.push({
+            id: crypto.randomUUID(),
+            edificio_id: newId,
+            numero: numeroApto,
+            piso: piso,
+            estado: 'activo',
+            alicuota: (100 / (pisos * porPiso)).toFixed(4),
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          })
+        }
+      }
+
+      if (payload.tiene_ph && payload.total_ph) {
+        for (let ph = 1; ph <= Number(payload.total_ph); ph++) {
+          aptosToInsert.push({
+            id: crypto.randomUUID(),
+            edificio_id: newId,
+            numero: `PH-${ph}`,
+            piso: pisos + 1,
+            estado: 'activo',
+            alicuota: '0.0000',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          })
+        }
+      }
+
+      if (aptosToInsert.length > 0) {
+        await supabase.from('apartamentos').insert(aptosToInsert)
+      }
+    }
+
+    // Auditoría
+    try {
+      await supabase.from('historial_auditoria').insert([{
+        modulo: 'Multiedificio Super Admin',
+        accion: 'CREAR_EDIFICIO',
+        detalles: `Edificio creado: ${record.nombre_edificio} por ${adminEmail}`,
+        registro_id: newId,
+        fecha_hora: new Date().toISOString()
+      }])
+    } catch {}
+
+    appCache.invalidateTags(['config', 'apartamentos'])
+    return { success: true, data }
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Error creando edificio' }
+  }
+}
+
+export async function updateBuilding(
+  buildingId: string,
+  payload: Partial<BuildingData>,
+  adminEmail = 'superadmin'
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { error } = await supabase
+      .from('configuracion_edificio')
+      .update({
+        ...payload,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', buildingId)
+
+    if (error) throw error
+
+    try {
+      await supabase.from('historial_auditoria').insert([{
+        modulo: 'Multiedificio Super Admin',
+        accion: 'EDITAR_EDIFICIO',
+        detalles: `Edificio actualizado: ${buildingId} por ${adminEmail}`,
+        registro_id: buildingId,
+        fecha_hora: new Date().toISOString()
+      }])
+    } catch {}
+
+    appCache.invalidateTags(['config', 'apartamentos'])
+    return { success: true }
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Error actualizando edificio' }
+  }
+}
+
+/**
+ * 4. OBTENER DIRECTORIO MAESTRO DE USUARIOS (FILTRABLE POR EDIFICIO)
+ */
+export async function getMasterUsers(edificioId?: string): Promise<MasterUserData[]> {
+  let query = supabase
     .from('perfiles')
     .select(`
       id,
@@ -155,13 +354,29 @@ export async function getMasterUsers(): Promise<MasterUserData[]> {
       estado_cuenta,
       ultimo_acceso,
       created_at,
+      apartamento_id,
+      edificio_id,
+      condicion_habitacional,
       apartamento:apartamento_id ( numero )
     `)
     .order('created_at', { ascending: false })
 
+  if (edificioId && edificioId !== 'todos') {
+    query = query.eq('edificio_id', edificioId)
+  }
+
+  const { data, error } = await query
+
   if (error) {
     console.error('[SuperAdmin] Error cargando usuarios:', error.message)
     return []
+  }
+
+  // Traer mapa de edificios para colocar el nombre
+  const { data: bldgs } = await supabase.from('configuracion_edificio').select('id, nombre_edificio')
+  const bldgMap: Record<string, string> = {}
+  if (bldgs) {
+    bldgs.forEach((b: any) => { bldgMap[b.id] = b.nombre_edificio })
   }
 
   return (data || []).map((row: any) => ({
@@ -172,14 +387,114 @@ export async function getMasterUsers(): Promise<MasterUserData[]> {
     email: row.email || row.propietario_email || 'Sin correo',
     rol: row.rol || 'residente',
     estado_cuenta: row.estado_cuenta || 'activa',
+    apartamento_id: row.apartamento_id || null,
     apartamento_numero: row.apartamento?.numero || null,
+    edificio_id: row.edificio_id || null,
+    edificio_nombre: row.edificio_id ? (bldgMap[row.edificio_id] || 'Edificio asignado') : 'Principal',
+    condicion_habitacional: row.condicion_habitacional || null,
     ultimo_acceso: row.ultimo_acceso || null,
     created_at: row.created_at || ''
   }))
 }
 
 /**
- * 4. ACTUALIZAR ROL DE USUARIO
+ * 5. OBTENER LISTA DE APARTAMENTOS (PARA ASIGNACIÓN)
+ */
+export async function getApartmentsList(edificioId?: string): Promise<{ id: string; numero: string; piso: number; edificio_id?: string }[]> {
+  let query = supabase
+    .from('apartamentos')
+    .select('id, numero, piso, edificio_id')
+    .order('piso', { ascending: true })
+    .order('numero', { ascending: true })
+
+  if (edificioId && edificioId !== 'todos') {
+    query = query.eq('edificio_id', edificioId)
+  }
+
+  const { data } = await query
+  return data || []
+}
+
+/**
+ * 6. EDICIÓN COMPLETA DEL PERFIL DE USUARIO
+ */
+export async function superAdminUpdateUserProfile(
+  userId: string,
+  data: {
+    nombre_completo?: string
+    cedula?: string
+    telefono?: string
+    email?: string
+    rol?: 'superadmin' | 'administrador' | 'residente' | 'conserje'
+    estado_cuenta?: 'activa' | 'suspendida' | 'pendiente_cambio_clave'
+    apartamento_id?: string | null
+    edificio_id?: string | null
+    condicion_habitacional?: string | null
+  },
+  adminEmail = 'superadmin'
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const updatePayload: Record<string, any> = {
+      updated_at: new Date().toISOString()
+    }
+    if (data.nombre_completo !== undefined) updatePayload.nombre_completo = data.nombre_completo.trim()
+    if (data.cedula !== undefined) updatePayload.cedula = data.cedula.trim()
+    if (data.telefono !== undefined) updatePayload.telefono = data.telefono.trim()
+    if (data.email !== undefined) updatePayload.email = data.email.trim()
+    if (data.rol !== undefined) updatePayload.rol = data.rol
+    if (data.estado_cuenta !== undefined) updatePayload.estado_cuenta = data.estado_cuenta
+    if (data.apartamento_id !== undefined) updatePayload.apartamento_id = data.apartamento_id || null
+    if (data.edificio_id !== undefined) updatePayload.edificio_id = data.edificio_id || null
+    if (data.condicion_habitacional !== undefined) updatePayload.condicion_habitacional = data.condicion_habitacional || null
+
+    const { error } = await supabase
+      .from('perfiles')
+      .update(updatePayload)
+      .eq('id', userId)
+
+    if (error) throw error
+
+    try {
+      await supabase.from('historial_auditoria').insert([{
+        modulo: 'Gobernanza Usuarios Super Admin',
+        accion: 'EDITAR_PERFIL_USUARIO',
+        detalles: `Usuario modificado: ${userId} (${data.nombre_completo || ''}) por ${adminEmail}`,
+        usuario_id: userId,
+        fecha_hora: new Date().toISOString()
+      }])
+    } catch {}
+
+    return { success: true }
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Error actualizando usuario' }
+  }
+}
+
+/**
+ * 7. CAMBIO DIRECTO DE CONTRASEÑA POR SUPER ADMIN
+ */
+export async function superAdminChangePassword(
+  targetUserId: string,
+  newPassword: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { data, error } = await supabase.rpc('superadmin_change_user_password', {
+      target_user_id: targetUserId,
+      new_password: newPassword
+    })
+
+    if (error) throw error
+    if (data && data.success === false) {
+      return { success: false, error: data.error || 'No se pudo cambiar la contraseña' }
+    }
+    return { success: true }
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Error ejecutando cambio de clave' }
+  }
+}
+
+/**
+ * 8. ACTUALIZAR ROL DE USUARIO
  */
 export async function updateUserRole(
   userId: string,
@@ -194,7 +509,6 @@ export async function updateUserRole(
 
     if (error) throw error
 
-    // Registrar en auditoría
     await supabase.from('historial_auditoria').insert([{
       modulo: 'Gobernanza Super Admin',
       accion: `Cambio de Rol a: ${newRole}`,
@@ -210,7 +524,7 @@ export async function updateUserRole(
 }
 
 /**
- * 5. SUSPENDER / ACTIVAR CUENTA
+ * 9. SUSPENDER / ACTIVAR CUENTA (BLOQUEO DE ACCESO)
  */
 export async function toggleUserStatus(
   userId: string,
@@ -225,7 +539,6 @@ export async function toggleUserStatus(
 
     if (error) throw error
 
-    // Registrar auditoría
     await supabase.from('historial_auditoria').insert([{
       modulo: 'Seguridad Super Admin',
       accion: `Estado de Cuenta: ${newStatus}`,
