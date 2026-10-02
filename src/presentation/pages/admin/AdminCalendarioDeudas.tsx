@@ -240,7 +240,9 @@ export const AdminCalendarioDeudas: React.FC = () => {
       Object.entries(mesesActualizados).forEach(([k, rec]) => {
         if (rec && rec.estado === 'pendiente') {
           pendingCount++
-          if (k <= '2026-02') newBs += rec.total_bs
+          const colItem = columnasMeses.find(c => c.key === k)
+          const isBs = colItem ? colItem.moneda === 'BS' : (k <= '2026-02')
+          if (isBs) newBs += rec.total_bs
           else newUsd += rec.total_usd
         }
       })
@@ -324,7 +326,9 @@ export const AdminCalendarioDeudas: React.FC = () => {
       Object.entries(mesesActualizados).forEach(([k, rec]) => {
         if (rec && rec.estado === 'pendiente') {
           pendingCount++
-          if (k <= '2026-02') newBs += rec.total_bs
+          const colItem = columnasMeses.find(c => c.key === k)
+          const isBs = colItem ? colItem.moneda === 'BS' : (k <= '2026-02')
+          if (isBs) newBs += rec.total_bs
           else newUsd += rec.total_usd
         }
       })
@@ -397,7 +401,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
         ? { tituloSeccionHistorica: nuevoTituloInput.trim() }
         : { tituloSeccionMensual: nuevoTituloInput.trim() }
 
-      const res = await guardarConfiguracionCalendario(updateData)
+      const res = await guardarConfiguracionCalendario(updateData, anioSeleccionado)
       if (res.success) {
         setConfiguracion(res.data)
         showToast('✅ Título de sección actualizado correctamente')
@@ -467,7 +471,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
   const handleCambiarMonedaColumna = async (colId: string, nuevaMoneda: 'USD' | 'BS') => {
     setProcesandoAccion(true)
     try {
-      const res = await cambiarMonedaColumna(colId, nuevaMoneda)
+      const res = await cambiarMonedaColumna(colId, nuevaMoneda, anioSeleccionado)
       if (res.success) {
         showToast(`💱 Moneda cambiada a ${nuevaMoneda === 'USD' ? 'Dólares ($)' : 'Bolívares (Bs)'}`)
         setMenuColumnaId(null)
@@ -524,7 +528,8 @@ export const AdminCalendarioDeudas: React.FC = () => {
         moneda: nuevaColMoneda,
         montoDefecto: Number(nuevaColMontoDefecto || 0),
         posicion: posicionObj,
-        aplicarATodos: nuevaColAplicarATodos
+        aplicarATodos: nuevaColAplicarATodos,
+        anio: anioSeleccionado
       })
 
       if (res.success) {
@@ -542,7 +547,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
   const handleCambiarSeccion = async (colId: string, nuevaSeccion: 'naranja' | 'azul') => {
     setProcesandoAccion(true)
     try {
-      const res = await cambiarSeccionColumna(colId, nuevaSeccion)
+      const res = await cambiarSeccionColumna(colId, nuevaSeccion, anioSeleccionado)
       if (res.success) {
         const nombreSec = nuevaSeccion === 'naranja' ? 'Deudas Pasadas' : 'Calendario Mensual'
         showToast(`↔️ Columna movida a "${nombreSec}"`)
@@ -557,7 +562,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
   }
 
   const handleMoverColumna = async (colId: string, direccion: 'izquierda' | 'derecha') => {
-    const res = await moverColumnaPosicion(colId, direccion)
+    const res = await moverColumnaPosicion(colId, direccion, anioSeleccionado)
     if (res.success) {
       await cargarDatos(true)
     }
@@ -567,7 +572,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
     if (!window.confirm(`¿Estás seguro de quitar la columna vertical "${titulo}" de la tabla?`)) return
     setProcesandoAccion(true)
     try {
-      const res = await eliminarColumna(colId)
+      const res = await eliminarColumna(colId, anioSeleccionado)
       if (res.success) {
         showToast(`🗑️ Columna "${titulo}" removida`)
         setMenuColumnaId(null)
@@ -581,12 +586,12 @@ export const AdminCalendarioDeudas: React.FC = () => {
   }
 
   const handleRestablecerColumnas = async () => {
-    if (!window.confirm('¿Deseas restablecer todas las columnas originales de la tabla (Deuda 2025, Cable Viajero, Guaya, Arreglo, Ene, Feb, Marzo...)?')) return
+    if (!window.confirm(`¿Deseas restablecer todas las columnas originales del año ${anioSeleccionado}?`)) return
     setProcesandoAccion(true)
     try {
-      const res = await restablecerColumnasPorDefecto()
+      const res = await restablecerColumnasPorDefecto(anioSeleccionado)
       if (res.success) {
-        showToast('🔄 Columnas restablecidas a la configuración original')
+        showToast(`🔄 Columnas restablecidas a la configuración original del año ${anioSeleccionado}`)
         setMenuColumnaId(null)
         await cargarDatos(true)
       } else {
@@ -626,7 +631,8 @@ export const AdminCalendarioDeudas: React.FC = () => {
             columnaId: celdaPersCol.id,
             monto: nuevoMonto,
             estado: celdaPersEstado,
-            moneda: celdaPersMoneda
+            moneda: celdaPersMoneda,
+            anio: anioSeleccionado
           })
         }
         showToast(`✅ Cuota "${celdaPersCol.titulo}" (${celdaPersMoneda === 'BS' ? 'Bs' : '$'}) asignada a todos los apartamentos`)
@@ -636,7 +642,8 @@ export const AdminCalendarioDeudas: React.FC = () => {
           columnaId: celdaPersCol.id,
           monto: nuevoMonto,
           estado: celdaPersEstado,
-          moneda: celdaPersMoneda
+          moneda: celdaPersMoneda,
+          anio: anioSeleccionado
         })
         if (res.success) {
           showToast(`✅ Cuota de ${celdaPersCol.titulo} (${celdaPersMoneda === 'BS' ? 'Bs' : '$'}) para Apto ${celdaPersApto.apartamento_numero} guardada`)
@@ -1210,9 +1217,22 @@ export const AdminCalendarioDeudas: React.FC = () => {
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <span style={{ fontSize: '28px' }}>📊</span>
             <div>
-              <h1 style={{ color: '#fff', fontSize: '24px', fontWeight: 800, margin: 0, letterSpacing: '-0.5px' }}>
-                Calendario de Deudas e Impago
-              </h1>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <h1 style={{ color: '#fff', fontSize: '24px', fontWeight: 800, margin: 0, letterSpacing: '-0.5px' }}>
+                  Calendario de Deudas e Impago
+                </h1>
+                <span style={{
+                  fontSize: '12px',
+                  fontWeight: 800,
+                  backgroundColor: 'rgba(59, 130, 246, 0.15)',
+                  color: '#60a5fa',
+                  border: '1px solid rgba(59, 130, 246, 0.35)',
+                  padding: '3px 10px',
+                  borderRadius: '8px'
+                }}>
+                  Año {anioSeleccionado}
+                </span>
+              </div>
               <p style={{ color: '#94a3b8', fontSize: '13px', margin: '4px 0 0' }}>
                 Matriz y línea de tiempo mensual por apartamento con edición total de montos, cuotas especiales y conciliación de solvencia.
               </p>
@@ -1303,25 +1323,52 @@ export const AdminCalendarioDeudas: React.FC = () => {
             📥 Exportar Excel (CSV)
           </button>
 
-          <select
-            value={anioSeleccionado}
-            onChange={e => setAnioSeleccionado(parseInt(e.target.value, 10))}
-            style={{
-              backgroundColor: '#030712',
-              color: '#fff',
-              border: '1px solid #374151',
-              padding: '9px 12px',
-              borderRadius: '10px',
-              fontSize: '12px',
-              fontWeight: 700,
-              outline: 'none',
-              cursor: 'pointer'
-            }}
-          >
-            <option value={2026}>Año 2026</option>
-            <option value={2025}>Año 2025</option>
-            <option value={2027}>Año 2027</option>
-          </select>
+          {/* Selector Rápido de Año con Pestañas/Pills */}
+          <div style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            backgroundColor: '#030712',
+            padding: '3px',
+            borderRadius: '10px',
+            border: '1px solid #374151',
+            gap: '3px'
+          }}>
+            {[2026, 2027].map(anio => {
+              const activo = anioSeleccionado === anio
+              return (
+                <button
+                  key={anio}
+                  type="button"
+                  onClick={() => {
+                    if (anioSeleccionado !== anio) {
+                      setAnioSeleccionado(anio)
+                    } else {
+                      cargarDatos(true)
+                    }
+                  }}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    backgroundColor: activo ? 'var(--color-accent, #f97316)' : 'transparent',
+                    color: activo ? '#ffffff' : '#94a3b8',
+                    border: 'none',
+                    borderRadius: '7px',
+                    padding: '7px 14px',
+                    fontSize: '12px',
+                    fontWeight: activo ? 800 : 600,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                    boxShadow: activo ? '0 2px 10px rgba(249, 115, 22, 0.35)' : 'none'
+                  }}
+                  title={`Ver plantilla y matriz del año ${anio}`}
+                >
+                  <span>📅 {anio}</span>
+                  {activo && <span style={{ fontSize: '10px' }}>✓</span>}
+                </button>
+              )
+            })}
+          </div>
 
           <button
             onClick={() => cargarDatos(true)}
@@ -1457,6 +1504,33 @@ export const AdminCalendarioDeudas: React.FC = () => {
               </button>
             ))}
           </div>
+
+          <div className="calendario-anio-pills" style={{ display: 'flex', alignItems: 'center', gap: '3px', backgroundColor: '#030712', padding: '3px', borderRadius: '8px', border: '1px solid #374151' }}>
+            <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 700, padding: '0 6px' }}>Año:</span>
+            {[2026, 2027].map(anio => (
+              <button
+                key={anio}
+                onClick={() => {
+                  if (anioSeleccionado !== anio) setAnioSeleccionado(anio)
+                  else cargarDatos(true)
+                }}
+                style={{
+                  backgroundColor: anioSeleccionado === anio ? '#2563eb' : 'transparent',
+                  color: anioSeleccionado === anio ? '#fff' : '#94a3b8',
+                  border: 'none',
+                  borderRadius: '6px',
+                  padding: '5px 11px',
+                  fontSize: '12px',
+                  fontWeight: anioSeleccionado === anio ? 800 : 600,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease'
+                }}
+                title={`Ver matriz y calendario del año ${anio}`}
+              >
+                {anio}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="calendario-filter-modes-group" style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
@@ -1489,7 +1563,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
                 cursor: 'pointer'
               }}
             >
-              Calendario Mensual ($)
+              Calendario {anioSeleccionado} ($)
             </button>
             <button
               onClick={() => setVistaModo('historico_2025')}
@@ -2526,7 +2600,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
                     style={{ width: '100%', backgroundColor: '#030712', border: '1px solid #374151', borderRadius: '8px', padding: '10px 12px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
                   >
                     <option value="naranja">🏛️ Deudas Pasadas (Bs / Conceptos Anteriores)</option>
-                    <option value="azul">📅 Calendario Mensual ($ / Meses 2026)</option>
+                    <option value="azul">📅 Calendario Mensual ($ / Meses {anioSeleccionado})</option>
                   </select>
                 </div>
 

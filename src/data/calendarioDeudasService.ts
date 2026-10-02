@@ -121,40 +121,76 @@ export function parsearMontoFlexible(val: string | number | undefined | null, mo
 }
 
 export function obtenerColumnasPorDefecto(anio = 2026): ColumnaCalendarioConfig[] {
+  if (anio === 2026) {
+    return [
+      // Sección Naranja (Deudas pasadas / Conceptos anteriores en Bs y $)
+      { id: 'deuda_2025', titulo: 'Deuda 2025', seccion: 'naranja', moneda: 'BS', tipo: 'historico', orden: 1 },
+      { id: 'cable_viajero', titulo: 'Cable Viaj.', seccion: 'naranja', moneda: 'USD', tipo: 'historico', orden: 2 },
+      { id: 'guaya', titulo: 'Guaya', seccion: 'naranja', moneda: 'USD', tipo: 'historico', orden: 3 },
+      { id: 'arreglo', titulo: 'Arreglo', seccion: 'naranja', moneda: 'BS', tipo: 'historico', orden: 4 },
+      { id: '2026-01', titulo: 'Ene (Bs)', seccion: 'naranja', moneda: 'BS', tipo: 'mes', mesKey: '2026-01', orden: 5 },
+      { id: '2026-02', titulo: 'Feb (Bs)', seccion: 'naranja', moneda: 'BS', tipo: 'mes', mesKey: '2026-02', orden: 6 },
+
+      // Sección Azul (Calendario mensual 2026)
+      { id: '2026-03', titulo: 'Marzo $', seccion: 'azul', moneda: 'USD', tipo: 'mes', mesKey: '2026-03', orden: 7 },
+      { id: '2026-04', titulo: 'Abril $', seccion: 'azul', moneda: 'USD', tipo: 'mes', mesKey: '2026-04', orden: 8 },
+      { id: '2026-05', titulo: 'Mayo $', seccion: 'azul', moneda: 'USD', tipo: 'mes', mesKey: '2026-05', orden: 9 },
+      { id: '2026-06', titulo: 'Junio $', seccion: 'azul', moneda: 'USD', tipo: 'mes', mesKey: '2026-06', orden: 10 },
+      { id: '2026-07', titulo: 'Julio $', seccion: 'azul', moneda: 'USD', tipo: 'mes', mesKey: '2026-07', orden: 11 },
+      { id: '2026-08', titulo: 'Agosto $', seccion: 'azul', moneda: 'USD', tipo: 'mes', mesKey: '2026-08', orden: 12 },
+      { id: '2026-09', titulo: 'Septiembre $', seccion: 'azul', moneda: 'USD', tipo: 'mes', mesKey: '2026-09', orden: 13 },
+      { id: '2026-10', titulo: 'Octubre $', seccion: 'azul', moneda: 'USD', tipo: 'mes', mesKey: '2026-10', orden: 14 },
+      { id: '2026-11', titulo: 'Noviembre $', seccion: 'azul', moneda: 'USD', tipo: 'mes', mesKey: '2026-11', orden: 15 },
+      { id: '2026-12', titulo: 'Diciembre $', seccion: 'azul', moneda: 'USD', tipo: 'mes', mesKey: '2026-12', orden: 16 }
+    ]
+  }
+
+  // Plantilla limpia para 2027 y años sucesivos:
+  // Sección Naranja: Deudas acumuladas / conceptos extraordinarios
+  // Sección Azul: 12 meses completos del año en dólares ($)
+  const mesesNombres = [
+    'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+  ]
+  const colsMeses: ColumnaCalendarioConfig[] = mesesNombres.map((nombre, idx) => {
+    const mesNum = idx + 1
+    const mesStr = String(mesNum).padStart(2, '0')
+    const key = `${anio}-${mesStr}`
+    return {
+      id: key,
+      titulo: `${nombre} $`,
+      seccion: 'azul',
+      moneda: 'USD',
+      tipo: 'mes',
+      mesKey: key,
+      orden: 5 + idx
+    }
+  })
+
   return [
-    // Sección Naranja (Deudas pasadas / Conceptos anteriores en Bs y $)
-    { id: 'deuda_2025', titulo: 'Deuda 2025', seccion: 'naranja', moneda: 'BS', tipo: 'historico', orden: 1 },
+    { id: 'deuda_2025', titulo: 'Deuda Pasada', seccion: 'naranja', moneda: 'BS', tipo: 'historico', orden: 1 },
     { id: 'cable_viajero', titulo: 'Cable Viaj.', seccion: 'naranja', moneda: 'USD', tipo: 'historico', orden: 2 },
     { id: 'guaya', titulo: 'Guaya', seccion: 'naranja', moneda: 'USD', tipo: 'historico', orden: 3 },
     { id: 'arreglo', titulo: 'Arreglo', seccion: 'naranja', moneda: 'BS', tipo: 'historico', orden: 4 },
-    { id: `${anio}-01`, titulo: 'Ene (Bs)', seccion: 'naranja', moneda: 'BS', tipo: 'mes', mesKey: `${anio}-01`, orden: 5 },
-    { id: `${anio}-02`, titulo: 'Feb (Bs)', seccion: 'naranja', moneda: 'BS', tipo: 'mes', mesKey: `${anio}-02`, orden: 6 },
-
-    // Sección Azul (Calendario mensual 2026)
-    { id: `${anio}-03`, titulo: 'Marzo $', seccion: 'azul', moneda: 'USD', tipo: 'mes', mesKey: `${anio}-03`, orden: 7 },
-    { id: `${anio}-04`, titulo: 'Abril $', seccion: 'azul', moneda: 'USD', tipo: 'mes', mesKey: `${anio}-04`, orden: 8 },
-    { id: `${anio}-05`, titulo: 'Mayo $', seccion: 'azul', moneda: 'USD', tipo: 'mes', mesKey: `${anio}-05`, orden: 9 },
-    { id: `${anio}-06`, titulo: 'Junio $', seccion: 'azul', moneda: 'USD', tipo: 'mes', mesKey: `${anio}-06`, orden: 10 },
-    { id: `${anio}-07`, titulo: 'Julio $', seccion: 'azul', moneda: 'USD', tipo: 'mes', mesKey: `${anio}-07`, orden: 11 },
-    { id: `${anio}-08`, titulo: 'Agosto $', seccion: 'azul', moneda: 'USD', tipo: 'mes', mesKey: `${anio}-08`, orden: 12 },
-    { id: `${anio}-09`, titulo: 'Septiembre $', seccion: 'azul', moneda: 'USD', tipo: 'mes', mesKey: `${anio}-09`, orden: 13 },
-    { id: `${anio}-10`, titulo: 'Octubre $', seccion: 'azul', moneda: 'USD', tipo: 'mes', mesKey: `${anio}-10`, orden: 14 },
-    { id: `${anio}-11`, titulo: 'Noviembre $', seccion: 'azul', moneda: 'USD', tipo: 'mes', mesKey: `${anio}-11`, orden: 15 },
-    { id: `${anio}-12`, titulo: 'Diciembre $', seccion: 'azul', moneda: 'USD', tipo: 'mes', mesKey: `${anio}-12`, orden: 16 }
+    ...colsMeses
   ]
+}
+
+export function obtenerConfiguracionPorDefecto(anio = 2026): ConfiguracionCalendario {
+  return {
+    tituloSeccionHistorica: anio === 2026 ? 'DEUDA AL AÑO 2025 / CONCEPTOS EXTRAORDINARIOS' : 'DEUDAS PASADAS / CONCEPTOS EXTRAORDINARIOS',
+    tituloSeccionMensual: `CALENDARIO MENSUAL ${anio} (EMISIÓN)`,
+    columnas: obtenerColumnasPorDefecto(anio),
+    filasPersonalizadas: [],
+    filasOcultasIds: [],
+    valoresCeldasPersonalizadas: {},
+    filasCuotasEspeciales: []
+  }
 }
 
 const CONFIG_STORAGE_KEY = 'condominio_config_calendario_v3'
 
-export const CONFIGURACION_CALENDARIO_DEFECTO: ConfiguracionCalendario = {
-  tituloSeccionHistorica: 'DEUDA AL AÑO 2025 / CONCEPTOS EXTRAORDINARIOS',
-  tituloSeccionMensual: 'AÑO 2026 (EMISIÓN Y LÍNEA DE TIEMPO MENSUAL)',
-  columnas: obtenerColumnasPorDefecto(),
-  filasPersonalizadas: [],
-  filasOcultasIds: [],
-  valoresCeldasPersonalizadas: {},
-  filasCuotasEspeciales: []
-}
+export const CONFIGURACION_CALENDARIO_DEFECTO: ConfiguracionCalendario = obtenerConfiguracionPorDefecto(2026)
 
 function sanitizarConfiguracion(parsed: any, defaultConfig: ConfiguracionCalendario): ConfiguracionCalendario {
   let titHist = parsed.tituloSeccionHistorica || defaultConfig.tituloSeccionHistorica
@@ -181,30 +217,75 @@ function sanitizarConfiguracion(parsed: any, defaultConfig: ConfiguracionCalenda
   }
 }
 
-export async function obtenerConfiguracionCalendario(): Promise<ConfiguracionCalendario> {
-  const defaultConfig: ConfiguracionCalendario = { ...CONFIGURACION_CALENDARIO_DEFECTO }
+export async function obtenerConfiguracionCalendario(anio: number = 2026): Promise<ConfiguracionCalendario> {
+  const defaultConfig = obtenerConfiguracionPorDefecto(anio)
+  const dbTipo = anio === 2026 ? 'config_calendario_mora' : `config_calendario_mora_${anio}`
+  const storageKey = anio === 2026 ? CONFIG_STORAGE_KEY : `${CONFIG_STORAGE_KEY}_${anio}`
 
   try {
     // 1. Prioridad: Consultar directamente de Supabase para tener la configuración más actualizada
     const { data } = await supabase
       .from('casos_comunidad')
       .select('descripcion')
-      .eq('tipo', 'config_calendario_mora')
+      .eq('tipo', dbTipo)
       .maybeSingle()
 
     if (data?.descripcion) {
       try {
         const parsed = JSON.parse(data.descripcion)
         const res = sanitizarConfiguracion(parsed, defaultConfig)
-        localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(res))
+        localStorage.setItem(storageKey, JSON.stringify(res))
         return res
       } catch (e) {
-        console.warn('[calendarioDeudasService] Error parseando config de DB:', e)
+        console.warn(`[calendarioDeudasService] Error parseando config ${anio} de DB:`, e)
       }
     }
 
-    // 2. Fallback a localStorage si Supabase no tiene el registro o está offline
-    const raw = localStorage.getItem(CONFIG_STORAGE_KEY)
+    // 2. Si no existe en Supabase y no es 2026 (ej: 2027 inicializándose por primera vez):
+    if (anio !== 2026) {
+      try {
+        // Heredar columnas históricas de naranja y títulos personalizados del 2026
+        const config2026 = await obtenerConfiguracionCalendario(2026)
+        if (config2026) {
+          const colsNaranja2026 = (config2026.columnas || []).filter(c => c.seccion === 'naranja')
+          if (colsNaranja2026.length > 0) {
+            const colsMesesAnio = defaultConfig.columnas.filter(c => c.seccion === 'azul')
+            const colsCombinadas = [
+              ...colsNaranja2026.map((c, i) => ({ ...c, orden: i + 1 })),
+              ...colsMesesAnio.map((c, i) => ({ ...c, orden: colsNaranja2026.length + i + 1 }))
+            ]
+            defaultConfig.columnas = colsCombinadas
+            defaultConfig.tituloSeccionHistorica = config2026.tituloSeccionHistorica
+            defaultConfig.filasPersonalizadas = config2026.filasPersonalizadas || []
+            defaultConfig.filasOcultasIds = config2026.filasOcultasIds || []
+          }
+        }
+      } catch (err2026) {
+        console.warn('Error heredando columnas de 2026 para plantilla ' + anio, err2026)
+      }
+
+      // Guardar plantilla del nuevo año en Supabase de forma asíncrona
+      Promise.resolve(
+        supabase
+          .from('casos_comunidad')
+          .insert({
+            tipo: dbTipo,
+            titulo: `CONFIG_CALENDARIO_${anio}`,
+            descripcion: JSON.stringify(defaultConfig),
+            monto_usd: 0,
+            monto_bs: 0
+          })
+      )
+        .then(() => {
+          localStorage.setItem(storageKey, JSON.stringify(defaultConfig))
+        })
+        .catch((e: any) => console.warn(`Error guardando plantilla ${anio} en Supabase:`, e))
+
+      return defaultConfig
+    }
+
+    // 3. Fallback a localStorage si Supabase no tiene el registro o está offline
+    const raw = localStorage.getItem(storageKey)
     if (raw) {
       try {
         const parsed = JSON.parse(raw)
@@ -214,17 +295,18 @@ export async function obtenerConfiguracionCalendario(): Promise<ConfiguracionCal
       } catch (e) {}
     }
   } catch (err) {
-    console.warn('[calendarioDeudasService] Error cargando config:', err)
+    console.warn(`[calendarioDeudasService] Error cargando config ${anio}:`, err)
   }
 
   return defaultConfig
 }
 
 export async function guardarConfiguracionCalendario(
-  config: Partial<ConfiguracionCalendario>
+  config: Partial<ConfiguracionCalendario>,
+  anio: number = 2026
 ): Promise<{ success: boolean; data: ConfiguracionCalendario; error: string | null }> {
   try {
-    const actual = await obtenerConfiguracionCalendario()
+    const actual = await obtenerConfiguracionCalendario(anio)
     const nueva: ConfiguracionCalendario = {
       tituloSeccionHistorica: config.tituloSeccionHistorica !== undefined ? config.tituloSeccionHistorica : actual.tituloSeccionHistorica,
       tituloSeccionMensual: config.tituloSeccionMensual !== undefined ? config.tituloSeccionMensual : actual.tituloSeccionMensual,
@@ -235,13 +317,16 @@ export async function guardarConfiguracionCalendario(
       filasCuotasEspeciales: config.filasCuotasEspeciales !== undefined ? config.filasCuotasEspeciales : actual.filasCuotasEspeciales
     }
 
-    localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(nueva))
+    const storageKey = anio === 2026 ? CONFIG_STORAGE_KEY : `${CONFIG_STORAGE_KEY}_${anio}`
+    localStorage.setItem(storageKey, JSON.stringify(nueva))
+
+    const dbTipo = anio === 2026 ? 'config_calendario_mora' : `config_calendario_mora_${anio}`
 
     // Sincronizar en casos_comunidad para persistencia multi-usuario
     const { data: existente } = await supabase
       .from('casos_comunidad')
       .select('id')
-      .eq('tipo', 'config_calendario_mora')
+      .eq('tipo', dbTipo)
       .maybeSingle()
 
     if (existente?.id) {
@@ -256,20 +341,20 @@ export async function guardarConfiguracionCalendario(
       await supabase
         .from('casos_comunidad')
         .insert({
-          tipo: 'config_calendario_mora',
-          titulo: 'CONFIG_CALENDARIO',
+          tipo: dbTipo,
+          titulo: `CONFIG_CALENDARIO_${anio}`,
           descripcion: JSON.stringify(nueva),
           monto_usd: 0,
           monto_bs: 0
         })
     }
 
-    appCache.invalidateTags(['recibos', 'saldos', 'mora'])
+    appCache.invalidateTags(['recibos', 'saldos', 'mora', 'calendario_config', `calendario_${anio}`, `calendario_matriz_${anio}`])
 
     return { success: true, data: nueva, error: null }
   } catch (err: any) {
-    console.error('[calendarioDeudasService] Error guardando config:', err)
-    return { success: false, data: await obtenerConfiguracionCalendario(), error: err.message }
+    console.error(`[calendarioDeudasService] Error guardando config ${anio}:`, err)
+    return { success: false, data: await obtenerConfiguracionCalendario(anio), error: err.message }
   }
 }
 
@@ -390,7 +475,7 @@ export async function obtenerMatrizCalendario(
           supabase.from('perfiles').select('apartamento_id, nombre_completo, propietario_nombre, propietario_email, telefono'),
           supabase.from('recibos_generados').select('*').order('mes_facturado', { ascending: true }),
           supabase.from('deudas_mora').select('*'),
-          obtenerConfiguracionCalendario()
+          obtenerConfiguracionCalendario(anioSeleccionado)
         ])
 
         const tasaBcv = Number(configRes.data?.tasa_bcv_actual || 859.06)
@@ -1103,9 +1188,11 @@ export async function guardarCeldaPersonalizada(params: {
   monto: number | string
   estado: 'pendiente' | 'pagado'
   moneda?: 'USD' | 'BS'
+  anio?: number
 }): Promise<{ success: boolean; error: string | null }> {
   try {
-    const config = await obtenerConfiguracionCalendario()
+    const anio = params.anio || 2026
+    const config = await obtenerConfiguracionCalendario(anio)
     if (!config.valoresCeldasPersonalizadas) config.valoresCeldasPersonalizadas = {}
     if (!config.valoresCeldasPersonalizadas[params.filaId]) {
       config.valoresCeldasPersonalizadas[params.filaId] = {}
@@ -1116,7 +1203,7 @@ export async function guardarCeldaPersonalizada(params: {
       estado: params.estado,
       ...(params.moneda ? { moneda: params.moneda } : {})
     }
-    await guardarConfiguracionCalendario(config)
+    await guardarConfiguracionCalendario(config, anio)
     return { success: true, error: null }
   } catch (err: any) {
     return { success: false, error: err.message || 'Error guardando celda' }
@@ -1141,9 +1228,11 @@ export async function agregarColumnaPersonalizada(params: {
   montoDefecto?: number
   posicion: PosicionInsercionColumna
   aplicarATodos?: boolean
+  anio?: number
 }): Promise<{ success: boolean; nuevaColumna: ColumnaCalendarioConfig | null; error: string | null }> {
   try {
-    const config = await obtenerConfiguracionCalendario()
+    const anio = params.anio || 2026
+    const config = await obtenerConfiguracionCalendario(anio)
     const id = `cuota_col_${Date.now()}`
     const nuevaCol: ColumnaCalendarioConfig = {
       id,
@@ -1156,7 +1245,7 @@ export async function agregarColumnaPersonalizada(params: {
       orden: 999
     }
 
-    const cols = [...(config.columnas || obtenerColumnasPorDefecto())]
+    const cols = [...(config.columnas || obtenerColumnasPorDefecto(anio))]
     const pos = params.posicion
 
     if (pos.tipo === 'inicio_naranja') {
@@ -1208,7 +1297,7 @@ export async function agregarColumnaPersonalizada(params: {
       })
     }
 
-    await guardarConfiguracionCalendario(config)
+    await guardarConfiguracionCalendario(config, anio)
     return { success: true, nuevaColumna: nuevaCol, error: null }
   } catch (err: any) {
     return { success: false, nuevaColumna: null, error: err.message || 'Error agregando columna' }
@@ -1220,11 +1309,12 @@ export async function agregarColumnaPersonalizada(params: {
  */
 export async function cambiarSeccionColumna(
   colId: string,
-  nuevaSeccion: 'naranja' | 'azul'
+  nuevaSeccion: 'naranja' | 'azul',
+  anio: number = 2026
 ): Promise<{ success: boolean; error: string | null }> {
   try {
-    const config = await obtenerConfiguracionCalendario()
-    const cols = [...(config.columnas || obtenerColumnasPorDefecto())]
+    const config = await obtenerConfiguracionCalendario(anio)
+    const cols = [...(config.columnas || obtenerColumnasPorDefecto(anio))]
     const idx = cols.findIndex(c => c.id === colId)
     if (idx === -1) return { success: false, error: 'Columna no encontrada' }
 
@@ -1234,7 +1324,7 @@ export async function cambiarSeccionColumna(
     cols.forEach((c, i) => { c.orden = i + 1 })
     config.columnas = cols
 
-    await guardarConfiguracionCalendario(config)
+    await guardarConfiguracionCalendario(config, anio)
     return { success: true, error: null }
   } catch (err: any) {
     return { success: false, error: err.message || 'Error cambiando sección de columna' }
@@ -1246,19 +1336,20 @@ export async function cambiarSeccionColumna(
  */
 export async function cambiarMonedaColumna(
   colId: string,
-  nuevaMoneda: 'USD' | 'BS'
+  nuevaMoneda: 'USD' | 'BS',
+  anio: number = 2026
 ): Promise<{ success: boolean; error: string | null }> {
   try {
-    const config = await obtenerConfiguracionCalendario()
-    const cols = [...(config.columnas || obtenerColumnasPorDefecto())]
+    const config = await obtenerConfiguracionCalendario(anio)
+    const cols = [...(config.columnas || obtenerColumnasPorDefecto(anio))]
     const idx = cols.findIndex(c => c.id === colId)
     if (idx === -1) return { success: false, error: 'Columna no encontrada' }
 
     cols[idx].moneda = nuevaMoneda
     config.columnas = cols
 
-    await guardarConfiguracionCalendario(config)
-    appCache.invalidateTags(['calendario_config', 'mora'])
+    await guardarConfiguracionCalendario(config, anio)
+    appCache.invalidateTags(['calendario_config', 'mora', `calendario_${anio}`])
     return { success: true, error: null }
   } catch (err: any) {
     return { success: false, error: err.message || 'Error cambiando moneda de columna' }
@@ -1270,11 +1361,12 @@ export async function cambiarMonedaColumna(
  */
 export async function moverColumnaPosicion(
   colId: string,
-  direccion: 'izquierda' | 'derecha'
+  direccion: 'izquierda' | 'derecha',
+  anio: number = 2026
 ): Promise<{ success: boolean; error: string | null }> {
   try {
-    const config = await obtenerConfiguracionCalendario()
-    const cols = [...(config.columnas || obtenerColumnasPorDefecto())]
+    const config = await obtenerConfiguracionCalendario(anio)
+    const cols = [...(config.columnas || obtenerColumnasPorDefecto(anio))]
     const idx = cols.findIndex(c => c.id === colId)
     if (idx === -1) return { success: false, error: 'Columna no encontrada' }
 
@@ -1290,7 +1382,7 @@ export async function moverColumnaPosicion(
     cols.forEach((c, i) => { c.orden = i + 1 })
     config.columnas = cols
 
-    await guardarConfiguracionCalendario(config)
+    await guardarConfiguracionCalendario(config, anio)
     return { success: true, error: null }
   } catch (err: any) {
     return { success: false, error: err.message || 'Error moviendo columna' }
@@ -1300,12 +1392,12 @@ export async function moverColumnaPosicion(
 /**
  * Elimina una columna del calendario
  */
-export async function eliminarColumna(colId: string): Promise<{ success: boolean; error: string | null }> {
+export async function eliminarColumna(colId: string, anio: number = 2026): Promise<{ success: boolean; error: string | null }> {
   try {
-    const config = await obtenerConfiguracionCalendario()
-    config.columnas = (config.columnas || obtenerColumnasPorDefecto()).filter(c => c.id !== colId)
+    const config = await obtenerConfiguracionCalendario(anio)
+    config.columnas = (config.columnas || obtenerColumnasPorDefecto(anio)).filter(c => c.id !== colId)
     config.columnas.forEach((c, i) => { c.orden = i + 1 })
-    await guardarConfiguracionCalendario(config)
+    await guardarConfiguracionCalendario(config, anio)
     return { success: true, error: null }
   } catch (err: any) {
     return { success: false, error: err.message || 'Error eliminando columna' }
@@ -1315,11 +1407,11 @@ export async function eliminarColumna(colId: string): Promise<{ success: boolean
 /**
  * Restablece las columnas a su configuración por defecto
  */
-export async function restablecerColumnasPorDefecto(): Promise<{ success: boolean; error: string | null }> {
+export async function restablecerColumnasPorDefecto(anio: number = 2026): Promise<{ success: boolean; error: string | null }> {
   try {
-    const config = await obtenerConfiguracionCalendario()
-    config.columnas = obtenerColumnasPorDefecto()
-    await guardarConfiguracionCalendario(config)
+    const config = await obtenerConfiguracionCalendario(anio)
+    config.columnas = obtenerColumnasPorDefecto(anio)
+    await guardarConfiguracionCalendario(config, anio)
     return { success: true, error: null }
   } catch (err: any) {
     return { success: false, error: err.message || 'Error restableciendo columnas' }
@@ -1334,10 +1426,12 @@ export async function editarColumna(params: {
   titulo?: string
   moneda?: 'USD' | 'BS'
   montoDefecto?: number
+  anio?: number
 }): Promise<{ success: boolean; error: string | null }> {
   try {
-    const config = await obtenerConfiguracionCalendario()
-    const cols = [...(config.columnas || obtenerColumnasPorDefecto())]
+    const anio = params.anio || 2026
+    const config = await obtenerConfiguracionCalendario(anio)
+    const cols = [...(config.columnas || obtenerColumnasPorDefecto(anio))]
     const idx = cols.findIndex(c => c.id === params.id)
     if (idx === -1) return { success: false, error: 'Columna no encontrada' }
 
@@ -1346,7 +1440,7 @@ export async function editarColumna(params: {
     if (params.montoDefecto !== undefined) cols[idx].montoDefecto = Number(params.montoDefecto)
 
     config.columnas = cols
-    await guardarConfiguracionCalendario(config)
+    await guardarConfiguracionCalendario(config, anio)
     return { success: true, error: null }
   } catch (err: any) {
     return { success: false, error: err.message || 'Error editando columna' }
@@ -1360,9 +1454,11 @@ export async function agregarFilaPersonalizada(params: {
   numero: string
   propietario?: string
   alicuota?: number
+  anio?: number
 }): Promise<{ success: boolean; fila: FilaPersonalizadaConfig | null; error: string | null }> {
   try {
-    const config = await obtenerConfiguracionCalendario()
+    const anio = params.anio || 2026
+    const config = await obtenerConfiguracionCalendario(anio)
     const nuevaFila: FilaPersonalizadaConfig = {
       id: `fila_${Date.now()}`,
       numero: params.numero.trim(),
@@ -1371,7 +1467,7 @@ export async function agregarFilaPersonalizada(params: {
     }
     if (!config.filasPersonalizadas) config.filasPersonalizadas = []
     config.filasPersonalizadas.push(nuevaFila)
-    await guardarConfiguracionCalendario(config)
+    await guardarConfiguracionCalendario(config, anio)
     return { success: true, fila: nuevaFila, error: null }
   } catch (err: any) {
     return { success: false, fila: null, error: err.message || 'Error agregando fila' }
@@ -1381,9 +1477,9 @@ export async function agregarFilaPersonalizada(params: {
 /**
  * Oculta o elimina una fila del calendario a gusto del administrador
  */
-export async function ocultarOEliminarFila(filaId: string): Promise<{ success: boolean; error: string | null }> {
+export async function ocultarOEliminarFila(filaId: string, anio: number = 2026): Promise<{ success: boolean; error: string | null }> {
   try {
-    const config = await obtenerConfiguracionCalendario()
+    const config = await obtenerConfiguracionCalendario(anio)
     if (config.filasPersonalizadas?.some(f => f.id === filaId)) {
       config.filasPersonalizadas = config.filasPersonalizadas.filter(f => f.id !== filaId)
     } else {
@@ -1392,7 +1488,7 @@ export async function ocultarOEliminarFila(filaId: string): Promise<{ success: b
         config.filasOcultasIds.push(filaId)
       }
     }
-    await guardarConfiguracionCalendario(config)
+    await guardarConfiguracionCalendario(config, anio)
     return { success: true, error: null }
   } catch (err: any) {
     return { success: false, error: err.message || 'Error ocultando fila' }
@@ -1402,12 +1498,12 @@ export async function ocultarOEliminarFila(filaId: string): Promise<{ success: b
 /**
  * Restaura una fila oculta para que vuelva a ser visible en el calendario
  */
-export async function restaurarFilaOculta(filaId: string): Promise<{ success: boolean; error: string | null }> {
+export async function restaurarFilaOculta(filaId: string, anio: number = 2026): Promise<{ success: boolean; error: string | null }> {
   try {
-    const config = await obtenerConfiguracionCalendario()
+    const config = await obtenerConfiguracionCalendario(anio)
     if (!config.filasOcultasIds) config.filasOcultasIds = []
     config.filasOcultasIds = config.filasOcultasIds.filter(id => id !== filaId)
-    await guardarConfiguracionCalendario(config)
+    await guardarConfiguracionCalendario(config, anio)
     return { success: true, error: null }
   } catch (err: any) {
     return { success: false, error: err.message || 'Error restaurando fila' }
