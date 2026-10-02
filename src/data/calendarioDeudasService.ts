@@ -16,13 +16,109 @@ export interface ReciboMesItem {
   data_json?: any
 }
 
-export interface ConceptosHistoricos2025 {
-  deuda_base_2025: number // Base en Bs
-  cable_viajero: number   // En USD o Bs
-  guaya: number           // En USD o Bs
-  arreglo: number         // En Bs
-  enero_bs?: number       // Si se maneja en bloque histórico
-  febrero_bs?: number
+export interface FilaCuotaEspecial {
+  id: string
+  nombre: string
+  moneda: 'USD' | 'BS'
+  montoDefecto: number
+  montosPorColumna?: Record<string, number>
+  // Valores por apartamento: key = apartamento_id
+  valoresPorApto: Record<string, { monto: number; estado: 'pendiente' | 'pagado' }>
+  created_at?: string
+}
+
+export interface ConfiguracionCalendario {
+  tituloSeccionHistorica: string
+  filasCuotasEspeciales: FilaCuotaEspecial[]
+}
+
+const CONFIG_STORAGE_KEY = 'condominio_config_calendario_v2'
+
+export async function obtenerConfiguracionCalendario(): Promise<ConfiguracionCalendario> {
+  const defaultConfig: ConfiguracionCalendario = {
+    tituloSeccionHistorica: 'DEUDA AL AÑO 2025 / CONCEPTOS EXTRAORDINARIOS (BS)',
+    filasCuotasEspeciales: []
+  }
+
+  try {
+    const raw = localStorage.getItem(CONFIG_STORAGE_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (parsed && typeof parsed === 'object') {
+        return {
+          tituloSeccionHistorica: parsed.tituloSeccionHistorica || defaultConfig.tituloSeccionHistorica,
+          filasCuotasEspeciales: Array.isArray(parsed.filasCuotasEspeciales) ? parsed.filasCuotasEspeciales : []
+        }
+      }
+    }
+
+    const { data } = await supabase
+      .from('casos_comunidad')
+      .select('descripcion')
+      .eq('tipo', 'config_calendario_mora')
+      .maybeSingle()
+
+    if (data?.descripcion) {
+      const parsed = JSON.parse(data.descripcion)
+      localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(parsed))
+      return {
+        tituloSeccionHistorica: parsed.tituloSeccionHistorica || defaultConfig.tituloSeccionHistorica,
+        filasCuotasEspeciales: Array.isArray(parsed.filasCuotasEspeciales) ? parsed.filasCuotasEspeciales : []
+      }
+    }
+  } catch (err) {
+    console.warn('[calendarioDeudasService] Error cargando config:', err)
+  }
+
+  return defaultConfig
+}
+
+export async function guardarConfiguracionCalendario(
+  config: Partial<ConfiguracionCalendario>
+): Promise<{ success: boolean; data: ConfiguracionCalendario; error: string | null }> {
+  try {
+    const actual = await obtenerConfiguracionCalendario()
+    const nueva: ConfiguracionCalendario = {
+      tituloSeccionHistorica: config.tituloSeccionHistorica !== undefined ? config.tituloSeccionHistorica : actual.tituloSeccionHistorica,
+      filasCuotasEspeciales: config.filasCuotasEspeciales !== undefined ? config.filasCuotasEspeciales : actual.filasCuotasEspeciales
+    }
+
+    localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(nueva))
+
+    // Sincronizar en casos_comunidad para persistencia multi-usuario
+    const { data: existente } = await supabase
+      .from('casos_comunidad')
+      .select('id')
+      .eq('tipo', 'config_calendario_mora')
+      .maybeSingle()
+
+    if (existente?.id) {
+      await supabase
+        .from('casos_comunidad')
+        .update({
+          descripcion: JSON.stringify(nueva),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', existente.id)
+    } else {
+      await supabase
+        .from('casos_comunidad')
+        .insert({
+          tipo: 'config_calendario_mora',
+          titulo: 'CONFIG_CALENDARIO',
+          descripcion: JSON.stringify(nueva),
+          monto_usd: 0,
+          monto_bs: 0
+        })
+    }
+
+    appCache.invalidateTags(['recibos', 'saldos', 'mora'])
+
+    return { success: true, data: nueva, error: null }
+  } catch (err: any) {
+    console.error('[calendarioDeudasService] Error guardando config:', err)
+    return { success: false, data: await obtenerConfiguracionCalendario(), error: err.message }
+  }
 }
 
 export interface FilaCalendarioApto {
@@ -90,7 +186,6 @@ export const MESES_NOMBRES = [
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
 ]
 
-// Mapeo entre numeración de Piso 1 en Excel (511-516) y Base de Datos (501-506)
 export function normalizarNumeroApto(num: string): string {
   const clean = (num || '').trim().toUpperCase()
   if (clean === '511') return '501'
@@ -103,9 +198,7 @@ export function normalizarNumeroApto(num: string): string {
 }
 
 export function displayNumeroApto(num: string): string {
-  const clean = (num || '').trim().toUpperCase()
-  // Si en la BD es 501 pero el edificio prefiere ver 511 o viceversa, se respeta el número de BD
-  return clean
+  return (num || '').trim().toUpperCase()
 }
 
 /**
@@ -117,7 +210,10 @@ export async function obtenerMatrizCalendario(
 ): Promise<{
   filas: FilaCalendarioApto[]
   columnasMeses: ColumnaMes[]
+  columnasHistoricasBs: ColumnaMes[]
+  columnasMesesDolares: ColumnaMes[]
   resumenGlobal: ResumenGlobalCalendario
+  configuracion: ConfiguracionCalendario
   error: string | null
 }> {
   return appCache.fetch(
@@ -129,13 +225,15 @@ export async function obtenerMatrizCalendario(
           aptosRes,
           perfilesRes,
           recibosRes,
-          deudasMoraRes
+          deudasMoraRes,
+          configCalendario
         ] = await Promise.all([
           supabase.from('configuracion_edificio').select('tasa_bcv_actual').limit(1).maybeSingle(),
           supabase.from('apartamentos').select('id, numero, piso, alicuota, propietario_nombre, telefono_contacto').order('numero'),
           supabase.from('perfiles').select('apartamento_id, nombre_completo, propietario_nombre, propietario_email, telefono'),
           supabase.from('recibos_generados').select('*').order('mes_facturado', { ascending: true }),
-          supabase.from('deudas_mora').select('*')
+          supabase.from('deudas_mora').select('*'),
+          obtenerConfiguracionCalendario()
         ])
 
         const tasaBcv = Number(configRes.data?.tasa_bcv_actual || 859.06)
@@ -146,7 +244,6 @@ export async function obtenerMatrizCalendario(
         const recibos = recibosRes.data || []
         const deudasMora = deudasMoraRes.data || []
 
-        // Mapear perfiles por apartamento_id
         const perfilesMap = new Map<string, any>()
         perfiles.forEach(p => {
           if (p.apartamento_id) {
@@ -157,7 +254,6 @@ export async function obtenerMatrizCalendario(
           }
         })
 
-        // Mapear deudas_mora por apartamento_id
         const moraMap = new Map<string, any>()
         deudasMora.forEach(dm => {
           if (dm.apartamento_id) {
@@ -165,7 +261,6 @@ export async function obtenerMatrizCalendario(
           }
         })
 
-        // Agrupar recibos por clave: `${apartamento_id}_${mesKey}` donde mesKey es "YYYY-MM"
         const recibosPorAptoYMes = new Map<string, ReciboMesItem>()
         const mesesEmitidosSet = new Set<string>()
 
@@ -186,8 +281,7 @@ export async function obtenerMatrizCalendario(
           })
         })
 
-        // Definir columnas de meses para el año seleccionado (12 meses garantizados)
-        // Más cualquier mes adicional detectado en recibos
+        // Columnas completas para el año
         const columnasMeses: ColumnaMes[] = []
         for (let m = 1; m <= 12; m++) {
           const mesStr = String(m).padStart(2, '0')
@@ -195,8 +289,6 @@ export async function obtenerMatrizCalendario(
           const fechaIso = `${key}-01`
           const esEmitido = mesesEmitidosSet.has(key)
 
-          // En 2026: Enero y Febrero fueron históricamente en Bs, Marzo en adelante en $
-          // Si hay recibos, inspeccionar la moneda predominante
           let moneda: 'BS' | 'USD' = (anioSeleccionado === 2026 && m <= 2) ? 'BS' : 'USD'
           const recibosDeEsteMes = recibos.filter((r: any) => (r.mes_facturado || '').startsWith(key))
           if (recibosDeEsteMes.length > 0) {
@@ -220,22 +312,24 @@ export async function obtenerMatrizCalendario(
           })
         }
 
+        // Subconjuntos: Enero y Febrero 2026 (en Bs) van en el bloque histórico como en el Excel
+        const columnasHistoricasBs = columnasMeses.filter(c => c.moneda === 'BS')
+        // Marzo a Diciembre 2026 (en $) van en el bloque de dólares
+        const columnasMesesDolares = columnasMeses.filter(c => c.moneda === 'USD')
+
         // Construir filas por apartamento
         const filas: FilaCalendarioApto[] = aptos.map(apto => {
           const perf = perfilesMap.get(apto.id)
           const moraRow = moraMap.get(apto.id)
           const saldo = saldosMap.get(apto.id)
 
-          // Extraer conceptos históricos de deudas_mora
           let conceptosHist: any = {}
           if (moraRow?.conceptos_detalle) {
             try {
               if (moraRow.conceptos_detalle.startsWith('{')) {
                 conceptosHist = JSON.parse(moraRow.conceptos_detalle)
               }
-            } catch (e) {
-              // Si es texto libre, mantener vacío
-            }
+            } catch (e) {}
           }
 
           const esMoraSolventada = moraRow?.estado === 'solventado'
@@ -244,10 +338,9 @@ export async function obtenerMatrizCalendario(
           const guaya         = esMoraSolventada ? 0 : Number(conceptosHist.guaya || 0)
           const arreglo       = esMoraSolventada ? 0 : Number(conceptosHist.arreglo || 0)
 
-          // Mapear meses para este apartamento
           const mesesMap: Record<string, ReciboMesItem | null> = {}
           let sumPendienteBs = deudaBase2025 + arreglo
-          let sumPendienteUsd = cableViajero + guaya // si se cargaron en USD
+          let sumPendienteUsd = cableViajero + guaya
           let mesesConDeuda = 0
 
           columnasMeses.forEach(col => {
@@ -272,6 +365,15 @@ export async function obtenerMatrizCalendario(
                   col.totalPagadoBs += recibo.total_bs
                 }
               }
+            }
+          })
+
+          // Sumar también las cuotas especiales activas configuradas
+          configCalendario.filasCuotasEspeciales.forEach(cuotaEsp => {
+            const val = cuotaEsp.valoresPorApto?.[apto.id] ?? (cuotaEsp.montoDefecto > 0 ? { monto: cuotaEsp.montoDefecto, estado: 'pendiente' } : null)
+            if (val && val.estado === 'pendiente' && val.monto > 0) {
+              if (cuotaEsp.moneda === 'USD') sumPendienteUsd += val.monto
+              else sumPendienteBs += val.monto
             }
           })
 
@@ -305,10 +407,8 @@ export async function obtenerMatrizCalendario(
           }
         })
 
-        // Ordenar apartamentos usando el comparador oficial
         filas.sort((a, b) => compararApartamentos(a.apartamento_numero, b.apartamento_numero))
 
-        // Calcular resumen global
         const totalAptos = filas.length
         const aptosSolventes = filas.filter(f => f.estado_solvente).length
         const aptosMorosos = totalAptos - aptosSolventes
@@ -332,7 +432,10 @@ export async function obtenerMatrizCalendario(
         return {
           filas,
           columnasMeses,
+          columnasHistoricasBs,
+          columnasMesesDolares,
           resumenGlobal,
+          configuracion: configCalendario,
           error: null
         }
       } catch (err: any) {
@@ -340,6 +443,8 @@ export async function obtenerMatrizCalendario(
         return {
           filas: [],
           columnasMeses: [],
+          columnasHistoricasBs: [],
+          columnasMesesDolares: [],
           resumenGlobal: {
             totalApartamentos: 0,
             apartamentosSolventes: 0,
@@ -351,35 +456,39 @@ export async function obtenerMatrizCalendario(
             mesesDisponibles: [],
             tasaBcvActual: 859.06
           },
+          configuracion: {
+            tituloSeccionHistorica: 'DEUDA AL AÑO 2025 / CONCEPTOS EXTRAORDINARIOS (BS)',
+            filasCuotasEspeciales: []
+          },
           error: err.message || 'Error consultando calendario de mora'
         }
       }
     },
-    { ttlMs: 120_000, forceRefresh, tags: ['recibos', 'saldos', 'mora', 'apartamentos'] }
+    { ttlMs: 60_000, forceRefresh, tags: ['recibos', 'saldos', 'mora', 'apartamentos'] }
   )
 }
 
-export interface MarcarSolventeParams {
+export interface EditarMontoCuotaParams {
   reciboId?: string
   apartamentoId: string
   apartamentoNumero: string
-  mesFacturadoIso: string // "YYYY-MM-01"
-  mesLabel: string        // "Septiembre 2026"
-  nuevoEstado: 'pagado' | 'pendiente'
-  montoUsd: number
-  montoBs: number
+  mesFacturadoIso: string
+  mesLabel: string
+  nuevoMonto: number
+  moneda: 'USD' | 'BS'
+  estado: 'pendiente' | 'pagado'
   referencia?: string
   metodo?: string
   fechaPago?: string
   nota?: string
   autorNombre?: string
-  autorEmail?: string
 }
 
 /**
- * Marca un recibo mensual específico como pagado o pendiente con auditoría y sincronización completa
+ * Permite al administrador editar cualquier monto de cualquier celda del calendario,
+ * ajustando automáticamente los totales, estado de solvencia y auditoría.
  */
-export async function marcarReciboSolvente(params: MarcarSolventeParams): Promise<{ success: boolean; error: string | null }> {
+export async function guardarMontoReciboPersonalizado(params: EditarMontoCuotaParams): Promise<{ success: boolean; error: string | null }> {
   try {
     const {
       reciboId,
@@ -387,85 +496,58 @@ export async function marcarReciboSolvente(params: MarcarSolventeParams): Promis
       apartamentoNumero,
       mesFacturadoIso,
       mesLabel,
-      nuevoEstado,
-      montoUsd,
-      montoBs,
+      nuevoMonto,
+      moneda,
+      estado,
       referencia,
       metodo,
       fechaPago,
       nota,
-      autorNombre,
-      autorEmail
+      autorNombre
     } = params
 
-    const fechaHoy = new Date().toISOString().slice(0, 10)
-    const fechaEfectiva = fechaPago || fechaHoy
-    const refLimpia = referencia?.trim() || `CONCIL-${Date.now().toString().slice(-6)}`
-    const metodoLimpio = metodo?.trim() || 'Conciliación Manual Admin'
+    const montoUsd = moneda === 'USD' ? nuevoMonto : Number((nuevoMonto / 859.06).toFixed(2))
+    const montoBs  = moneda === 'BS'  ? nuevoMonto : Number((nuevoMonto * 859.06).toFixed(2))
+    const fechaEfectiva = fechaPago || new Date().toISOString().slice(0, 10)
+    const refLimpia = referencia?.trim() || (estado === 'pagado' ? `CONCIL-${Date.now().toString().slice(-6)}` : '')
 
-    // 1. Si existe el recibo en recibos_generados, actualizarlo directamente
-    if (reciboId) {
-      const updateData: any = {
-        estado: nuevoEstado
-      }
-
-      if (nuevoEstado === 'pagado') {
-        updateData.data_json = {
-          pago_info: {
-            referencia: refLimpia,
-            metodo: metodoLimpio,
-            fecha_pago: fechaEfectiva,
-            nota: nota || null,
-            conciliado_por: autorNombre || 'Administrador',
-            conciliado_at: new Date().toISOString()
-          }
-        }
-      }
-
-      const { error: updErr } = await supabase
-        .from('recibos_generados')
-        .update(updateData)
-        .eq('id', reciboId)
-
-      if (updErr) {
-        throw new Error(`Error actualizando recibo: ${updErr.message}`)
-      }
-    } else {
-      // Si el recibo no existía en recibos_generados, insertarlo ya en el estado deseado
-      const { error: insErr } = await supabase
-        .from('recibos_generados')
-        .insert({
-          apartamento_id: apartamentoId,
-          mes_facturado: mesFacturadoIso,
-          tasa_bcv: 859.06,
-          total_gastos_usd: montoUsd,
-          alicuota: 0.0159,
-          subtotal_usd: montoUsd,
-          fondo_reserva_pct: 10,
-          fondo_reserva_usd: 0,
-          cargos_extra_usd: 0,
-          total_usd: montoUsd,
-          total_bs: montoBs,
-          estado: nuevoEstado,
-          data_json: {
-            pago_info: {
-              referencia: refLimpia,
-              metodo: metodoLimpio,
-              fecha_pago: fechaEfectiva,
-              nota: nota || null,
-              conciliado_por: autorNombre || 'Administrador',
-              conciliado_at: new Date().toISOString()
-            }
-          }
-        })
-
-      if (insErr) {
-        throw new Error(`Error creando recibo: ${insErr.message}`)
+    const payloadRecibo: any = {
+      apartamento_id: apartamentoId,
+      mes_facturado: mesFacturadoIso,
+      total_usd: montoUsd,
+      total_bs: montoBs,
+      estado: estado,
+      tasa_bcv: 859.06,
+      subtotal_usd: montoUsd,
+      alicuota: 0.0159,
+      fondo_reserva_pct: 10,
+      data_json: {
+        editado_manualmente: true,
+        moneda_original: moneda,
+        monto_original: nuevoMonto,
+        editado_por: autorNombre || 'Administrador',
+        editado_at: new Date().toISOString(),
+        pago_info: estado === 'pagado' ? {
+          referencia: refLimpia,
+          metodo: metodo || 'Conciliación Manual Admin',
+          fecha_pago: fechaEfectiva,
+          nota: nota || null
+        } : null
       }
     }
 
-    // 2. Si se marcó como pagado, registrar opcionalmente en pagos_reportados para historial del residente
-    if (nuevoEstado === 'pagado') {
+    if (reciboId && !reciboId.startsWith('temp-')) {
+      payloadRecibo.id = reciboId
+    }
+
+    const { error: upsertErr } = await supabase
+      .from('recibos_generados')
+      .upsert(payloadRecibo, { onConflict: 'apartamento_id,mes_facturado' })
+
+    if (upsertErr) throw upsertErr
+
+    // Si se marcó como pagado y tiene referencia, asentar en pagos_reportados
+    if (estado === 'pagado') {
       try {
         await supabase
           .from('pagos_reportados')
@@ -474,21 +556,19 @@ export async function marcarReciboSolvente(params: MarcarSolventeParams): Promis
             monto_usd: montoUsd > 0 ? montoUsd : null,
             monto_bs: montoBs,
             tasa_bcv: 859.06,
-            metodo_pago: metodoLimpio.toLowerCase().includes('movil') ? 'pago_movil' : 'transferencia',
-            referencia: refLimpia,
-            banco_origen: metodoLimpio,
+            metodo_pago: (metodo || '').toLowerCase().includes('movil') ? 'pago_movil' : 'transferencia',
+            referencia: refLimpia || 'DIRECTO',
+            banco_origen: metodo || 'Directo Admin',
             banco_destino: 'Banco Bicentenario',
             fecha_pago: fechaEfectiva,
             fecha_revision: new Date().toISOString(),
             estado: 'aprobado',
-            notas_admin: `Pago conciliado directamente desde Calendario de Mora por ${autorNombre || 'Administrador'}. Mes: ${mesLabel}. ${nota || ''}`.trim()
+            notas_admin: `Conciliado desde Calendario por ${autorNombre || 'Administrador'}. ${mesLabel}. ${nota || ''}`.trim()
           })
-      } catch (pagoErr) {
-        console.warn('[CalendarioDeudas] Aviso guardando en pagos_reportados:', pagoErr)
-      }
+      } catch (e) {}
     }
 
-    // 3. Revisar si el apartamento queda completamente solvente
+    // Revisar si el apartamento queda completamente solvente
     const { data: recibosRestantes } = await supabase
       .from('recibos_generados')
       .select('id')
@@ -510,33 +590,66 @@ export async function marcarReciboSolvente(params: MarcarSolventeParams): Promis
       .update({ estado: hayPendientes ? 'moroso' : 'solvente' })
       .eq('id', apartamentoId)
 
-    // 4. Asentar en auditoría
+    // Auditoría
     await registrarEventoAuditoria({
       tipo_accion: 'CALENDARIO_CHECKLIST_PAGO',
-      titulo: `Apto ${apartamentoNumero}: ${mesLabel} marcado como ${nuevoEstado.toUpperCase()}`,
-      descripcion: `El administrador ${autorNombre || 'Administrador'} marcó el periodo ${mesLabel} como ${nuevoEstado.toUpperCase()} desde el Calendario de Deudas. Ref: ${refLimpia}`,
+      titulo: `Apto ${apartamentoNumero}: Cuota ${mesLabel} editada a ${moneda === 'USD' ? `$${montoUsd}` : `Bs. ${montoBs}`}`,
+      descripcion: `Monto y estado modificado directamente desde el Calendario de Deudas por ${autorNombre || 'Administrador'}. Estado: ${estado.toUpperCase()}`,
       apartamento_numero: apartamentoNumero,
       apartamento_id: apartamentoId,
       mes_afectado: mesFacturadoIso,
       monto_usd: montoUsd,
       monto_bs: montoBs,
-      motivo: `Conciliación de cuota ${mesLabel}`,
-      autor_nombre: autorNombre || 'Administrador',
-      autor_email: autorEmail || null
-    }).catch(err => console.warn('[CalendarioDeudas] Auditoría warning:', err))
+      motivo: `Edición manual de cuota ${mesLabel}`,
+      autor_nombre: autorNombre || 'Administrador'
+    }).catch(() => {})
 
-    // 5. Invalidar etiquetas de caché
     appCache.invalidateTags(['recibos', 'saldos', 'mora', 'apartamentos'])
 
     return { success: true, error: null }
   } catch (err: any) {
-    console.error('[calendarioDeudasService] Error marcando solvente:', err)
-    return { success: false, error: err.message || 'Error procesando cambio' }
+    console.error('[calendarioDeudasService] Error guardando monto personalizado:', err)
+    return { success: false, error: err.message || 'Error guardando monto' }
   }
 }
 
+export interface MarcarSolventeParams {
+  reciboId?: string
+  apartamentoId: string
+  apartamentoNumero: string
+  mesFacturadoIso: string
+  mesLabel: string
+  nuevoEstado: 'pagado' | 'pendiente'
+  montoUsd: number
+  montoBs: number
+  referencia?: string
+  metodo?: string
+  fechaPago?: string
+  nota?: string
+  autorNombre?: string
+  autorEmail?: string
+}
+
+export async function marcarReciboSolvente(params: MarcarSolventeParams): Promise<{ success: boolean; error: string | null }> {
+  return guardarMontoReciboPersonalizado({
+    reciboId: params.reciboId,
+    apartamentoId: params.apartamentoId,
+    apartamentoNumero: params.apartamentoNumero,
+    mesFacturadoIso: params.mesFacturadoIso,
+    mesLabel: params.mesLabel,
+    nuevoMonto: params.montoUsd > 0 ? params.montoUsd : params.montoBs,
+    moneda: params.montoUsd > 0 ? 'USD' : 'BS',
+    estado: params.nuevoEstado,
+    referencia: params.referencia,
+    metodo: params.metodo,
+    fechaPago: params.fechaPago,
+    nota: params.nota,
+    autorNombre: params.autorNombre
+  })
+}
+
 /**
- * Guarda o actualiza los conceptos históricos (Deuda 2025, Cable Viajero, Guaya, Arreglo) de un apartamento
+ * Guarda o actualiza los conceptos históricos de un apartamento
  */
 export async function guardarConceptosHistoricos(params: {
   apartamentoId: string
@@ -602,8 +715,46 @@ export async function guardarConceptosHistoricos(params: {
 }
 
 /**
+ * Guarda o actualiza una Fila de Cuota Especial
+ */
+export async function guardarFilaCuotaEspecial(
+  cuota: FilaCuotaEspecial
+): Promise<{ success: boolean; error: string | null }> {
+  try {
+    const config = await obtenerConfiguracionCalendario()
+    const existeIndex = config.filasCuotasEspeciales.findIndex(f => f.id === cuota.id)
+
+    if (existeIndex >= 0) {
+      config.filasCuotasEspeciales[existeIndex] = cuota
+    } else {
+      config.filasCuotasEspeciales.push(cuota)
+    }
+
+    await guardarConfiguracionCalendario(config)
+    return { success: true, error: null }
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Error guardando cuota especial' }
+  }
+}
+
+/**
+ * Elimina una Fila de Cuota Especial
+ */
+export async function eliminarFilaCuotaEspecial(
+  cuotaId: string
+): Promise<{ success: boolean; error: string | null }> {
+  try {
+    const config = await obtenerConfiguracionCalendario()
+    config.filasCuotasEspeciales = config.filasCuotasEspeciales.filter(f => f.id !== cuotaId)
+    await guardarConfiguracionCalendario(config)
+    return { success: true, error: null }
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Error eliminando cuota especial' }
+  }
+}
+
+/**
  * Datos semilla extraídos directamente del Excel original del edificio
- * Permite precargar la matriz histórica con 1 solo clic
  */
 export const DATOS_EXCEL_ORIGINAL: Record<string, {
   deuda_2025?: number
@@ -675,16 +826,6 @@ export async function sincronizarDatosExcelOficial(autorNombre?: string): Promis
     const { data: aptos, error: aptosErr } = await supabase.from('apartamentos').select('id, numero, alicuota')
     if (aptosErr || !aptos) throw new Error(aptosErr?.message || 'No se pudieron consultar los apartamentos')
 
-    const aptoMapByNum = new Map<string, any>()
-    aptos.forEach(a => {
-      aptoMapByNum.set(a.numero, a)
-      // Mapeo especial 501..506 <-> 511..516
-      if (a.numero.startsWith('50')) {
-        const alt = '51' + a.numero.slice(2)
-        aptoMapByNum.set(alt, a)
-      }
-    })
-
     const mesesDefs: Array<{ mes: string; key: keyof typeof DATOS_EXCEL_ORIGINAL['511']; moneda: 'BS' | 'USD'; montoBase: number }> = [
       { mes: '2026-01-01', key: 'enero_bs', moneda: 'BS', montoBase: 2916.05 },
       { mes: '2026-02-01', key: 'febrero_bs', moneda: 'BS', montoBase: 2777.86 },
@@ -699,12 +840,10 @@ export async function sincronizarDatosExcelOficial(autorNombre?: string): Promis
 
     let totalRecibosCargados = 0
 
-    // Para cada apartamento del edificio
     for (const apto of aptos) {
       const numExcel = apto.numero.startsWith('50') ? '51' + apto.numero.slice(2) : apto.numero
       const dataApto = DATOS_EXCEL_ORIGINAL[numExcel] || DATOS_EXCEL_ORIGINAL[apto.numero]
 
-      // 1. Guardar conceptos históricos 2025 en deudas_mora si existen
       if (dataApto && (dataApto.deuda_2025 || dataApto.cable_viajero || dataApto.guaya || dataApto.arreglo)) {
         await guardarConceptosHistoricos({
           apartamentoId: apto.id,
@@ -717,7 +856,6 @@ export async function sincronizarDatosExcelOficial(autorNombre?: string): Promis
         })
       }
 
-      // 2. Generar/asegurar los recibos en recibos_generados para los meses 2026
       for (const mDef of mesesDefs) {
         const montoExcel = dataApto ? (dataApto[mDef.key] as number | undefined) : undefined
         const tieneDeuda = montoExcel !== undefined && montoExcel > 0
