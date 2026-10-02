@@ -9,9 +9,7 @@ import {
   cambiarSeccionColumna,
   moverColumnaPosicion,
   eliminarColumna,
-  agregarFilaPersonalizada,
-  ocultarOEliminarFila,
-  restaurarFilaOculta,
+  restablecerColumnasPorDefecto,
   sincronizarDatosExcelOficial,
   FilaCalendarioApto,
   ColumnaMes,
@@ -35,7 +33,8 @@ export const AdminCalendarioDeudas: React.FC = () => {
   const [columnasMeses, setColumnasMeses] = useState<ColumnaMes[]>([])
   const [resumen, setResumen] = useState<ResumenGlobalCalendario | null>(null)
   const [configuracion, setConfiguracion] = useState<ConfiguracionCalendario>({
-    tituloSeccionHistorica: 'DEUDA AL AÑO 2025 / CONCEPTOS EXTRAORDINARIOS (BS)',
+    tituloSeccionHistorica: 'DEUDAS PASADAS / CONCEPTOS EXTRAORDINARIOS (BS)',
+    tituloSeccionMensual: 'CALENDARIO MENSUAL 2026 (EMISIÓN)',
     columnas: [],
     filasPersonalizadas: [],
     filasOcultasIds: [],
@@ -51,9 +50,13 @@ export const AdminCalendarioDeudas: React.FC = () => {
   const [modoChecklistRapido, setModoChecklistRapido] = useState<boolean>(false)
   const [vistaModo, setVistaModo] = useState<'completo' | 'solo_2026' | 'historico_2025'>('completo')
 
-  // Modal para Editar Título de la Sección Histórica
+  // Modal para Editar Título de Secciones
   const [modalEditarTituloOpen, setModalEditarTituloOpen] = useState(false)
+  const [seccionTituloEditando, setSeccionTituloEditando] = useState<'naranja' | 'azul'>('naranja')
   const [nuevoTituloInput, setNuevoTituloInput] = useState('')
+
+  // Menú flotante de columna (dropdown individual en cabecera)
+  const [menuColumnaId, setMenuColumnaId] = useState<string | null>(null)
 
   // Modal de Detalle / Edición de Monto / Checklist de Pago
   const [modalPagoOpen, setModalPagoOpen] = useState(false)
@@ -77,7 +80,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
   const [histGuaya, setHistGuaya] = useState<number | ''>('')
   const [histArreglo, setHistArreglo] = useState<number | ''>('')
 
-  // Modal para Crear Nueva Columna (Cuota Especial)
+  // Modal para Crear Nueva Columna (Cuota Especial o concepto vertical)
   const [modalNuevaColumnaOpen, setModalNuevaColumnaOpen] = useState(false)
   const [nuevaColTitulo, setNuevaColTitulo] = useState('')
   const [nuevaColSeccion, setNuevaColSeccion] = useState<'naranja' | 'azul'>('naranja')
@@ -86,17 +89,8 @@ export const AdminCalendarioDeudas: React.FC = () => {
   const [nuevaColAplicarATodos, setNuevaColAplicarATodos] = useState(false)
   const [nuevaColPosicion, setNuevaColPosicion] = useState<string>('fin_naranja')
 
-  // Modal para Organizar / Mover Columnas (Naranja ↔ Azul)
+  // Modal para Organizar / Mover Columnas entre Secciones
   const [modalOrganizarColumnasOpen, setModalOrganizarColumnasOpen] = useState(false)
-
-  // Modal para Agregar Nueva Fila (Local, Conserjería, Depósito, etc.)
-  const [modalNuevaFilaOpen, setModalNuevaFilaOpen] = useState(false)
-  const [nuevaFilaNumero, setNuevaFilaNumero] = useState('')
-  const [nuevaFilaPropietario, setNuevaFilaPropietario] = useState('')
-  const [nuevaFilaAlicuota, setNuevaFilaAlicuota] = useState<number | ''>(0.0159)
-
-  // Modal para Ver y Restaurar Filas Ocultas
-  const [modalFilasOcultasOpen, setModalFilasOcultasOpen] = useState(false)
 
   // Modal para Editar Celda de Columna Personalizada (Cuota Especial)
   const [modalCeldaPersonalizadaOpen, setModalCeldaPersonalizadaOpen] = useState(false)
@@ -140,6 +134,12 @@ export const AdminCalendarioDeudas: React.FC = () => {
   useEffect(() => {
     cargarDatos()
   }, [cargarDatos])
+
+  useEffect(() => {
+    const handleClickOutside = () => setMenuColumnaId(null)
+    window.addEventListener('click', handleClickOutside)
+    return () => window.removeEventListener('click', handleClickOutside)
+  }, [])
 
   // ── Columnas dinámicas clasificadas por sección ──────────────────────────
   const columnasNaranja = useMemo(() => {
@@ -296,14 +296,16 @@ export const AdminCalendarioDeudas: React.FC = () => {
     }
   }
 
-  // ── Guardar nuevo título de sección histórica ────────────────────────────
-  const handleGuardarTituloSeccion = async () => {
+  // ── Modal Editar Título de Secciones ────────────────────────────────────
+  const handleGuardarNuevoTitulo = async () => {
     if (!nuevoTituloInput.trim()) return
     setProcesandoAccion(true)
     try {
-      const res = await guardarConfiguracionCalendario({
-        tituloSeccionHistorica: nuevoTituloInput.trim()
-      })
+      const updateData = seccionTituloEditando === 'naranja'
+        ? { tituloSeccionHistorica: nuevoTituloInput.trim() }
+        : { tituloSeccionMensual: nuevoTituloInput.trim() }
+
+      const res = await guardarConfiguracionCalendario(updateData)
       if (res.success) {
         setConfiguracion(res.data)
         showToast('✅ Título de sección actualizado correctamente')
@@ -352,14 +354,15 @@ export const AdminCalendarioDeudas: React.FC = () => {
     }
   }
 
-  // ── Gestión de Columnas Dinámicas y Cuotas Especiales ────────────────────
-  const handleAbrirCrearColumna = () => {
+  // ── Gestión de Columnas Dinámicas (Verticales) ───────────────────────────
+  const handleAbrirCrearColumna = (seccionPredefinida?: 'naranja' | 'azul') => {
+    const sec = seccionPredefinida || 'naranja'
     setNuevaColTitulo('')
-    setNuevaColSeccion('naranja')
-    setNuevaColMoneda('USD')
+    setNuevaColSeccion(sec)
+    setNuevaColMoneda(sec === 'azul' ? 'USD' : 'BS')
     setNuevaColMontoDefecto('')
     setNuevaColAplicarATodos(false)
-    setNuevaColPosicion('fin_naranja')
+    setNuevaColPosicion(sec === 'azul' ? 'fin_azul' : 'fin_naranja')
     setModalNuevaColumnaOpen(true)
   }
 
@@ -399,7 +402,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
       })
 
       if (res.success) {
-        showToast(`✅ Columna "${nuevaColTitulo}" creada exitosamente`)
+        showToast(`✅ Columna vertical "${nuevaColTitulo}" agregada`)
         setModalNuevaColumnaOpen(false)
         await cargarDatos(true)
       } else {
@@ -415,7 +418,9 @@ export const AdminCalendarioDeudas: React.FC = () => {
     try {
       const res = await cambiarSeccionColumna(colId, nuevaSeccion)
       if (res.success) {
-        showToast(`↔️ Columna movida a sección ${nuevaSeccion === 'naranja' ? 'Naranja (Deudas Pasadas)' : 'Azul (Calendario)'}`)
+        const nombreSec = nuevaSeccion === 'naranja' ? 'Deudas Pasadas' : 'Calendario Mensual'
+        showToast(`↔️ Columna movida a "${nombreSec}"`)
+        setMenuColumnaId(null)
         await cargarDatos(true)
       } else {
         showToast(`❌ Error: ${res.error}`)
@@ -433,12 +438,13 @@ export const AdminCalendarioDeudas: React.FC = () => {
   }
 
   const handleEliminarColumnaClick = async (colId: string, titulo: string) => {
-    if (!window.confirm(`¿Estás seguro de eliminar la columna "${titulo}"?`)) return
+    if (!window.confirm(`¿Estás seguro de quitar la columna vertical "${titulo}" de la tabla?`)) return
     setProcesandoAccion(true)
     try {
       const res = await eliminarColumna(colId)
       if (res.success) {
-        showToast(`🗑️ Columna "${titulo}" eliminada`)
+        showToast(`🗑️ Columna "${titulo}" removida`)
+        setMenuColumnaId(null)
         await cargarDatos(true)
       } else {
         showToast(`❌ Error: ${res.error}`)
@@ -448,57 +454,14 @@ export const AdminCalendarioDeudas: React.FC = () => {
     }
   }
 
-  // ── Gestión de Filas Dinámicas (Agregar / Quitar Filas) ───────────────────
-  const handleGuardarNuevaFila = async () => {
-    if (!nuevaFilaNumero.trim()) {
-      showToast('⚠️ Ingresa el número o nombre de la unidad')
-      return
-    }
-
+  const handleRestablecerColumnas = async () => {
+    if (!window.confirm('¿Deseas restablecer todas las columnas originales de la tabla (Deuda 2025, Cable Viajero, Guaya, Arreglo, Ene, Feb, Marzo...)?')) return
     setProcesandoAccion(true)
     try {
-      const res = await agregarFilaPersonalizada({
-        numero: nuevaFilaNumero.trim(),
-        propietario: nuevaFilaPropietario.trim() || undefined,
-        alicuota: Number(nuevaFilaAlicuota || 0.0159)
-      })
-
+      const res = await restablecerColumnasPorDefecto()
       if (res.success) {
-        showToast(`✅ Fila "${nuevaFilaNumero}" agregada correctamente`)
-        setModalNuevaFilaOpen(false)
-        setNuevaFilaNumero('')
-        setNuevaFilaPropietario('')
-        await cargarDatos(true)
-      } else {
-        showToast(`❌ Error: ${res.error}`)
-      }
-    } finally {
-      setProcesandoAccion(false)
-    }
-  }
-
-  const handleOcultarFila = async (filaId: string, aptoNumero: string) => {
-    if (!window.confirm(`¿Deseas quitar o esconder la fila "${aptoNumero}" de la tabla?`)) return
-    setProcesandoAccion(true)
-    try {
-      const res = await ocultarOEliminarFila(filaId)
-      if (res.success) {
-        showToast(`🗑️ Fila "${aptoNumero}" removida. Puedes restaurarla desde "Filas Ocultas"`)
-        await cargarDatos(true)
-      } else {
-        showToast(`❌ Error: ${res.error}`)
-      }
-    } finally {
-      setProcesandoAccion(false)
-    }
-  }
-
-  const handleRestaurarFila = async (filaId: string) => {
-    setProcesandoAccion(true)
-    try {
-      const res = await restaurarFilaOculta(filaId)
-      if (res.success) {
-        showToast('👁️ Fila restaurada a la tabla')
+        showToast('🔄 Columnas restablecidas a la configuración original')
+        setMenuColumnaId(null)
         await cargarDatos(true)
       } else {
         showToast(`❌ Error: ${res.error}`)
@@ -887,9 +850,9 @@ export const AdminCalendarioDeudas: React.FC = () => {
 
         {/* Acciones principales superiores */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-          {/* Botón Nueva Columna (Cuota Especial) */}
+          {/* Botón Nueva Columna */}
           <button
-            onClick={handleAbrirCrearColumna}
+            onClick={() => handleAbrirCrearColumna()}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -903,11 +866,12 @@ export const AdminCalendarioDeudas: React.FC = () => {
               fontWeight: 800,
               cursor: 'pointer'
             }}
-            title="Agregar una columna para cuota especial o concepto extraordinario en la posición exacta deseada"
+            title="Agregar una nueva columna vertical en la posición deseada"
           >
-            <span>➕</span> Nueva Columna (Cuota Especial)
+            <span>➕</span> Nueva Columna
           </button>
 
+          {/* Botón Organizar / Mover Columnas */}
           {/* Botón Organizar / Mover Columnas */}
           <button
             onClick={() => setModalOrganizarColumnasOpen(true)}
@@ -924,54 +888,10 @@ export const AdminCalendarioDeudas: React.FC = () => {
               fontWeight: 700,
               cursor: 'pointer'
             }}
-            title="Mover columnas entre la sección Naranja y el Calendario Azul, reordenarlas o eliminarlas"
+            title="Organizar columnas: mover entre Deudas Pasadas y Calendario, reordenar o quitar"
           >
-            <span>⚙️</span> Organizar Columnas
+            <span>⚙️</span> Gestionar Columnas
           </button>
-
-          {/* Botón Agregar Fila (Local, Conserjería, etc.) */}
-          <button
-            onClick={() => setModalNuevaFilaOpen(true)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              backgroundColor: 'rgba(168, 85, 247, 0.12)',
-              color: '#c084fc',
-              border: '1px solid rgba(168, 85, 247, 0.35)',
-              padding: '9px 16px',
-              borderRadius: '10px',
-              fontSize: '12px',
-              fontWeight: 700,
-              cursor: 'pointer'
-            }}
-            title="Agregar una nueva fila a la tabla (Locales comerciales, Conserjería, Depósitos, etc.)"
-          >
-            <span>➕</span> Agregar Fila
-          </button>
-
-          {/* Botón Filas Ocultas (si hay) */}
-          {(configuracion.filasOcultasIds || []).length > 0 && (
-            <button
-              onClick={() => setModalFilasOcultasOpen(true)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                backgroundColor: 'rgba(239, 68, 68, 0.15)',
-                color: '#f87171',
-                border: '1px solid rgba(239, 68, 68, 0.4)',
-                padding: '9px 14px',
-                borderRadius: '10px',
-                fontSize: '12px',
-                fontWeight: 700,
-                cursor: 'pointer'
-              }}
-              title="Ver y restaurar filas ocultadas o eliminadas"
-            >
-              <span>👁️</span> Filas Ocultas ({(configuracion.filasOcultasIds || []).length})
-            </button>
-          )}
 
           <button
             onClick={() => handleSincronizarExcel()}
@@ -1198,7 +1118,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
                 cursor: 'pointer'
               }}
             >
-              Año 2026 ($)
+              Calendario Mensual ($)
             </button>
             <button
               onClick={() => setVistaModo('historico_2025')}
@@ -1213,7 +1133,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
                 cursor: 'pointer'
               }}
             >
-              Deuda 2025 (Bs)
+              Deudas Pasadas (Bs)
             </button>
           </div>
 
@@ -1301,28 +1221,26 @@ export const AdminCalendarioDeudas: React.FC = () => {
                       zIndex: 10,
                       backgroundColor: 'rgba(234, 88, 12, 0.15)',
                       color: '#fb923c',
-                      padding: '8px 12px',
+                      padding: '8px 14px',
                       textAlign: 'center',
                       fontWeight: 800,
                       borderRight: '2px solid rgba(234, 88, 12, 0.35)',
-                      letterSpacing: '0.5px',
-                      cursor: 'pointer',
-                      transition: 'background-color 0.2s'
+                      letterSpacing: '0.5px'
                     }}
-                    title="Clic para editar el título de esta sección"
                   >
                     <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
-                      <span>🏛️ {configuracion.tituloSeccionHistorica}</span>
+                      <span>🏛️ {configuracion.tituloSeccionHistorica || 'DEUDAS PASADAS / CONCEPTOS EXTRAORDINARIOS (BS)'}</span>
                       <button
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation()
-                          setNuevoTituloInput(configuracion.tituloSeccionHistorica)
+                          setSeccionTituloEditando('naranja')
+                          setNuevoTituloInput(configuracion.tituloSeccionHistorica || 'DEUDAS PASADAS / CONCEPTOS EXTRAORDINARIOS (BS)')
                           setModalEditarTituloOpen(true)
                         }}
                         style={{
-                          backgroundColor: 'rgba(255, 255, 255, 0.15)',
-                          color: '#fb923c',
+                          backgroundColor: 'rgba(255, 255, 255, 0.12)',
+                          color: '#fed7aa',
                           border: 'none',
                           borderRadius: '6px',
                           padding: '3px 8px',
@@ -1330,15 +1248,35 @@ export const AdminCalendarioDeudas: React.FC = () => {
                           cursor: 'pointer',
                           fontWeight: 700
                         }}
-                        title="Clic para editar el texto del encabezado"
+                        title="Editar título de esta sección"
                       >
                         ✏️ Editar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleAbrirCrearColumna('naranja')
+                        }}
+                        style={{
+                          backgroundColor: 'rgba(234, 88, 12, 0.3)',
+                          color: '#fff',
+                          border: '1px solid rgba(234, 88, 12, 0.5)',
+                          borderRadius: '6px',
+                          padding: '3px 8px',
+                          fontSize: '11px',
+                          cursor: 'pointer',
+                          fontWeight: 700
+                        }}
+                        title="Agregar columna vertical a Deudas Pasadas"
+                      >
+                        ➕ Columna
                       </button>
                     </div>
                   </th>
                 )}
 
-                {/* Sección Azul (Calendario mensual 2026) */}
+                {/* Sección Calendario Mensual */}
                 {(vistaModo === 'completo' || vistaModo === 'solo_2026') && (
                   <th
                     colSpan={columnasAzul.length + 1}
@@ -1348,14 +1286,58 @@ export const AdminCalendarioDeudas: React.FC = () => {
                       zIndex: 10,
                       backgroundColor: 'rgba(59, 130, 246, 0.12)',
                       color: '#60a5fa',
-                      padding: '8px 12px',
+                      padding: '8px 14px',
                       textAlign: 'center',
                       fontWeight: 800,
                       borderRight: '2px solid rgba(59, 130, 246, 0.35)',
                       letterSpacing: '0.5px'
                     }}
                   >
-                    📅 AÑO {anioSeleccionado} (EMISIÓN Y LÍNEA DE TIEMPO MENSUAL)
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                      <span>📅 {configuracion.tituloSeccionMensual || `CALENDARIO MENSUAL ${anioSeleccionado}`}</span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setSeccionTituloEditando('azul')
+                          setNuevoTituloInput(configuracion.tituloSeccionMensual || `CALENDARIO MENSUAL ${anioSeleccionado}`)
+                          setModalEditarTituloOpen(true)
+                        }}
+                        style={{
+                          backgroundColor: 'rgba(255, 255, 255, 0.12)',
+                          color: '#bfdbfe',
+                          border: 'none',
+                          borderRadius: '6px',
+                          padding: '3px 8px',
+                          fontSize: '11px',
+                          cursor: 'pointer',
+                          fontWeight: 700
+                        }}
+                        title="Editar título de esta sección"
+                      >
+                        ✏️ Editar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleAbrirCrearColumna('azul')
+                        }}
+                        style={{
+                          backgroundColor: 'rgba(59, 130, 246, 0.3)',
+                          color: '#fff',
+                          border: '1px solid rgba(59, 130, 246, 0.5)',
+                          borderRadius: '6px',
+                          padding: '3px 8px',
+                          fontSize: '11px',
+                          cursor: 'pointer',
+                          fontWeight: 700
+                        }}
+                        title="Agregar columna vertical al Calendario Mensual"
+                      >
+                        ➕ Columna
+                      </button>
+                    </div>
                   </th>
                 )}
 
@@ -1377,7 +1359,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
                 </th>
               </tr>
 
-              {/* Cabecera Nivel 2: Columnas de datos dinámicas con controles */}
+              {/* Cabecera Nivel 2: Columnas de datos dinámicas limpias */}
               <tr style={{ backgroundColor: '#0f172a', borderBottom: '2px solid #334155', color: '#cbd5e1' }}>
                 <th style={{
                   position: 'sticky',
@@ -1393,7 +1375,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
                   Unidad
                 </th>
 
-                {/* Columnas Sección Naranja */}
+                {/* Columnas Sección Deudas Pasadas */}
                 {(vistaModo === 'completo' || vistaModo === 'historico_2025') && (
                   <>
                     {columnasNaranja.map(col => (
@@ -1404,71 +1386,151 @@ export const AdminCalendarioDeudas: React.FC = () => {
                           position: 'sticky',
                           zIndex: 10,
                           backgroundColor: '#0f172a',
-                          padding: '8px 10px',
+                          padding: '10px 10px',
                           textAlign: 'center',
-                          verticalAlign: 'bottom'
+                          verticalAlign: 'middle'
                         }}
                       >
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <span style={{
-                              fontWeight: 700,
-                              color: col.tipo === 'cuota_especial' ? '#facc15' : col.moneda === 'BS' ? '#fb923c' : '#93c5fd'
-                            }}>
-                              {col.titulo}
+                        <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                          <span style={{
+                            fontWeight: 700,
+                            color: col.tipo === 'cuota_especial' ? '#facc15' : '#fb923c',
+                            fontSize: '12px'
+                          }}>
+                            {col.titulo}
+                          </span>
+                          {col.esPersonalizada && (
+                            <span style={{ fontSize: '9px', backgroundColor: 'rgba(234, 179, 8, 0.25)', color: '#facc15', padding: '1px 3px', borderRadius: '3px', fontWeight: 600 }}>
+                              Extra
                             </span>
-                            {col.esPersonalizada && (
-                              <span style={{ fontSize: '9px', backgroundColor: 'rgba(234, 179, 8, 0.25)', color: '#facc15', padding: '1px 3px', borderRadius: '3px' }}>
-                                Cuota
-                              </span>
-                            )}
-                          </div>
-                          {/* Controles para cambiar de sección y orden */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
-                            <button
-                              type="button"
-                              onClick={() => handleMoverColumna(col.id, 'izquierda')}
-                              style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: '0 2px', fontSize: '9px' }}
-                              title="Mover columna a la izquierda"
-                            >
-                              ◀
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleCambiarSeccion(col.id, 'azul')}
+                          )}
+                          {/* Botón discreto de opciones de columna */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setMenuColumnaId(menuColumnaId === col.id ? null : col.id)
+                            }}
+                            style={{
+                              background: menuColumnaId === col.id ? '#374151' : 'transparent',
+                              border: 'none',
+                              color: menuColumnaId === col.id ? '#fff' : '#64748b',
+                              cursor: 'pointer',
+                              padding: '2px 4px',
+                              fontSize: '12px',
+                              borderRadius: '4px',
+                              lineHeight: 1
+                            }}
+                            title="Opciones de columna: Mover a Calendario, cambiar posición o quitar"
+                          >
+                            ⋮
+                          </button>
+
+                          {/* Menú flotante desplegable */}
+                          {menuColumnaId === col.id && (
+                            <div
+                              onClick={(e) => e.stopPropagation()}
                               style={{
-                                background: 'rgba(59, 130, 246, 0.2)',
-                                border: '1px solid rgba(59, 130, 246, 0.4)',
-                                borderRadius: '4px',
-                                color: '#60a5fa',
-                                cursor: 'pointer',
-                                padding: '1px 4px',
-                                fontSize: '8px',
-                                fontWeight: 700
+                                position: 'absolute',
+                                top: '100%',
+                                left: '50%',
+                                transform: 'translateX(-50%)',
+                                marginTop: '6px',
+                                backgroundColor: '#111827',
+                                border: '1px solid #374151',
+                                borderRadius: '8px',
+                                boxShadow: '0 10px 25px rgba(0,0,0,0.85)',
+                                padding: '6px',
+                                zIndex: 100,
+                                minWidth: '175px',
+                                textAlign: 'left',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '4px'
                               }}
-                              title="Mover esta columna al Calendario Azul (2026)"
                             >
-                              ➔ Azul
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleMoverColumna(col.id, 'derecha')}
-                              style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: '0 2px', fontSize: '9px' }}
-                              title="Mover columna a la derecha"
-                            >
-                              ▶
-                            </button>
-                            {col.esPersonalizada && (
+                              <button
+                                type="button"
+                                onClick={() => handleCambiarSeccion(col.id, 'azul')}
+                                style={{
+                                  background: 'transparent',
+                                  border: 'none',
+                                  color: '#60a5fa',
+                                  padding: '6px 8px',
+                                  borderRadius: '4px',
+                                  fontSize: '11px',
+                                  fontWeight: 700,
+                                  textAlign: 'left',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '6px'
+                                }}
+                                onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(59, 130, 246, 0.15)'}
+                                onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                              >
+                                <span>📅</span> Pasar a Calendario
+                              </button>
+                              <div style={{ display: 'flex', gap: '4px' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleMoverColumna(col.id, 'izquierda')}
+                                  style={{
+                                    flex: 1,
+                                    background: '#1f2937',
+                                    border: 'none',
+                                    color: '#cbd5e1',
+                                    padding: '5px',
+                                    borderRadius: '4px',
+                                    fontSize: '11px',
+                                    cursor: 'pointer'
+                                  }}
+                                  title="Mover hacia la izquierda"
+                                >
+                                  ◀ Mover
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleMoverColumna(col.id, 'derecha')}
+                                  style={{
+                                    flex: 1,
+                                    background: '#1f2937',
+                                    border: 'none',
+                                    color: '#cbd5e1',
+                                    padding: '5px',
+                                    borderRadius: '4px',
+                                    fontSize: '11px',
+                                    cursor: 'pointer'
+                                  }}
+                                  title="Mover hacia la derecha"
+                                >
+                                  Mover ▶
+                                </button>
+                              </div>
                               <button
                                 type="button"
                                 onClick={() => handleEliminarColumnaClick(col.id, col.titulo)}
-                                style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '0 2px', fontSize: '10px' }}
-                                title="Eliminar esta columna personalizada"
+                                style={{
+                                  background: 'transparent',
+                                  border: 'none',
+                                  color: '#ef4444',
+                                  padding: '6px 8px',
+                                  borderRadius: '4px',
+                                  fontSize: '11px',
+                                  fontWeight: 700,
+                                  textAlign: 'left',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '6px'
+                                }}
+                                onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.15)'}
+                                onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
                               >
-                                ✕
+                                <span>🗑️</span> Quitar columna
                               </button>
-                            )}
-                          </div>
+                            </div>
+                          )}
                         </div>
                       </th>
                     ))}
@@ -1489,7 +1551,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
                   </>
                 )}
 
-                {/* Columnas Sección Azul */}
+                {/* Columnas Sección Calendario Mensual */}
                 {(vistaModo === 'completo' || vistaModo === 'solo_2026') && (
                   <>
                     {columnasAzul.map(col => (
@@ -1500,71 +1562,151 @@ export const AdminCalendarioDeudas: React.FC = () => {
                           position: 'sticky',
                           zIndex: 10,
                           backgroundColor: '#0f172a',
-                          padding: '8px 10px',
+                          padding: '10px 10px',
                           textAlign: 'center',
-                          verticalAlign: 'bottom'
+                          verticalAlign: 'middle'
                         }}
                       >
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <span style={{
-                              fontWeight: 700,
-                              color: col.tipo === 'cuota_especial' ? '#facc15' : '#93c5fd'
-                            }}>
-                              {col.titulo}
+                        <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                          <span style={{
+                            fontWeight: 700,
+                            color: col.tipo === 'cuota_especial' ? '#facc15' : '#93c5fd',
+                            fontSize: '12px'
+                          }}>
+                            {col.titulo}
+                          </span>
+                          {col.esPersonalizada && (
+                            <span style={{ fontSize: '9px', backgroundColor: 'rgba(234, 179, 8, 0.25)', color: '#facc15', padding: '1px 3px', borderRadius: '3px', fontWeight: 600 }}>
+                              Extra
                             </span>
-                            {col.esPersonalizada && (
-                              <span style={{ fontSize: '9px', backgroundColor: 'rgba(234, 179, 8, 0.25)', color: '#facc15', padding: '1px 3px', borderRadius: '3px' }}>
-                                Cuota
-                              </span>
-                            )}
-                          </div>
-                          {/* Controles para cambiar de sección y orden */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
-                            <button
-                              type="button"
-                              onClick={() => handleMoverColumna(col.id, 'izquierda')}
-                              style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: '0 2px', fontSize: '9px' }}
-                              title="Mover columna a la izquierda"
-                            >
-                              ◀
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleCambiarSeccion(col.id, 'naranja')}
+                          )}
+                          {/* Botón discreto de opciones de columna */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setMenuColumnaId(menuColumnaId === col.id ? null : col.id)
+                            }}
+                            style={{
+                              background: menuColumnaId === col.id ? '#374151' : 'transparent',
+                              border: 'none',
+                              color: menuColumnaId === col.id ? '#fff' : '#64748b',
+                              cursor: 'pointer',
+                              padding: '2px 4px',
+                              fontSize: '12px',
+                              borderRadius: '4px',
+                              lineHeight: 1
+                            }}
+                            title="Opciones de columna: Mover a Deudas Pasadas, cambiar posición o quitar"
+                          >
+                            ⋮
+                          </button>
+
+                          {/* Menú flotante desplegable */}
+                          {menuColumnaId === col.id && (
+                            <div
+                              onClick={(e) => e.stopPropagation()}
                               style={{
-                                background: 'rgba(234, 88, 12, 0.2)',
-                                border: '1px solid rgba(234, 88, 12, 0.4)',
-                                borderRadius: '4px',
-                                color: '#fb923c',
-                                cursor: 'pointer',
-                                padding: '1px 4px',
-                                fontSize: '8px',
-                                fontWeight: 700
+                                position: 'absolute',
+                                top: '100%',
+                                left: '50%',
+                                transform: 'translateX(-50%)',
+                                marginTop: '6px',
+                                backgroundColor: '#111827',
+                                border: '1px solid #374151',
+                                borderRadius: '8px',
+                                boxShadow: '0 10px 25px rgba(0,0,0,0.85)',
+                                padding: '6px',
+                                zIndex: 100,
+                                minWidth: '175px',
+                                textAlign: 'left',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '4px'
                               }}
-                              title="Mover esta columna a la Sección Naranja (Deudas Pasadas)"
                             >
-                              ➔ Naranja
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleMoverColumna(col.id, 'derecha')}
-                              style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: '0 2px', fontSize: '9px' }}
-                              title="Mover columna a la derecha"
-                            >
-                              ▶
-                            </button>
-                            {col.esPersonalizada && (
+                              <button
+                                type="button"
+                                onClick={() => handleCambiarSeccion(col.id, 'naranja')}
+                                style={{
+                                  background: 'transparent',
+                                  border: 'none',
+                                  color: '#fb923c',
+                                  padding: '6px 8px',
+                                  borderRadius: '4px',
+                                  fontSize: '11px',
+                                  fontWeight: 700,
+                                  textAlign: 'left',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '6px'
+                                }}
+                                onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(234, 88, 12, 0.15)'}
+                                onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                              >
+                                <span>🏛️</span> Pasar a Deudas Pasadas
+                              </button>
+                              <div style={{ display: 'flex', gap: '4px' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleMoverColumna(col.id, 'izquierda')}
+                                  style={{
+                                    flex: 1,
+                                    background: '#1f2937',
+                                    border: 'none',
+                                    color: '#cbd5e1',
+                                    padding: '5px',
+                                    borderRadius: '4px',
+                                    fontSize: '11px',
+                                    cursor: 'pointer'
+                                  }}
+                                  title="Mover hacia la izquierda"
+                                >
+                                  ◀ Mover
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleMoverColumna(col.id, 'derecha')}
+                                  style={{
+                                    flex: 1,
+                                    background: '#1f2937',
+                                    border: 'none',
+                                    color: '#cbd5e1',
+                                    padding: '5px',
+                                    borderRadius: '4px',
+                                    fontSize: '11px',
+                                    cursor: 'pointer'
+                                  }}
+                                  title="Mover hacia la derecha"
+                                >
+                                  Mover ▶
+                                </button>
+                              </div>
                               <button
                                 type="button"
                                 onClick={() => handleEliminarColumnaClick(col.id, col.titulo)}
-                                style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '0 2px', fontSize: '10px' }}
-                                title="Eliminar esta columna personalizada"
+                                style={{
+                                  background: 'transparent',
+                                  border: 'none',
+                                  color: '#ef4444',
+                                  padding: '6px 8px',
+                                  borderRadius: '4px',
+                                  fontSize: '11px',
+                                  fontWeight: 700,
+                                  textAlign: 'left',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '6px'
+                                }}
+                                onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.15)'}
+                                onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
                               >
-                                ✕
+                                <span>🗑️</span> Quitar columna
                               </button>
-                            )}
-                          </div>
+                            </div>
+                          )}
                         </div>
                       </th>
                     ))}
@@ -1622,7 +1764,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
                       onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(51, 65, 85, 0.4)'}
                       onMouseLeave={e => e.currentTarget.style.backgroundColor = bgFila}
                     >
-                      {/* Columna APTO Sticky con acción de quitar fila */}
+                      {/* Columna APTO Sticky */}
                       <td style={{
                         position: 'sticky',
                         left: 0,
@@ -1634,46 +1776,24 @@ export const AdminCalendarioDeudas: React.FC = () => {
                         color: '#fff',
                         borderRight: '2px solid #374151'
                       }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <span style={{
-                              width: '8px',
-                              height: '8px',
-                              borderRadius: '50%',
-                              backgroundColor: apto.estado_solvente ? '#10b981' : apto.meses_con_deuda >= 4 ? '#ef4444' : '#f59e0b'
-                            }} />
-                            <span style={{ fontSize: '13px' }}>{apto.apartamento_numero}</span>
-                            {apto.esPersonalizada && (
-                              <span style={{ fontSize: '9px', backgroundColor: 'rgba(168, 85, 247, 0.25)', color: '#c084fc', padding: '1px 4px', borderRadius: '3px' }}>
-                                Personalizada
-                              </span>
-                            )}
-                            {apto.alicuota && (
-                              <span style={{ fontSize: '10px', color: '#64748b', fontWeight: 500 }}>
-                                {(apto.alicuota * 100).toFixed(2)}%
-                              </span>
-                            )}
-                          </div>
-                          {/* Botón para quitar / ocultar fila */}
-                          <button
-                            type="button"
-                            onClick={() => handleOcultarFila(apto.apartamento_id, apto.apartamento_numero)}
-                            style={{
-                              background: 'none',
-                              border: 'none',
-                              color: '#64748b',
-                              cursor: 'pointer',
-                              padding: '2px 4px',
-                              fontSize: '11px',
-                              borderRadius: '4px',
-                              opacity: 0.5
-                            }}
-                            onMouseEnter={e => { e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.opacity = '1' }}
-                            onMouseLeave={e => { e.currentTarget.style.color = '#64748b'; e.currentTarget.style.opacity = '0.5' }}
-                            title={`Quitar o esconder fila de ${apto.apartamento_numero}`}
-                          >
-                            🗑️
-                          </button>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{
+                            width: '8px',
+                            height: '8px',
+                            borderRadius: '50%',
+                            backgroundColor: apto.estado_solvente ? '#10b981' : apto.meses_con_deuda >= 4 ? '#ef4444' : '#f59e0b'
+                          }} />
+                          <span style={{ fontSize: '13px' }}>{apto.apartamento_numero}</span>
+                          {apto.esPersonalizada && (
+                            <span style={{ fontSize: '9px', backgroundColor: 'rgba(168, 85, 247, 0.25)', color: '#c084fc', padding: '1px 4px', borderRadius: '3px' }}>
+                              Personalizada
+                            </span>
+                          )}
+                          {apto.alicuota && (
+                            <span style={{ fontSize: '10px', color: '#64748b', fontWeight: 500 }}>
+                              {(apto.alicuota * 100).toFixed(2)}%
+                            </span>
+                          )}
                         </div>
                       </td>
 
@@ -1862,13 +1982,13 @@ export const AdminCalendarioDeudas: React.FC = () => {
             border: '1px solid #374151',
             borderRadius: '16px',
             width: '100%',
-            maxWidth: '460px',
+            maxWidth: '480px',
             boxShadow: '0 25px 60px rgba(0,0,0,0.8)',
             overflow: 'hidden'
           }}>
             <div style={{ padding: '18px 24px', borderBottom: '1px solid #1f2937', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: '#fff' }}>
-                ✏️ Editar Nombre de la Sección
+                ✏️ Editar Título: {seccionTituloEditando === 'naranja' ? 'Deudas Pasadas' : 'Calendario Mensual'}
               </h3>
               <button onClick={() => setModalEditarTituloOpen(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '20px', cursor: 'pointer' }}>
                 ✕
@@ -1882,7 +2002,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
                 type="text"
                 value={nuevoTituloInput}
                 onChange={e => setNuevoTituloInput(e.target.value)}
-                placeholder="Ej: DEUDA AL AÑO 2025 / CONCEPTOS EXTRAORDINARIOS (BS)"
+                placeholder="Ej: DEUDAS PASADAS / CONCEPTOS EXTRAORDINARIOS (BS)"
                 style={{
                   width: '100%',
                   backgroundColor: '#030712',
@@ -1906,7 +2026,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
               </button>
               <button
                 type="button"
-                onClick={handleGuardarTituloSeccion}
+                onClick={handleGuardarNuevoTitulo}
                 disabled={procesandoAccion}
                 style={{ padding: '9px 20px', backgroundColor: 'var(--color-accent, #f97316)', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: procesandoAccion ? 'not-allowed' : 'pointer' }}
               >
@@ -1917,7 +2037,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL CREAR NUEVA COLUMNA (CUOTA ESPECIAL) */}
+      {/* MODAL CREAR NUEVA COLUMNA (VERTICAL) */}
       {modalNuevaColumnaOpen && (
         <div style={{
           position: 'fixed',
@@ -1942,10 +2062,10 @@ export const AdminCalendarioDeudas: React.FC = () => {
             <div style={{ padding: '18px 24px', borderBottom: '1px solid #1f2937', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'rgba(234, 179, 8, 0.1)' }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: '#facc15' }}>
-                  ➕ Nueva Columna (Cuota Especial o Concepto)
+                  ➕ Agregar Columna (Vertical)
                 </h3>
                 <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#fde047' }}>
-                  Elige en qué parte irá exactamente (entre meses, al inicio o al final)
+                  Elige el nombre y en qué parte de la tabla irá (entre qué meses o conceptos)
                 </p>
               </div>
               <button onClick={() => setModalNuevaColumnaOpen(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '20px', cursor: 'pointer' }}>
@@ -1956,13 +2076,14 @@ export const AdminCalendarioDeudas: React.FC = () => {
             <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px', fontWeight: 700 }}>
-                  Nombre / Título de la Columna
+                  Nombre / Título de la Columna *
                 </label>
                 <input
                   type="text"
                   value={nuevaColTitulo}
                   onChange={e => setNuevaColTitulo(e.target.value)}
-                  placeholder="Ej: Cuota Bombas, Pintura Fachada, Portón Eléctrico..."
+                  placeholder="Ej: Cuota Ascensor, Pintura, Febrero Extra..."
+                  autoFocus
                   style={{ width: '100%', backgroundColor: '#030712', border: '1px solid #374151', borderRadius: '8px', padding: '10px 12px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
                 />
               </div>
@@ -1977,8 +2098,8 @@ export const AdminCalendarioDeudas: React.FC = () => {
                     onChange={e => setNuevaColSeccion(e.target.value as 'naranja' | 'azul')}
                     style={{ width: '100%', backgroundColor: '#030712', border: '1px solid #374151', borderRadius: '8px', padding: '10px 12px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
                   >
-                    <option value="naranja">🏛️ Sección Naranja (Deudas Pasadas)</option>
-                    <option value="azul">📅 Sección Azul (Calendario)</option>
+                    <option value="naranja">🏛️ Deudas Pasadas (Bs / Conceptos Anteriores)</option>
+                    <option value="azul">📅 Calendario Mensual ($ / Meses 2026)</option>
                   </select>
                 </div>
 
@@ -2006,8 +2127,8 @@ export const AdminCalendarioDeudas: React.FC = () => {
                   onChange={e => setNuevaColPosicion(e.target.value)}
                   style={{ width: '100%', backgroundColor: '#030712', border: '1px solid #eab308', borderRadius: '8px', padding: '10px 12px', color: '#fff', fontSize: '13px', boxSizing: 'border-box', fontWeight: 600 }}
                 >
-                  <optgroup label="🏛️ Sección Naranja (Deudas Pasadas / Extraordinarios)">
-                    <option value="inicio_naranja">📍 Al inicio de Sección Naranja</option>
+                  <optgroup label="🏛️ En Deudas Pasadas">
+                    <option value="inicio_naranja">📍 Al inicio de Deudas Pasadas</option>
                     {columnasNaranja.map((c, i) => {
                       const nextCol = columnasNaranja[i + 1]
                       return (
@@ -2016,10 +2137,10 @@ export const AdminCalendarioDeudas: React.FC = () => {
                         </option>
                       )
                     })}
-                    <option value="fin_naranja">📍 Al final de Sección Naranja</option>
+                    <option value="fin_naranja">📍 Al final de Deudas Pasadas</option>
                   </optgroup>
-                  <optgroup label="📅 Sección Azul (Calendario Mensual)">
-                    <option value="inicio_azul">📍 Al inicio del Calendario Azul</option>
+                  <optgroup label="📅 En Calendario Mensual">
+                    <option value="inicio_azul">📍 Al inicio del Calendario Mensual</option>
                     {columnasAzul.map((c, i) => {
                       const nextCol = columnasAzul[i + 1]
                       return (
@@ -2028,7 +2149,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
                         </option>
                       )
                     })}
-                    <option value="fin_azul">📍 Al final del Calendario Azul</option>
+                    <option value="fin_azul">📍 Al final del Calendario Mensual</option>
                   </optgroup>
                 </select>
               </div>
@@ -2083,7 +2204,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL ORGANIZAR / MOVER COLUMNAS ENTRE SECCIONES */}
+      {/* MODAL GESTIONAR Y QUITAR COLUMNAS (VERTICALES) */}
       {modalOrganizarColumnasOpen && (
         <div style={{
           position: 'fixed',
@@ -2101,7 +2222,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
             border: '1px solid #374151',
             borderRadius: '16px',
             width: '100%',
-            maxWidth: '780px',
+            maxWidth: '820px',
             maxHeight: '85vh',
             boxShadow: '0 25px 60px rgba(0,0,0,0.8)',
             display: 'flex',
@@ -2111,10 +2232,10 @@ export const AdminCalendarioDeudas: React.FC = () => {
             <div style={{ padding: '18px 24px', borderBottom: '1px solid #1f2937', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: '#fff' }}>
-                  ⚙️ Organizar y Mover Columnas
+                  ⚙️ Gestionar y Quitar Columnas (Verticales)
                 </h3>
                 <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#94a3b8' }}>
-                  Pasa columnas entre la sección Naranja (Deudas pasadas) y el Calendario Azul con un solo clic
+                  Mueve columnas entre "Deudas Pasadas" y el "Calendario Mensual", reordena su posición o quítalas a tu antojo
                 </p>
               </div>
               <button onClick={() => setModalOrganizarColumnasOpen(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '20px', cursor: 'pointer' }}>
@@ -2123,359 +2244,205 @@ export const AdminCalendarioDeudas: React.FC = () => {
             </div>
 
             <div style={{ padding: '20px 24px', overflowY: 'auto', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', flex: 1 }}>
-              {/* Sección Naranja */}
+              {/* Sección Deudas Pasadas */}
               <div style={{ backgroundColor: '#090d16', border: '1px solid rgba(234, 88, 12, 0.3)', borderRadius: '12px', padding: '16px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', borderBottom: '1px solid rgba(234, 88, 12, 0.2)', paddingBottom: '8px' }}>
                   <span style={{ fontSize: '13px', fontWeight: 800, color: '#fb923c' }}>
-                    🏛️ Sección Naranja ({columnasNaranja.length})
+                    🏛️ Deudas Pasadas ({columnasNaranja.length})
                   </span>
-                  <span style={{ fontSize: '11px', color: '#94a3b8' }}>Deudas pasadas</span>
+                  <button
+                    type="button"
+                    onClick={() => handleAbrirCrearColumna('naranja')}
+                    style={{ background: 'rgba(234, 88, 12, 0.2)', border: '1px solid rgba(234, 88, 12, 0.4)', color: '#fb923c', padding: '2px 8px', borderRadius: '4px', fontSize: '10px', fontWeight: 700, cursor: 'pointer' }}
+                  >
+                    + Agregar
+                  </button>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {columnasNaranja.map((c) => (
-                    <div
-                      key={c.id}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        padding: '8px 10px',
-                        backgroundColor: '#111827',
-                        border: '1px solid #1f2937',
-                        borderRadius: '8px',
-                        fontSize: '12px'
-                      }}
-                    >
-                      <div>
-                        <span style={{ fontWeight: 700, color: c.tipo === 'cuota_especial' ? '#facc15' : '#fff' }}>{c.titulo}</span>
-                        <span style={{ marginLeft: '6px', fontSize: '10px', color: '#94a3b8' }}>({c.moneda})</span>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <button
-                          type="button"
-                          onClick={() => handleMoverColumna(c.id, 'izquierda')}
-                          style={{ background: '#1f2937', border: 'none', color: '#cbd5e1', borderRadius: '4px', padding: '3px 6px', cursor: 'pointer', fontSize: '10px' }}
-                          title="Subir orden"
-                        >
-                          ▲
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleMoverColumna(c.id, 'derecha')}
-                          style={{ background: '#1f2937', border: 'none', color: '#cbd5e1', borderRadius: '4px', padding: '3px 6px', cursor: 'pointer', fontSize: '10px' }}
-                          title="Bajar orden"
-                        >
-                          ▼
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleCambiarSeccion(c.id, 'azul')}
-                          style={{
-                            background: 'rgba(59, 130, 246, 0.2)',
-                            border: '1px solid rgba(59, 130, 246, 0.4)',
-                            color: '#60a5fa',
-                            borderRadius: '4px',
-                            padding: '3px 8px',
-                            cursor: 'pointer',
-                            fontSize: '11px',
-                            fontWeight: 700
-                          }}
-                          title="Mover esta columna al Calendario Azul"
-                        >
-                          ➔ Azul
-                        </button>
-                        {c.esPersonalizada && (
+                  {columnasNaranja.length === 0 ? (
+                    <div style={{ color: '#64748b', fontSize: '12px', textAlign: 'center', padding: '20px' }}>
+                      No hay columnas en esta sección.
+                    </div>
+                  ) : (
+                    columnasNaranja.map((c) => (
+                      <div
+                        key={c.id}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '8px 10px',
+                          backgroundColor: '#111827',
+                          border: '1px solid #1f2937',
+                          borderRadius: '8px',
+                          fontSize: '12px'
+                        }}
+                      >
+                        <div>
+                          <span style={{ fontWeight: 700, color: c.tipo === 'cuota_especial' ? '#facc15' : '#fff' }}>{c.titulo}</span>
+                          <span style={{ marginLeft: '6px', fontSize: '10px', color: '#94a3b8' }}>({c.moneda})</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <button
+                            type="button"
+                            onClick={() => handleMoverColumna(c.id, 'izquierda')}
+                            style={{ background: '#1f2937', border: 'none', color: '#cbd5e1', borderRadius: '4px', padding: '4px 6px', cursor: 'pointer', fontSize: '10px' }}
+                            title="Mover columna a la izquierda"
+                          >
+                            ◀
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleMoverColumna(c.id, 'derecha')}
+                            style={{ background: '#1f2937', border: 'none', color: '#cbd5e1', borderRadius: '4px', padding: '4px 6px', cursor: 'pointer', fontSize: '10px' }}
+                            title="Mover columna a la derecha"
+                          >
+                            ▶
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleCambiarSeccion(c.id, 'azul')}
+                            style={{
+                              background: 'rgba(59, 130, 246, 0.2)',
+                              border: '1px solid rgba(59, 130, 246, 0.4)',
+                              color: '#60a5fa',
+                              borderRadius: '4px',
+                              padding: '4px 8px',
+                              cursor: 'pointer',
+                              fontSize: '11px',
+                              fontWeight: 700
+                            }}
+                            title="Pasar esta columna al Calendario Mensual"
+                          >
+                            ➔ Calendario
+                          </button>
                           <button
                             type="button"
                             onClick={() => handleEliminarColumnaClick(c.id, c.titulo)}
                             style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '2px 4px', fontSize: '12px' }}
-                            title="Eliminar columna"
+                            title="Quitar columna vertical de la tabla"
                           >
                             🗑️
                           </button>
-                        )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))
+                  )}
                 </div>
               </div>
 
-              {/* Sección Azul */}
+              {/* Sección Calendario Mensual */}
               <div style={{ backgroundColor: '#090d16', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '12px', padding: '16px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', borderBottom: '1px solid rgba(59, 130, 246, 0.2)', paddingBottom: '8px' }}>
                   <span style={{ fontSize: '13px', fontWeight: 800, color: '#60a5fa' }}>
-                    📅 Sección Azul ({columnasAzul.length})
+                    📅 Calendario Mensual ({columnasAzul.length})
                   </span>
-                  <span style={{ fontSize: '11px', color: '#94a3b8' }}>Calendario mensual</span>
+                  <button
+                    type="button"
+                    onClick={() => handleAbrirCrearColumna('azul')}
+                    style={{ background: 'rgba(59, 130, 246, 0.2)', border: '1px solid rgba(59, 130, 246, 0.4)', color: '#60a5fa', padding: '2px 8px', borderRadius: '4px', fontSize: '10px', fontWeight: 700, cursor: 'pointer' }}
+                  >
+                    + Agregar
+                  </button>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {columnasAzul.map((c) => (
-                    <div
-                      key={c.id}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        padding: '8px 10px',
-                        backgroundColor: '#111827',
-                        border: '1px solid #1f2937',
-                        borderRadius: '8px',
-                        fontSize: '12px'
-                      }}
-                    >
-                      <div>
-                        <span style={{ fontWeight: 700, color: c.tipo === 'cuota_especial' ? '#facc15' : '#fff' }}>{c.titulo}</span>
-                        <span style={{ marginLeft: '6px', fontSize: '10px', color: '#94a3b8' }}>({c.moneda})</span>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <button
-                          type="button"
-                          onClick={() => handleMoverColumna(c.id, 'izquierda')}
-                          style={{ background: '#1f2937', border: 'none', color: '#cbd5e1', borderRadius: '4px', padding: '3px 6px', cursor: 'pointer', fontSize: '10px' }}
-                          title="Subir orden"
-                        >
-                          ▲
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleMoverColumna(c.id, 'derecha')}
-                          style={{ background: '#1f2937', border: 'none', color: '#cbd5e1', borderRadius: '4px', padding: '3px 6px', cursor: 'pointer', fontSize: '10px' }}
-                          title="Bajar orden"
-                        >
-                          ▼
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleCambiarSeccion(c.id, 'naranja')}
-                          style={{
-                            background: 'rgba(234, 88, 12, 0.2)',
-                            border: '1px solid rgba(234, 88, 12, 0.4)',
-                            color: '#fb923c',
-                            borderRadius: '4px',
-                            padding: '3px 8px',
-                            cursor: 'pointer',
-                            fontSize: '11px',
-                            fontWeight: 700
-                          }}
-                          title="Mover esta columna a la Sección Naranja"
-                        >
-                          ➔ Naranja
-                        </button>
-                        {c.esPersonalizada && (
+                  {columnasAzul.length === 0 ? (
+                    <div style={{ color: '#64748b', fontSize: '12px', textAlign: 'center', padding: '20px' }}>
+                      No hay columnas en esta sección.
+                    </div>
+                  ) : (
+                    columnasAzul.map((c) => (
+                      <div
+                        key={c.id}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '8px 10px',
+                          backgroundColor: '#111827',
+                          border: '1px solid #1f2937',
+                          borderRadius: '8px',
+                          fontSize: '12px'
+                        }}
+                      >
+                        <div>
+                          <span style={{ fontWeight: 700, color: c.tipo === 'cuota_especial' ? '#facc15' : '#fff' }}>{c.titulo}</span>
+                          <span style={{ marginLeft: '6px', fontSize: '10px', color: '#94a3b8' }}>({c.moneda})</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <button
+                            type="button"
+                            onClick={() => handleMoverColumna(c.id, 'izquierda')}
+                            style={{ background: '#1f2937', border: 'none', color: '#cbd5e1', borderRadius: '4px', padding: '4px 6px', cursor: 'pointer', fontSize: '10px' }}
+                            title="Mover columna a la izquierda"
+                          >
+                            ◀
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleMoverColumna(c.id, 'derecha')}
+                            style={{ background: '#1f2937', border: 'none', color: '#cbd5e1', borderRadius: '4px', padding: '4px 6px', cursor: 'pointer', fontSize: '10px' }}
+                            title="Mover columna a la derecha"
+                          >
+                            ▶
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleCambiarSeccion(c.id, 'naranja')}
+                            style={{
+                              background: 'rgba(234, 88, 12, 0.2)',
+                              border: '1px solid rgba(234, 88, 12, 0.4)',
+                              color: '#fb923c',
+                              borderRadius: '4px',
+                              padding: '4px 8px',
+                              cursor: 'pointer',
+                              fontSize: '11px',
+                              fontWeight: 700
+                            }}
+                            title="Pasar esta columna a Deudas Pasadas"
+                          >
+                            ➔ Deudas Pasadas
+                          </button>
                           <button
                             type="button"
                             onClick={() => handleEliminarColumnaClick(c.id, c.titulo)}
                             style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '2px 4px', fontSize: '12px' }}
-                            title="Eliminar columna"
+                            title="Quitar columna vertical de la tabla"
                           >
                             🗑️
                           </button>
-                        )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))
+                  )}
                 </div>
               </div>
             </div>
 
-            <div style={{ padding: '16px 24px', backgroundColor: '#030712', borderTop: '1px solid #1f2937', display: 'flex', justifyContent: 'flex-end' }}>
+            <div style={{ padding: '16px 24px', backgroundColor: '#030712', borderTop: '1px solid #1f2937', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <button
+                type="button"
+                onClick={handleRestablecerColumnas}
+                disabled={procesandoAccion}
+                style={{
+                  padding: '9px 16px',
+                  backgroundColor: 'rgba(239, 68, 68, 0.12)',
+                  color: '#f87171',
+                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                  borderRadius: '8px',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  cursor: procesandoAccion ? 'not-allowed' : 'pointer'
+                }}
+                title="Restablece las columnas originales por defecto"
+              >
+                🔄 Restablecer Columnas Originales
+              </button>
+
               <button
                 type="button"
                 onClick={() => setModalOrganizarColumnasOpen(false)}
-                style={{ padding: '9px 20px', backgroundColor: '#374151', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}
-              >
-                Cerrar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL AGREGAR NUEVA FILA (LOCALES, CONSERJERÍA, ETC.) */}
-      {modalNuevaFilaOpen && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          backgroundColor: 'rgba(0,0,0,0.75)',
-          backdropFilter: 'blur(5px)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 99999,
-          padding: '20px'
-        }}>
-          <div style={{
-            backgroundColor: '#111827',
-            border: '2px solid #a855f7',
-            borderRadius: '16px',
-            width: '100%',
-            maxWidth: '460px',
-            boxShadow: '0 25px 60px rgba(0,0,0,0.8)',
-            overflow: 'hidden'
-          }}>
-            <div style={{ padding: '18px 24px', borderBottom: '1px solid #1f2937', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'rgba(168, 85, 247, 0.1)' }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: '#c084fc' }}>
-                  ➕ Agregar Fila a la Tabla
-                </h3>
-                <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#d8b4fe' }}>
-                  Agrega unidades especiales como Locales, Conserjería o Depósitos
-                </p>
-              </div>
-              <button onClick={() => setModalNuevaFilaOpen(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '20px', cursor: 'pointer' }}>
-                ✕
-              </button>
-            </div>
-
-            <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px', fontWeight: 700 }}>
-                  Número / Identificador de la Unidad *
-                </label>
-                <input
-                  type="text"
-                  value={nuevaFilaNumero}
-                  onChange={e => setNuevaFilaNumero(e.target.value)}
-                  placeholder="Ej: Local 1, Conserjería, Depósito 1..."
-                  autoFocus
-                  style={{ width: '100%', backgroundColor: '#030712', border: '1px solid #374151', borderRadius: '8px', padding: '10px 12px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px', fontWeight: 700 }}>
-                  Propietario / Responsable (Opcional)
-                </label>
-                <input
-                  type="text"
-                  value={nuevaFilaPropietario}
-                  onChange={e => setNuevaFilaPropietario(e.target.value)}
-                  placeholder="Ej: Inversiones ABC, Administración..."
-                  style={{ width: '100%', backgroundColor: '#030712', border: '1px solid #374151', borderRadius: '8px', padding: '10px 12px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px', fontWeight: 700 }}>
-                  Alícuota (Opcional, defecto: 0.0159)
-                </label>
-                <input
-                  type="number"
-                  step="any"
-                  value={nuevaFilaAlicuota}
-                  onChange={e => setNuevaFilaAlicuota(e.target.value === '' ? '' : parseFloat(e.target.value))}
-                  placeholder="0.0159"
-                  style={{ width: '100%', backgroundColor: '#030712', border: '1px solid #374151', borderRadius: '8px', padding: '10px 12px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
-                />
-              </div>
-            </div>
-
-            <div style={{ padding: '16px 24px', backgroundColor: '#030712', borderTop: '1px solid #1f2937', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-              <button
-                type="button"
-                onClick={() => setModalNuevaFilaOpen(false)}
-                style={{ padding: '9px 16px', backgroundColor: 'transparent', color: '#cbd5e1', border: '1px solid #374151', borderRadius: '8px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={handleGuardarNuevaFila}
-                disabled={procesandoAccion}
-                style={{ padding: '9px 20px', backgroundColor: '#a855f7', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 800, cursor: procesandoAccion ? 'not-allowed' : 'pointer' }}
-              >
-                {procesandoAccion ? 'Guardando...' : 'Crear Fila'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL GESTIÓN DE FILAS OCULTAS */}
-      {modalFilasOcultasOpen && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          backgroundColor: 'rgba(0,0,0,0.75)',
-          backdropFilter: 'blur(5px)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 99999,
-          padding: '20px'
-        }}>
-          <div style={{
-            backgroundColor: '#111827',
-            border: '1px solid #374151',
-            borderRadius: '16px',
-            width: '100%',
-            maxWidth: '480px',
-            maxHeight: '80vh',
-            boxShadow: '0 25px 60px rgba(0,0,0,0.8)',
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden'
-          }}>
-            <div style={{ padding: '18px 24px', borderBottom: '1px solid #1f2937', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: '#fff' }}>
-                  👁️ Filas Ocultas del Calendario
-                </h3>
-                <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#94a3b8' }}>
-                  Puedes restaurar cualquier unidad para que vuelva a mostrarse en la tabla
-                </p>
-              </div>
-              <button onClick={() => setModalFilasOcultasOpen(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '20px', cursor: 'pointer' }}>
-                ✕
-              </button>
-            </div>
-
-            <div style={{ padding: '20px 24px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {(configuracion.filasOcultasIds || []).length === 0 ? (
-                <div style={{ textAlign: 'center', color: '#64748b', padding: '30px' }}>
-                  No hay filas ocultas actualmente.
-                </div>
-              ) : (
-                (configuracion.filasOcultasIds || []).map(id => (
-                  <div
-                    key={id}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      padding: '10px 14px',
-                      backgroundColor: '#030712',
-                      border: '1px solid #1f2937',
-                      borderRadius: '8px'
-                    }}
-                  >
-                    <span style={{ fontWeight: 700, color: '#fff' }}>ID: {id}</span>
-                    <button
-                      type="button"
-                      onClick={() => handleRestaurarFila(id)}
-                      style={{
-                        backgroundColor: 'rgba(16, 185, 129, 0.15)',
-                        border: '1px solid rgba(16, 185, 129, 0.35)',
-                        color: '#10b981',
-                        borderRadius: '6px',
-                        padding: '6px 12px',
-                        fontSize: '11px',
-                        fontWeight: 700,
-                        cursor: 'pointer'
-                      }}
-                    >
-                      Restaurar
-                    </button>
-                  </div>
-                ))
-              )}
-            </div>
-
-            <div style={{ padding: '16px 24px', backgroundColor: '#030712', borderTop: '1px solid #1f2937', display: 'flex', justifyContent: 'flex-end' }}>
-              <button
-                type="button"
-                onClick={() => setModalFilasOcultasOpen(false)}
-                style={{ padding: '9px 20px', backgroundColor: '#374151', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}
+                style={{ padding: '9px 24px', backgroundColor: '#374151', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}
               >
                 Cerrar
               </button>

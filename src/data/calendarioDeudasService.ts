@@ -393,11 +393,8 @@ export async function obtenerMatrizCalendario(
         // Marzo a Diciembre 2026 (en $) van en el bloque de dólares
         const columnasMesesDolares = columnasMeses.filter(c => c.moneda === 'USD')
 
-        // Filtrar apartamentos ocultos
-        const aptosVisibles = aptos.filter(a => !(configCalendario.filasOcultasIds || []).includes(a.id))
-
-        // Construir filas por apartamento
-        const filasAptos: FilaCalendarioApto[] = aptosVisibles.map(apto => {
+        // Construir filas por todos los apartamentos
+        const filasAptos: FilaCalendarioApto[] = aptos.map(apto => {
           const perf = perfilesMap.get(apto.id)
           const moraRow = moraMap.get(apto.id)
           const saldo = saldosMap.get(apto.id)
@@ -1076,6 +1073,20 @@ export async function eliminarColumna(colId: string): Promise<{ success: boolean
     return { success: true, error: null }
   } catch (err: any) {
     return { success: false, error: err.message || 'Error eliminando columna' }
+  }
+}
+
+/**
+ * Restablece las columnas a su configuración por defecto
+ */
+export async function restablecerColumnasPorDefecto(): Promise<{ success: boolean; error: string | null }> {
+  try {
+    const config = await obtenerConfiguracionCalendario()
+    config.columnas = obtenerColumnasPorDefecto()
+    await guardarConfiguracionCalendario(config)
+    return { success: true, error: null }
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Error restableciendo columnas' }
   }
 }
 
