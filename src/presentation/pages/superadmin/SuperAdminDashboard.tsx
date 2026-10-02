@@ -19,10 +19,13 @@ import {
   updateEmergencySettings,
   forceBcvRate,
   generateFullDatabaseSnapshot,
+  runComprehensiveDiagnostic,
   SystemHealthData,
   MasterUserData,
   BuildingData,
-  FinancialSanityCheck
+  FinancialSanityCheck,
+  SystemDiagnosticReport,
+  DiagnosticFinding
 } from '../../../data/superAdminService'
 
 export const SuperAdminDashboard: React.FC = () => {
@@ -134,6 +137,15 @@ export const SuperAdminDashboard: React.FC = () => {
   const [exportingBackup, setExportingBackup] = useState(false)
   const [notification, setNotification] = useState<string | null>(null)
 
+  // ── ESCÁNER 360° & DIAGNÓSTICO EN TIEMPO REAL ──
+  const [diagnosticReport, setDiagnosticReport] = useState<SystemDiagnosticReport | null>(null)
+  const [runningDiagnostic, setRunningDiagnostic] = useState(false)
+  const [diagnosticStepText, setDiagnosticStepText] = useState('')
+  const [diagnosticFilter, setDiagnosticFilter] = useState<'all' | 'critical' | 'warning' | 'passed'>('all')
+  const [diagnosticCategory, setDiagnosticCategory] = useState<'all' | 'security' | 'sessions' | 'data_integrity' | 'logs' | 'performance'>('all')
+  const [realtimeAutoRefresh, setRealtimeAutoRefresh] = useState(true)
+  const [realtimeCountdown, setRealtimeCountdown] = useState(15)
+
   const showNotification = (msg: string) => {
     setNotification(msg)
     setTimeout(() => setNotification(null), 4000)
@@ -218,14 +230,44 @@ export const SuperAdminDashboard: React.FC = () => {
       refreshUsers(selectedBuildingId)
       refreshAudit()
       loadEmergencySettings()
-
-      const interval = setInterval(() => {
-        refreshHealth()
-      }, 45000)
-
-      return () => clearInterval(interval)
     }
   }, [isSuperAdmin, refreshBuildings, refreshHealth, refreshUsers, selectedBuildingId, refreshAudit, loadEmergencySettings])
+
+  // Temporizador de telemetría en tiempo real
+  useEffect(() => {
+    if (!isSuperAdmin || !realtimeAutoRefresh) return
+
+    const interval = setInterval(() => {
+      setRealtimeCountdown(prev => {
+        if (prev <= 1) {
+          refreshHealth()
+          return 15
+        }
+        return prev - 1
+      })
+    }, 1000)
+
+    return () => clearInterval(interval)
+  }, [isSuperAdmin, realtimeAutoRefresh, refreshHealth])
+
+  // Suscripción Realtime por WebSocket a cambios de base de datos
+  useEffect(() => {
+    if (!isSuperAdmin) return
+
+    const channel = supabase.channel('superadmin-live-pulse')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'historial_auditoria' }, () => {
+        refreshHealth()
+        refreshAudit()
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pagos_reportados' }, () => {
+        refreshHealth()
+      })
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [isSuperAdmin, refreshHealth, refreshAudit])
 
   // Manejar Login Directo en /superadmin
   const handleSuperAdminLogin = async (e: React.FormEvent) => {
@@ -259,6 +301,78 @@ export const SuperAdminDashboard: React.FC = () => {
     purgeGlobalCache()
     showNotification('⚡ Caché global invalidada en memoria y sesión.')
     refreshHealth()
+  }
+
+  // Ejecución del Escáner Integral 360°
+  const handleRunDiagnostic = async () => {
+    if (runningDiagnostic) return
+    setRunningDiagnostic(true)
+    setDiagnosticStepText('Iniciando escáner forense de infraestructura...')
+
+    try {
+      setDiagnosticStepText('Midiendo latencia PostgREST y conectividad Supabase...')
+      await new Promise(r => setTimeout(r, 350))
+
+      setDiagnosticStepText('Auditando privilegios y aislamiento de cuentas maestras...')
+      await new Promise(r => setTimeout(r, 400))
+
+      setDiagnosticStepText('Inspeccionando tokens de sesión y estados de bloqueo...')
+      await new Promise(r => setTimeout(r, 350))
+
+      setDiagnosticStepText('Examinando integridad monetaria de pagos y recibos...')
+      await new Promise(r => setTimeout(r, 450))
+
+      setDiagnosticStepText('Buscando ráfagas sospechosas y patrones en registros de auditoría...')
+      await new Promise(r => setTimeout(r, 400))
+
+      setDiagnosticStepText('Comprobando alícuotas de inmuebles y cuotas de almacenamiento...')
+      const report = await runComprehensiveDiagnostic()
+
+      setDiagnosticReport(report)
+      showNotification(`🛡️ Escáner 360° completado: Salud del Sistema ${report.securityScore}/100`)
+    } catch (e: any) {
+      console.error('[Diagnostic] Error al ejecutar escáner:', e)
+      showNotification('❌ Error al ejecutar el escáner del sistema.')
+    } finally {
+      setRunningDiagnostic(false)
+      setDiagnosticStepText('')
+    }
+  }
+
+  // Manejador de remediación / auto-corrección
+  const handleDiagnosticAction = async (finding: DiagnosticFinding) => {
+    if (!finding.fixActionType) return
+
+    if (finding.fixActionType === 'purge_cache') {
+      handlePurgeCache()
+      showNotification('⚡ Caché purgada. Re-ejecutando diagnóstico...')
+      setTimeout(() => handleRunDiagnostic(), 800)
+    } else if (finding.fixActionType === 'goto_users') {
+      setActiveTab('users')
+      showNotification('👤 Redirigido al Directorio Maestro de Usuarios.')
+    } else if (finding.fixActionType === 'goto_emergency' || finding.fixActionType === 'force_bcv') {
+      setActiveTab('emergency')
+      showNotification('⚠️ Redirigido al Centro de Contingencias y Tasa Oficial.')
+    } else if (finding.fixActionType === 'goto_audit') {
+      setActiveTab('audit')
+      showNotification('📋 Redirigido al Registro de Auditoría Forense.')
+    }
+  }
+
+  // Exportar reporte forense en JSON
+  const handleExportDiagnosticReport = () => {
+    if (!diagnosticReport) return
+    const jsonStr = JSON.stringify(diagnosticReport, null, 2)
+    const blob = new Blob([jsonStr], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `informe_diagnostico_domus_${new Date().toISOString().slice(0, 10)}.json`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    showNotification('📥 Informe de diagnóstico descargado con éxito.')
   }
 
   // ── MANEJADORES DE EDIFICIOS ──
@@ -1054,44 +1168,509 @@ export const SuperAdminDashboard: React.FC = () => {
           </div>
         )}
 
-        {/* ── TAB 1: TELEMETRÍA & SALUD DEL SISTEMA ── */}
+        {/* ── TAB 1: TELEMETRÍA EN TIEMPO REAL & DIAGNÓSTICO 360° ── */}
         {activeTab === 'health' && (
           <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+            {/* Cabecera de Telemetría */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '22px', flexWrap: 'wrap', gap: '14px' }}>
               <div>
-                <h2 style={{ fontSize: '20px', fontWeight: 800, margin: '0 0 4px' }}>
-                  ⚡ Telemetría y Salud de la Infraestructura
-                </h2>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
+                  <h2 style={{ fontSize: '22px', fontWeight: 800, margin: 0, color: '#fff' }}>
+                    ⚡ Telemetría y Salud en Tiempo Real
+                  </h2>
+                  <div style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '6px',
+                    background: 'rgba(34, 197, 94, 0.12)', border: '1px solid rgba(34, 197, 94, 0.3)',
+                    padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: 700, color: '#4ade80'
+                  }}>
+                    <span style={{
+                      width: '7px', height: '7px', borderRadius: '50%', background: '#22c55e',
+                      boxShadow: '0 0 8px #22c55e', display: 'inline-block'
+                    }} />
+                    <span>WebSocket Realtime Activo</span>
+                  </div>
+                </div>
                 <p style={{ margin: 0, fontSize: '13px', color: '#94a3b8' }}>
-                  Supervisión de rendimiento de base de datos en Supabase, conteo de filas e invalidación de caché.
+                  Monitoreo continuo de Supabase PostgREST, salud de base de datos, pulso de eventos y escáner 360° de anomalías.
                 </p>
               </div>
 
-              <div style={{ display: 'flex', gap: '10px' }}>
+              {/* Botones de Acción en Cabecera */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                {/* Indicador de Auto-refresco */}
+                <button
+                  onClick={() => setRealtimeAutoRefresh(!realtimeAutoRefresh)}
+                  title={realtimeAutoRefresh ? 'Pausar auto-actualización' : 'Activar auto-actualización'}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '6px',
+                    background: realtimeAutoRefresh ? 'rgba(56, 189, 248, 0.12)' : 'rgba(255, 255, 255, 0.05)',
+                    border: `1px solid ${realtimeAutoRefresh ? 'rgba(56, 189, 248, 0.3)' : 'rgba(255, 255, 255, 0.1)'}`,
+                    color: realtimeAutoRefresh ? '#38bdf8' : '#94a3b8',
+                    padding: '8px 12px', borderRadius: '10px', fontSize: '12px', fontWeight: 600, cursor: 'pointer'
+                  }}
+                >
+                  <span>{realtimeAutoRefresh ? '⏱️' : '⏸️'}</span>
+                  <span>{realtimeAutoRefresh ? `En vivo (${realtimeCountdown}s)` : 'Pausado'}</span>
+                </button>
+
                 <button
                   onClick={refreshHealth}
                   style={{
                     background: 'rgba(255, 255, 255, 0.06)', border: '1px solid rgba(255, 255, 255, 0.12)',
                     color: '#fff', padding: '8px 14px', borderRadius: '10px', fontSize: '12px',
-                    fontWeight: 600, cursor: 'pointer'
+                    fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px'
                   }}
                 >
-                  🔄 Probar Latencia
+                  <span>🔄</span> Probar Latencia
                 </button>
+
                 <button
                   onClick={handlePurgeCache}
                   style={{
-                    background: 'linear-gradient(135deg, rgba(234, 179, 8, 0.2), rgba(249, 115, 22, 0.2))',
-                    border: '1px solid #eab308', color: '#fde047', padding: '8px 14px',
-                    borderRadius: '10px', fontSize: '12px', fontWeight: 700, cursor: 'pointer'
+                    background: 'rgba(234, 179, 8, 0.12)', border: '1px solid rgba(234, 179, 8, 0.35)',
+                    color: '#fde047', padding: '8px 14px', borderRadius: '10px', fontSize: '12px',
+                    fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px'
                   }}
                 >
-                  ⚡ Purgar Caché Global
+                  <span>⚡</span> Purgar Caché
+                </button>
+
+                <button
+                  onClick={handleRunDiagnostic}
+                  disabled={runningDiagnostic}
+                  style={{
+                    background: 'linear-gradient(135deg, #7c3aed, #2563eb)',
+                    border: '1px solid #a78bfa', color: '#fff',
+                    padding: '8px 18px', borderRadius: '10px', fontSize: '12px',
+                    fontWeight: 800, cursor: runningDiagnostic ? 'not-allowed' : 'pointer',
+                    boxShadow: '0 4px 18px rgba(124, 58, 237, 0.4)',
+                    display: 'flex', alignItems: 'center', gap: '7px',
+                    opacity: runningDiagnostic ? 0.7 : 1
+                  }}
+                >
+                  <span style={{ fontSize: '14px' }}>🛡️</span>
+                  <span>{runningDiagnostic ? 'Escaneando...' : 'Escanear Sistema 360°'}</span>
                 </button>
               </div>
             </div>
 
-            {/* Bento Grid KPIs */}
+            {/* Banner de Ejecución del Escáner (Scanning in progress) */}
+            {runningDiagnostic && (
+              <div style={{
+                background: 'linear-gradient(135deg, rgba(30, 27, 75, 0.85), rgba(15, 23, 42, 0.95))',
+                border: '1px solid #8b5cf6', borderRadius: '16px', padding: '24px',
+                marginBottom: '24px', position: 'relative', overflow: 'hidden',
+                boxShadow: '0 8px 32px rgba(139, 92, 246, 0.25)'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                  <div style={{
+                    width: '42px', height: '42px', borderRadius: '12px',
+                    background: 'rgba(139, 92, 246, 0.2)', border: '1px solid #a78bfa',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '22px', animation: 'spin 2s linear infinite'
+                  }}>
+                    🛡️
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: '16px', fontWeight: 800, color: '#fff', marginBottom: '4px' }}>
+                      Auditoría Forense 360° en Progreso...
+                    </div>
+                    <div style={{ fontSize: '13px', color: '#c4b5fd', fontFamily: 'monospace' }}>
+                      {diagnosticStepText || 'Inspeccionando subsistemas, tablas e integridad de accesos...'}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{
+                  marginTop: '16px', height: '6px', width: '100%',
+                  background: 'rgba(255, 255, 255, 0.1)', borderRadius: '3px', overflow: 'hidden'
+                }}>
+                  <div style={{
+                    height: '100%', width: '100%',
+                    background: 'linear-gradient(90deg, #7c3aed, #06b6d4, #22c55e)',
+                    animation: 'pulse 1.2s ease-in-out infinite'
+                  }} />
+                </div>
+              </div>
+            )}
+
+            {/* SECCIÓN RESULTADOS DEL ESCÁNER 360° */}
+            {diagnosticReport && !runningDiagnostic && (
+              <div style={{
+                background: 'rgba(15, 23, 42, 0.85)',
+                border: `1px solid ${
+                  diagnosticReport.status === 'optimal'
+                    ? 'rgba(34, 197, 94, 0.4)'
+                    : diagnosticReport.status === 'attention'
+                    ? 'rgba(245, 158, 11, 0.4)'
+                    : 'rgba(239, 68, 68, 0.5)'
+                }`,
+                borderRadius: '18px', padding: '24px', marginBottom: '26px',
+                boxShadow: `0 8px 30px ${
+                  diagnosticReport.status === 'optimal'
+                    ? 'rgba(34, 197, 94, 0.12)'
+                    : diagnosticReport.status === 'attention'
+                    ? 'rgba(245, 158, 11, 0.12)'
+                    : 'rgba(239, 68, 68, 0.18)'
+                }`
+              }}>
+                {/* Cabecera del Reporte con Scorecard */}
+                <div style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  flexWrap: 'wrap', gap: '20px', paddingBottom: '20px',
+                  borderBottom: '1px solid rgba(255, 255, 255, 0.08)'
+                }}>
+                  {/* Gauge de Puntuación */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '18px' }}>
+                    <div style={{
+                      width: '76px', height: '76px', borderRadius: '50%',
+                      background: `radial-gradient(circle, ${
+                        diagnosticReport.status === 'optimal'
+                          ? 'rgba(34, 197, 94, 0.25)'
+                          : diagnosticReport.status === 'attention'
+                          ? 'rgba(245, 158, 11, 0.25)'
+                          : 'rgba(239, 68, 68, 0.25)'
+                      } 0%, rgba(15, 23, 42, 0.8) 70%)`,
+                      border: `3px solid ${
+                        diagnosticReport.status === 'optimal'
+                          ? '#22c55e'
+                          : diagnosticReport.status === 'attention'
+                          ? '#f59e0b'
+                          : '#ef4444'
+                      }`,
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                      boxShadow: `0 0 20px ${
+                        diagnosticReport.status === 'optimal' ? 'rgba(34, 197, 94, 0.4)' : '#ef4444'
+                      }`
+                    }}>
+                      <div style={{
+                        fontSize: '24px', fontWeight: 900,
+                        color: diagnosticReport.status === 'optimal' ? '#4ade80' : diagnosticReport.status === 'attention' ? '#fbbf24' : '#f87171'
+                      }}>
+                        {diagnosticReport.securityScore}
+                      </div>
+                      <div style={{ fontSize: '9px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' }}>
+                        de 100
+                      </div>
+                    </div>
+
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <span style={{
+                          padding: '3px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 800,
+                          background: diagnosticReport.status === 'optimal' ? 'rgba(34, 197, 94, 0.15)' : diagnosticReport.status === 'attention' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                          color: diagnosticReport.status === 'optimal' ? '#4ade80' : diagnosticReport.status === 'attention' ? '#fbbf24' : '#f87171',
+                          border: `1px solid ${diagnosticReport.status === 'optimal' ? 'rgba(34, 197, 94, 0.3)' : diagnosticReport.status === 'attention' ? 'rgba(245, 158, 11, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`
+                        }}>
+                          {diagnosticReport.status === 'optimal' && '🛡️ ESTADO ÓPTIMO & PROTEGIDO'}
+                          {diagnosticReport.status === 'attention' && '⚠️ ATENCIÓN REQUERIDA'}
+                          {diagnosticReport.status === 'vulnerable' && '🚨 VULNERABILIDAD CRÍTICA DETECTADA'}
+                        </span>
+                        <span style={{ fontSize: '12px', color: '#64748b' }}>
+                          Analizado: {diagnosticReport.scannedAt}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '18px', fontWeight: 800, color: '#fff', marginTop: '4px' }}>
+                        Diagnóstico Integral 360° Completado
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+                        Se ejecutaron {diagnosticReport.totalChecks} inspecciones sobre gobernanza, sesiones, integridad contable y logs forenses.
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Resumen de Hallazgos en Chips */}
+                  <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                    <div style={{
+                      background: 'rgba(34, 197, 94, 0.1)', border: '1px solid rgba(34, 197, 94, 0.25)',
+                      padding: '8px 14px', borderRadius: '10px', textAlign: 'center'
+                    }}>
+                      <div style={{ fontSize: '18px', fontWeight: 900, color: '#4ade80' }}>
+                        {diagnosticReport.passedChecks}
+                      </div>
+                      <div style={{ fontSize: '10px', color: '#86efac', fontWeight: 700 }}>Aprobadas</div>
+                    </div>
+
+                    <div style={{
+                      background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.25)',
+                      padding: '8px 14px', borderRadius: '10px', textAlign: 'center'
+                    }}>
+                      <div style={{ fontSize: '18px', fontWeight: 900, color: '#fbbf24' }}>
+                        {diagnosticReport.warningChecks}
+                      </div>
+                      <div style={{ fontSize: '10px', color: '#fde047', fontWeight: 700 }}>Advertencias</div>
+                    </div>
+
+                    <div style={{
+                      background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.25)',
+                      padding: '8px 14px', borderRadius: '10px', textAlign: 'center'
+                    }}>
+                      <div style={{ fontSize: '18px', fontWeight: 900, color: '#f87171' }}>
+                        {diagnosticReport.criticalChecks}
+                      </div>
+                      <div style={{ fontSize: '10px', color: '#fca5a5', fontWeight: 700 }}>Críticos</div>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <button
+                        onClick={handleRunDiagnostic}
+                        style={{
+                          background: 'rgba(255, 255, 255, 0.08)', border: '1px solid rgba(255, 255, 255, 0.15)',
+                          color: '#fff', padding: '6px 12px', borderRadius: '8px', fontSize: '11px',
+                          fontWeight: 700, cursor: 'pointer'
+                        }}
+                      >
+                        🔄 Re-escanear
+                      </button>
+                      <button
+                        onClick={handleExportDiagnosticReport}
+                        style={{
+                          background: 'rgba(56, 189, 248, 0.12)', border: '1px solid rgba(56, 189, 248, 0.3)',
+                          color: '#38bdf8', padding: '6px 12px', borderRadius: '8px', fontSize: '11px',
+                          fontWeight: 700, cursor: 'pointer'
+                        }}
+                      >
+                        📥 Exportar JSON
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Barra de Filtros de Severidad y Categoría */}
+                <div style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  marginTop: '16px', marginBottom: '16px', flexWrap: 'wrap', gap: '12px'
+                }}>
+                  {/* Filtro por Severidad */}
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    {(['all', 'critical', 'warning', 'passed'] as const).map(sev => {
+                      const count = sev === 'all'
+                        ? diagnosticReport.totalChecks
+                        : sev === 'critical'
+                        ? diagnosticReport.criticalChecks
+                        : sev === 'warning'
+                        ? diagnosticReport.warningChecks
+                        : diagnosticReport.passedChecks
+
+                      const isAct = diagnosticFilter === sev
+                      return (
+                        <button
+                          key={sev}
+                          onClick={() => setDiagnosticFilter(sev)}
+                          style={{
+                            padding: '5px 11px', borderRadius: '8px', fontSize: '11px', fontWeight: 700,
+                            cursor: 'pointer',
+                            background: isAct
+                              ? (sev === 'critical' ? '#ef4444' : sev === 'warning' ? '#f59e0b' : sev === 'passed' ? '#22c55e' : '#3b82f6')
+                              : 'rgba(255, 255, 255, 0.05)',
+                            color: isAct ? '#fff' : '#94a3b8',
+                            border: `1px solid ${isAct ? 'transparent' : 'rgba(255, 255, 255, 0.1)'}`
+                          }}
+                        >
+                          {sev === 'all' && `Todos (${count})`}
+                          {sev === 'critical' && `🚨 Críticos (${count})`}
+                          {sev === 'warning' && `⚠️ Advertencias (${count})`}
+                          {sev === 'passed' && `✅ Aprobados (${count})`}
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  {/* Filtro por Categoría */}
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    {[
+                      { id: 'all', label: 'Todas las áreas' },
+                      { id: 'security', label: '🔐 Seguridad' },
+                      { id: 'sessions', label: '👤 Sesiones' },
+                      { id: 'data_integrity', label: '💰 Datos & Bugs' },
+                      { id: 'logs', label: '📋 Logs Forenses' },
+                      { id: 'performance', label: '⚡ Rendimiento' }
+                    ].map(cat => {
+                      const isAct = diagnosticCategory === cat.id
+                      return (
+                        <button
+                          key={cat.id}
+                          onClick={() => setDiagnosticCategory(cat.id as any)}
+                          style={{
+                            padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 600,
+                            cursor: 'pointer',
+                            background: isAct ? 'rgba(139, 92, 246, 0.25)' : 'transparent',
+                            color: isAct ? '#c4b5fd' : '#64748b',
+                            border: `1px solid ${isAct ? '#8b5cf6' : 'rgba(255, 255, 255, 0.08)'}`
+                          }}
+                        >
+                          {cat.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {/* Grid de Tarjetas de Hallazgos */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {diagnosticReport.findings
+                    .filter(f => {
+                      if (diagnosticFilter !== 'all' && f.severity !== diagnosticFilter) return false
+                      if (diagnosticCategory !== 'all' && f.category !== diagnosticCategory) return false
+                      return true
+                    })
+                    .map(f => {
+                      const isCritical = f.severity === 'critical'
+                      const isWarning = f.severity === 'warning'
+                      const isPassed = f.severity === 'passed'
+
+                      const borderColor = isCritical
+                        ? 'rgba(239, 68, 68, 0.4)'
+                        : isWarning
+                        ? 'rgba(245, 158, 11, 0.35)'
+                        : 'rgba(34, 197, 94, 0.25)'
+
+                      const bgBadge = isCritical
+                        ? 'rgba(239, 68, 68, 0.2)'
+                        : isWarning
+                        ? 'rgba(245, 158, 11, 0.2)'
+                        : 'rgba(34, 197, 94, 0.15)'
+
+                      const textBadge = isCritical ? '#f87171' : isWarning ? '#fbbf24' : '#4ade80'
+
+                      return (
+                        <div
+                          key={f.id}
+                          style={{
+                            background: 'rgba(10, 15, 29, 0.75)',
+                            border: `1px solid ${borderColor}`,
+                            borderRadius: '14px', padding: '16px 18px',
+                            display: 'flex', flexDirection: 'column', gap: '10px'
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                              <span style={{
+                                padding: '2px 8px', borderRadius: '5px', fontSize: '10px',
+                                fontWeight: 800, textTransform: 'uppercase',
+                                background: bgBadge, color: textBadge, border: `1px solid ${borderColor}`
+                              }}>
+                                {isCritical ? '🚨 Crítico' : isWarning ? '⚠️ Advertencia' : '✅ Aprobado'}
+                              </span>
+
+                              <span style={{
+                                fontSize: '11px', color: '#94a3b8', background: 'rgba(255, 255, 255, 0.05)',
+                                padding: '2px 8px', borderRadius: '4px', textTransform: 'uppercase', fontWeight: 700
+                              }}>
+                                {f.category === 'security' && '🔐 Seguridad & Privilegios'}
+                                {f.category === 'sessions' && '👤 Sesiones & Cuentas'}
+                                {f.category === 'data_integrity' && '💰 Integridad de Datos & Bugs'}
+                                {f.category === 'logs' && '📋 Auditoría Forense'}
+                                {f.category === 'performance' && '⚡ Rendimiento & Infraestructura'}
+                              </span>
+                            </div>
+
+                            {/* Botón de Auto-Corrección si aplica */}
+                            {f.autoFixAvailable && (
+                              <button
+                                onClick={() => handleDiagnosticAction(f)}
+                                style={{
+                                  background: 'linear-gradient(135deg, rgba(56, 189, 248, 0.2), rgba(139, 92, 246, 0.2))',
+                                  border: '1px solid #38bdf8', color: '#7dd3fc',
+                                  padding: '4px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: 800,
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                {f.fixActionType === 'purge_cache' && '⚡ Purgar Caché Ahora'}
+                                {f.fixActionType === 'goto_users' && '👥 Ver Cuentas en Conflicto'}
+                                {f.fixActionType === 'force_bcv' && '💵 Sincronizar Tasa Oficial'}
+                                {f.fixActionType === 'goto_emergency' && '⚠️ Ir a Contingencias'}
+                                {f.fixActionType === 'goto_audit' && '📋 Inspeccionar Auditoría'}
+                              </button>
+                            )}
+                          </div>
+
+                          <div>
+                            <div style={{ fontSize: '15px', fontWeight: 800, color: '#fff', marginBottom: '3px' }}>
+                              {f.title}
+                            </div>
+                            <div style={{ fontSize: '13px', color: '#cbd5e1', lineHeight: '1.4' }}>
+                              {f.description}
+                            </div>
+                          </div>
+
+                          {/* Evidencia Monospace */}
+                          {f.evidence && (
+                            <div style={{
+                              background: 'rgba(0, 0, 0, 0.45)', border: '1px solid rgba(255, 255, 255, 0.07)',
+                              borderRadius: '8px', padding: '8px 12px', fontSize: '11px',
+                              fontFamily: 'monospace', color: '#e2e8f0', wordBreak: 'break-all'
+                            }}>
+                              <span style={{ color: '#38bdf8', fontWeight: 700 }}>🔍 Evidencia detectada: </span>
+                              {f.evidence}
+                            </div>
+                          )}
+
+                          {/* Impacto & Recomendación */}
+                          <div style={{
+                            display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                            gap: '10px', fontSize: '12px', paddingTop: '4px',
+                            borderTop: '1px solid rgba(255, 255, 255, 0.05)'
+                          }}>
+                            <div style={{ color: '#94a3b8' }}>
+                              <span style={{ color: '#f87171', fontWeight: 700 }}>⚠️ Impacto: </span>
+                              {f.impact}
+                            </div>
+                            <div style={{ color: '#94a3b8' }}>
+                              <span style={{ color: '#4ade80', fontWeight: 700 }}>💡 Recomendación: </span>
+                              {f.recommendation}
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                </div>
+              </div>
+            )}
+
+            {/* HERO CARD DE INVITACIÓN AL ESCÁNER (si aún no se ha ejecutado) */}
+            {!diagnosticReport && !runningDiagnostic && (
+              <div style={{
+                background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.9), rgba(30, 27, 75, 0.6))',
+                border: '1px solid rgba(139, 92, 246, 0.35)', borderRadius: '18px',
+                padding: '28px', marginBottom: '24px', display: 'flex',
+                alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '20px',
+                boxShadow: '0 8px 30px rgba(0, 0, 0, 0.3)'
+              }}>
+                <div style={{ maxWidth: '650px' }}>
+                  <div style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '6px',
+                    background: 'rgba(139, 92, 246, 0.2)', border: '1px solid #8b5cf6',
+                    padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: 800,
+                    color: '#c4b5fd', marginBottom: '10px'
+                  }}>
+                    🛡️ AUDITORÍA DE SEGURIDAD & SALUD 360°
+                  </div>
+                  <h3 style={{ fontSize: '20px', fontWeight: 900, color: '#fff', margin: '0 0 8px' }}>
+                    Análisis Completo de Vulnerabilidades, Sesiones, Bugs y Anomalías
+                  </h3>
+                  <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0, lineHeight: '1.5' }}>
+                    Ejecuta un barrido preventivo en toda la base de datos: comprueba el aislamiento de roles, sesiones activas, inconsistencias en pagos o recibos, ráfagas de eliminación forense y el estado de la tasa oficial en segundos.
+                  </p>
+                </div>
+
+                <button
+                  onClick={handleRunDiagnostic}
+                  style={{
+                    background: 'linear-gradient(135deg, #7c3aed, #0284c7)',
+                    border: '1px solid #a78bfa', color: '#fff',
+                    padding: '12px 26px', borderRadius: '12px', fontSize: '14px', fontWeight: 800,
+                    cursor: 'pointer', boxShadow: '0 4px 20px rgba(124, 58, 237, 0.4)',
+                    display: 'flex', alignItems: 'center', gap: '8px'
+                  }}
+                >
+                  <span style={{ fontSize: '18px' }}>🛡️</span>
+                  <span>Ejecutar Escáner 360° Ahora</span>
+                </button>
+              </div>
+            )}
+
+            {/* Bento Grid KPIs de Infraestructura en Tiempo Real */}
             <div style={{
               display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
               gap: '16px', marginBottom: '24px'
@@ -1109,7 +1688,7 @@ export const SuperAdminDashboard: React.FC = () => {
                 borderRadius: '16px', padding: '20px', position: 'relative'
               }}>
                 <div style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span>Estado de la Base de Datos</span>
+                  <span>Motor Supabase PostgREST</span>
                   <span style={{
                     width: '8px', height: '8px', borderRadius: '50%',
                     background: healthData?.status === 'healthy' ? '#22c55e' : healthData?.status === 'degraded' ? '#fbbf24' : '#ef4444',
@@ -1117,7 +1696,7 @@ export const SuperAdminDashboard: React.FC = () => {
                   }} />
                 </div>
                 <div style={{
-                  fontSize: '22px', fontWeight: 900, marginTop: '8px',
+                  fontSize: '20px', fontWeight: 900, marginTop: '8px',
                   color: healthData?.status === 'healthy' ? '#22c55e' : healthData?.status === 'degraded' ? '#fbbf24' : '#ef4444'
                 }}>
                   {healthData?.status === 'healthy' && '✓ Operativa y Saludable'}
@@ -1126,17 +1705,17 @@ export const SuperAdminDashboard: React.FC = () => {
                   {healthData?.status === 'offline' && '🔴 Desconectada'}
                 </div>
                 <div style={{ fontSize: '12px', color: '#64748b', marginTop: '6px' }}>
-                  {healthData?.statusMessage || 'Conectada a db.kevslcecttfxifcplgzx'}
+                  {healthData?.statusMessage || 'Conexión SSL segura a cluster PostgreSQL'}
                 </div>
               </div>
 
-              {/* Card 2: Latencia */}
+              {/* Card 2: Latencia HTTP */}
               <div style={{
                 background: 'rgba(15, 23, 42, 0.65)', border: '1px solid rgba(139, 92, 246, 0.25)',
                 borderRadius: '16px', padding: '20px'
               }}>
                 <div style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                  Latencia de Petición
+                  Latencia de Red (Ping)
                 </div>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', marginTop: '8px' }}>
                   <span style={{ fontSize: '26px', fontWeight: 900, color: '#c084fc' }}>
@@ -1144,11 +1723,11 @@ export const SuperAdminDashboard: React.FC = () => {
                   </span>
                   {(healthData?.latencyMs ?? 0) < 600 ? (
                     <span style={{ background: 'rgba(34, 197, 94, 0.15)', color: '#4ade80', padding: '2px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 700 }}>
-                      🟢 Rápida
+                      🟢 Excelente
                     </span>
                   ) : (healthData?.latencyMs ?? 0) <= 2000 ? (
                     <span style={{ background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', padding: '2px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 700 }}>
-                      🌐 Normal (Red Móvil / Int.)
+                      🌐 Normal (Red Móvil)
                     </span>
                   ) : (
                     <span style={{ background: 'rgba(251, 191, 36, 0.15)', color: '#fbbf24', padding: '2px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 700 }}>
@@ -1157,77 +1736,95 @@ export const SuperAdminDashboard: React.FC = () => {
                   )}
                 </div>
                 <div style={{ fontSize: '12px', color: '#64748b', marginTop: '6px' }}>
-                  Tiempo de respuesta HTTP PostgREST
+                  Tiempo de ida y vuelta a endpoints de API
                 </div>
               </div>
 
-              {/* Card 3: Registros */}
+              {/* Card 3: Registros Totales */}
               <div style={{
                 background: 'rgba(15, 23, 42, 0.65)', border: '1px solid rgba(34, 197, 94, 0.25)',
                 borderRadius: '16px', padding: '20px'
               }}>
                 <div style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span>Total de Registros en Tablas</span>
+                  <span>Volumen Total de Registros</span>
                   <span style={{ background: 'rgba(34, 197, 94, 0.15)', color: '#4ade80', padding: '1px 6px', borderRadius: '4px', fontSize: '10px', fontWeight: 700 }}>
-                    11/11 Tablas
+                    11 Tablas
                   </span>
                 </div>
                 <div style={{ fontSize: '26px', fontWeight: 900, color: '#4ade80', marginTop: '8px' }}>
                   {healthData?.totalRecords?.toLocaleString() ?? 0}
                 </div>
                 <div style={{ fontSize: '12px', color: '#64748b', marginTop: '6px' }}>
-                  Suma global en todas las entidades activas
+                  Filas activas sincronizadas en esquema público
                 </div>
               </div>
             </div>
 
-            {/* Recuento de Tablas */}
+            {/* Distribución y Conteos Reales por Tabla */}
             <h3 style={{ fontSize: '16px', fontWeight: 800, margin: '0 0 14px', color: '#cbd5e1' }}>
-              📊 Registro de Entidades y Conteos Reales
+              📊 Registro de Entidades y Distribución de Carga
             </h3>
 
             {loadingHealth ? (
               <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>
-                Consultando tablas maestras...
+                Consultando tablas maestras en tiempo real...
               </div>
             ) : (
               <div style={{
                 display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
                 gap: '14px'
               }}>
-                {healthData?.tables.map(t => (
-                  <div
-                    key={t.name}
-                    style={{
-                      background: 'rgba(10, 14, 23, 0.7)',
-                      border: '1px solid rgba(255, 255, 255, 0.08)',
-                      borderRadius: '14px', padding: '16px', display: 'flex',
-                      alignItems: 'center', justifyContent: 'space-between'
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <span style={{ fontSize: '22px' }}>{t.icon}</span>
-                      <div>
-                        <div style={{ fontWeight: 800, fontSize: '14px', color: '#fff' }}>
-                          {t.label}
+                {healthData?.tables.map(t => {
+                  const total = healthData?.totalRecords || 1
+                  const pct = Math.round((t.count / total) * 100)
+
+                  return (
+                    <div
+                      key={t.name}
+                      style={{
+                        background: 'rgba(10, 14, 23, 0.7)',
+                        border: '1px solid rgba(255, 255, 255, 0.08)',
+                        borderRadius: '14px', padding: '16px', display: 'flex',
+                        flexDirection: 'column', gap: '10px'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <span style={{ fontSize: '22px' }}>{t.icon}</span>
+                          <div>
+                            <div style={{ fontWeight: 800, fontSize: '14px', color: '#fff' }}>
+                              {t.label}
+                            </div>
+                            <div style={{ fontSize: '11px', color: '#64748b', fontFamily: 'monospace' }}>
+                              public.{t.name}
+                            </div>
+                          </div>
                         </div>
-                        <div style={{ fontSize: '11px', color: '#64748b', fontFamily: 'monospace' }}>
-                          public.{t.name}
+
+                        <div style={{ textAlign: 'right' }}>
+                          <span style={{
+                            fontSize: '18px', fontWeight: 900,
+                            color: t.status === 'ok' ? '#38bdf8' : t.status === 'empty' ? '#64748b' : '#ef4444'
+                          }}>
+                            {t.count}
+                          </span>
+                          <div style={{ fontSize: '10px', color: '#64748b' }}>filas ({pct}%)</div>
                         </div>
                       </div>
-                    </div>
 
-                    <div style={{ textAlign: 'right' }}>
-                      <span style={{
-                        fontSize: '18px', fontWeight: 900,
-                        color: t.status === 'ok' ? '#38bdf8' : t.status === 'empty' ? '#64748b' : '#ef4444'
+                      {/* Barra de progreso de carga */}
+                      <div style={{
+                        height: '4px', width: '100%', background: 'rgba(255, 255, 255, 0.06)',
+                        borderRadius: '2px', overflow: 'hidden'
                       }}>
-                        {t.count}
-                      </span>
-                      <div style={{ fontSize: '10px', color: '#64748b' }}>filas</div>
+                        <div style={{
+                          height: '100%', width: `${pct}%`,
+                          background: t.status === 'ok' ? '#38bdf8' : '#64748b'
+                        }} />
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </div>
