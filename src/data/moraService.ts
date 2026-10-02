@@ -16,6 +16,38 @@ export type AccionLegalMora =
 
 export type MonedaMora = 'USD' | 'BS' | 'MIXTO'
 
+export interface DesgloseReciboItem {
+  key: string
+  label: string
+  monto: number
+  moneda: 'BS' | 'USD'
+  estado: 'pendiente' | 'pagado'
+}
+
+export interface DesgloseConceptoItem {
+  id: string
+  label: string
+  categoria: 'deuda_2025' | 'cuota_especial' | 'recibo_mes'
+  monto: number
+  moneda: 'BS' | 'USD'
+  estado: 'pendiente' | 'pagado'
+  icono?: string
+  detalle?: string
+}
+
+export interface DesgloseDeudaMora {
+  deuda_base_2025?: { monto: number; moneda: 'BS' | 'USD' }
+  cable_viajero?: { monto: number; moneda: 'BS' | 'USD' }
+  guaya?: { monto: number; moneda: 'BS' | 'USD' }
+  arreglo?: { monto: number; moneda: 'BS' | 'USD' }
+  recibos_bs: DesgloseReciboItem[]
+  recibos_usd: DesgloseReciboItem[]
+  cuotas_especiales: DesgloseConceptoItem[]
+  items: DesgloseConceptoItem[]
+  total_bs: number
+  total_usd: number
+}
+
 export interface DeudaMoraItem {
   id: string
   apartamento_id: string
@@ -35,6 +67,7 @@ export interface DeudaMoraItem {
   accion_legal: AccionLegalMora
   estado: 'activo' | 'en_convenio' | 'solventado'
   conceptos_detalle: string
+  desglose?: DesgloseDeudaMora
   observaciones?: string
   fecha_corte: string
   origen?: 'recibo_emitido' | 'deuda_manual'
@@ -273,206 +306,359 @@ function saveLocalMoraCache(list: DeudaMoraItem[]) {
  *
  * Utiliza appCache (3 min TTL, deduplicación y tags) para acelerar la carga en 0 ms.
  */
-export async function obtenerDeudasMora(forceRefresh = false): Promise<{ data: DeudaMoraItem[]; error: string | null; fromDb: boolean }> {
+export async function obtenerDeudasMora(
+  forceRefresh = false,
+  incluirSolventes = false
+): Promise<{ data: DeudaMoraItem[]; error: string | null; fromDb: boolean }> {
+  const cacheKey = incluirSolventes ? 'deudas_mora_unificadas_todos' : 'deudas_mora_unificadas'
   return appCache.fetch(
-    'deudas_mora_unificadas',
+    cacheKey,
     async () => {
       try {
-        const [dmRes, recibosRes, aptosRes, perfilesRes] = await Promise.all([
+        const [dmRes, recibosRes, aptosRes, perfilesRes, configRes] = await Promise.all([
           supabase
             .from('deudas_mora')
             .select('*, apartamentos(id, numero, piso, propietario_nombre, telefono_contacto)'),
           supabase
             .from('recibos_generados')
             .select('id, apartamento_id, mes_facturado, total_usd, total_bs, estado, emitido_at, data_json')
-            .eq('estado', 'pendiente'),
+            .order('mes_facturado', { ascending: true }),
           supabase
             .from('apartamentos')
-            .select('id, numero, piso, propietario_nombre, telefono_contacto'),
+            .select('id, numero, piso, propietario_nombre, telefono_contacto')
+            .order('numero'),
           supabase
             .from('perfiles')
-            .select('apartamento_id, nombre_completo, condicion_habitacional, propietario_nombre, telefono, propietario_email')
+            .select('apartamento_id, nombre_completo, condicion_habitacional, propietario_nombre, telefono, propietario_email'),
+          supabase
+            .from('casos_comunidad')
+            .select('descripcion')
+            .eq('tipo', 'config_calendario_mora')
+            .maybeSingle()
         ])
 
-    // Si hubo error grave en la consulta básica de deudas_mora y tampoco hay recibos
-    if (dmRes.error && recibosRes.error) {
-      console.info('[moraService] Usando caché local para deudas_mora:', dmRes.error?.message)
-      return { data: getLocalMoraCache(), error: null, fromDb: false }
-    }
-
-    // Mapas de ayuda para resolver datos del inmueble y residente
-    const aptosMap = new Map<string, any>()
-    ;(aptosRes.data || []).forEach(a => aptosMap.set(a.id, a))
-
-    const perfilesMap = new Map<string, any>()
-    ;(perfilesRes.data || []).forEach(p => {
-      if (p.apartamento_id) {
-        const exist = perfilesMap.get(p.apartamento_id)
-        if (!exist || (!exist.propietario_email && p.propietario_email)) {
-          perfilesMap.set(p.apartamento_id, p)
+        // Si hubo error grave en la consulta básica de deudas_mora y tampoco hay recibos
+        if (dmRes.error && recibosRes.error) {
+          console.info('[moraService] Usando caché local para deudas_mora:', dmRes.error?.message)
+          return { data: getLocalMoraCache(), error: null, fromDb: false }
         }
-      }
-    })
 
-    // Agrupar recibos generados pendientes por apartamento_id
-    const recibosPendientesMap = new Map<string, any[]>()
-    ;(recibosRes.data || []).forEach(r => {
-      if (!r.apartamento_id) return
-      if (!recibosPendientesMap.has(r.apartamento_id)) {
-        recibosPendientesMap.set(r.apartamento_id, [])
-      }
-      recibosPendientesMap.get(r.apartamento_id)!.push(r)
-    })
+        // Mapas de ayuda
+        const aptosMap = new Map<string, any>()
+        ;(aptosRes.data || []).forEach(a => aptosMap.set(a.id, a))
 
-    const deudoresMap = new Map<string, DeudaMoraItem>()
-
-    // 1. Procesar deudas montadas en `deudas_mora` (deudas anteriores y crónicas)
-    ;(dmRes.data || []).forEach((row: any) => {
-      const apto = aptosMap.get(row.apartamento_id)
-      const perfil = perfilesMap.get(row.apartamento_id)
-      const propNombre =
-        perfil?.condicion_habitacional === 'alquilado' && perfil?.propietario_nombre
-          ? perfil.propietario_nombre
-          : perfil?.nombre_completo || apto?.propietario_nombre || row.apartamentos?.propietario_nombre || 'N/D'
-      const propTel = perfil?.telefono || apto?.telefono_contacto || row.apartamentos?.telefono_contacto || ''
-
-      const recs = recibosPendientesMap.get(row.apartamento_id) || []
-      const extraUsd = recs.reduce((s, r) => s + Number(r.total_usd || 0), 0)
-      const extraBs = recs.reduce((s, r) => s + Number(r.total_bs || 0), 0)
-
-      const esSolventado = row.estado === 'solventado'
-      const manualBs = esSolventado ? 0 : Number(row.monto_bs || 0)
-      const manualUsd = esSolventado ? 0 : Number(row.monto_usd || 0)
-
-      // Si la deuda manual ya está solventada (o en 0) y tampoco tiene recibos pendientes, está 100% al día
-      if (manualBs <= 0.05 && manualUsd <= 0.05 && recs.length === 0) {
-        return
-      }
-
-      const tieneDeudaManual = manualBs > 0.05 || manualUsd > 0.05
-      const tieneAbonoParcial = recs.some((r: any) => Boolean(r.data_json?.abonos?.length))
-      const meses = tieneDeudaManual ? Number(row.meses_deuda || 3) : Math.max(1, recs.length)
-      const montoUsd = manualUsd + extraUsd
-      const montoBs = manualBs + extraBs
-      const tasa: TasaRiesgoMora = tieneDeudaManual
-        ? ((row.tasa_riesgo as TasaRiesgoMora) || calcularTasaRiesgoPorMeses(meses))
-        : (recs.length <= 1 || tieneAbonoParcial ? 'azul' : calcularTasaRiesgoPorMeses(recs.length))
-
-      deudoresMap.set(row.apartamento_id, {
-        id: row.id,
-        apartamento_id: row.apartamento_id,
-        apartamento_numero: apto?.numero || row.apartamentos?.numero || 'N/D',
-        piso: apto?.piso ?? row.apartamentos?.piso,
-        propietario_nombre: propNombre,
-        propietario_telefono: propTel,
-        propietario_email: perfil?.propietario_email || apto?.propietario_email || undefined,
-        meses_deuda: meses,
-        monto_usd: Number(montoUsd.toFixed(2)),
-        monto_bs: Number(montoBs.toFixed(2)),
-        monto_manual_usd: Number(manualUsd.toFixed(2)),
-        monto_manual_bs: Number(manualBs.toFixed(2)),
-        moneda_principal: row.moneda_principal || 'MIXTO',
-        tasa_riesgo: tasa,
-        accion_legal: tieneDeudaManual
-          ? ((row.accion_legal as AccionLegalMora) || 'carta_cobro_extrajudicial')
-          : 'notificacion_amistosa',
-        estado: (tieneDeudaManual || recs.length > 0) ? 'activo' : 'solventado',
-        conceptos_detalle:
-          tieneAbonoParcial
-            ? 'Diferencia pendiente de su último recibo'
-            : (tieneDeudaManual
-              ? (row.conceptos_detalle || 'Deuda anterior registrada + Recibo emitido del mes')
-              : (recs.length > 0 ? 'Recibo emitido del mes' : 'Deuda anterior acumulada')),
-        observaciones: row.observaciones || '',
-        fecha_corte: row.fecha_corte || new Date().toISOString().slice(0, 10),
-        origen: tieneDeudaManual ? 'deuda_manual' : 'recibo_emitido',
-        created_at: row.created_at,
-        updated_at: row.updated_at
-      })
-    })
-
-    // 2. Procesar apartamentos con recibos emitidos pendientes que NO tienen deuda manual previa
-    recibosPendientesMap.forEach((recs, aptoId) => {
-      if (deudoresMap.has(aptoId)) return // ya procesado con deuda combinada
-
-      const apto = aptosMap.get(aptoId)
-      const perfil = perfilesMap.get(aptoId)
-      const aptoNum = apto?.numero || 'N/D'
-      const propNombre =
-        perfil?.condicion_habitacional === 'alquilado' && perfil?.propietario_nombre
-          ? perfil.propietario_nombre
-          : perfil?.nombre_completo || apto?.propietario_nombre || 'N/D'
-      const propTel = perfil?.telefono || apto?.telefono_contacto || ''
-
-      const totalUsd = recs.reduce((s, r) => s + Number(r.total_usd || 0), 0)
-      const totalBs = recs.reduce((s, r) => s + Number(r.total_bs || 0), 0)
-      const mesesDeuda = recs.length
-
-      // REGLA CLAVE: Si debe sólo el recibo emitido ese mes (< 1 mes), la tasa de riesgo es AZUL
-      const tasa: TasaRiesgoMora = mesesDeuda <= 1 ? 'azul' : calcularTasaRiesgoPorMeses(mesesDeuda)
-      const accionLegal: AccionLegalMora = tasa === 'azul' ? 'notificacion_amistosa' : 'carta_cobro_extrajudicial'
-
-      // Formatear texto amigable de meses
-      const mesesNombres = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
-      const mesesTexto = recs
-        .map(r => {
-          if (!r.mes_facturado) return 'Mes en curso'
-          const parts = r.mes_facturado.split('-')
-          const mIdx = (parseInt(parts[1], 10) || 1) - 1
-          return `${mesesNombres[mIdx] || parts[1]} ${parts[0]}`
+        const perfilesMap = new Map<string, any>()
+        ;(perfilesRes.data || []).forEach(p => {
+          if (p.apartamento_id) {
+            const exist = perfilesMap.get(p.apartamento_id)
+            if (!exist || (!exist.propietario_email && p.propietario_email)) {
+              perfilesMap.set(p.apartamento_id, p)
+            }
+          }
         })
-        .join(', ')
 
-      deudoresMap.set(aptoId, {
-        id: `recibo-mora-${aptoId}`,
-        apartamento_id: aptoId,
-        apartamento_numero: aptoNum,
-        piso: apto?.piso,
-        propietario_nombre: propNombre,
-        propietario_telefono: propTel,
-        propietario_email: perfil?.propietario_email || apto?.propietario_email || undefined,
-        meses_deuda: mesesDeuda,
-        monto_usd: Number(totalUsd.toFixed(2)),
-        monto_bs: Number(totalBs.toFixed(2)),
-        moneda_principal: 'MIXTO',
-        tasa_riesgo: tasa,
-        accion_legal: accionLegal,
-        estado: 'activo',
-        conceptos_detalle:
-          tasa === 'azul'
-            ? `Recibo emitido de condominio (${mesesTexto}) al cobro (<1 mes)`
-            : `${mesesDeuda} recibos emitidos pendientes (${mesesTexto})`,
-        observaciones: 'Generado automáticamente a partir de la emisión mensual de recibos.',
-        fecha_corte: new Date().toISOString().slice(0, 10),
-        origen: 'recibo_emitido',
-        created_at: recs[0]?.emitido_at || new Date().toISOString()
-      })
-    })
+        const moraMap = new Map<string, any>()
+        ;(dmRes.data || []).forEach((row: any) => {
+          if (row.apartamento_id) moraMap.set(row.apartamento_id, row)
+        })
 
-    const unificados = Array.from(deudoresMap.values())
+        const recibosPendientesMap = new Map<string, any[]>()
+        ;(recibosRes.data || []).forEach(r => {
+          if (!r.apartamento_id) return
+          if (r.estado === 'pendiente') {
+            if (!recibosPendientesMap.has(r.apartamento_id)) {
+              recibosPendientesMap.set(r.apartamento_id, [])
+            }
+            recibosPendientesMap.get(r.apartamento_id)!.push(r)
+          }
+        })
 
-    // Si la base de datos no tiene absolutamente nada (ni recibos ni deudas_mora),
-    // verificar si hay cache local previa para no dejar en blanco si fue un corte
-    if (unificados.length === 0 && (!dmRes.data || dmRes.data.length === 0) && (!recibosRes.data || recibosRes.data.length === 0)) {
-      // Edificio solvente o sin datos
-      saveLocalMoraCache([])
-      return { data: [], error: null, fromDb: true }
-    }
+        // Columnas o celdas personalizadas del calendario si existen
+        let configCalendario: any = null
+        if (configRes.data?.descripcion) {
+          try {
+            configCalendario = JSON.parse(configRes.data.descripcion)
+          } catch (e) {}
+        }
 
-    // Ordenar de mayor gravedad a menor (Morado > Rojo > Amarillo > Azul) y por apto
-    unificados.sort((a, b) => {
-      const prioA = TASA_RIESGO_CONFIG[a.tasa_riesgo]?.prioridad ?? 0
-      const prioB = TASA_RIESGO_CONFIG[b.tasa_riesgo]?.prioridad ?? 0
-      if (prioB !== prioA) return prioB - prioA
-      return a.apartamento_numero.localeCompare(b.apartamento_numero, undefined, { numeric: true })
-    })
+        const mesesNombres = [
+          'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+          'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+        ]
 
-    saveLocalMoraCache(unificados)
-    return { data: unificados, error: null, fromDb: true }
-  } catch (err: any) {
-    console.warn('[moraService] Excepción obteniendo deudas:', err)
-    return { data: getLocalMoraCache(), error: null, fromDb: false }
-  }
+        const listaDeudores: DeudaMoraItem[] = []
+
+        // Recorrer todos los apartamentos para construir el balance exacto
+        ;(aptosRes.data || []).forEach(apto => {
+          const moraRow = moraMap.get(apto.id)
+          const perfil = perfilesMap.get(apto.id)
+          const recs = recibosPendientesMap.get(apto.id) || []
+
+          const propNombre =
+            perfil?.condicion_habitacional === 'alquilado' && perfil?.propietario_nombre
+              ? perfil.propietario_nombre
+              : perfil?.nombre_completo || apto.propietario_nombre || 'N/D'
+          const propTel = perfil?.telefono || apto.telefono_contacto || ''
+          const propEmail = perfil?.propietario_email || undefined
+
+          // 1. Conceptos históricos de 2025
+          let conceptosHist: any = {}
+          if (moraRow?.conceptos_detalle) {
+            try {
+              if (moraRow.conceptos_detalle.startsWith('{')) {
+                conceptosHist = JSON.parse(moraRow.conceptos_detalle)
+              }
+            } catch (e) {}
+          }
+
+          const esMoraSolventada = moraRow?.estado === 'solventado'
+          const deudaBase2025 = esMoraSolventada ? 0 : Number(conceptosHist.deuda_2025 || (moraRow?.monto_bs && !conceptosHist.deuda_2025 ? moraRow.monto_bs : 0))
+          const cableViajero  = esMoraSolventada ? 0 : Number(conceptosHist.cable_viajero || 0)
+          const guaya         = esMoraSolventada ? 0 : Number(conceptosHist.guaya || 0)
+          const arreglo       = esMoraSolventada ? 0 : Number(conceptosHist.arreglo || 0)
+
+          const mDeuda: 'USD' | 'BS' = conceptosHist.deuda_2025_moneda || 'BS'
+          const mCable: 'USD' | 'BS' = conceptosHist.cable_viajero_moneda || 'USD'
+          const mGuaya: 'USD' | 'BS' = conceptosHist.guaya_moneda || 'USD'
+          const mArreglo: 'USD' | 'BS' = conceptosHist.arreglo_moneda || (arreglo > 0 && arreglo < 100 ? 'USD' : 'BS')
+
+          let sumBs = 0
+          let sumUsd = 0
+
+          if (mDeuda === 'BS') sumBs += deudaBase2025; else sumUsd += deudaBase2025
+          if (mCable === 'BS') sumBs += cableViajero; else sumUsd += cableViajero
+          if (mGuaya === 'BS') sumBs += guaya; else sumUsd += guaya
+          if (mArreglo === 'BS') sumBs += arreglo; else sumUsd += arreglo
+
+          const recibosBsList: DesgloseReciboItem[] = []
+          const recibosUsdList: DesgloseReciboItem[] = []
+          const itemsList: DesgloseConceptoItem[] = []
+
+          // Agregar conceptos 2025 si tienen monto
+          if (deudaBase2025 > 0.01) {
+            itemsList.push({
+              id: 'deuda_2025',
+              label: 'Deuda Pasada 2025',
+              categoria: 'deuda_2025',
+              monto: Number(deudaBase2025.toFixed(2)),
+              moneda: mDeuda,
+              estado: 'pendiente',
+              icono: '📌'
+            })
+          }
+          if (cableViajero > 0.01) {
+            itemsList.push({
+              id: 'cable_viajero',
+              label: 'Cable Viajero 2025',
+              categoria: 'cuota_especial',
+              monto: Number(cableViajero.toFixed(2)),
+              moneda: mCable,
+              estado: 'pendiente',
+              icono: '🛗'
+            })
+          }
+          if (guaya > 0.01) {
+            itemsList.push({
+              id: 'guaya',
+              label: 'Guayas Ascensor 2025',
+              categoria: 'cuota_especial',
+              monto: Number(guaya.toFixed(2)),
+              moneda: mGuaya,
+              estado: 'pendiente',
+              icono: '⛓️'
+            })
+          }
+          if (arreglo > 0.01) {
+            itemsList.push({
+              id: 'arreglo',
+              label: 'Arreglo Ascensor',
+              categoria: 'cuota_especial',
+              monto: Number(arreglo.toFixed(2)),
+              moneda: mArreglo,
+              estado: 'pendiente',
+              icono: '🔧'
+            })
+          }
+
+          // 2. Procesar recibos pendientes (distinguiendo Bolívares y Dólares)
+          recs.forEach((r: any) => {
+            const parts = (r.mes_facturado || '').split('-')
+            const anio = parts[0]
+            const mesNum = parseInt(parts[1], 10) || 1
+            const label = `${mesesNombres[mesNum - 1] || parts[1]} ${anio}`
+            // Enero y Febrero 2026 son en BS (o cualquier recibo emitido con solo total_bs > 0)
+            const esReciboBs = (anio === '2026' && mesNum <= 2) || (Number(r.total_usd || 0) === 0 && Number(r.total_bs || 0) > 0)
+
+            if (esReciboBs) {
+              const mbs = Number(r.total_bs || 0)
+              sumBs += mbs
+              const recItem: DesgloseReciboItem = {
+                key: r.mes_facturado,
+                label,
+                monto: Number(mbs.toFixed(2)),
+                moneda: 'BS',
+                estado: 'pendiente'
+              }
+              recibosBsList.push(recItem)
+              itemsList.push({
+                id: `rec-${r.id}`,
+                label: `Recibo ${label}`,
+                categoria: 'recibo_mes',
+                monto: Number(mbs.toFixed(2)),
+                moneda: 'BS',
+                estado: 'pendiente',
+                icono: '📄'
+              })
+            } else {
+              const musd = Number(r.total_usd || 0)
+              sumUsd += musd
+              const recItem: DesgloseReciboItem = {
+                key: r.mes_facturado,
+                label,
+                monto: Number(musd.toFixed(2)),
+                moneda: 'USD',
+                estado: 'pendiente'
+              }
+              recibosUsdList.push(recItem)
+              itemsList.push({
+                id: `rec-${r.id}`,
+                label: `Recibo ${label}`,
+                categoria: 'recibo_mes',
+                monto: Number(musd.toFixed(2)),
+                moneda: 'USD',
+                estado: 'pendiente',
+                icono: '💵'
+              })
+            }
+          })
+
+          // 3. Cuotas especiales adicionales del calendario
+          const cuotasAdicionales: DesgloseConceptoItem[] = []
+          if (configCalendario?.columnas) {
+            const celdasPers = configCalendario.valoresCeldasPersonalizadas?.[apto.id] || {}
+            configCalendario.columnas.forEach((col: any) => {
+              if (col.tipo === 'cuota_especial') {
+                const val = celdasPers[col.id] ?? (col.montoDefecto ? { monto: col.montoDefecto, estado: 'pendiente' } : null)
+                if (val && val.estado === 'pendiente' && val.monto > 0) {
+                  const mon = val.moneda || col.moneda || 'USD'
+                  if (mon === 'USD') sumUsd += val.monto
+                  else sumBs += val.monto
+                  const cuotaItem: DesgloseConceptoItem = {
+                    id: col.id,
+                    label: col.titulo || 'Cuota Especial',
+                    categoria: 'cuota_especial',
+                    monto: Number(val.monto.toFixed(2)),
+                    moneda: mon,
+                    estado: 'pendiente',
+                    icono: '⭐'
+                  }
+                  cuotasAdicionales.push(cuotaItem)
+                  itemsList.push(cuotaItem)
+                }
+              }
+            })
+          }
+
+          const totalBs = Number(sumBs.toFixed(2))
+          const totalUsd = Number(sumUsd.toFixed(2))
+          const tieneDeuda = totalBs > 0.01 || totalUsd > 0.01
+
+          // Si el usuario no pidió incluir solventes y este apto no debe nada ni tiene mora registrada activa
+          if (!tieneDeuda && !incluirSolventes) {
+            return
+          }
+
+          // Calcular tasa de riesgo y gravedad
+          const totalConceptosImpagos = itemsList.length
+          let tasa: TasaRiesgoMora = 'azul'
+          if (tieneDeuda) {
+            if (totalConceptosImpagos <= 1 && recs.length <= 1 && deudaBase2025 <= 0.01) {
+              tasa = 'azul' // Solo recibo del mes
+            } else if (totalConceptosImpagos <= 3) {
+              tasa = 'amarillo'
+            } else if (totalConceptosImpagos <= 6) {
+              tasa = 'rojo'
+            } else {
+              tasa = 'morado'
+            }
+          }
+
+          let accionLegal: AccionLegalMora = 'notificacion_amistosa'
+          if (tasa === 'amarillo') accionLegal = 'citacion_junta'
+          else if (tasa === 'rojo') accionLegal = 'carta_cobro_extrajudicial'
+          else if (tasa === 'morado') accionLegal = 'suspension_servicios'
+
+          // Generar descripción legible detallada
+          const partesResumen: string[] = []
+          if (deudaBase2025 > 0.01) partesResumen.push(`Deuda 2025 (${mDeuda === 'BS' ? 'Bs. ' + deudaBase2025.toLocaleString('es-VE', { minimumFractionDigits: 2 }) : '$' + deudaBase2025.toFixed(2)})`)
+          if (cableViajero > 0.01) partesResumen.push(`Cable Viajero ($${cableViajero.toFixed(2)})`)
+          if (guaya > 0.01) partesResumen.push(`Guayas ($${guaya.toFixed(2)})`)
+          if (arreglo > 0.01) partesResumen.push(`Arreglo Asc. (${mArreglo === 'BS' ? 'Bs. ' + arreglo.toLocaleString('es-VE', { minimumFractionDigits: 2 }) : '$' + arreglo.toFixed(2)})`)
+          if (recibosBsList.length > 0) partesResumen.push(`${recibosBsList.length} recibos en Bs (${recibosBsList.map(r => r.label.split(' ')[0]).join(', ')})`)
+          if (recibosUsdList.length > 0) partesResumen.push(`${recibosUsdList.length} recibos en $ (${recibosUsdList.map(r => r.label.split(' ')[0]).join(', ')})`)
+          if (cuotasAdicionales.length > 0) partesResumen.push(`${cuotasAdicionales.length} cuotas esp.`)
+
+          const conceptosDetalleTexto = partesResumen.length > 0
+            ? partesResumen.join(' · ')
+            : (tieneDeuda ? 'Cuotas pendientes al cobro' : 'Al día / Solvente')
+
+          listaDeudores.push({
+            id: moraRow?.id || `mora-apto-${apto.id}`,
+            apartamento_id: apto.id,
+            apartamento_numero: apto.numero,
+            piso: apto.piso,
+            propietario_nombre: propNombre,
+            propietario_telefono: propTel,
+            propietario_email: propEmail,
+            meses_deuda: Math.max(tieneDeuda ? 1 : 0, totalConceptosImpagos),
+            monto_usd: totalUsd,
+            monto_bs: totalBs,
+            monto_manual_usd: Number((moraRow?.monto_usd || 0).toFixed(2)),
+            monto_manual_bs: Number((moraRow?.monto_bs || 0).toFixed(2)),
+            moneda_principal: totalBs > 0 && totalUsd > 0 ? 'MIXTO' : totalBs > 0 ? 'BS' : 'USD',
+            tasa_riesgo: tasa,
+            accion_legal: accionLegal,
+            estado: tieneDeuda ? 'activo' : 'solventado',
+            conceptos_detalle: conceptosDetalleTexto,
+            observaciones: moraRow?.observaciones || '',
+            fecha_corte: moraRow?.fecha_corte || new Date().toISOString().slice(0, 10),
+            origen: moraRow ? 'deuda_manual' : 'recibo_emitido',
+            created_at: moraRow?.created_at || recs[0]?.emitido_at || new Date().toISOString(),
+            updated_at: moraRow?.updated_at || new Date().toISOString(),
+            desglose: {
+              deuda_base_2025: deudaBase2025 > 0 ? { monto: deudaBase2025, moneda: mDeuda } : undefined,
+              cable_viajero: cableViajero > 0 ? { monto: cableViajero, moneda: mCable } : undefined,
+              guaya: guaya > 0 ? { monto: guaya, moneda: mGuaya } : undefined,
+              arreglo: arreglo > 0 ? { monto: arreglo, moneda: mArreglo } : undefined,
+              recibos_bs: recibosBsList,
+              recibos_usd: recibosUsdList,
+              cuotas_especiales: cuotasAdicionales,
+              items: itemsList,
+              total_bs: totalBs,
+              total_usd: totalUsd
+            }
+          })
+        })
+
+        // Ordenar: primero los morosos de mayor riesgo a menor, luego solventes, y luego por número de apartamento
+        listaDeudores.sort((a, b) => {
+          const deudaA = (a.monto_usd || 0) > 0 || (a.monto_bs || 0) > 0 ? 1 : 0
+          const deudaB = (b.monto_usd || 0) > 0 || (b.monto_bs || 0) > 0 ? 1 : 0
+          if (deudaB !== deudaA) return deudaB - deudaA
+
+          const prioA = TASA_RIESGO_CONFIG[a.tasa_riesgo]?.prioridad ?? 0
+          const prioB = TASA_RIESGO_CONFIG[b.tasa_riesgo]?.prioridad ?? 0
+          if (prioB !== prioA) return prioB - prioA
+
+          return a.apartamento_numero.localeCompare(b.apartamento_numero, undefined, { numeric: true })
+        })
+
+        saveLocalMoraCache(listaDeudores)
+        return { data: listaDeudores, error: null, fromDb: true }
+      } catch (err: any) {
+        console.warn('[moraService] Excepción obteniendo deudas:', err)
+        return { data: getLocalMoraCache(), error: null, fromDb: false }
+      }
     },
     { ttlMs: 3 * 60 * 1000, tags: ['mora'], forceRefresh }
   )
