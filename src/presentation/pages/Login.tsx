@@ -263,11 +263,192 @@ export function Login() {
 
   return (
     <div className="login-root-container">
-      {/* Estilos dedicados para el efecto Parallax / Bottom Sheet en móvil */}
+      {/* Estilos dedicados para animaciones fluidas y diseño de login de alta gama */}
       <style>{`
         @keyframes bounceDown {
           0%, 100% { transform: translateY(0); }
           50% { transform: translateY(4px); }
+        }
+
+        @keyframes fadeInUp {
+          from {
+            opacity: 0;
+            transform: translateY(18px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        @keyframes pulseGlow {
+          0%, 100% {
+            transform: scale(1);
+            opacity: 0.35;
+          }
+          50% {
+            transform: scale(1.12);
+            opacity: 0.65;
+          }
+        }
+
+        @keyframes badgeDot {
+          0%, 100% {
+            opacity: 1;
+            transform: scale(1);
+          }
+          50% {
+            opacity: 0.35;
+            transform: scale(0.7);
+          }
+        }
+
+        /* ── Clases escalonadas para entrada fluida ── */
+        .login-stagger-1 {
+          animation: fadeInUp 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+          animation-delay: 0.05s;
+        }
+
+        .login-stagger-2 {
+          animation: fadeInUp 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+          animation-delay: 0.12s;
+        }
+
+        .login-stagger-3 {
+          animation: fadeInUp 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+          animation-delay: 0.18s;
+        }
+
+        .login-stagger-4 {
+          animation: fadeInUp 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+          animation-delay: 0.24s;
+        }
+
+        .login-stagger-5 {
+          animation: fadeInUp 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+          animation-delay: 0.30s;
+        }
+
+        .login-stagger-6 {
+          animation: fadeInUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+          animation-delay: 0.36s;
+        }
+
+        /* ── Inputs con resplandor suave al enfocar ── */
+        .login-input {
+          transition: border-color 0.22s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.22s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.2s ease !important;
+        }
+
+        .login-input:focus {
+          border-color: var(--color-accent, #f97316) !important;
+          box-shadow: 0 0 0 3px var(--color-accent-glow, rgba(249, 115, 22, 0.22)), 0 2px 6px rgba(0, 0, 0, 0.4) !important;
+        }
+
+        /* ── Botón Principal con Elevación e Interacción ── */
+        .login-primary-btn {
+          position: relative;
+          overflow: hidden;
+          transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.22s ease, background-color 0.22s ease !important;
+        }
+
+        .login-primary-btn:hover:not(:disabled) {
+          transform: translateY(-1.5px);
+          box-shadow: 0 8px 24px var(--color-accent-glow, rgba(249, 115, 22, 0.45)) !important;
+        }
+
+        .login-primary-btn:active:not(:disabled) {
+          transform: translateY(0) scale(0.985);
+        }
+
+        /* ── Tarjeta de Registro Premium (Glassmorphism & Glow) ── */
+        .register-card-glow {
+          position: relative;
+          background: linear-gradient(145deg, rgba(17, 24, 39, 0.8) 0%, rgba(11, 15, 25, 0.92) 100%);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          border-radius: 18px;
+          padding: 18px 20px;
+          box-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+          backdrop-filter: blur(16px);
+          -webkit-backdrop-filter: blur(16px);
+          transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+          overflow: hidden;
+        }
+
+        .register-card-glow::before {
+          content: '';
+          position: absolute;
+          inset: 0;
+          border-radius: 18px;
+          padding: 1px;
+          background: linear-gradient(135deg, rgba(255, 255, 255, 0.18), rgba(249, 115, 22, 0.3), transparent 70%);
+          -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+          -webkit-mask-composite: xor;
+          mask-composite: exclude;
+          pointer-events: none;
+          opacity: 0.45;
+          transition: opacity 0.3s ease;
+        }
+
+        .register-card-glow:hover {
+          border-color: rgba(249, 115, 22, 0.35);
+          box-shadow: 0 16px 36px -6px rgba(0, 0, 0, 0.75), 0 0 24px -4px var(--color-accent-glow, rgba(249, 115, 22, 0.25));
+          transform: translateY(-2px);
+        }
+
+        .register-card-glow:hover::before {
+          opacity: 1;
+        }
+
+        .register-icon-bubble {
+          width: 44px;
+          height: 44px;
+          border-radius: 12px;
+          background: radial-gradient(circle at 30% 30%, rgba(249, 115, 22, 0.25), rgba(249, 115, 22, 0.08));
+          border: 1px solid rgba(249, 115, 22, 0.3);
+          color: var(--color-accent, #f97316);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          box-shadow: 0 4px 14px rgba(249, 115, 22, 0.22);
+          transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .register-card-glow:hover .register-icon-bubble {
+          transform: scale(1.08) rotate(-4deg);
+          box-shadow: 0 6px 18px rgba(249, 115, 22, 0.35);
+        }
+
+        .register-action-btn {
+          background: linear-gradient(135deg, rgba(249, 115, 22, 0.16) 0%, rgba(249, 115, 22, 0.28) 100%);
+          border: 1px solid rgba(249, 115, 22, 0.45);
+          color: #ffffff;
+          border-radius: 10px;
+          padding: 10px 16px;
+          font-size: 13px;
+          font-weight: 700;
+          cursor: pointer;
+          white-space: nowrap;
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+          transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .register-action-btn:hover {
+          background: linear-gradient(135deg, var(--color-accent, #f97316) 0%, var(--color-accent-hover, #ea580c) 100%);
+          border-color: var(--color-accent, #f97316);
+          box-shadow: 0 4px 18px var(--color-accent-glow, rgba(249, 115, 22, 0.45));
+          transform: translateY(-1px);
+        }
+
+        .register-action-btn .btn-arrow {
+          transition: transform 0.25s ease;
+        }
+
+        .register-action-btn:hover .btn-arrow {
+          transform: translateX(4px);
         }
 
         .login-root-container {
@@ -298,6 +479,8 @@ export function Login() {
             padding: 40px 24px;
             background-color: #07090e;
             box-sizing: border-box;
+            position: relative;
+            overflow: hidden;
           }
           .login-sheet-handle {
             display: none !important;
@@ -336,6 +519,7 @@ export function Login() {
             padding: 16px 20px 60px !important;
             margin-top: -36px !important;
             box-sizing: border-box !important;
+            overflow: hidden;
           }
 
           .login-sheet-handle {
@@ -377,33 +561,58 @@ export function Login() {
 
       {/* ── PANEL DERECHO: FORMULARIO DE ACCESO Y TARJETA DE REGISTRO ── */}
       <div id="login-form-sheet" className="login-form-wrapper">
+        {/* Luz ambiental sutil para aspecto ultra-moderno */}
+        <div
+          style={{
+            position: 'absolute',
+            top: '20%',
+            right: '10%',
+            width: '320px',
+            height: '320px',
+            borderRadius: '50%',
+            background: 'radial-gradient(circle, var(--color-accent-glow, rgba(249, 115, 22, 0.12)) 0%, transparent 70%)',
+            filter: 'blur(60px)',
+            pointerEvents: 'none',
+            zIndex: 0,
+            animation: 'pulseGlow 6s ease-in-out infinite alternate',
+          }}
+        />
+
         {/* Barra estilo pill en móvil para dar aspecto de tarjeta deslizante */}
         <div className="login-sheet-handle" onClick={scrollToForm}>
           <div className="login-sheet-pill-bar" />
         </div>
 
-        <div style={{ width: '100%', maxWidth: '440px', margin: '0 auto' }}>
+        <div style={{ width: '100%', maxWidth: '440px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
           
-          {/* Header del formulario */}
-          <div style={{ marginBottom: '24px' }}>
+          {/* Header del formulario con animación de entrada */}
+          <div className="login-stagger-1" style={{ marginBottom: '24px' }}>
             {activeTenantSlug ? (
               <div style={{
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '8px',
-                padding: '4px 12px',
+                padding: '5px 13px',
                 borderRadius: '9999px',
                 backgroundColor: 'rgba(56, 189, 248, 0.12)',
                 border: '1px solid rgba(56, 189, 248, 0.3)',
                 color: '#38bdf8',
-                fontSize: '11px',
+                fontSize: '11.5px',
                 fontWeight: 700,
                 letterSpacing: '0.4px',
-                marginBottom: '10px'
+                marginBottom: '12px',
+                boxShadow: '0 2px 10px rgba(56, 189, 248, 0.15)'
               }}>
+                <span style={{
+                  width: '7px',
+                  height: '7px',
+                  borderRadius: '50%',
+                  backgroundColor: '#38bdf8',
+                  animation: 'badgeDot 2s ease-in-out infinite'
+                }} />
                 <span>🏢</span>
                 <span>{config?.nombre_edificio || activeTenantSlug}</span>
-                <span style={{ color: '#94a3b8', fontSize: '10px' }}>
+                <span style={{ color: '#94a3b8', fontSize: '10.5px', fontFamily: 'monospace' }}>
                   (/e/{activeTenantSlug})
                 </span>
               </div>
@@ -411,8 +620,8 @@ export function Login() {
               <div style={{
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: '6px',
-                padding: '4px 10px',
+                gap: '8px',
+                padding: '5px 12px',
                 borderRadius: '9999px',
                 backgroundColor: 'var(--color-accent-light, rgba(249, 115, 22, 0.12))',
                 border: '1px solid var(--border-accent, rgba(249, 115, 22, 0.25))',
@@ -421,9 +630,15 @@ export function Login() {
                 fontWeight: 700,
                 letterSpacing: '0.6px',
                 textTransform: 'uppercase',
-                marginBottom: '10px'
+                marginBottom: '12px'
               }}>
-                <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: 'var(--color-accent, #f97316)' }} />
+                <span style={{
+                  width: '6px',
+                  height: '6px',
+                  borderRadius: '50%',
+                  backgroundColor: 'var(--color-accent, #f97316)',
+                  animation: 'badgeDot 2s ease-in-out infinite'
+                }} />
                 Portal Residente
               </div>
             )}
@@ -446,14 +661,16 @@ export function Login() {
             </p>
           </div>
 
-          {/* Tarjeta del Formulario Principal */}
-          <div style={{
+          {/* Tarjeta del Formulario Principal con animación escalonada */}
+          <div className="login-stagger-2" style={{
             backgroundColor: '#111622',
             border: '1px solid #1e2638',
-            borderRadius: '16px',
+            borderRadius: '18px',
             padding: '28px',
-            boxShadow: '0 16px 40px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06)',
-            marginBottom: '16px'
+            boxShadow: '0 20px 48px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.06)',
+            marginBottom: '18px',
+            backdropFilter: 'blur(12px)',
+            WebkitBackdropFilter: 'blur(12px)'
           }}>
             <form onSubmit={handleSubmit}>
               
@@ -529,8 +746,6 @@ export function Login() {
                 </div>
               )}
 
-
-
               {/* Campo Email */}
               <div style={{ marginBottom: '16px' }}>
                 <label
@@ -550,6 +765,7 @@ export function Login() {
                 <input
                   id="email"
                   type="email"
+                  className="login-input"
                   autoComplete="username webauthn"
                   placeholder="correo@ejemplo.com"
                   value={email}
@@ -565,11 +781,8 @@ export function Login() {
                     color: '#ffffff',
                     fontSize: '14px',
                     outline: 'none',
-                    boxSizing: 'border-box',
-                    transition: 'border-color 0.2s',
+                    boxSizing: 'border-box'
                   }}
-                  onFocus={(e) => e.target.style.borderColor = 'var(--color-accent, #f97316)'}
-                  onBlur={(e) => e.target.style.borderColor = '#232d42'}
                 />
               </div>
 
@@ -610,6 +823,7 @@ export function Login() {
                   <input
                     id="password"
                     type={showPassword ? 'text' : 'password'}
+                    className="login-input"
                     autoComplete="current-password"
                     placeholder="Contraseña"
                     value={password}
@@ -625,11 +839,8 @@ export function Login() {
                       color: '#ffffff',
                       fontSize: '14px',
                       outline: 'none',
-                      boxSizing: 'border-box',
-                      transition: 'border-color 0.2s',
+                      boxSizing: 'border-box'
                     }}
-                    onFocus={(e) => e.target.style.borderColor = 'var(--color-accent, #f97316)'}
-                    onBlur={(e) => e.target.style.borderColor = '#232d42'}
                   />
                   <button
                     type="button"
@@ -656,7 +867,7 @@ export function Login() {
               </div>
 
               {/* Opciones: Recordar sesión y Biometría */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '22px' }}>
+              <div className="login-stagger-3" style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '22px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <input
                     id="remember"
@@ -687,13 +898,14 @@ export function Login() {
                 )}
               </div>
 
-              {/* Botón Iniciar Sesión Naranja */}
+              {/* Botón Iniciar Sesión Naranja con Efecto y Animación */}
               <button
                 type="submit"
+                className="login-primary-btn login-stagger-4"
                 disabled={loading || bioLoading || !email || !password}
                 style={{
                   width: '100%',
-                  backgroundColor: 'var(--color-accent, #f97316)',
+                  background: 'linear-gradient(135deg, var(--color-accent, #f97316) 0%, var(--color-accent-hover, #ea580c) 100%)',
                   color: '#ffffff',
                   border: 'none',
                   borderRadius: '10px',
@@ -701,26 +913,25 @@ export function Login() {
                   fontSize: '14.5px',
                   fontWeight: 800,
                   cursor: loading || bioLoading || !email || !password ? 'not-allowed' : 'pointer',
-                  opacity: loading || bioLoading || !email || !password ? 0.7 : 1,
+                  opacity: loading || bioLoading || !email || !password ? 0.65 : 1,
                   boxShadow: 'var(--color-brand-shadow, 0 4px 18px var(--color-accent-glow))',
-                  transition: 'all 0.2s ease',
                   display: 'flex',
                   justifyContent: 'center',
                   alignItems: 'center',
-                }}
-                onMouseOver={(e) => {
-                  if (!loading && !bioLoading && email && password) e.currentTarget.style.backgroundColor = 'var(--color-accent-hover, #ea580c)'
-                }}
-                onMouseOut={(e) => {
-                  if (!loading && !bioLoading && email && password) e.currentTarget.style.backgroundColor = 'var(--color-accent, #f97316)'
+                  gap: '8px'
                 }}
               >
-                {loading ? <span className="spinner spinner--sm"></span> : 'Iniciar Sesión'}
+                {loading ? <span className="spinner spinner--sm"></span> : (
+                  <>
+                    <span>Iniciar Sesión</span>
+                    <span style={{ fontSize: '15px' }}>→</span>
+                  </>
+                )}
               </button>
 
               {/* ── BOTÓN MINIMALISTA DE ACCESO CON HUELLA DACTILAR (SOLO SI EL USUARIO YA AUTORIZÓ) ── */}
               {isBioEnrolled && (
-                <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                <div className="login-stagger-5" style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                   <div style={{ display: 'flex', alignItems: 'center', width: '100%', marginBottom: '14px', gap: '10px' }}>
                     <div style={{ flex: 1, height: '1px', backgroundColor: '#1e2638' }} />
                     <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.6px', fontWeight: 600 }}>
@@ -790,69 +1001,73 @@ export function Login() {
               )}
             </form>
 
-
           </div>
 
-          {/* ── TARJETA INFERIOR: REGISTRO (Exacta a la imagen de referencia) ── */}
-          <div style={{
-            backgroundColor: '#111622',
-            border: '1px solid #1e2638',
-            borderRadius: '16px',
-            padding: '20px 22px',
-            boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '16px',
-            flexWrap: 'wrap'
-          }}>
+          {/* ── TARJETA INFERIOR: REGISTRO (Diseño Brutal, Glassmorphism y Micro-animaciones) ── */}
+          <div className="register-card-glow login-stagger-6">
             <div style={{
-              width: '42px',
-              height: '42px',
-              borderRadius: '50%',
-              backgroundColor: 'var(--color-accent-light, rgba(249, 115, 22, 0.15))',
-              border: '1px solid var(--border-accent, rgba(249, 115, 22, 0.3))',
-              color: 'var(--color-accent, #f97316)',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '20px',
-              flexShrink: 0
+              justifyContent: 'space-between',
+              gap: '16px',
+              flexWrap: 'wrap'
             }}>
-              👤+
-            </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: '200px', flex: '1 1 auto' }}>
+                <div className="register-icon-bubble">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                    <line x1="19" y1="8" x2="19" y2="14" />
+                    <line x1="22" y1="11" x2="16" y2="11" />
+                  </svg>
+                </div>
 
-            <div style={{ flex: 1, minWidth: '180px' }}>
-              <h3 style={{ fontSize: '14px', fontWeight: 800, margin: 0, color: '#ffffff' }}>
-                ¿Aún no tienes cuenta?
-              </h3>
-              <p style={{ fontSize: '11.5px', color: '#94a3b8', margin: '3px 0 0', lineHeight: 1.35 }}>
-                Regístrate en nuestro nuevo portal y forma parte de nuestra comunidad.
-              </p>
-            </div>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '3px' }}>
+                    <span style={{
+                      fontSize: '9.5px',
+                      fontWeight: 800,
+                      letterSpacing: '0.8px',
+                      textTransform: 'uppercase',
+                      color: 'var(--color-accent, #f97316)',
+                      backgroundColor: 'rgba(249, 115, 22, 0.12)',
+                      padding: '2px 7px',
+                      borderRadius: '4px'
+                    }}>
+                      Nuevo Residente
+                    </span>
+                  </div>
+                  <h3 style={{ fontSize: '14.5px', fontWeight: 700, margin: 0, color: '#f8fafc', letterSpacing: '-0.2px' }}>
+                    ¿Aún no tienes tu cuenta?
+                  </h3>
+                  <p style={{ fontSize: '11.5px', color: '#94a3b8', margin: '2px 0 0', lineHeight: 1.35 }}>
+                    Regístrate en línea para pagar recibos y revisar solvencias.
+                  </p>
+                </div>
+              </div>
 
-            <button
-              type="button"
-              onClick={() => navigate('/register')}
-              style={{
-                backgroundColor: 'var(--color-accent, #f97316)',
-                color: '#ffffff',
-                border: 'none',
-                borderRadius: '8px',
-                padding: '9px 16px',
-                fontSize: '12.5px',
-                fontWeight: 800,
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-                transition: 'background-color 0.2s',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px'
-              }}
-              onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--color-accent-hover, #ea580c)'}
-              onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'var(--color-accent, #f97316)'}
-            >
-              Crear mi cuenta 👤+
-            </button>
+              <button
+                type="button"
+                onClick={() => navigate(activeTenantSlug ? `/e/${activeTenantSlug}/register` : '/register')}
+                className="register-action-btn"
+              >
+                <span>Crear mi cuenta</span>
+                <svg
+                  className="btn-arrow"
+                  width="15"
+                  height="15"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                  <polyline points="12 5 19 12 12 19"></polyline>
+                </svg>
+              </button>
+            </div>
           </div>
 
           {/* ── VERSIÓN INFERIOR: ACCESO OCULTO AL PANEL ADMIN ── */}
