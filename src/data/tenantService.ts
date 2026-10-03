@@ -1,5 +1,4 @@
 import { supabase, ConfigEdificio } from './supabase'
-import { appCache } from './cacheService'
 
 export interface TenantInfo {
   id: string

@@ -499,7 +499,7 @@ export const AdminGas: React.FC = () => {
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           <button
             onClick={() => {
-              const jornadaActiva = data?.jornadas?.find(j => j.activa)
+              const jornadaActiva = data?.jornadas?.find(j => j.estado === 'activa')
               setFormCuota({
                 titulo: jornadaActiva?.titulo || 'Recarga de Gas Comunal',
                 esEspecial: Boolean(jornadaActiva?.esEspecial),

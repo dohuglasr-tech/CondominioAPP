@@ -1556,7 +1556,6 @@ export const SuperAdminDashboard: React.FC = () => {
                     .map(f => {
                       const isCritical = f.severity === 'critical'
                       const isWarning = f.severity === 'warning'
-                      const isPassed = f.severity === 'passed'
 
                       const borderColor = isCritical
                         ? 'rgba(239, 68, 68, 0.4)'
@@ -1883,7 +1882,7 @@ export const SuperAdminDashboard: React.FC = () => {
               </div>
 
               <button
-                onClick={refreshUsers}
+                onClick={() => refreshUsers()}
                 style={{
                   background: 'rgba(255, 255, 255, 0.06)', border: '1px solid rgba(255, 255, 255, 0.12)',
                   color: '#fff', padding: '8px 14px', borderRadius: '10px', fontSize: '12px',

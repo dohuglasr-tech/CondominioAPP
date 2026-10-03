@@ -1,4 +1,4 @@
-import { supabase, ConfigEdificio } from './supabase'
+import { supabase } from './supabase'
 import { appCache } from './cacheService'
 import { slugifyBuildingName } from './tenantService'
 
