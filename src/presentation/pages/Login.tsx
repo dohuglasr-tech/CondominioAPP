@@ -404,7 +404,7 @@ export function Login() {
                 <span>🏢</span>
                 <span>{config?.nombre_edificio || activeTenantSlug}</span>
                 <span style={{ color: '#94a3b8', fontSize: '10px' }}>
-                  ({activeTenantSlug}.domus.ve)
+                  (/e/{activeTenantSlug})
                 </span>
               </div>
             ) : (
@@ -790,39 +790,7 @@ export function Login() {
               )}
             </form>
 
-            {/* Descarga App Android (APK) */}
-            <div style={{ marginTop: '16px' }}>
-              <button
-                type="button"
-                onClick={() => window.open('/app-release.apk', '_blank')}
-                style={{
-                  width: '100%',
-                  backgroundColor: '#0a0d14',
-                  border: '1px solid #1e2638',
-                  borderRadius: '10px',
-                  padding: '11px 14px',
-                  color: '#cbd5e1',
-                  fontSize: '13px',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px',
-                  transition: 'all 0.2s'
-                }}
-                onMouseOver={(e) => {
-                  e.currentTarget.style.borderColor = '#10b981'
-                  e.currentTarget.style.color = '#10b981'
-                }}
-                onMouseOut={(e) => {
-                  e.currentTarget.style.borderColor = '#1e2638'
-                  e.currentTarget.style.color = '#cbd5e1'
-                }}
-              >
-                <span>🤖</span> Descargar App Android (APK)
-              </button>
-            </div>
+
           </div>
 
           {/* ── TARJETA INFERIOR: REGISTRO (Exacta a la imagen de referencia) ── */}
