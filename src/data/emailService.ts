@@ -68,6 +68,25 @@ export interface DatosEmailPagoAprobado {
   portalUrl?: string
 }
 
+export interface DatosEmailCuotaGas {
+  destinatarioEmail: string
+  apartamentoNumero: string
+  propietarioNombre?: string | null
+  edificioNombre?: string
+  tituloCuota: string
+  esCuotaEspecial?: boolean
+  montoUsd: number
+  montoBs: number
+  tasaBcv: number
+  fechaLimite?: string
+  banco?: string | null
+  telefono?: string | null
+  rifCedula?: string | null
+  titular?: string | null
+  portalUrl?: string
+  colorPrimario?: string | null
+}
+
 const DEFAULT_PORTAL_URL = 'https://condominio-app-rouge.vercel.app'
 const DEFAULT_EDIFICIO = 'Residencias Ocutuy 5'
 const DEFAULT_BANCO = 'Banco Bicentenario'
@@ -526,6 +545,137 @@ export function generarHtmlPagoAprobado(datos: DatosEmailPagoAprobado): { subjec
   return { subject, html }
 }
 
+// ── 3b. PLANTILLA: NOTIFICACIÓN DE CUOTA ESPECIAL / COMUNAL DE GAS ───────────
+export function generarHtmlCuotaGas(datos: DatosEmailCuotaGas): { subject: string; html: string } {
+  const edificio = datos.edificioNombre || DEFAULT_EDIFICIO
+  const portal = datos.portalUrl || DEFAULT_PORTAL_URL
+  const banco = datos.banco || DEFAULT_BANCO
+  const titular = datos.titular || DEFAULT_TITULAR
+  const rif = datos.rifCedula || DEFAULT_RIF
+  const telefono = datos.telefono || ''
+  const esEspecial = !!datos.esCuotaEspecial
+
+  const subject = esEspecial
+    ? `⛽ Cuota Especial de Gas — Apto. ${datos.apartamentoNumero} | ${edificio}`
+    : `⛽ Notificación de Cuota de Gas Comunal — Apto. ${datos.apartamentoNumero} | ${edificio}`
+
+  const html = `
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#07090e;font-family:'Segoe UI',Roboto,-apple-system,BlinkMacSystemFont,sans-serif;color:#e2e8f0;line-height:1.5;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#07090e;padding:30px 16px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" style="max-width:580px;background-color:#0f172a;border-radius:18px;border:1px solid #1e293b;overflow:hidden;box-shadow:0 16px 40px rgba(0,0,0,0.6);" cellspacing="0" cellpadding="0">
+          
+          <!-- BANNER SUPERIOR -->
+          <tr>
+            <td style="background:linear-gradient(135deg, ${esEspecial ? '#dc2626 0%, #ea580c 100%' : '#ea580c 0%, #d97706 100%'});padding:28px 24px;text-align:center;">
+              <div style="font-size:32px;line-height:1;margin-bottom:8px;">⛽</div>
+              <div style="display:inline-block;background-color:rgba(0,0,0,0.25);border:1px solid rgba(255,255,255,0.2);padding:4px 14px;border-radius:999px;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#ffffff;margin-bottom:10px;">
+                ${esEspecial ? '⚡ Cuota Especial de Gas' : 'Servicio de Gas Comunal'}
+              </div>
+              <h1 style="margin:0;font-size:22px;font-weight:900;color:#ffffff;letter-spacing:-0.3px;">
+                ${edificio}
+              </h1>
+            </td>
+          </tr>
+
+          <!-- CONTENIDO PRINCIPAL -->
+          <tr>
+            <td style="padding:28px 24px;">
+              <p style="margin:0 0 16px;font-size:14px;color:#94a3b8;">
+                Estimado(a) residente del <strong style="color:#ffffff;">Apartamento ${datos.apartamentoNumero}</strong>${datos.propietarioNombre ? ` (${datos.propietarioNombre})` : ''}:
+              </p>
+              <p style="margin:0 0 20px;font-size:13.5px;color:#cbd5e1;line-height:1.6;">
+                La administración ha establecido una <strong style="color:${esEspecial ? '#f87171' : '#fb923c'};">${esEspecial ? 'Cuota Especial / Extraordinaria' : 'Cuota Comunitaria'}</strong> para la recarga del tanque central y continuidad del servicio de gas del edificio:
+              </p>
+
+              <!-- TARJETA DEL MONTO -->
+              <div style="background-color:#1e293b;border-radius:14px;border:1px solid ${esEspecial ? 'rgba(239, 68, 68, 0.4)' : 'rgba(249, 115, 22, 0.35)'};padding:20px;text-align:center;margin-bottom:24px;">
+                <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px;">
+                  ${datos.tituloCuota}
+                </div>
+                <div style="font-size:32px;font-weight:900;color:#ffffff;line-height:1.2;margin-bottom:4px;">
+                  Bs. ${fmtBs(datos.montoBs)}
+                </div>
+                <div style="font-size:13px;color:#94a3b8;font-weight:600;">
+                  ≈ $${fmtUsd(datos.montoUsd)} USD <span style="font-size:11px;color:#64748b;">(Tasa BCV: ${fmtBs(datos.tasaBcv)} Bs/$)</span>
+                </div>
+                ${datos.fechaLimite ? `
+                <div style="display:inline-block;margin-top:12px;background-color:rgba(239, 68, 68, 0.15);border:1px solid rgba(239, 68, 68, 0.3);color:#fca5a5;padding:4px 12px;border-radius:6px;font-size:11.5px;font-weight:700;">
+                  ⏳ Fecha Límite de Recaudación: ${datos.fechaLimite}
+                </div>
+                ` : ''}
+              </div>
+
+              <!-- DATOS BANCARIOS PARA PAGO MÓVIL / TRANSFERENCIA -->
+              <div style="background-color:#0b1120;border:1px solid #1e293b;border-radius:12px;padding:16px 18px;margin-bottom:24px;">
+                <div style="font-size:12px;font-weight:800;color:#38bdf8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">
+                  💳 Datos de Pago (Exclusivo Cuenta de Gas)
+                </div>
+                <table style="width:100%;font-size:12.5px;color:#cbd5e1;" cellspacing="0" cellpadding="4">
+                  <tr>
+                    <td style="color:#64748b;width:35%;">Banco:</td>
+                    <td style="color:#ffffff;font-weight:700;">${banco}</td>
+                  </tr>
+                  ${telefono ? `
+                  <tr>
+                    <td style="color:#64748b;">Pago Móvil:</td>
+                    <td style="color:#ffffff;font-weight:700;">${telefono}</td>
+                  </tr>
+                  ` : ''}
+                  ${rif ? `
+                  <tr>
+                    <td style="color:#64748b;">C.I. / RIF:</td>
+                    <td style="color:#ffffff;font-weight:700;">${rif}</td>
+                  </tr>
+                  ` : ''}
+                  <tr>
+                    <td style="color:#64748b;">Titular:</td>
+                    <td style="color:#ffffff;font-weight:700;">${titular}</td>
+                  </tr>
+                  <tr>
+                    <td style="color:#64748b;">Concepto:</td>
+                    <td style="color:#fb923c;font-weight:700;">Gas Apto ${datos.apartamentoNumero}</td>
+                  </tr>
+                </table>
+              </div>
+
+              <!-- BOTÓN CTA -->
+              <div style="text-align:center;margin-bottom:20px;">
+                <a href="${portal}/gas" target="_blank" style="display:inline-block;background:linear-gradient(135deg, #f97316 0%, #ea580c 100%);color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:12px;font-size:14px;font-weight:800;box-shadow:0 6px 20px rgba(249, 115, 22, 0.4);">
+                  Reportar Pago de Gas en mi Portal →
+                </a>
+              </div>
+
+              <p style="margin:0;font-size:11.5px;color:#64748b;text-align:center;line-height:1.5;">
+                *Nota: Este pago es independiente del recibo ordinario de condominio. Una vez efectuado el pago móvil o transferencia, ingresa a tu portal para registrar el número de referencia.
+              </p>
+            </td>
+          </tr>
+
+          <!-- FOOTER -->
+          <tr>
+            <td style="background-color:#090d14;padding:16px;text-align:center;border-top:1px solid #1e293b;font-size:11px;color:#475569;">
+              © ${new Date().getFullYear()} ${edificio} · Servicio de Gas Comunal
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`
+
+  return { subject, html }
+}
+
 // ── 4. FUNCIÓN DISPARADORA DEL ENVÍO DE EMAIL ────────────────────────────────
 export async function enviarEmail(params: {
   to: string
@@ -646,3 +796,12 @@ export async function despacharEmailPagoAprobado(datos: DatosEmailPagoAprobado):
   const { subject, html } = generarHtmlPagoAprobado(datos)
   return enviarEmail({ to: datos.destinatarioEmail, subject, html })
 }
+
+/**
+ * Dispara el email de cuota especial o comunal de gas
+ */
+export async function despacharEmailCuotaGas(datos: DatosEmailCuotaGas): Promise<{ ok: boolean; error?: string }> {
+  const { subject, html } = generarHtmlCuotaGas(datos)
+  return enviarEmail({ to: datos.destinatarioEmail, subject, html })
+}
+

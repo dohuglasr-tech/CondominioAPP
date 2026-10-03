@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { despacharEmailCuotaGas } from './emailService'
 
 export interface DatosPagoGas {
   banco: string
@@ -56,6 +57,7 @@ export interface DetallePagoAptoGas {
 export interface JornadaRecaudacionGas {
   id: string
   titulo: string
+  esEspecial?: boolean
   mes: string // YYYY-MM
   fechaInicio: string // YYYY-MM-DD
   fechaLimite: string // YYYY-MM-DD
@@ -91,7 +93,7 @@ export interface GasServicioData {
 const STORAGE_GAS_KEY = 'condominio_gas_servicio_v2'
 const DB_GAS_TIPO = 'config_gas_servicio'
 
-// Configuración limpia por defecto
+// Configuración limpia por defecto (SIN cuota ficticia previa)
 export const DEFAULT_GAS_CONFIG: TanqueGasConfig = {
   capacidadLitros: 2500,
   nivelActualPorcentaje: 0,
@@ -99,8 +101,8 @@ export const DEFAULT_GAS_CONFIG: TanqueGasConfig = {
   proveedorActual: '',
   telefonoProveedor: '',
   monedaCuota: 'BS',
-  costoPorAptoDefectoBs: 4300.0,
-  costoPorAptoDefectoUsd: 5.0,
+  costoPorAptoDefectoBs: 0,
+  costoPorAptoDefectoUsd: 0,
   tasaBcv: 859.06,
   datosPago: {
     banco: 'Banco de Venezuela (0102)',
@@ -112,69 +114,22 @@ export const DEFAULT_GAS_CONFIG: TanqueGasConfig = {
   }
 }
 
-// Generador de estructura completamente limpia (sin datos de prueba falsos)
+// Generador de estructura completamente limpia (sin datos de prueba falsos ni cuotas preasignadas)
 export function generarDatosSemillaGas(
   aptosList?: { id: string; numero: string; propietario_nombre?: string | null }[],
   tasaBcvInput: number = 859.06
 ): GasServicioData {
   const tasaBcv = tasaBcvInput || 859.06
-  const cuotaUsd = 5.0
-  const cuotaBs = Number((cuotaUsd * tasaBcv).toFixed(2))
-
-  // Mapear los 62 apartamentos sin pagos falsos
-  const aptos = aptosList && aptosList.length > 0
-    ? aptosList
-    : Array.from({ length: 62 }, (_, idx) => {
-        const floor = Math.floor(idx / 4) + 1
-        const letter = ['A', 'B', 'C', 'D'][idx % 4]
-        return {
-          id: `apto-${idx + 1}`,
-          numero: `5${floor.toString().padStart(2, '0')}${letter}`,
-          propietario_nombre: null
-        }
-      })
-
-  const pagosMap: Record<string, DetallePagoAptoGas> = {}
-
-  // Todos los apartamentos inician limpios como PENDIENTE sin referencias falsas
-  aptos.forEach((apto) => {
-    const key = apto.id || apto.numero
-    pagosMap[key] = {
-      apartamentoId: apto.id,
-      apartamentoNumero: apto.numero,
-      propietario: apto.propietario_nombre || undefined,
-      estado: 'pendiente',
-      moneda: 'BS',
-      montoBs: cuotaBs,
-      montoUsd: cuotaUsd,
-      observaciones: ''
-    }
-  })
-
-  const jornadaActiva: JornadaRecaudacionGas = {
-    id: `jornada-${new Date().toISOString().slice(0, 7)}`,
-    titulo: 'Recaudación de Gas',
-    mes: new Date().toISOString().slice(0, 7),
-    fechaInicio: new Date().toISOString().slice(0, 10),
-    fechaLimite: '',
-    monedaPrincipal: 'BS',
-    costoPorAptoBs: cuotaBs,
-    costoPorAptoUsd: cuotaUsd,
-    metaTotalBs: Number((cuotaBs * aptos.length).toFixed(2)),
-    metaTotalUsd: Number((cuotaUsd * aptos.length).toFixed(2)),
-    estado: 'activa',
-    pagos: pagosMap
-  }
 
   return {
     config: {
       ...DEFAULT_GAS_CONFIG,
-      costoPorAptoDefectoBs: cuotaBs,
-      costoPorAptoDefectoUsd: cuotaUsd,
+      costoPorAptoDefectoBs: 0,
+      costoPorAptoDefectoUsd: 0,
       tasaBcv: tasaBcv
     },
     llenados: [], // Limpio: sin llenados falsos
-    jornadas: [jornadaActiva],
+    jornadas: [], // Limpio: sin cuotas ficticias pre-cargadas hasta que el admin las cree
     eventosCalendario: [], // Limpio: sin eventos falsos
     updatedAt: new Date().toISOString()
   }
@@ -261,20 +216,24 @@ export async function obtenerGasServicioData(forceClean: boolean = false): Promi
     if (!error && row?.descripcion && !forceClean) {
       try {
         const parsed = JSON.parse(row.descripcion) as GasServicioData
-        // Si el registro de DB aún tuviese los datos ficticios viejos, forzar limpieza
-        if (parsed.llenados?.some((l: any) => l.id?.includes('2026-09-18') || l.id?.includes('2026-08-05'))) {
+        // Si el registro de DB aún tuviese los datos ficticios viejos o la cuota por defecto de 4300/5$, forzar limpieza
+        const tieneCuotaFalsa4300 =
+          parsed.config?.costoPorAptoDefectoBs === 4300 ||
+          parsed.config?.costoPorAptoDefectoUsd === 5 ||
+          (parsed.jornadas?.length === 1 && parsed.jornadas[0].titulo === 'Recaudación de Gas' && (parsed.jornadas[0].costoPorAptoBs === 4300 || parsed.jornadas[0].costoPorAptoUsd === 5))
+
+        if (
+          tieneCuotaFalsa4300 ||
+          parsed.llenados?.some((l: any) => l.id?.includes('2026-09-18') || l.id?.includes('2026-08-05'))
+        ) {
           parsed.llenados = []
           parsed.eventosCalendario = []
           parsed.config.nivelActualPorcentaje = 0
           parsed.config.monedaCuota = 'BS'
-          if (parsed.jornadas?.[0]?.pagos) {
-            Object.values(parsed.jornadas[0].pagos).forEach(p => {
-              p.estado = 'pendiente'
-              p.moneda = 'BS'
-              p.referencia = ''
-              p.fechaPago = undefined
-              p.metodoPago = undefined
-            })
+          parsed.config.costoPorAptoDefectoBs = 0
+          parsed.config.costoPorAptoDefectoUsd = 0
+          if (tieneCuotaFalsa4300) {
+            parsed.jornadas = []
           }
           await guardarGasServicioData(parsed)
         }
@@ -672,6 +631,7 @@ export function obtenerDeudaGasApartamento(
   aptoNumero?: string | null
 ): {
   tieneDeuda: boolean
+  esCuotaEspecial?: boolean
   monedaPrincipal: 'BS' | 'USD'
   montoPrincipal: number
   montoBs: number
@@ -681,13 +641,15 @@ export function obtenerDeudaGasApartamento(
   detallePago?: DetallePagoAptoGas
   datosBancarios: DatosPagoGas
 } {
-  const jornada = data.jornadas.find(j => j.estado === 'activa') || data.jornadas[0]
+  const jornada = data.jornadas.find(j => j.estado === 'activa')
   const datosBancarios = data.config.datosPago
   const monedaPrincipal = jornada?.monedaPrincipal || data.config.monedaCuota || 'BS'
 
-  if (!jornada || (!aptoId && !aptoNumero)) {
+  // Si no hay jornada activa o si la cuota es 0, no hay deuda
+  if (!jornada || (!aptoId && !aptoNumero) || (jornada.costoPorAptoBs === 0 && jornada.costoPorAptoUsd === 0)) {
     return {
       tieneDeuda: false,
+      esCuotaEspecial: false,
       monedaPrincipal,
       montoPrincipal: 0,
       montoUsd: 0,
@@ -702,13 +664,14 @@ export function obtenerDeudaGasApartamento(
     detalle = Object.values(jornada.pagos).find(p => p.apartamentoNumero === aptoNumero || p.apartamentoId === aptoId)
   }
 
-  const montoBsCalculado = detalle?.montoBs || data.config.costoPorAptoDefectoBs || Number((data.config.costoPorAptoDefectoUsd * data.config.tasaBcv).toFixed(2))
-  const montoUsdCalculado = detalle?.montoUsd || data.config.costoPorAptoDefectoUsd || 5.0
+  const montoBsCalculado = detalle?.montoBs || jornada.costoPorAptoBs || 0
+  const montoUsdCalculado = detalle?.montoUsd || jornada.costoPorAptoUsd || 0
   const montoPrincipal = monedaPrincipal === 'BS' ? montoBsCalculado : montoUsdCalculado
 
-  if (detalle && detalle.estado === 'pendiente') {
+  if (detalle && detalle.estado === 'pendiente' && (montoBsCalculado > 0 || montoUsdCalculado > 0)) {
     return {
       tieneDeuda: true,
+      esCuotaEspecial: !!jornada.esEspecial,
       monedaPrincipal,
       montoPrincipal,
       montoBs: montoBsCalculado,
@@ -722,6 +685,7 @@ export function obtenerDeudaGasApartamento(
 
   return {
     tieneDeuda: false,
+    esCuotaEspecial: !!jornada.esEspecial,
     monedaPrincipal,
     montoPrincipal: 0,
     montoUsd: 0,
@@ -730,5 +694,200 @@ export function obtenerDeudaGasApartamento(
     fechaLimite: jornada.fechaLimite,
     detallePago: detalle,
     datosBancarios
+  }
+}
+
+/**
+ * Permite al administrador crear o actualizar una cuota de gas (ordinaria o especial)
+ * y opcionalmente notificar por correo a todos los residentes con email registrado.
+ */
+export async function crearOActualizarCuotaGas(params: {
+  titulo: string
+  esEspecial?: boolean
+  monedaPrincipal: 'BS' | 'USD'
+  costoPorAptoBs: number
+  costoPorAptoUsd: number
+  fechaLimite?: string
+  datosPago?: Partial<DatosPagoGas>
+  notificarEmail?: boolean
+}): Promise<{ success: boolean; data?: GasServicioData; error?: string | null; correosEnviados?: number }> {
+  try {
+    const { data: actual } = await obtenerGasServicioData()
+    const tasa = actual.config.tasaBcv || 859.06
+
+    actual.config.monedaCuota = params.monedaPrincipal
+    actual.config.costoPorAptoDefectoBs = params.costoPorAptoBs
+    actual.config.costoPorAptoDefectoUsd = params.costoPorAptoUsd
+    if (params.datosPago) {
+      actual.config.datosPago = { ...actual.config.datosPago, ...params.datosPago }
+    }
+
+    // Consultar todos los apartamentos para asegurar que todos queden en la jornada
+    const { data: aptosDb } = await supabase
+      .from('apartamentos')
+      .select('id, numero, propietario_nombre, propietario_email')
+      .order('numero')
+
+    const aptos = aptosDb || []
+    const mesActual = new Date().toISOString().slice(0, 7)
+
+    // Buscar si ya hay jornada activa o crear una nueva
+    let jornada = actual.jornadas.find(j => j.estado === 'activa')
+    if (!jornada) {
+      jornada = {
+        id: `jornada-${Date.now()}`,
+        titulo: params.titulo.trim() || 'Recaudación de Gas',
+        esEspecial: !!params.esEspecial,
+        mes: mesActual,
+        fechaInicio: new Date().toISOString().slice(0, 10),
+        fechaLimite: params.fechaLimite || '',
+        monedaPrincipal: params.monedaPrincipal,
+        costoPorAptoBs: params.costoPorAptoBs,
+        costoPorAptoUsd: params.costoPorAptoUsd,
+        metaTotalBs: Number((params.costoPorAptoBs * Math.max(1, aptos.length)).toFixed(2)),
+        metaTotalUsd: Number((params.costoPorAptoUsd * Math.max(1, aptos.length)).toFixed(2)),
+        estado: 'activa',
+        pagos: {}
+      }
+      actual.jornadas.unshift(jornada)
+    } else {
+      jornada.titulo = params.titulo.trim() || jornada.titulo
+      jornada.esEspecial = !!params.esEspecial
+      jornada.monedaPrincipal = params.monedaPrincipal
+      jornada.costoPorAptoBs = params.costoPorAptoBs
+      jornada.costoPorAptoUsd = params.costoPorAptoUsd
+      jornada.fechaLimite = params.fechaLimite || jornada.fechaLimite
+      jornada.metaTotalBs = Number((params.costoPorAptoBs * Math.max(1, aptos.length)).toFixed(2))
+      jornada.metaTotalUsd = Number((params.costoPorAptoUsd * Math.max(1, aptos.length)).toFixed(2))
+    }
+
+    // Inicializar o actualizar apartamentos
+    aptos.forEach(apto => {
+      const key = apto.id || apto.numero
+      const existente = jornada!.pagos[key]
+      if (!existente || existente.estado === 'pendiente') {
+        jornada!.pagos[key] = {
+          apartamentoId: apto.id,
+          apartamentoNumero: apto.numero,
+          propietario: apto.propietario_nombre || undefined,
+          estado: 'pendiente',
+          moneda: params.monedaPrincipal,
+          montoBs: params.costoPorAptoBs,
+          montoUsd: params.costoPorAptoUsd,
+          observaciones: ''
+        }
+      }
+    })
+
+    const resGuardar = await guardarGasServicioData(actual)
+    if (!resGuardar.success) {
+      return { success: false, error: resGuardar.error }
+    }
+
+    let correosEnviados = 0
+    // Si se solicitó notificación por email (o si es cuota especial y se marcó enviar)
+    if (params.notificarEmail) {
+      const { data: configEdificio } = await supabase
+        .from('configuracion_edificio')
+        .select('nombre_edificio, color_primario')
+        .limit(1)
+        .maybeSingle()
+
+      const edificioNombre = configEdificio?.nombre_edificio || 'DOMUS'
+      const aptosConEmail = aptos.filter(a => a.propietario_email && a.propietario_email.includes('@'))
+
+      for (const apto of aptosConEmail) {
+        try {
+          await despacharEmailCuotaGas({
+            destinatarioEmail: apto.propietario_email!,
+            apartamentoNumero: apto.numero,
+            propietarioNombre: apto.propietario_nombre,
+            edificioNombre,
+            tituloCuota: params.titulo,
+            esCuotaEspecial: !!params.esEspecial,
+            montoBs: params.costoPorAptoBs,
+            montoUsd: params.costoPorAptoUsd,
+            tasaBcv: tasa,
+            fechaLimite: params.fechaLimite,
+            banco: actual.config.datosPago.banco,
+            telefono: actual.config.datosPago.telefono,
+            rifCedula: actual.config.datosPago.rifCedula,
+            titular: actual.config.datosPago.titular,
+            colorPrimario: configEdificio?.color_primario
+          })
+          correosEnviados++
+        } catch (e) {
+          console.warn(`[gasService] Error enviando email de gas a ${apto.numero}:`, e)
+        }
+      }
+    }
+
+    return { success: true, data: actual, correosEnviados }
+  } catch (err: any) {
+    console.error('[gasService] Error en crearOActualizarCuotaGas:', err)
+    return { success: false, error: err.message }
+  }
+}
+
+/**
+ * Permite al residente reportar el pago de su cuota de gas con número de referencia y método
+ */
+export async function reportarPagoGasResidente(params: {
+  apartamentoId?: string
+  apartamentoNumero: string
+  montoBs: number
+  montoUsd: number
+  metodoPago: string
+  referencia: string
+  fechaPago?: string
+  observaciones?: string
+}): Promise<{ success: boolean; data?: GasServicioData; error?: string | null }> {
+  try {
+    const { data: actual } = await obtenerGasServicioData()
+    const jornada = actual.jornadas.find(j => j.estado === 'activa')
+    if (!jornada) {
+      return { success: false, error: 'No hay ninguna jornada de recaudación de gas activa' }
+    }
+
+    const key = params.apartamentoId || params.apartamentoNumero
+    let item = jornada.pagos[key]
+    if (!item && params.apartamentoNumero) {
+      item = Object.values(jornada.pagos).find(p => p.apartamentoNumero === params.apartamentoNumero)
+    }
+
+    if (!item) {
+      item = {
+        apartamentoId: params.apartamentoId || `apto-${params.apartamentoNumero}`,
+        apartamentoNumero: params.apartamentoNumero,
+        estado: 'pendiente',
+        montoBs: params.montoBs,
+        montoUsd: params.montoUsd
+      }
+      jornada.pagos[key] = item
+    }
+
+    item.estado = 'pagado'
+    item.fechaPago = params.fechaPago || new Date().toISOString().slice(0, 10)
+    item.metodoPago = params.metodoPago as any
+    item.referencia = params.referencia.trim()
+    item.observaciones = params.observaciones?.trim() || 'Pago reportado por el residente en su portal'
+
+    // Registrar evento en calendario de gas
+    actual.eventosCalendario.unshift({
+      id: `ev-gas-${Date.now()}`,
+      fecha: item.fechaPago,
+      tipo: 'recaudacion',
+      titulo: `Pago Gas Apto ${params.apartamentoNumero}`,
+      descripcion: `Reportado: ${item.referencia} · ${params.metodoPago}`,
+      montoBs: params.montoBs,
+      montoUsd: params.montoUsd,
+      apartamentoRef: params.apartamentoNumero
+    })
+
+    const res = await guardarGasServicioData(actual)
+    return { success: res.success, data: actual, error: res.error }
+  } catch (err: any) {
+    console.error('[gasService] Error en reportarPagoGasResidente:', err)
+    return { success: false, error: err.message }
   }
 }

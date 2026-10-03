@@ -10,6 +10,7 @@ import { formatAlicuotaPct, getAlicuotaPctNumber } from '../../utils/alicuota'
 import { AvisoBanner } from '../components/AvisoBanner'
 import { obtenerSaldoAFavorApartamento } from '../../data/saldoFavorService'
 import { esReciboIndexado } from '../../utils/indexacionHelper'
+import { obtenerGasServicioData, obtenerDeudaGasApartamento, DeudaApartamentoGas } from '../../data/gasService'
 
 interface PagoItem {
   id: string
@@ -51,6 +52,7 @@ export function Dashboard() {
   const [moraRecord, setMoraRecord] = useState<DeudaMoraItem | null>(null)
   const [saldoAFavor, setSaldoAFavor] = useState<number>(0)
   const [saldoAFavorBs, setSaldoAFavorBs] = useState<number>(0)
+  const [deudaGas, setDeudaGas] = useState<DeudaApartamentoGas | null>(null)
 
   const { rate, loading: loadingRate } = useBcvRate()
   const tasaValida = rate && rate > 1 ? rate : (config?.tasa_bcv_actual && config.tasa_bcv_actual > 1 ? config.tasa_bcv_actual : 859.06)
@@ -205,6 +207,17 @@ export function Dashboard() {
         const saldoRes = await obtenerSaldoAFavorApartamento(apartamentoId, tasaValida, forceRefresh)
         setSaldoAFavor(saldoRes.saldo_a_favor_usd)
         setSaldoAFavorBs(saldoRes.saldo_a_favor_bs)
+      }
+
+      // Consultar deuda del servicio de gas comunal (especial u ordinaria)
+      try {
+        const resGas = await obtenerGasServicioData(forceRefresh)
+        if (resGas?.data) {
+          const dGas = obtenerDeudaGasApartamento(resGas.data, apartamentoId, aptoNumero)
+          setDeudaGas(dGas)
+        }
+      } catch (errGas) {
+        console.warn('[Dashboard] Error cargando cuota de gas:', errGas)
       }
     } catch (err) {
       console.warn('[Dashboard] Error cargando datos del residente:', err)
@@ -631,6 +644,105 @@ export function Dashboard() {
                 <div style={{ color: '#cbd5e1', fontSize: '11px', marginTop: '2px', lineHeight: 1.3 }}>
                   Reportaste Bs. {(Number(ultimoPago.monto_bs) || 0).toLocaleString('es-VE', { minimumFractionDigits: 2 })} (Ref: <strong>{ultimoPago.referencia}</strong>). Será validado por la administración.
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── ALERTA DE CUOTA ESPECIAL POR GAS (MÓVIL) ───────────── */}
+          {deudaGas && deudaGas.tieneDeuda && (deudaGas.montoBs > 0 || deudaGas.montoUsd > 0) && (
+            <div style={{
+              background: deudaGas.esCuotaEspecial
+                ? 'linear-gradient(135deg, rgba(239, 68, 68, 0.18) 0%, rgba(249, 115, 22, 0.18) 100%)'
+                : 'linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(37, 99, 235, 0.15) 100%)',
+              border: deudaGas.esCuotaEspecial ? '2px solid #ef4444' : '1px solid rgba(59, 130, 246, 0.4)',
+              borderRadius: '20px',
+              padding: '16px',
+              boxShadow: deudaGas.esCuotaEspecial ? '0 8px 24px rgba(239, 68, 68, 0.25)' : '0 8px 20px rgba(0, 0, 0, 0.4)'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '20px' }}>{deudaGas.esCuotaEspecial ? '⚡' : '⛽'}</span>
+                  <span style={{
+                    fontWeight: 900,
+                    fontSize: '13px',
+                    color: deudaGas.esCuotaEspecial ? '#fca5a5' : '#93c5fd',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px'
+                  }}>
+                    {deudaGas.esCuotaEspecial ? 'Cuota Especial por Gas' : 'Cuota de Gas Comunal'}
+                  </span>
+                </div>
+                <span style={{
+                  fontSize: '10.5px',
+                  fontWeight: 800,
+                  backgroundColor: 'rgba(239, 68, 68, 0.25)',
+                  color: '#f87171',
+                  border: '1px solid rgba(239, 68, 68, 0.4)',
+                  padding: '2px 8px',
+                  borderRadius: '999px'
+                }}>
+                  Pendiente
+                </span>
+              </div>
+
+              <div style={{ fontSize: '13px', color: '#e2e8f0', marginBottom: '8px' }}>
+                <b>{deudaGas.campanaTitulo || 'Aporte para recarga del tanque central'}</b>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', marginBottom: '12px' }}>
+                <span style={{ fontSize: '22px', fontWeight: 900, color: '#fff' }}>
+                  Bs. {fmtBs(deudaGas.montoBs)}
+                </span>
+                <span style={{ fontSize: '12px', color: '#cbd5e1' }}>
+                  (≈ ${deudaGas.montoUsd.toFixed(2)} USD)
+                </span>
+              </div>
+
+              {deudaGas.fechaLimite && (
+                <div style={{ fontSize: '11px', color: '#fca5a5', marginBottom: '12px' }}>
+                  ⏳ Fecha límite de pago: <b>{deudaGas.fechaLimite}</b>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  onClick={() => navigate('/gas?reportar=1')}
+                  style={{
+                    flex: 2,
+                    backgroundColor: 'var(--color-accent, #f97316)',
+                    color: '#fff',
+                    border: 'none',
+                    padding: '10px 14px',
+                    borderRadius: '10px',
+                    fontSize: '12.5px',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    boxShadow: 'var(--color-brand-shadow, 0 4px 12px rgba(249, 115, 22, 0.4))'
+                  }}
+                >
+                  <span>💳</span>
+                  <span>Reportar Pago</span>
+                </button>
+                <button
+                  onClick={() => navigate('/gas')}
+                  style={{
+                    flex: 1,
+                    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                    color: '#fff',
+                    border: '1px solid rgba(255, 255, 255, 0.15)',
+                    padding: '10px 12px',
+                    borderRadius: '10px',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    cursor: 'pointer'
+                  }}
+                >
+                  Ver Datos
+                </button>
               </div>
             </div>
           )}
@@ -1129,6 +1241,119 @@ export function Dashboard() {
             </div>
             )
           })()}
+
+          {/* ── ALERTA DE CUOTA ESPECIAL POR GAS (DESKTOP) ─────────── */}
+          {deudaGas && deudaGas.tieneDeuda && (deudaGas.montoBs > 0 || deudaGas.montoUsd > 0) && (
+            <div style={{
+              background: deudaGas.esCuotaEspecial
+                ? 'linear-gradient(135deg, rgba(239, 68, 68, 0.16) 0%, rgba(249, 115, 22, 0.16) 100%)'
+                : 'linear-gradient(135deg, rgba(59, 130, 246, 0.14) 0%, rgba(37, 99, 235, 0.14) 100%)',
+              border: deudaGas.esCuotaEspecial ? '2px solid #ef4444' : '1px solid rgba(59, 130, 246, 0.4)',
+              borderRadius: '20px',
+              padding: '20px 24px',
+              marginBottom: '24px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              boxShadow: deudaGas.esCuotaEspecial ? '0 10px 30px rgba(239, 68, 68, 0.2)' : '0 10px 30px rgba(0, 0, 0, 0.4)',
+              gap: '20px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                <div style={{
+                  width: '48px',
+                  height: '48px',
+                  borderRadius: '14px',
+                  backgroundColor: deudaGas.esCuotaEspecial ? 'rgba(239, 68, 68, 0.25)' : 'rgba(59, 130, 246, 0.25)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '24px',
+                  flexShrink: 0
+                }}>
+                  {deudaGas.esCuotaEspecial ? '⚡' : '⛽'}
+                </div>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
+                    <span style={{
+                      fontWeight: 900,
+                      fontSize: '13px',
+                      color: deudaGas.esCuotaEspecial ? '#f87171' : '#93c5fd',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.6px'
+                    }}>
+                      {deudaGas.esCuotaEspecial ? 'Cuota Especial por Gas Comunal' : 'Cuota de Gas Comunal'}
+                    </span>
+                    <span style={{
+                      fontSize: '11px',
+                      fontWeight: 800,
+                      backgroundColor: 'rgba(239, 68, 68, 0.25)',
+                      color: '#f87171',
+                      border: '1px solid rgba(239, 68, 68, 0.4)',
+                      padding: '2px 8px',
+                      borderRadius: '999px'
+                    }}>
+                      Pendiente por Pagar
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '15px', fontWeight: 800, color: '#fff', marginBottom: '2px' }}>
+                    {deudaGas.campanaTitulo || 'Recarga y Mantenimiento del Tanque Central'}
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+                    Cuota comunitaria independiente del recibo ordinario de condominio. {deudaGas.fechaLimite ? `· Límite: ${deudaGas.fechaLimite}` : ''}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flexShrink: 0 }}>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: '24px', fontWeight: 900, color: '#fff' }}>
+                    Bs. {fmtBs(deudaGas.montoBs)}
+                  </div>
+                  <div style={{ fontSize: '13px', color: 'var(--color-accent, #f97316)', fontWeight: 700 }}>
+                    ≈ ${deudaGas.montoUsd.toFixed(2)} USD
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button
+                    onClick={() => navigate('/gas')}
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.08)',
+                      border: '1px solid rgba(255, 255, 255, 0.16)',
+                      color: '#fff',
+                      padding: '10px 16px',
+                      borderRadius: '12px',
+                      fontSize: '13px',
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Ver Datos Bancarios
+                  </button>
+                  <button
+                    onClick={() => navigate('/gas?reportar=1')}
+                    style={{
+                      background: 'var(--color-brand-gradient, linear-gradient(135deg, #fb923c 0%, #f97316 100%))',
+                      border: 'none',
+                      color: '#fff',
+                      padding: '10px 18px',
+                      borderRadius: '12px',
+                      fontSize: '13px',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      boxShadow: 'var(--color-brand-shadow, 0 4px 14px rgba(249, 115, 22, 0.4))'
+                    }}
+                  >
+                    <span>💳</span>
+                    <span>Reportar Pago</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Bento Grid Desktop (7 cols principal / 5 cols lateral) */}
           <div className="bento-desktop-grid">

@@ -1,22 +1,43 @@
 import React, { useState, useEffect, useMemo } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../application/contexts/AuthContext'
 import {
   obtenerGasServicioData,
   calcularMetricasGas,
   obtenerDeudaGasApartamento,
+  reportarPagoGasResidente,
   GasServicioData
 } from '../../data/gasService'
 
 export const GasResidente: React.FC = () => {
   const { perfil } = useAuth()
+  const [searchParams] = useSearchParams()
   const [data, setData] = useState<GasServicioData | null>(null)
   const [loading, setLoading] = useState<boolean>(true)
   const [copiedBank, setCopiedBank] = useState<boolean>(false)
   const [copiedAmount, setCopiedAmount] = useState<boolean>(false)
+  const [toastMsg, setToastMsg] = useState<string | null>(null)
+
+  // Modal Reporte de Pago
+  const [modalReportarOpen, setModalReportarOpen] = useState<boolean>(false)
+  const [guardandoReporte, setGuardandoReporte] = useState<boolean>(false)
+  const [formReporte, setFormReporte] = useState({
+    monto: '',
+    moneda: 'BS' as 'BS' | 'USD',
+    metodoPago: 'pago_movil' as 'pago_movil' | 'transferencia' | 'efectivo_bs' | 'efectivo_usd' | 'otro',
+    referencia: '',
+    fechaPago: new Date().toISOString().slice(0, 10),
+    observaciones: ''
+  })
 
   const p = perfil as any
   const aptoNumero = p?.apartamento?.numero || p?.apartamentos?.numero || p?.apartamento_id || ''
   const apartamentoId = p?.apartamento_id || p?.apartamento?.id || ''
+
+  const showToast = (msg: string) => {
+    setToastMsg(msg)
+    setTimeout(() => setToastMsg(null), 3500)
+  }
 
   useEffect(() => {
     async function load() {
@@ -42,6 +63,66 @@ export const GasResidente: React.FC = () => {
     if (!data) return null
     return obtenerDeudaGasApartamento(data, apartamentoId, aptoNumero)
   }, [data, apartamentoId, aptoNumero])
+
+  // Abrir modal automáticamente si vino desde el Dashboard con ?reportar=1
+  useEffect(() => {
+    if (searchParams.get('reportar') === '1' && miDeuda && miDeuda.tieneDeuda) {
+      setFormReporte({
+        monto: miDeuda.monedaPrincipal === 'BS' ? miDeuda.montoBs.toFixed(2) : miDeuda.montoUsd.toFixed(2),
+        moneda: miDeuda.monedaPrincipal,
+        metodoPago: 'pago_movil',
+        referencia: '',
+        fechaPago: new Date().toISOString().slice(0, 10),
+        observaciones: ''
+      })
+      setModalReportarOpen(true)
+    }
+  }, [searchParams, miDeuda])
+
+  const handleEnviarReportePago = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!miDeuda?.campanaId) {
+      showToast('No hay una campaña de gas activa para reportar pago')
+      return
+    }
+    const montoNum = parseFloat(formReporte.monto)
+    if (isNaN(montoNum) || montoNum <= 0) {
+      showToast('Introduce un monto válido mayor a 0')
+      return
+    }
+    if (['pago_movil', 'transferencia'].includes(formReporte.metodoPago) && !formReporte.referencia.trim()) {
+      showToast('Por favor escribe la referencia del comprobante')
+      return
+    }
+
+    setGuardandoReporte(true)
+    try {
+      const res = await reportarPagoGasResidente({
+        jornadaId: miDeuda.campanaId,
+        apartamentoId,
+        apartamentoNumero: aptoNumero,
+        monto: montoNum,
+        moneda: formReporte.moneda,
+        metodoPago: formReporte.metodoPago,
+        referencia: formReporte.referencia.trim(),
+        fechaPago: formReporte.fechaPago,
+        observaciones: formReporte.observaciones.trim(),
+        tasaBcv: data?.config.tasaBcv || 859.06
+      })
+
+      if (res.success && res.data) {
+        setData(res.data)
+        setModalReportarOpen(false)
+        showToast('¡Pago de gas registrado exitosamente! Gracias por tu reporte.')
+      } else {
+        showToast(res.error || 'Error registrando el pago')
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Error al procesar el reporte')
+    } finally {
+      setGuardandoReporte(false)
+    }
+  }
 
   const copyBankData = () => {
     if (!data) return
@@ -151,10 +232,14 @@ export const GasResidente: React.FC = () => {
         {isSolvente ? (
           <div>
             <div style={{ fontSize: '18px', fontWeight: 800, color: '#fff', marginBottom: '6px' }}>
-              Tu apartamento está solvente con el gas
+              {(!miDeuda?.campanaTitulo || (miDeuda.montoBs === 0 && miDeuda.montoUsd === 0))
+                ? 'No hay cuotas de gas pendientes actualmente'
+                : 'Tu apartamento está solvente con el gas'}
             </div>
             <p style={{ color: '#a1a1aa', fontSize: '13px', margin: '0 0 14px', lineHeight: 1.5 }}>
-              La cuota para la jornada actual ({miDeuda?.campanaTitulo || 'Recaudación de Gas'}) se encuentra al día. ¡Gracias por tu puntualidad vecinal!
+              {(!miDeuda?.campanaTitulo || (miDeuda.montoBs === 0 && miDeuda.montoUsd === 0))
+                ? 'Tu apartamento se encuentra al día. Cuando la administración asigne una cuota ordinaria o cuota especial para la recarga del tanque, podrás verla aquí y recibirás un correo informativo.'
+                : `La cuota para la jornada actual (${miDeuda?.campanaTitulo || 'Recaudación de Gas'}) se encuentra al día. ¡Gracias por tu puntualidad vecinal!`}
             </p>
 
             {miDeuda?.detallePago?.referencia && (
@@ -178,6 +263,30 @@ export const GasResidente: React.FC = () => {
           </div>
         ) : (
           <div>
+            {/* Si es cuota especial */}
+            {miDeuda?.esCuotaEspecial && (
+              <div style={{
+                backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                border: '1px solid rgba(239, 68, 68, 0.4)',
+                borderRadius: '12px',
+                padding: '10px 14px',
+                marginBottom: '14px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px'
+              }}>
+                <span style={{ fontSize: '20px' }}>⚡</span>
+                <div>
+                  <div style={{ fontSize: '13px', fontWeight: 900, color: '#f87171' }}>
+                    CUOTA ESPECIAL POR GAS
+                  </div>
+                  <div style={{ fontSize: '11.5px', color: '#fca5a5' }}>
+                    {miDeuda.campanaTitulo || 'Aporte extraordinario para recarga del tanque'}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Monto de la deuda: Si la moneda es Bolívares, se destaca primero y prominentemente en Bs. */}
             <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
               {esDeudaBs ? (
@@ -192,7 +301,7 @@ export const GasResidente: React.FC = () => {
               ) : (
                 <>
                   <span style={{ fontSize: '32px', fontWeight: 900, color: '#ef4444' }}>
-                    ${(miDeuda?.montoUsd || 5).toFixed(2)} USD
+                    ${(miDeuda?.montoUsd || 0).toFixed(2)} USD
                   </span>
                   <span style={{ fontSize: '14px', color: '#a1a1aa' }}>
                     ≈ Bs. {(miDeuda?.montoBs || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -302,6 +411,41 @@ export const GasResidente: React.FC = () => {
                 </div>
               </div>
             )}
+
+            {/* BOTÓN PARA REPORTAR PAGO DE GAS */}
+            <button
+              onClick={() => {
+                setFormReporte({
+                  monto: miDeuda ? (miDeuda.monedaPrincipal === 'BS' ? miDeuda.montoBs.toFixed(2) : miDeuda.montoUsd.toFixed(2)) : '',
+                  moneda: miDeuda?.monedaPrincipal || 'BS',
+                  metodoPago: 'pago_movil',
+                  referencia: '',
+                  fechaPago: new Date().toISOString().slice(0, 10),
+                  observaciones: ''
+                })
+                setModalReportarOpen(true)
+              }}
+              style={{
+                width: '100%',
+                marginTop: '16px',
+                backgroundColor: 'var(--color-accent, #f97316)',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '12px',
+                padding: '13px 18px',
+                fontSize: '14px',
+                fontWeight: 800,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                boxShadow: 'var(--color-brand-shadow, 0 4px 16px rgba(249, 115, 22, 0.4))'
+              }}
+            >
+              <span>💳</span>
+              <span>Reportar Pago de Cuota de Gas</span>
+            </button>
           </div>
         )}
       </div>
@@ -523,6 +667,282 @@ export const GasResidente: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* ── TOAST NOTIFICACIÓN ────────────────────────── */}
+      {toastMsg && (
+        <div style={{
+          position: 'fixed',
+          top: '24px',
+          right: '24px',
+          backgroundColor: 'var(--color-accent, #f97316)',
+          color: '#fff',
+          padding: '12px 20px',
+          borderRadius: '12px',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
+          fontWeight: 700,
+          fontSize: '13px',
+          zIndex: 999999,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px'
+        }}>
+          <span>⛽</span>
+          <span>{toastMsg}</span>
+        </div>
+      )}
+
+      {/* ── MODAL REPORTAR PAGO DE GAS ─────────────────── */}
+      {modalReportarOpen && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.85)',
+          backdropFilter: 'blur(8px)',
+          zIndex: 99999,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '16px'
+        }}>
+          <div style={{
+            background: 'linear-gradient(145deg, #181920 0%, #101116 100%)',
+            border: '1px solid rgba(249, 115, 22, 0.35)',
+            boxShadow: '0 20px 60px rgba(0, 0, 0, 0.6), 0 0 30px rgba(249, 115, 22, 0.15)',
+            borderRadius: '24px',
+            padding: '24px',
+            width: '100%',
+            maxWidth: '500px',
+            maxHeight: '92vh',
+            overflowY: 'auto'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '24px' }}>💳</span>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: '#fff' }}>
+                    Reportar Pago de Cuota de Gas
+                  </h3>
+                  <div style={{ fontSize: '11px', color: '#a1a1aa', marginTop: '2px' }}>
+                    Apartamento {aptoNumero} · {miDeuda?.campanaTitulo || 'Gas Comunal'}
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalReportarOpen(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#a1a1aa',
+                  fontSize: '20px',
+                  cursor: 'pointer'
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleEnviarReportePago} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              {/* Moneda y Monto */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ fontSize: '11px', color: '#a1a1aa', fontWeight: 700, textTransform: 'uppercase' }}>
+                    MONEDA PAGADA
+                  </label>
+                  <select
+                    value={formReporte.moneda}
+                    onChange={e => setFormReporte(prev => ({ ...prev, moneda: e.target.value as 'BS' | 'USD' }))}
+                    style={{
+                      width: '100%',
+                      backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                      border: '1px solid rgba(255, 255, 255, 0.12)',
+                      padding: '10px 12px',
+                      borderRadius: '10px',
+                      color: '#fff',
+                      marginTop: '4px',
+                      fontSize: '13px'
+                    }}
+                  >
+                    <option value="BS">Bolívares (Bs.)</option>
+                    <option value="USD">Dólares ($ USD)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '11px', color: '#a1a1aa', fontWeight: 700, textTransform: 'uppercase' }}>
+                    MONTO TRANSFERIDO
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    value={formReporte.monto}
+                    onChange={e => setFormReporte(prev => ({ ...prev, monto: e.target.value }))}
+                    style={{
+                      width: '100%',
+                      backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                      border: '1px solid rgba(255, 255, 255, 0.12)',
+                      padding: '10px 12px',
+                      borderRadius: '10px',
+                      color: '#fff',
+                      marginTop: '4px',
+                      fontSize: '13px',
+                      fontWeight: 700
+                    }}
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* Método de pago */}
+              <div>
+                <label style={{ fontSize: '11px', color: '#a1a1aa', fontWeight: 700, textTransform: 'uppercase' }}>
+                  MÉTODO DE PAGO
+                </label>
+                <select
+                  value={formReporte.metodoPago}
+                  onChange={e => setFormReporte(prev => ({ ...prev, metodoPago: e.target.value as any }))}
+                  style={{
+                    width: '100%',
+                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                    border: '1px solid rgba(255, 255, 255, 0.12)',
+                    padding: '10px 12px',
+                    borderRadius: '10px',
+                    color: '#fff',
+                    marginTop: '4px',
+                    fontSize: '13px'
+                  }}
+                >
+                  <option value="pago_movil">Pago Móvil</option>
+                  <option value="transferencia">Transferencia Bancaria</option>
+                  <option value="efectivo_bs">Efectivo Bolívares</option>
+                  <option value="efectivo_usd">Efectivo Divisas ($)</option>
+                  <option value="otro">Otro método</option>
+                </select>
+              </div>
+
+              {/* Número de Referencia */}
+              {['pago_movil', 'transferencia'].includes(formReporte.metodoPago) && (
+                <div>
+                  <label style={{ fontSize: '11px', color: '#a1a1aa', fontWeight: 700, textTransform: 'uppercase' }}>
+                    NÚMERO DE REFERENCIA / COMPROBANTE *
+                  </label>
+                  <input
+                    type="text"
+                    value={formReporte.referencia}
+                    onChange={e => setFormReporte(prev => ({ ...prev, referencia: e.target.value }))}
+                    placeholder="Últimos 4 a 6 dígitos o número de comprobante"
+                    style={{
+                      width: '100%',
+                      backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                      border: '1px solid rgba(255, 255, 255, 0.12)',
+                      padding: '10px 12px',
+                      borderRadius: '10px',
+                      color: '#fff',
+                      marginTop: '4px',
+                      fontSize: '13px'
+                    }}
+                    required
+                  />
+                </div>
+              )}
+
+              {/* Fecha de pago */}
+              <div>
+                <label style={{ fontSize: '11px', color: '#a1a1aa', fontWeight: 700, textTransform: 'uppercase' }}>
+                  FECHA DEL PAGO
+                </label>
+                <input
+                  type="date"
+                  value={formReporte.fechaPago}
+                  onChange={e => setFormReporte(prev => ({ ...prev, fechaPago: e.target.value }))}
+                  style={{
+                    width: '100%',
+                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                    border: '1px solid rgba(255, 255, 255, 0.12)',
+                    padding: '10px 12px',
+                    borderRadius: '10px',
+                    color: '#fff',
+                    marginTop: '4px',
+                    fontSize: '13px'
+                  }}
+                  required
+                />
+              </div>
+
+              {/* Observaciones */}
+              <div>
+                <label style={{ fontSize: '11px', color: '#a1a1aa', fontWeight: 700, textTransform: 'uppercase' }}>
+                  NOTAS / OBSERVACIONES (OPCIONAL)
+                </label>
+                <input
+                  type="text"
+                  value={formReporte.observaciones}
+                  onChange={e => setFormReporte(prev => ({ ...prev, observaciones: e.target.value }))}
+                  placeholder="Ej: Pago realizado desde cuenta titular"
+                  style={{
+                    width: '100%',
+                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                    border: '1px solid rgba(255, 255, 255, 0.12)',
+                    padding: '10px 12px',
+                    borderRadius: '10px',
+                    color: '#fff',
+                    marginTop: '4px',
+                    fontSize: '13px'
+                  }}
+                />
+              </div>
+
+              {/* Botones de acción */}
+              <div style={{ display: 'flex', gap: '12px', marginTop: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setModalReportarOpen(false)}
+                  disabled={guardandoReporte}
+                  style={{
+                    flex: 1,
+                    padding: '11px',
+                    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '12px',
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                    fontSize: '13px'
+                  }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={guardandoReporte}
+                  style={{
+                    flex: 2,
+                    padding: '11px',
+                    backgroundColor: 'var(--color-accent, #f97316)',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '12px',
+                    cursor: guardandoReporte ? 'not-allowed' : 'pointer',
+                    fontWeight: 800,
+                    fontSize: '13px',
+                    boxShadow: 'var(--color-brand-shadow, 0 4px 14px rgba(249, 115, 22, 0.4))',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  {guardandoReporte ? 'Registrando...' : 'Confirmar Reporte de Pago'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

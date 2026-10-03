@@ -9,6 +9,7 @@ import {
   eliminarEventoCalendario,
   calcularMetricasGas,
   limpiarCacheLocalGas,
+  crearOActualizarCuotaGas,
   GasServicioData,
   LlenadoGas,
   DetallePagoAptoGas,
@@ -75,6 +76,18 @@ export const AdminGas: React.FC = () => {
   // Modal Configuración
   const [modalConfigOpen, setModalConfigOpen] = useState(false)
   const [formConfig, setFormConfig] = useState<TanqueGasConfig | null>(null)
+
+  // Modal Asignar / Publicar Cuota de Gas (Ordinaria o Especial)
+  const [modalPublicarCuotaOpen, setModalPublicarCuotaOpen] = useState(false)
+  const [guardandoCuota, setGuardandoCuota] = useState(false)
+  const [formCuota, setFormCuota] = useState({
+    titulo: 'Recarga de Gas Comunal',
+    esEspecial: false,
+    moneda: 'BS' as 'BS' | 'USD',
+    monto: '',
+    fechaLimite: '',
+    enviarEmail: true
+  })
 
   const showToast = (msg: string) => {
     setToastMsg(msg)
@@ -363,6 +376,44 @@ export const AdminGas: React.FC = () => {
     }
   }
 
+  const handlePublicarCuota = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const montoNum = parseFloat(formCuota.monto)
+    if (isNaN(montoNum) || montoNum <= 0) {
+      showToast('Por favor introduce un monto válido mayor a 0')
+      return
+    }
+
+    setGuardandoCuota(true)
+    try {
+      const res = await crearOActualizarCuotaGas({
+        titulo: formCuota.titulo.trim() || (formCuota.esEspecial ? 'Cuota Especial de Gas Comunal' : 'Cuota de Gas Comunal'),
+        esEspecial: formCuota.esEspecial,
+        moneda: formCuota.moneda,
+        monto: montoNum,
+        fechaLimite: formCuota.fechaLimite ? formCuota.fechaLimite : undefined,
+        enviarEmail: formCuota.enviarEmail,
+        tasaBcv: data?.config.tasaBcv || 859.06
+      })
+
+      if (res.success && res.data) {
+        setData(res.data)
+        setModalPublicarCuotaOpen(false)
+        if (res.emailsEnviados && res.emailsEnviados > 0) {
+          showToast(`¡Cuota ${formCuota.esEspecial ? 'Especial' : 'Ordinaria'} asignada! Se enviaron ${res.emailsEnviados} correos con la información de pago.`)
+        } else {
+          showToast(`¡Cuota ${formCuota.esEspecial ? 'Especial' : 'Ordinaria'} asignada exitosamente a todos los apartamentos!`)
+        }
+      } else {
+        showToast(res.error || 'Error al asignar la cuota de gas')
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Error inesperado al asignar la cuota')
+    } finally {
+      setGuardandoCuota(false)
+    }
+  }
+
   const handleCobroWhatsapp = (apto: DetallePagoAptoGas) => {
     const isBs = data?.config.monedaCuota === 'BS'
     const textoMonto = isBs
@@ -446,6 +497,40 @@ export const AdminGas: React.FC = () => {
 
         {/* Acciones Rápidas */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          <button
+            onClick={() => {
+              const jornadaActiva = data?.jornadas?.find(j => j.activa)
+              setFormCuota({
+                titulo: jornadaActiva?.titulo || 'Recarga de Gas Comunal',
+                esEspecial: Boolean(jornadaActiva?.esEspecial),
+                moneda: data?.config.monedaCuota || 'BS',
+                monto: data?.config.monedaCuota === 'BS'
+                  ? (data?.config.costoPorAptoDefectoBs ? String(data.config.costoPorAptoDefectoBs) : '')
+                  : (data?.config.costoPorAptoDefectoUsd ? String(data.config.costoPorAptoDefectoUsd) : ''),
+                fechaLimite: jornadaActiva?.fechaLimite || '',
+                enviarEmail: true
+              })
+              setModalPublicarCuotaOpen(true)
+            }}
+            style={{
+              backgroundColor: '#3b82f6',
+              color: '#fff',
+              border: 'none',
+              padding: '10px 16px',
+              borderRadius: '12px',
+              fontSize: '13px',
+              fontWeight: 800,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: '0 4px 14px rgba(59, 130, 246, 0.4)'
+            }}
+          >
+            <span>📢</span>
+            <span>Asignar / Publicar Cuota</span>
+          </button>
+
           <button
             onClick={() => setModalLlenadoOpen(true)}
             style={{
@@ -610,9 +695,24 @@ export const AdminGas: React.FC = () => {
             padding: '18px'
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-              <span style={{ fontSize: '11px', fontWeight: 800, color: '#a1a1aa', textTransform: 'uppercase', letterSpacing: '0.6px' }}>
-                RECAUDACIÓN ACTIVA
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: '#a1a1aa', textTransform: 'uppercase', letterSpacing: '0.6px' }}>
+                  RECAUDACIÓN ACTIVA
+                </span>
+                {metricas.jornadaActiva?.esEspecial && (
+                  <span style={{
+                    fontSize: '9.5px',
+                    fontWeight: 900,
+                    backgroundColor: 'rgba(239, 68, 68, 0.2)',
+                    color: '#f87171',
+                    border: '1px solid rgba(239, 68, 68, 0.4)',
+                    padding: '1px 6px',
+                    borderRadius: '4px'
+                  }}>
+                    ⚡ ESPECIAL
+                  </span>
+                )}
+              </div>
               <span style={{
                 fontSize: '11px',
                 fontWeight: 800,
@@ -2567,6 +2667,306 @@ export const AdminGas: React.FC = () => {
                   }}
                 >
                   Guardar Configuración
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL ASIGNAR / PUBLICAR CUOTA DE GAS ─────────────────── */}
+      {modalPublicarCuotaOpen && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.82)',
+          backdropFilter: 'blur(8px)',
+          zIndex: 99999,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '16px'
+        }}>
+          <div style={{
+            background: 'linear-gradient(145deg, #181920 0%, #101116 100%)',
+            border: formCuota.esEspecial
+              ? '1px solid rgba(239, 68, 68, 0.45)'
+              : '1px solid rgba(59, 130, 246, 0.35)',
+            boxShadow: formCuota.esEspecial
+              ? '0 20px 60px rgba(239, 68, 68, 0.25)'
+              : '0 20px 60px rgba(59, 130, 246, 0.2)',
+            borderRadius: '24px',
+            padding: '24px',
+            width: '100%',
+            maxWidth: '520px',
+            maxHeight: '92vh',
+            overflowY: 'auto'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '24px' }}>{formCuota.esEspecial ? '⚡' : '📢'}</span>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: '#fff' }}>
+                    {formCuota.esEspecial ? 'Publicar Cuota Especial por Gas' : 'Asignar Cuota de Gas'}
+                  </h3>
+                  <div style={{ fontSize: '11px', color: '#a1a1aa', marginTop: '2px' }}>
+                    Aparecerá como deuda comunal a cada residente para conciliar su pago
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalPublicarCuotaOpen(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#a1a1aa',
+                  fontSize: '20px',
+                  cursor: 'pointer'
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handlePublicarCuota} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {/* Checkbox Cuota Especial */}
+              <div style={{
+                backgroundColor: formCuota.esEspecial ? 'rgba(239, 68, 68, 0.12)' : 'rgba(255, 255, 255, 0.04)',
+                border: formCuota.esEspecial ? '1px solid rgba(239, 68, 68, 0.35)' : '1px solid rgba(255, 255, 255, 0.08)',
+                borderRadius: '14px',
+                padding: '12px 14px',
+                transition: 'all 0.2s'
+              }}>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={formCuota.esEspecial}
+                    onChange={e => {
+                      const checked = e.target.checked
+                      setFormCuota(prev => ({
+                        ...prev,
+                        esEspecial: checked,
+                        titulo: checked ? 'Cuota Especial Recarga de Gas' : 'Recarga de Gas Comunal',
+                        enviarEmail: checked ? true : prev.enviarEmail
+                      }))
+                    }}
+                    style={{ marginTop: '3px', width: '16px', height: '16px', accentColor: '#ef4444' }}
+                  />
+                  <div>
+                    <div style={{ fontSize: '13px', fontWeight: 800, color: formCuota.esEspecial ? '#f87171' : '#fff' }}>
+                      ⚡ Marcar como Cuota Especial / Extraordinaria
+                    </div>
+                    <div style={{ fontSize: '11.5px', color: '#a1a1aa', marginTop: '3px', lineHeight: 1.4 }}>
+                      Aparecerá en el <b>Dashboard Principal del Residente</b> destacada en color especial con botón directo para reportar pago.
+                    </div>
+                  </div>
+                </label>
+              </div>
+
+              {/* Título / Concepto */}
+              <div>
+                <label style={{ fontSize: '11px', color: '#a1a1aa', fontWeight: 700, textTransform: 'uppercase' }}>
+                  CONCEPTO DE LA CUOTA / MOTIVO
+                </label>
+                <input
+                  type="text"
+                  value={formCuota.titulo}
+                  onChange={e => setFormCuota(prev => ({ ...prev, titulo: e.target.value }))}
+                  placeholder="Ej: Recarga de Tanque Central Octubre 2026"
+                  style={{
+                    width: '100%',
+                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                    border: '1px solid rgba(255, 255, 255, 0.12)',
+                    padding: '10px 12px',
+                    borderRadius: '10px',
+                    color: '#fff',
+                    marginTop: '4px',
+                    fontSize: '13px'
+                  }}
+                  required
+                />
+              </div>
+
+              {/* Moneda y Monto */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ fontSize: '11px', color: '#a1a1aa', fontWeight: 700, textTransform: 'uppercase' }}>
+                    MONEDA PRINCIPAL
+                  </label>
+                  <select
+                    value={formCuota.moneda}
+                    onChange={e => setFormCuota(prev => ({ ...prev, moneda: e.target.value as 'BS' | 'USD' }))}
+                    style={{
+                      width: '100%',
+                      backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                      border: '1px solid rgba(255, 255, 255, 0.12)',
+                      padding: '10px 12px',
+                      borderRadius: '10px',
+                      color: '#fff',
+                      marginTop: '4px',
+                      fontSize: '13px'
+                    }}
+                  >
+                    <option value="BS">Bolívares (Bs.)</option>
+                    <option value="USD">Dólares ($ USD)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '11px', color: '#a1a1aa', fontWeight: 700, textTransform: 'uppercase' }}>
+                    MONTO POR APARTAMENTO ({formCuota.moneda === 'BS' ? 'Bs.' : '$'})
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    value={formCuota.monto}
+                    onChange={e => setFormCuota(prev => ({ ...prev, monto: e.target.value }))}
+                    placeholder={formCuota.moneda === 'BS' ? 'Ej: 1500.00' : 'Ej: 3.50'}
+                    style={{
+                      width: '100%',
+                      backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                      border: '1px solid rgba(255, 255, 255, 0.12)',
+                      padding: '10px 12px',
+                      borderRadius: '10px',
+                      color: '#fff',
+                      marginTop: '4px',
+                      fontSize: '13px',
+                      fontWeight: 700
+                    }}
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* Cálculo en vivo con tasa BCV */}
+              {formCuota.monto && Number(formCuota.monto) > 0 && (() => {
+                const tasa = data?.config.tasaBcv || 859.06
+                const m = Number(formCuota.monto)
+                const isBs = formCuota.moneda === 'BS'
+                const montoBs = isBs ? m : Number((m * tasa).toFixed(2))
+                const montoUsd = isBs ? Number((m / tasa).toFixed(2)) : m
+                return (
+                  <div style={{
+                    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+                    border: '1px dashed rgba(255, 255, 255, 0.15)',
+                    borderRadius: '10px',
+                    padding: '8px 12px',
+                    fontSize: '12px',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
+                  }}>
+                    <span style={{ color: '#a1a1aa' }}>Equivalencia a Tasa BCV ({tasa.toFixed(2)}):</span>
+                    <span style={{ fontWeight: 800, color: '#38bdf8' }}>
+                      Bs. {montoBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })} ≈ ${montoUsd.toFixed(2)} USD
+                    </span>
+                  </div>
+                )
+              })()}
+
+              {/* Fecha Límite */}
+              <div>
+                <label style={{ fontSize: '11px', color: '#a1a1aa', fontWeight: 700, textTransform: 'uppercase' }}>
+                  FECHA LÍMITE DE PAGO (OPCIONAL)
+                </label>
+                <input
+                  type="date"
+                  value={formCuota.fechaLimite}
+                  onChange={e => setFormCuota(prev => ({ ...prev, fechaLimite: e.target.value }))}
+                  style={{
+                    width: '100%',
+                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                    border: '1px solid rgba(255, 255, 255, 0.12)',
+                    padding: '10px 12px',
+                    borderRadius: '10px',
+                    color: '#fff',
+                    marginTop: '4px',
+                    fontSize: '13px'
+                  }}
+                />
+              </div>
+
+              {/* Checkbox Enviar Correo */}
+              <div style={{
+                backgroundColor: 'rgba(59, 130, 246, 0.08)',
+                border: '1px solid rgba(59, 130, 246, 0.2)',
+                borderRadius: '12px',
+                padding: '12px'
+              }}>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={formCuota.enviarEmail}
+                    onChange={e => setFormCuota(prev => ({ ...prev, enviarEmail: e.target.checked }))}
+                    style={{ marginTop: '2px', width: '16px', height: '16px', accentColor: '#3b82f6' }}
+                  />
+                  <div>
+                    <div style={{ fontSize: '12.5px', fontWeight: 700, color: '#93c5fd' }}>
+                      📧 Enviar correo electrónico con todos los datos a los residentes
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px', lineHeight: 1.3 }}>
+                      Se despachará un email automático con el desglose en Bolívares y Dólares, cuenta bancaria (banco, pago móvil, RIF y titular) y datos para reportar su pago.
+                    </div>
+                  </div>
+                </label>
+              </div>
+
+              {/* Botones de acción */}
+              <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => setModalPublicarCuotaOpen(false)}
+                  disabled={guardandoCuota}
+                  style={{
+                    flex: 1,
+                    padding: '11px',
+                    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '12px',
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                    fontSize: '13px'
+                  }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={guardandoCuota}
+                  style={{
+                    flex: 2,
+                    padding: '11px',
+                    backgroundColor: formCuota.esEspecial ? '#ef4444' : '#3b82f6',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '12px',
+                    cursor: guardandoCuota ? 'not-allowed' : 'pointer',
+                    fontWeight: 800,
+                    fontSize: '13px',
+                    boxShadow: formCuota.esEspecial ? '0 4px 14px rgba(239, 68, 68, 0.4)' : '0 4px 14px rgba(59, 130, 246, 0.4)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  {guardandoCuota ? (
+                    <>
+                      <span>⏳</span>
+                      <span>Asignando y Notificando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>{formCuota.esEspecial ? '⚡' : '📢'}</span>
+                      <span>Publicar Cuota {formCuota.esEspecial ? 'Especial' : 'de Gas'}</span>
+                    </>
+                  )}
                 </button>
               </div>
             </form>
