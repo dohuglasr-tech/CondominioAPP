@@ -23,6 +23,7 @@ export const DescargarReciboPublico: React.FC = () => {
   const { reciboId: paramReciboId } = useParams<{ reciboId?: string }>()
   const [searchParams] = useSearchParams()
   const reciboId = paramReciboId || searchParams.get('id') || searchParams.get('reciboId')
+  const nombreOverride = searchParams.get('nombre') || searchParams.get('propietario')
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -41,11 +42,15 @@ export const DescargarReciboPublico: React.FC = () => {
       const mesIndex = (parseInt(mesNumStr) || 1) - 1
       const mesLabel = MESES[mesIndex] || 'Mes'
 
+      const nombreFinal = (nombreOverride && decodeURIComponent(nombreOverride).trim())
+        ? decodeURIComponent(nombreOverride).trim()
+        : (r.apartamento?.propietario_nombre || null)
+
       const aptoData: ReciboAptoData = {
         id: r.apartamento_id,
         numero: r.apartamento?.numero || 'S/N',
         alicuota: r.alicuota,
-        propietario_nombre: r.apartamento?.propietario_nombre || null
+        propietario_nombre: nombreFinal
       }
 
       const gastos: ReciboGastoData[] = (r.data_json?.gastos || []).map((g: any) => ({
@@ -399,6 +404,16 @@ export const DescargarReciboPublico: React.FC = () => {
                 </div>
                 <div style={{ fontSize: '17px', fontWeight: 900, color: '#fff' }}>
                   Apto. {apto?.numero || 'S/N'}
+                  {nombreOverride && (
+                    <span style={{ fontSize: '13.5px', color: '#93c5fd', fontWeight: 700, marginLeft: '8px' }}>
+                      · {decodeURIComponent(nombreOverride).trim()}
+                    </span>
+                  )}
+                  {!nombreOverride && apto?.propietario_nombre && (
+                    <span style={{ fontSize: '13.5px', color: '#94a3b8', fontWeight: 600, marginLeft: '8px' }}>
+                      · {apto.propietario_nombre}
+                    </span>
+                  )}
                 </div>
               </div>
               <div style={{ textAlign: 'right' }}>

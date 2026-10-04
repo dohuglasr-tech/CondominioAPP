@@ -865,7 +865,8 @@ export function generarHtmlRecordatorioReciboDirecto(datos: DatosEmailRecordator
     : (datos.totalUsd > 0 && datos.totalBs > 0 ? parseFloat((datos.totalBs / datos.totalUsd).toFixed(4)) : 859.06)
 
   const primaryColor = datos.colorPrimario || (typeof window !== 'undefined' ? localStorage.getItem('domus_primary_color') : null) || '#f97316'
-  const downloadUrl = `${portal}/descargar-recibo/${datos.reciboId}`
+  const encodedNombre = datos.propietarioNombre ? encodeURIComponent(datos.propietarioNombre.trim()) : ''
+  const downloadUrl = `${portal}/descargar-recibo/${datos.reciboId}${encodedNombre ? `?nombre=${encodedNombre}` : ''}`
 
   const subject = `🏢 Recordatorio de Recibo de Condominio — ${datos.mesLabel.toUpperCase()} ${datos.anio} | Apto. ${datos.apartamentoNumero}`
 

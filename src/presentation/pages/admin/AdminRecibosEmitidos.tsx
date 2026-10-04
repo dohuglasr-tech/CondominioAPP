@@ -126,6 +126,7 @@ export const AdminRecibosEmitidos: React.FC = () => {
   const [recibosParaEmails, setRecibosParaEmails] = useState<ReciboEmitido[]>([])
   const [cargandoRecibosEmails, setCargandoRecibosEmails] = useState(false)
   const [emailsManuales, setEmailsManuales] = useState<Record<string, string>>({})
+  const [nombresManuales, setNombresManuales] = useState<Record<string, string>>({})
   const [guardarEmailsEnPerfil, setGuardarEmailsEnPerfil] = useState(true)
   const [busquedaManual, setBusquedaManual] = useState('')
   const [despachandoEmails, setDespachandoEmails] = useState(false)
@@ -200,13 +201,18 @@ export const AdminRecibosEmitidos: React.FC = () => {
       recibosCompletos.sort((a, b) => compararApartamentos(a.apartamento?.numero || '', b.apartamento?.numero || ''))
       setRecibosParaEmails(recibosCompletos)
 
-      const iniciales: Record<string, string> = {}
+      const inicialesEmails: Record<string, string> = {}
+      const inicialesNombres: Record<string, string> = {}
       recibosCompletos.forEach(r => {
         if (r.apartamento?.propietario_email) {
-          iniciales[r.apartamento_id] = r.apartamento.propietario_email
+          inicialesEmails[r.apartamento_id] = r.apartamento.propietario_email
+        }
+        if (r.apartamento?.propietario_nombre) {
+          inicialesNombres[r.apartamento_id] = r.apartamento.propietario_nombre
         }
       })
-      setEmailsManuales(iniciales)
+      setEmailsManuales(inicialesEmails)
+      setNombresManuales(inicialesNombres)
     } finally {
       setCargandoRecibosEmails(false)
     }
@@ -252,11 +258,13 @@ export const AdminRecibosEmitidos: React.FC = () => {
         }
 
         let coincidencias = 0
-        const nuevoMapa = { ...emailsManuales }
+        const nuevoMapaEmails = { ...emailsManuales }
+        const nuevoMapaNombres = { ...nombresManuales }
 
         rows.forEach((row) => {
           let aptoStr = ''
           let emailStr = ''
+          let nombreStr = ''
 
           for (const key of Object.keys(row)) {
             const keyLower = key.toLowerCase()
@@ -270,6 +278,21 @@ export const AdminRecibosEmitidos: React.FC = () => {
               keyLower.includes('nro')
             ) {
               aptoStr = String(row[key] || '')
+              break
+            }
+          }
+
+          for (const key of Object.keys(row)) {
+            const keyLower = key.toLowerCase()
+            if (
+              keyLower.includes('nombre') ||
+              keyLower.includes('propietario') ||
+              keyLower.includes('residente') ||
+              keyLower.includes('titular') ||
+              keyLower.includes('inquilino') ||
+              keyLower.includes('destinatario')
+            ) {
+              nombreStr = String(row[key] || '').trim()
               break
             }
           }
@@ -309,15 +332,19 @@ export const AdminRecibosEmitidos: React.FC = () => {
             })
 
             if (match) {
-              nuevoMapa[match.apartamento_id] = emailStr
+              nuevoMapaEmails[match.apartamento_id] = emailStr
+              if (nombreStr) {
+                nuevoMapaNombres[match.apartamento_id] = nombreStr
+              }
               coincidencias++
             }
           }
         })
 
-        setEmailsManuales(nuevoMapa)
+        setEmailsManuales(nuevoMapaEmails)
+        setNombresManuales(nuevoMapaNombres)
         if (coincidencias > 0) {
-          showToast(`✅ Se asignaron ${coincidencias} correos exitosamente desde el archivo Excel.`)
+          showToast(`✅ Se asignaron ${coincidencias} registros exitosamente desde el archivo Excel.`)
         } else {
           alert('No se encontraron coincidencias entre los números de apartamento del Excel y los apartamentos de este mes. Asegúrate de incluir columnas como "Apartamento" y "Correo".')
         }
@@ -335,7 +362,7 @@ export const AdminRecibosEmitidos: React.FC = () => {
   const handleDescargarPlantillaExcel = () => {
     const rows = recibosParaEmails.map(r => ({
       'Apartamento': r.apartamento?.numero || '',
-      'Propietario / Residente': r.apartamento?.propietario_nombre || '',
+      'Nombre / Propietario': nombresManuales[r.apartamento_id] || r.apartamento?.propietario_nombre || '',
       'Correo Electrónico': emailsManuales[r.apartamento_id] || r.apartamento?.propietario_email || '',
       'Total USD': r.total_usd,
       'Total Bs': r.total_bs
@@ -356,7 +383,7 @@ export const AdminRecibosEmitidos: React.FC = () => {
   }
 
   // ── Despachador de correos masivos con descarga directa y recordatorio ─────
-  const ejecutarDespachoEmails = async (destinatarios: Array<{ recibo: ReciboEmitido; email: string }>) => {
+  const ejecutarDespachoEmails = async (destinatarios: Array<{ recibo: ReciboEmitido; email: string; nombre?: string }>) => {
     if (destinatarios.length === 0) {
       alert('No hay destinatarios con correo electrónico válido para enviar.')
       return
@@ -398,7 +425,7 @@ export const AdminRecibosEmitidos: React.FC = () => {
         const res = await despacharEmailRecordatorioRecibo({
           destinatarioEmail: item.email.trim(),
           apartamentoNumero: aptoNum,
-          propietarioNombre: item.recibo.apartamento?.propietario_nombre,
+          propietarioNombre: item.nombre || item.recibo.apartamento?.propietario_nombre,
           edificioNombre: config?.nombre_edificio,
           mesLabel,
           anio,
@@ -2926,7 +2953,8 @@ export const AdminRecibosEmitidos: React.FC = () => {
         )
         const destinatariosAuto = aptosConCorreoAuto.map(r => ({
           recibo: r,
-          email: r.apartamento!.propietario_email!.trim()
+          email: r.apartamento!.propietario_email!.trim(),
+          nombre: r.apartamento?.propietario_nombre || ''
         }))
 
         // Destinatarios en modo manual
@@ -2935,7 +2963,7 @@ export const AdminRecibosEmitidos: React.FC = () => {
           const q = busquedaManual.toLowerCase()
           return (
             (r.apartamento?.numero || '').toLowerCase().includes(q) ||
-            (r.apartamento?.propietario_nombre || '').toLowerCase().includes(q) ||
+            (nombresManuales[r.apartamento_id] || r.apartamento?.propietario_nombre || '').toLowerCase().includes(q) ||
             (emailsManuales[r.apartamento_id] || '').toLowerCase().includes(q)
           )
         })
@@ -2944,7 +2972,8 @@ export const AdminRecibosEmitidos: React.FC = () => {
           .filter(r => emailsManuales[r.apartamento_id] && emailsManuales[r.apartamento_id].includes('@'))
           .map(r => ({
             recibo: r,
-            email: emailsManuales[r.apartamento_id].trim()
+            email: emailsManuales[r.apartamento_id].trim(),
+            nombre: (nombresManuales[r.apartamento_id] ?? r.apartamento?.propietario_nombre ?? '').trim()
           }))
 
         const totalManualesListos = destinatariosManuales.length
@@ -3546,16 +3575,21 @@ export const AdminRecibosEmitidos: React.FC = () => {
                         {/* Botón Llenar con registrados */}
                         <button
                           onClick={() => {
-                            const nuevo = { ...emailsManuales }
+                            const nuevoEmails = { ...emailsManuales }
+                            const nuevoNombres = { ...nombresManuales }
                             let c = 0
                             recibosParaEmails.forEach(r => {
-                              if (!nuevo[r.apartamento_id] && r.apartamento?.propietario_email) {
-                                nuevo[r.apartamento_id] = r.apartamento.propietario_email
+                              if (!nuevoEmails[r.apartamento_id] && r.apartamento?.propietario_email) {
+                                nuevoEmails[r.apartamento_id] = r.apartamento.propietario_email
                                 c++
                               }
+                              if (!nuevoNombres[r.apartamento_id] && r.apartamento?.propietario_nombre) {
+                                nuevoNombres[r.apartamento_id] = r.apartamento.propietario_nombre
+                              }
                             })
-                            setEmailsManuales(nuevo)
-                            showToast(`✓ Se autocompletaron ${c} correos registrados.`)
+                            setEmailsManuales(nuevoEmails)
+                            setNombresManuales(nuevoNombres)
+                            showToast(`✓ Se autocompletaron ${c} casillas con datos registrados.`)
                           }}
                           style={{
                             backgroundColor: '#1e293b',
@@ -3567,7 +3601,7 @@ export const AdminRecibosEmitidos: React.FC = () => {
                             fontWeight: 600,
                             cursor: 'pointer'
                           }}
-                          title="Rellenar casillas vacías con correos registrados en perfiles"
+                          title="Rellenar casillas vacías con correos y nombres registrados en perfiles"
                         >
                           🔄 Llenar registrados
                         </button>
@@ -3575,8 +3609,9 @@ export const AdminRecibosEmitidos: React.FC = () => {
                         {/* Limpiar */}
                         <button
                           onClick={() => {
-                            if (window.confirm('¿Deseas limpiar todos los correos ingresados en las casillas?')) {
+                            if (window.confirm('¿Deseas limpiar todos los correos y nombres personalizados ingresados en las casillas?')) {
                               setEmailsManuales({})
+                              setNombresManuales({})
                             }
                           }}
                           style={{
@@ -3669,16 +3704,17 @@ export const AdminRecibosEmitidos: React.FC = () => {
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                         <thead style={{ position: 'sticky', top: 0, backgroundColor: '#111827', zIndex: 2 }}>
                           <tr style={{ color: '#64748b', textAlign: 'left', borderBottom: '1px solid #1e293b' }}>
-                            <th style={{ padding: '10px 14px' }}>Inmueble</th>
-                            <th style={{ padding: '10px 14px' }}>Residente</th>
-                            <th style={{ padding: '10px 14px' }}>Cuota Mes</th>
-                            <th style={{ padding: '10px 14px' }}>Correo Electrónico para Envío</th>
+                            <th style={{ padding: '10px 14px', width: '110px' }}>Inmueble</th>
+                            <th style={{ padding: '10px 14px', minWidth: '180px' }}>Nombre que saldrá en el Recibo</th>
+                            <th style={{ padding: '10px 14px', width: '110px' }}>Cuota Mes</th>
+                            <th style={{ padding: '10px 14px', minWidth: '220px' }}>Correo Electrónico para Envío</th>
                           </tr>
                         </thead>
                         <tbody>
                           {aptosFiltradosManual.map(r => {
                             const valEmail = emailsManuales[r.apartamento_id] || ''
                             const esValido = valEmail.includes('@') && valEmail.includes('.')
+                            const valNombre = nombresManuales[r.apartamento_id] ?? r.apartamento?.propietario_nombre ?? ''
 
                             return (
                               <tr key={r.id} style={{ borderBottom: '1px solid #1e293b30' }}>
@@ -3693,8 +3729,30 @@ export const AdminRecibosEmitidos: React.FC = () => {
                                     Apto. {r.apartamento?.numero}
                                   </span>
                                 </td>
-                                <td style={{ padding: '10px 14px', color: '#cbd5e1' }}>
-                                  {r.apartamento?.propietario_nombre || <span style={{ color: '#64748b' }}>Sin nombre</span>}
+                                <td style={{ padding: '8px 14px' }}>
+                                  <input
+                                    type="text"
+                                    placeholder={r.apartamento?.propietario_nombre || 'Nombre de propietario...'}
+                                    value={valNombre}
+                                    onChange={e => {
+                                      const v = e.target.value
+                                      setNombresManuales(prev => ({
+                                        ...prev,
+                                        [r.apartamento_id]: v
+                                      }))
+                                    }}
+                                    style={{
+                                      width: '100%',
+                                      backgroundColor: '#0a0f1d',
+                                      color: '#fff',
+                                      border: '1px solid #374151',
+                                      borderRadius: '8px',
+                                      padding: '7px 10px',
+                                      fontSize: '12px',
+                                      outline: 'none',
+                                      transition: 'border-color 0.2s'
+                                    }}
+                                  />
                                 </td>
                                 <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
                                   <div style={{ fontWeight: 700, color: '#38bdf8' }}>${fmtUsd(r.total_usd)}</div>
