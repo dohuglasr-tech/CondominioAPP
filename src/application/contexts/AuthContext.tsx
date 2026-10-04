@@ -4,6 +4,7 @@ import { supabase, Perfil, ConfigEdificio, Rol } from '../../data/supabase'
 import { appCache } from '../../data/cacheService'
 import { applyTheme } from '../../utils/themeManager'
 import { extractTenantSubdomain, resolveTenantBuilding } from '../../data/tenantService'
+import { debeSincronizarTasa, sincronizarTasaBcvConApi } from '../../data/bcvService'
 
 // ── Tipos del contexto ────────────────────────────────────────────
 interface AuthContextType {
@@ -110,6 +111,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (data) {
         setConfig(data)
         applyTheme(data.color_primario)
+
+        // Sincronización en segundo plano con el BCV si la tasa tiene más de 4 horas o es de fecha previa
+        if (debeSincronizarTasa(data.tasa_bcv_actualizada)) {
+          sincronizarTasaBcvConApi('Sistema de Inicio')
+            .then(res => {
+              if (res.ok && res.tasa > 1) {
+                setConfig(prev => prev ? {
+                  ...prev,
+                  tasa_bcv_actual: res.tasa,
+                  tasa_bcv_actualizada: res.fecha
+                } : prev)
+              }
+            })
+            .catch(() => {})
+        }
       } else {
         applyTheme()
       }

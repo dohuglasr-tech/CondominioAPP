@@ -87,12 +87,52 @@ export interface DatosEmailCuotaGas {
   colorPrimario?: string | null
 }
 
-const DEFAULT_PORTAL_URL = 'https://condominio-app-rouge.vercel.app'
-const DEFAULT_EDIFICIO = 'Residencias Ocutuy 5'
-const DEFAULT_BANCO = 'Banco Bicentenario'
-const DEFAULT_CUENTA = '0175-0525-4100-7575-1351'
-const DEFAULT_TITULAR = 'Zoraya Almeida'
-const DEFAULT_RIF = 'V-6089037'
+export interface DatosEmailRecordatorioRecibo {
+  destinatarioEmail: string
+  propietarioNombre?: string | null
+  apartamentoNumero: string
+  edificioNombre?: string
+  mesLabel: string
+  anio: number | string
+  totalUsd: number
+  totalBs: number
+  tasaBcv: number
+  alicuotaPct?: string | number
+  reciboId: string
+  bancoNombre?: string | null
+  cuentaNumero?: string | null
+  titularNombre?: string | null
+  cedulaRif?: string | null
+  cedula_cuenta?: string | null
+  tipo_cuenta?: string | null
+  pago_movil_banco?: string | null
+  pago_movil_cedula?: string | null
+  pago_movil_telefono?: string | null
+  zelle_email?: string | null
+  telefonoPagoMovil?: string | null
+  portalUrl?: string
+  colorPrimario?: string | null
+}
+
+export const DEFAULT_PORTAL_URL = 'https://condominio-app-rouge.vercel.app'
+export const DEFAULT_EDIFICIO = 'Residencias Ocutuy 5'
+export const DEFAULT_BANCO = 'Banco Bicentenario'
+export const DEFAULT_CUENTA = '0175-0525-4100-7575-1351'
+export const DEFAULT_TITULAR = 'Zoraya Almeida'
+export const DEFAULT_RIF = 'V-6089037'
+
+export function getBasePortalUrl(): string {
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    const origin = window.location.origin
+    // Si estamos en entorno de desarrollo local, usar la URL del portal de producción
+    // para que los enlaces enviados en los correos funcionen desde cualquier móvil o dispositivo externo
+    if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+      return DEFAULT_PORTAL_URL
+    }
+    return origin
+  }
+  return DEFAULT_PORTAL_URL
+}
 
 const fmtBs = (n: number) => (Number(n) || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtUsd = (n: number) => (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -804,4 +844,191 @@ export async function despacharEmailCuotaGas(datos: DatosEmailCuotaGas): Promise
   const { subject, html } = generarHtmlCuotaGas(datos)
   return enviarEmail({ to: datos.destinatarioEmail, subject, html })
 }
+
+// ── 5. PLANTILLA: RECORDATORIO DE RECIBO CON DESCARGA DIRECTA DE PDF ─────────
+export function generarHtmlRecordatorioReciboDirecto(datos: DatosEmailRecordatorioRecibo): { subject: string; html: string } {
+  const edificio = datos.edificioNombre || DEFAULT_EDIFICIO
+  const portal = datos.portalUrl || getBasePortalUrl()
+  const banco = datos.bancoNombre || DEFAULT_BANCO
+  const cuenta = datos.cuentaNumero || DEFAULT_CUENTA
+  const titular = datos.titularNombre || DEFAULT_TITULAR
+  const rif = datos.cedulaRif || DEFAULT_RIF
+  const cedula = datos.cedula_cuenta || rif
+  const tipoCuenta = datos.tipo_cuenta || 'Cuenta Corriente'
+  const pmoTel = datos.pago_movil_telefono || datos.telefonoPagoMovil || ''
+  const pmoBanco = datos.pago_movil_banco || banco
+  const pmoCedula = datos.pago_movil_cedula || cedula
+  const zelleEmail = datos.zelle_email || ''
+
+  const tasaBcvReal = (datos.tasaBcv && datos.tasaBcv > 1)
+    ? datos.tasaBcv
+    : (datos.totalUsd > 0 && datos.totalBs > 0 ? parseFloat((datos.totalBs / datos.totalUsd).toFixed(4)) : 859.06)
+
+  const primaryColor = datos.colorPrimario || (typeof window !== 'undefined' ? localStorage.getItem('domus_primary_color') : null) || '#f97316'
+  const downloadUrl = `${portal}/descargar-recibo/${datos.reciboId}`
+
+  const subject = `🏢 Recordatorio de Recibo de Condominio — ${datos.mesLabel.toUpperCase()} ${datos.anio} | Apto. ${datos.apartamentoNumero}`
+
+  const html = `
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#0b0f17;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#e2e8f0;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#0b0f17;padding:32px 16px;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background-color:#131926;border-radius:18px;border:1px solid #1e293b;overflow:hidden;box-shadow:0 20px 40px rgba(0,0,0,0.6);">
+          
+          <!-- HEADER -->
+          <tr>
+            <td style="background:linear-gradient(135deg, #1e293b 0%, #0f172a 100%);padding:30px 24px;text-align:center;border-bottom:1px solid rgba(255,255,255,0.08);">
+              <div style="font-size:38px;margin-bottom:6px;">🏢</div>
+              <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:800;letter-spacing:-0.5px;">${edificio.toUpperCase()}</h1>
+              <p style="margin:6px 0 0;color:${primaryColor};font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;">
+                RECORDATORIO DE RECIBO DE CONDOMINIO
+              </p>
+              <div style="display:inline-block;background:${primaryColor}22;border:1px solid ${primaryColor}66;border-radius:20px;padding:4px 14px;margin-top:12px;font-size:12px;color:${primaryColor};font-weight:700;">
+                🗓️ Período Facturado: ${datos.mesLabel.toUpperCase()} ${datos.anio}
+              </div>
+            </td>
+          </tr>
+
+          <!-- CUERPO -->
+          <tr>
+            <td style="padding:32px 28px;">
+              <p style="margin:0 0 16px;font-size:15px;color:#f8fafc;line-height:1.5;">
+                Estimado(a) <strong>${datos.propietarioNombre ? datos.propietarioNombre.trim() : `Propietario del Apartamento ${datos.apartamentoNumero}`}</strong>,
+              </p>
+              <p style="margin:0 0 24px;font-size:14px;color:#94a3b8;line-height:1.6;">
+                Nos comunicamos cordialmente desde la Administración para recordarle el recibo de gastos comunes de condominio correspondiente a su inmueble:
+              </p>
+
+              <!-- TARJETA DE MONTOS -->
+              <table width="100%" cellpadding="0" cellspacing="0" style="background:#090d14;border:1px solid #1e293b;border-radius:14px;margin-bottom:24px;overflow:hidden;">
+                <tr>
+                  <td style="padding:18px 20px;border-bottom:1px solid #1e293b;">
+                    <table width="100%">
+                      <tr>
+                        <td style="font-size:12px;color:#64748b;text-transform:uppercase;font-weight:700;letter-spacing:1px;">Inmueble</td>
+                        <td align="right" style="font-size:16px;color:#fff;font-weight:800;">Apto. ${datos.apartamentoNumero} ${datos.alicuotaPct ? `· Alícuota: ${datos.alicuotaPct}` : ''}</td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:20px;background:${primaryColor}0d;">
+                    <div style="font-size:12px;color:${primaryColor};text-transform:uppercase;font-weight:700;margin-bottom:6px;">Total de la cuota mensual:</div>
+                    <div style="font-size:32px;color:#ffffff;font-weight:900;letter-spacing:-0.5px;">
+                      $ ${fmtUsd(datos.totalUsd)} <span style="font-size:14px;color:${primaryColor};font-weight:700;">USD</span>
+                    </div>
+                    <div style="font-size:18px;color:#eab308;font-weight:700;margin-top:4px;">
+                      Bs. ${fmtBs(datos.totalBs)}
+                    </div>
+                    <div style="font-size:11px;color:#64748b;margin-top:6px;">
+                      Calculado a la Tasa Oficial BCV: <strong>${fmtBs(tasaBcvReal)} Bs/$</strong>
+                    </div>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- BOTÓN CTA: DESCARGA DIRECTA DE PDF SIN LOGIN -->
+              <div style="text-align:center;margin:28px 0 16px;">
+                <a href="${downloadUrl}" target="_blank" style="display:inline-block;background:linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);color:#ffffff;text-decoration:none;padding:16px 36px;border-radius:12px;font-size:15px;font-weight:800;letter-spacing:0.3px;box-shadow:0 8px 24px rgba(37, 99, 235, 0.45);">
+                  📥 Descargar Recibo Oficial (PDF) →
+                </a>
+                <p style="margin:10px 0 0;font-size:12px;color:#38bdf8;font-weight:600;line-height:1.4;">
+                  ⚡ Descarga directa inmediata: No requiere usuario, contraseña ni entrar a la app.
+                </p>
+              </div>
+
+              <!-- DATOS BANCARIOS -->
+              <div style="background:#0e131d;border:1px solid #1e293b;border-radius:14px;padding:20px;margin-bottom:24px;">
+                <div style="font-size:12px;color:#38bdf8;font-weight:800;text-transform:uppercase;letter-spacing:1px;margin-bottom:14px;">
+                  🏦 Cuentas Oficiales para su Pago:
+                </div>
+
+                <!-- TRANSFERENCIA BANCARIA -->
+                <div style="margin-bottom:14px;">
+                  <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px;border-bottom:1px solid #1e293b;padding-bottom:4px;">💳 Transferencia Bancaria</div>
+                  <table width="100%" style="font-size:13px;color:#cbd5e1;line-height:1.7;">
+                    <tr><td style="width:130px;color:#64748b;">Banco:</td><td><strong>${banco}</strong></td></tr>
+                    <tr><td style="color:#64748b;">Cédula/RIF:</td><td><strong>${cedula}</strong></td></tr>
+                    <tr><td style="color:#64748b;">Tipo de Cuenta:</td><td>${tipoCuenta}</td></tr>
+                    <tr><td style="color:#64748b;">Nro de Cuenta:</td><td><strong style="font-family:monospace;letter-spacing:0.5px;color:#fff;">${cuenta}</strong></td></tr>
+                    <tr><td style="color:#64748b;">Titular:</td><td><strong>${titular}</strong></td></tr>
+                  </table>
+                </div>
+
+                ${(pmoTel || pmoBanco) ? `
+                <!-- PAGO MÓVIL -->
+                <div style="margin-bottom:14px;">
+                  <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px;border-bottom:1px solid #1e293b;padding-bottom:4px;">📱 Pago Móvil</div>
+                  <table width="100%" style="font-size:13px;color:#cbd5e1;line-height:1.7;">
+                    <tr><td style="width:130px;color:#64748b;">Banco:</td><td><strong>${pmoBanco}</strong></td></tr>
+                    <tr><td style="color:#64748b;">Cédula:</td><td><strong>${pmoCedula}</strong></td></tr>
+                    <tr><td style="color:#64748b;">Teléfono:</td><td><strong style="color:#fff;">${pmoTel}</strong></td></tr>
+                  </table>
+                </div>` : ''}
+
+                ${zelleEmail ? `
+                <!-- ZELLE -->
+                <div>
+                  <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px;border-bottom:1px solid #1e293b;padding-bottom:4px;">💵 Zelle</div>
+                  <table width="100%" style="font-size:13px;color:#cbd5e1;line-height:1.7;">
+                    <tr><td style="width:130px;color:#64748b;">Correo:</td><td><strong style="color:#fff;">${zelleEmail}</strong></td></tr>
+                  </table>
+                </div>` : ''}
+              </div>
+
+              <!-- RECORDATORIO IMPORTANTE PARA EVITAR ACUMULACIONES -->
+              <div style="background:rgba(234, 179, 8, 0.12);border:1px solid rgba(234, 179, 8, 0.4);border-radius:14px;padding:20px;margin-bottom:24px;text-align:center;">
+                <div style="font-size:26px;margin-bottom:6px;">⚠️</div>
+                <div style="font-size:13px;font-weight:800;color:#facc15;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">
+                  Recordatorio Importante de Pago
+                </div>
+                <p style="margin:0;font-size:13.5px;color:#f1f5f9;line-height:1.6;">
+                  Estimado copropietario / residente: Le recordamos cordialmente que <strong>debe cancelar el pago de este recibo a la brevedad posible para evitar acumulaciones de deuda</strong> y posibles recargos por mora en su apartamento.
+                </p>
+                <p style="margin:8px 0 0;font-size:12px;color:#94a3b8;line-height:1.5;">
+                  Mantener su cuota al día permite garantizar los servicios esenciales, seguridad y mantenimiento de toda nuestra comunidad.
+                </p>
+              </div>
+
+              <!-- OPCIÓN DE REPORTAR PAGO EN LA PLATAFORMA -->
+              <div style="text-align:center;margin-bottom:8px;">
+                <a href="${portal}/login" target="_blank" style="display:inline-block;background:#1e293b;border:1px solid #334155;color:#f8fafc;text-decoration:none;padding:12px 24px;border-radius:10px;font-size:13px;font-weight:700;">
+                  💳 Reportar Pago en la Plataforma →
+                </a>
+              </div>
+            </td>
+          </tr>
+
+          <!-- FOOTER -->
+          <tr>
+            <td style="background-color:#090d14;padding:20px;text-align:center;border-top:1px solid #1e293b;font-size:11px;color:#475569;">
+              © ${new Date().getFullYear()} ${edificio} · Sistema de Notificaciones Administrativas Automatizadas
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`
+
+  return { subject, html }
+}
+
+/**
+ * Dispara el email de recordatorio de recibo con enlace de descarga directa de PDF sin login
+ */
+export async function despacharEmailRecordatorioRecibo(datos: DatosEmailRecordatorioRecibo): Promise<{ ok: boolean; error?: string }> {
+  const { subject, html } = generarHtmlRecordatorioReciboDirecto(datos)
+  return enviarEmail({ to: datos.destinatarioEmail, subject, html })
+}
+
 

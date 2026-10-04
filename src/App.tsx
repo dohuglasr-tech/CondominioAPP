@@ -41,6 +41,7 @@ import { GasResidente } from './presentation/pages/GasResidente'
 import { Register } from './presentation/pages/Register'
 import { InactivityManager } from './presentation/components/InactivityManager'
 import { SuperAdminDashboard } from './presentation/pages/superadmin/SuperAdminDashboard'
+import { DescargarReciboPublico } from './presentation/pages/DescargarReciboPublico'
 
 // ── Error Boundary para prevenir pantalla en negro ante errores imprevistos ──
 interface ErrorBoundaryState {
@@ -261,19 +262,24 @@ function AppShell() {
   }, [location.pathname, isPasswordRecovery, navigate])
 
   const isSuperAdminRoute = location.pathname.startsWith('/superadmin')
+  const isPublicDownloadRoute = location.pathname.startsWith('/descargar-recibo')
 
   return (
     <>
       <InactivityManager />
-      {!splashDone && !isSuperAdminRoute && (
+      {!splashDone && !isSuperAdminRoute && !isPublicDownloadRoute && (
         <SplashScreen
           logoUrl={config?.logo_url}
           buildingName={config?.nombre_edificio}
           onDone={handleSplashDone}
         />
       )}
-      {splashDone && !isSuperAdminRoute && <InstallAppPrompt />}
+      {splashDone && !isSuperAdminRoute && !isPublicDownloadRoute && <InstallAppPrompt />}
       <Routes>
+        {/* ── Descarga Directa Pública de Recibo (Sin login ni app) ── */}
+        <Route path="/descargar-recibo/:reciboId" element={<DescargarReciboPublico />} />
+        <Route path="/descargar-recibo" element={<DescargarReciboPublico />} />
+
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/reset-password" element={<ResetPassword />} />

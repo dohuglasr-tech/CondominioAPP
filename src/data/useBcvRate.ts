@@ -1,106 +1,110 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from './supabase'
 import { appCache } from './cacheService'
+import { consultarTasaBcvEnVivo, guardarTasaBcvEnDb, sincronizarTasaBcvConApi } from './bcvService'
 
-interface BcvRate {
+export interface BcvRateState {
   rate: number
   lastUpdate: string
   loading: boolean
+  syncing: boolean
   error: string | null
+  refresh: (forceApi?: boolean) => Promise<{ ok: boolean; rate: number; error?: string }>
 }
 
-export function useBcvRate() {
-  const [data, setData] = useState<BcvRate>({
-    rate: 859.06, // Tasa BCV Oficial de referencia
+export function useBcvRate(): BcvRateState {
+  const [data, setData] = useState<Omit<BcvRateState, 'refresh'>>({
+    rate: 866.56, // Tasa BCV Oficial de referencia
     lastUpdate: new Date().toISOString(),
     loading: true,
+    syncing: false,
     error: null,
   })
 
-  useEffect(() => {
-    let mounted = true
-
-    const fetchRateWithCache = async () => {
-      try {
-        const rateData = await appCache.fetch(
-          'tasa_bcv_oficial',
-          async () => {
-            // 1. Consultar API oficial de DolarAPI (estable y con CORS habilitado)
-            try {
-              const res = await fetch('https://ve.dolarapi.com/v1/dolares/oficial', {
-                headers: { Accept: 'application/json' },
-              })
-
-              if (res.ok) {
-                const json = await res.json()
-                const tasa = Number(json?.promedio ?? json?.precio ?? json?.venta)
-                if (tasa && !isNaN(tasa) && tasa > 1) {
-                  // Sincronizar en segundo plano con configuracion_edificio en Supabase
-                  supabase
-                    .from('configuracion_edificio')
-                    .update({
-                      tasa_bcv_actual: tasa,
-                      tasa_bcv_actualizada: json.fechaActualizacion || new Date().toISOString(),
-                    })
-                    .neq('id', '00000000-0000-0000-0000-000000000000')
-                    .then(() => {}, () => {})
-
-                  return {
-                    rate: tasa,
-                    lastUpdate: json.fechaActualizacion || new Date().toISOString(),
-                  }
-                }
-              }
-            } catch {
-              // Silencioso: fallback a Supabase
-            }
-
-            // 2. Fallback: Consultar la última tasa guardada en Supabase por la administración
-            try {
-              const { data: configData } = await supabase
-                .from('configuracion_edificio')
-                .select('tasa_bcv_actual, tasa_bcv_actualizada')
-                .single()
-
-              if (configData?.tasa_bcv_actual) {
-                return {
-                  rate: Number(configData.tasa_bcv_actual),
-                  lastUpdate: configData.tasa_bcv_actualizada || new Date().toISOString(),
-                }
-              }
-            } catch {
-              // Continuar a fallback estático
-            }
-
-            return {
-              rate: 859.06,
-              lastUpdate: new Date().toISOString(),
-            }
-          },
-          { ttlMs: 30 * 60 * 1000, tags: ['tasa_bcv', 'config'], persistSession: true }
-        )
-
-        if (mounted) {
+  const fetchRate = useCallback(async (forceApi = false) => {
+    try {
+      if (forceApi) {
+        setData(prev => ({ ...prev, syncing: true, error: null }))
+        const res = await sincronizarTasaBcvConApi('Sistema Automático', 'Sincronización en vivo de tasa BCV')
+        if (res.ok && res.tasa > 1) {
           setData({
-            rate: rateData.rate,
-            lastUpdate: rateData.lastUpdate,
+            rate: res.tasa,
+            lastUpdate: res.fecha,
             loading: false,
-            error: null,
+            syncing: false,
+            error: null
           })
-        }
-      } catch (err: any) {
-        if (mounted) {
-          setData((prev) => ({ ...prev, loading: false, error: err.message }))
+          return { ok: true, rate: res.tasa }
         }
       }
-    }
 
-    fetchRateWithCache()
+      // Si no es forzado o falló, usar caché o base de datos
+      const rateData = await appCache.fetch(
+        'tasa_bcv_oficial',
+        async () => {
+          // 1. Consultar API oficial de DolarAPI
+          try {
+            const apiRes = await consultarTasaBcvEnVivo()
+            if (apiRes && apiRes.tasa > 1) {
+              // Guardar en segundo plano en Supabase e invalidar caché
+              guardarTasaBcvEnDb(apiRes.tasa, apiRes.fechaActualizacion, 'Sistema Automático')
+              return {
+                rate: apiRes.tasa,
+                lastUpdate: apiRes.fechaActualizacion
+              }
+            }
+          } catch {}
+
+          // 2. Fallback: Consultar Supabase
+          try {
+            const { data: configData } = await supabase
+              .from('configuracion_edificio')
+              .select('tasa_bcv_actual, tasa_bcv_actualizada')
+              .single()
+
+            if (configData?.tasa_bcv_actual && Number(configData.tasa_bcv_actual) > 1) {
+              return {
+                rate: Number(configData.tasa_bcv_actual),
+                lastUpdate: configData.tasa_bcv_actualizada || new Date().toISOString(),
+              }
+            }
+          } catch {}
+
+          return {
+            rate: 866.56,
+            lastUpdate: new Date().toISOString(),
+          }
+        },
+        { ttlMs: 15 * 60 * 1000, tags: ['tasa_bcv', 'config'], forceRefresh: forceApi, persistSession: true }
+      )
+
+      setData({
+        rate: rateData.rate,
+        lastUpdate: rateData.lastUpdate,
+        loading: false,
+        syncing: false,
+        error: null,
+      })
+      return { ok: true, rate: rateData.rate }
+    } catch (err: any) {
+      setData((prev) => ({ ...prev, loading: false, syncing: false, error: err.message }))
+      return { ok: false, rate: 866.56, error: err.message }
+    }
+  }, [])
+
+  useEffect(() => {
+    let mounted = true
+    fetchRate(false).then(() => {
+      if (!mounted) return
+    })
 
     return () => {
       mounted = false
     }
-  }, [])
+  }, [fetchRate])
 
-  return data
+  return {
+    ...data,
+    refresh: fetchRate,
+  }
 }

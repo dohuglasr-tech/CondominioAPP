@@ -13,9 +13,10 @@ import {
   formatWhatsappUrl
 } from '../../../data/juntaService'
 import { PRESET_THEME_COLORS, applyTheme, generateThemePalette } from '../../../utils/themeManager'
+import { guardarTasaBcvEnDb, sincronizarTasaBcvConApi } from '../../../data/bcvService'
 
 export const AdminEdificio: React.FC = () => {
-  const { config, refreshConfig } = useAuth()
+  const { config, refreshConfig, perfil } = useAuth()
 
   // Tab activo: 'edificio' o 'organigrama'
   const [activeTab, setActiveTab] = useState<'edificio' | 'organigrama'>('edificio')
@@ -70,6 +71,14 @@ export const AdminEdificio: React.FC = () => {
   const [formHorario, setFormHorario] = useState('')
   const [formOrden, setFormOrden] = useState<number>(1)
 
+  // Estado Tasa BCV Oficial
+  const [tasaBcvActual, setTasaBcvActual] = useState<number>(Number(config?.tasa_bcv_actual) || 866.56)
+  const [tasaBcvActualizada, setTasaBcvActualizada] = useState<string | null>(config?.tasa_bcv_actualizada || null)
+  const [tasaBcvManualInput, setTasaBcvManualInput] = useState<string>(config?.tasa_bcv_actual ? String(config.tasa_bcv_actual) : '866.56')
+  const [sincronizandoBcv, setSincronizandoBcv] = useState(false)
+  const [guardandoTasaManual, setGuardandoTasaManual] = useState(false)
+  const [mensajeBcv, setMensajeBcv] = useState<{ tipo: 'success' | 'error'; texto: string } | null>(null)
+
   // Cargar datos edificio
   useEffect(() => {
     if (config) {
@@ -97,12 +106,70 @@ export const AdminEdificio: React.FC = () => {
         fecha_inicio_gestion: (config as any)?.fecha_inicio_gestion || '2026-09-01',
         fecha_fin_administracion_anterior: (config as any)?.fecha_fin_administracion_anterior || '2026-08-31',
       })
+      if (config.tasa_bcv_actual) {
+        setTasaBcvActual(Number(config.tasa_bcv_actual))
+        setTasaBcvActualizada(config.tasa_bcv_actualizada || null)
+        setTasaBcvManualInput(String(config.tasa_bcv_actual))
+      }
       if (config.logo_url) setLogoPreview(config.logo_url)
       if ((config as any).color_primario) {
         applyTheme((config as any).color_primario)
       }
     }
   }, [config])
+
+  // ── Sincronizar tasa BCV en vivo con la API oficial ──────────────────
+  const handleSincronizarBcv = async () => {
+    setSincronizandoBcv(true)
+    setMensajeBcv(null)
+    try {
+      const res = await sincronizarTasaBcvConApi(perfil?.nombre_completo || 'Administrador')
+      if (res.ok && res.tasa > 1) {
+        setTasaBcvActual(res.tasa)
+        setTasaBcvActualizada(res.fecha)
+        setTasaBcvManualInput(String(res.tasa))
+        setMensajeBcv({ tipo: 'success', texto: res.mensaje })
+        await refreshConfig(true)
+      } else {
+        setMensajeBcv({ tipo: 'error', texto: res.mensaje || res.error || 'Error al sincronizar con el BCV' })
+      }
+    } catch (err: any) {
+      setMensajeBcv({ tipo: 'error', texto: err.message || 'Error de conexión' })
+    } finally {
+      setSincronizandoBcv(false)
+    }
+  }
+
+  // ── Guardar ajuste manual de tasa BCV ─────────────────────────────────
+  const handleGuardarTasaManual = async () => {
+    const val = parseFloat(tasaBcvManualInput.replace(',', '.'))
+    if (isNaN(val) || val <= 1) {
+      setMensajeBcv({ tipo: 'error', texto: 'Por favor ingresa un monto numérico válido mayor a 1.' })
+      return
+    }
+    setGuardandoTasaManual(true)
+    setMensajeBcv(null)
+    try {
+      const res = await guardarTasaBcvEnDb(
+        val,
+        new Date().toISOString(),
+        perfil?.nombre_completo || 'Administrador',
+        'Ajuste manual de tasa por administración'
+      )
+      if (res.ok) {
+        setTasaBcvActual(val)
+        setTasaBcvActualizada(new Date().toISOString())
+        setMensajeBcv({ tipo: 'success', texto: `✓ Tasa BCV fijada manualmente en Bs. ${val.toFixed(2)} por USD.` })
+        await refreshConfig(true)
+      } else {
+        setMensajeBcv({ tipo: 'error', texto: res.error || 'Error al guardar tasa' })
+      }
+    } catch (err: any) {
+      setMensajeBcv({ tipo: 'error', texto: err.message || 'Error de conexión' })
+    } finally {
+      setGuardandoTasaManual(false)
+    }
+  }
 
   // Cargar junta
   const cargarJunta = useCallback(async () => {
@@ -899,6 +966,229 @@ export const AdminEdificio: React.FC = () => {
                 lineHeight: 1.4
               }}>
                 ℹ️ <strong>Sincronización del Sistema:</strong> Cualquier mes anterior a <strong>{info.fecha_inicio_gestion || '2026-09-01'}</strong> silenciará los correos masivos para evitar alarmar a los residentes y se marcará como período anterior. A partir de <strong>{info.fecha_inicio_gestion ? info.fecha_inicio_gestion.slice(0, 7) : '2026-09'}</strong> en adelante, las emisiones se gestionarán como la administración actual activa.
+              </div>
+            </div>
+
+            {/* ── TASA OFICIAL BCV Y CONVERSIÓN MONETARIA ── */}
+            <div style={{
+              marginTop: '24px',
+              marginBottom: '28px',
+              backgroundColor: '#0d131f',
+              border: '1px solid #1e293b',
+              borderRadius: '16px',
+              padding: '22px',
+              position: 'relative',
+              overflow: 'hidden'
+            }}>
+              {/* Encabezado con título e icono */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', marginBottom: '18px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{
+                    width: '42px',
+                    height: '42px',
+                    borderRadius: '12px',
+                    backgroundColor: 'rgba(56, 189, 248, 0.12)',
+                    border: '1px solid rgba(56, 189, 248, 0.3)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '20px'
+                  }}>
+                    💵
+                  </div>
+                  <div>
+                    <h4 style={{ color: '#fff', fontSize: '16px', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      Tasa Oficial del Banco Central de Venezuela (BCV)
+                      <span style={{
+                        fontSize: '11px',
+                        padding: '2px 8px',
+                        borderRadius: '999px',
+                        fontWeight: 700,
+                        backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                        color: '#34d399',
+                        border: '1px solid rgba(16, 185, 129, 0.3)'
+                      }}>
+                        Oficial BCV
+                      </span>
+                    </h4>
+                    <p style={{ color: '#94a3b8', fontSize: '12.5px', margin: '3px 0 0' }}>
+                      Regula el cálculo de recibos emitidos, pagos en Bolívares, reportes de deuda y estado de cuenta de los residentes.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Botón de Sincronización Inmediata con la API del BCV */}
+                <button
+                  type="button"
+                  disabled={sincronizandoBcv}
+                  onClick={handleSincronizarBcv}
+                  style={{
+                    backgroundColor: sincronizandoBcv ? '#1e293b' : 'rgba(56, 189, 248, 0.12)',
+                    color: sincronizandoBcv ? '#94a3b8' : '#38bdf8',
+                    border: '1px solid rgba(56, 189, 248, 0.35)',
+                    padding: '9px 16px',
+                    borderRadius: '10px',
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    cursor: sincronizandoBcv ? 'not-allowed' : 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    transition: 'all 0.2s ease',
+                    boxShadow: '0 2px 8px rgba(56, 189, 248, 0.15)'
+                  }}
+                >
+                  <span style={{ fontSize: '15px' }}>
+                    {sincronizandoBcv ? '⏳' : '🔄'}
+                  </span>
+                  {sincronizandoBcv ? 'Consultando BCV en vivo...' : 'Sincronizar con BCV Oficial'}
+                </button>
+              </div>
+
+              {/* Mensaje de alerta / confirmación */}
+              {mensajeBcv && (
+                <div style={{
+                  padding: '10px 14px',
+                  borderRadius: '8px',
+                  marginBottom: '16px',
+                  fontSize: '12.5px',
+                  fontWeight: 600,
+                  backgroundColor: mensajeBcv.tipo === 'success' ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)',
+                  color: mensajeBcv.tipo === 'success' ? '#34d399' : '#f87171',
+                  border: `1px solid ${mensajeBcv.tipo === 'success' ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`
+                }}>
+                  {mensajeBcv.texto}
+                </div>
+              )}
+
+              {/* Tarjetas de Métricas en Vivo */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
+                gap: '14px',
+                marginBottom: '18px'
+              }}>
+                {/* Tasa Vigente */}
+                <div style={{
+                  backgroundColor: '#080c14',
+                  border: '1px solid #1e293b',
+                  borderRadius: '12px',
+                  padding: '14px 16px'
+                }}>
+                  <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    Tasa Oficial Vigente
+                  </div>
+                  <div style={{ fontSize: '24px', fontWeight: 900, color: '#38bdf8', marginTop: '4px', letterSpacing: '-0.5px' }}>
+                    Bs. {tasaBcvActual.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                  </div>
+                  <div style={{ fontSize: '11.5px', color: '#94a3b8', marginTop: '2px' }}>
+                    Por cada 1.00 $ USD
+                  </div>
+                </div>
+
+                {/* Fecha y Estado de Sincronización */}
+                <div style={{
+                  backgroundColor: '#080c14',
+                  border: '1px solid #1e293b',
+                  borderRadius: '12px',
+                  padding: '14px 16px'
+                }}>
+                  <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    Última Sincronización
+                  </div>
+                  <div style={{ fontSize: '13px', fontWeight: 700, color: '#fff', marginTop: '6px' }}>
+                    {tasaBcvActualizada
+                      ? new Date(tasaBcvActualizada).toLocaleString('es-VE', { dateStyle: 'medium', timeStyle: 'short' })
+                      : 'Fecha no registrada'}
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#10b981', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#10b981' }} />
+                    Conectado con Banco Central
+                  </div>
+                </div>
+
+                {/* Conversión Referencial Ejemplo */}
+                <div style={{
+                  backgroundColor: '#080c14',
+                  border: '1px solid #1e293b',
+                  borderRadius: '12px',
+                  padding: '14px 16px'
+                }}>
+                  <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    Ejemplo de Equivalencia
+                  </div>
+                  <div style={{ fontSize: '15px', fontWeight: 800, color: '#eab308', marginTop: '6px' }}>
+                    $50 USD ≈ Bs. {(50 * tasaBcvActual).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>
+                    $100 USD ≈ Bs. {(100 * tasaBcvActual).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Ajuste Manual de Tasa (Contingencia o Fijación Administrativa) */}
+              <div style={{
+                backgroundColor: 'rgba(255, 255, 255, 0.02)',
+                border: '1px dashed #334155',
+                borderRadius: '12px',
+                padding: '14px 16px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '12px'
+              }}>
+                <div>
+                  <div style={{ fontSize: '12.5px', fontWeight: 700, color: '#f1f5f9' }}>
+                    ⚙️ Ajuste o Fijación Manual de Tasa
+                  </div>
+                  <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '2px' }}>
+                    Úsalo en caso de feriados bancarios, fines de semana o si deseas congelar un valor específico para el condominio.
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', backgroundColor: '#0a0a0a', border: '1px solid #2a2a2a', borderRadius: '8px', padding: '0 10px' }}>
+                    <span style={{ fontSize: '12px', color: '#64748b', marginRight: '4px' }}>Bs.</span>
+                    <input
+                      type="number"
+                      step="0.0001"
+                      min="1"
+                      value={tasaBcvManualInput}
+                      onChange={(e) => setTasaBcvManualInput(e.target.value)}
+                      placeholder="866.56"
+                      style={{
+                        backgroundColor: 'transparent',
+                        border: 'none',
+                        color: '#fff',
+                        fontSize: '13px',
+                        fontWeight: 700,
+                        padding: '8px 0',
+                        width: '95px',
+                        outline: 'none'
+                      }}
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={guardandoTasaManual}
+                    onClick={handleGuardarTasaManual}
+                    style={{
+                      backgroundColor: '#1e293b',
+                      color: '#f8fafc',
+                      border: '1px solid #334155',
+                      padding: '8px 14px',
+                      borderRadius: '8px',
+                      fontSize: '12.5px',
+                      fontWeight: 700,
+                      cursor: guardandoTasaManual ? 'not-allowed' : 'pointer',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    {guardandoTasaManual ? 'Guardando...' : 'Fijar Manual'}
+                  </button>
+                </div>
               </div>
             </div>
 
