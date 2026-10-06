@@ -143,6 +143,34 @@ export async function sendResidentPasswordReset(identifier: string): Promise<Res
     const portalBase = getBasePortalUrl()
     const redirectUrl = `${portalBase}/reset-password`
 
+    // 1. Intentar envío prioritario a través de Edge Function con Gmail SMTP oficial
+    try {
+      const { data: edgeData, error: edgeError } = await supabase.functions.invoke('enviar-email', {
+        body: {
+          tipo: 'recuperar-password',
+          email: resolved.email,
+          redirectTo: redirectUrl,
+          nombre: resolved.nombre,
+          apto: resolved.apto,
+          edificio: 'Residencias Ocutuy 5'
+        }
+      })
+
+      if (!edgeError && edgeData?.ok) {
+        console.info('[passwordRecoveryService] ✓ Correo de restablecimiento enviado exitosamente vía Gmail SMTP.')
+        return {
+          ...resolved,
+          success: true,
+        }
+      }
+      if (edgeError) {
+        console.warn('[passwordRecoveryService] Advertencia en Edge Function Gmail, probando fallback Supabase Auth:', edgeError)
+      }
+    } catch (edgeCallErr) {
+      console.warn('[passwordRecoveryService] Error al invocar Edge Function, probando fallback Supabase Auth:', edgeCallErr)
+    }
+
+    // 2. Fallback a método nativo de Supabase Auth
     const { error } = await supabase.auth.resetPasswordForEmail(resolved.email, {
       redirectTo: redirectUrl,
     })
