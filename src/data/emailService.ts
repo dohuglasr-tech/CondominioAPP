@@ -1,4 +1,6 @@
 import { supabase } from './supabase'
+import type { ExpedienteLegalAptoData } from '../utils/expedienteLegalPdfGenerator'
+import { formatAlicuotaPct } from '../utils/alicuota'
 
 /**
  * Servicio centralizado para el envío automático de correos electrónicos:
@@ -716,13 +718,19 @@ export function generarHtmlCuotaGas(datos: DatosEmailCuotaGas): { subject: strin
   return { subject, html }
 }
 
+export interface EmailAttachment {
+  filename: string
+  content: string // base64
+}
+
 // ── 4. FUNCIÓN DISPARADORA DEL ENVÍO DE EMAIL ────────────────────────────────
 export async function enviarEmail(params: {
   to: string
   subject: string
   html: string
+  attachments?: EmailAttachment[]
 }): Promise<{ ok: boolean; error?: string }> {
-  const { to, subject, html } = params
+  const { to, subject, html, attachments } = params
   if (!to || !to.includes('@')) {
     return { ok: false, error: 'Dirección de correo inválida o no registrada' }
   }
@@ -730,7 +738,7 @@ export async function enviarEmail(params: {
   // 1. Intentar llamar a Supabase Edge Function 'enviar-email'
   try {
     const { data, error } = await supabase.functions.invoke('enviar-email', {
-      body: { to, subject, html },
+      body: { to, subject, html, attachments },
     })
     if (!error && (data?.ok || data?.id)) {
       return { ok: true }
@@ -759,18 +767,22 @@ export async function enviarEmail(params: {
   const resendApiKey = (import.meta as any).env?.VITE_RESEND_API_KEY
   if (resendApiKey) {
     try {
+      const payload: Record<string, any> = {
+        from: 'Residencias Ocutuy 5 <onboarding@resend.dev>',
+        to,
+        subject,
+        html,
+      }
+      if (attachments && attachments.length > 0) {
+        payload.attachments = attachments
+      }
       const res = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${resendApiKey}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          from: 'Residencias Ocutuy 5 <onboarding@resend.dev>',
-          to,
-          subject,
-          html,
-        }),
+        body: JSON.stringify(payload),
       })
       const resData = await res.json()
       if (res.ok) {
@@ -1030,6 +1042,332 @@ export function generarHtmlRecordatorioReciboDirecto(datos: DatosEmailRecordator
 export async function despacharEmailRecordatorioRecibo(datos: DatosEmailRecordatorioRecibo): Promise<{ ok: boolean; error?: string }> {
   const { subject, html } = generarHtmlRecordatorioReciboDirecto(datos)
   return enviarEmail({ to: datos.destinatarioEmail, subject, html })
+}
+
+// ── 6. PLANTILLA: EXPEDIENTE LEGAL Y ESTADO DE CUENTA CONDOMINIAL ─────────────
+export function generarHtmlExpedienteLegal(
+  datos: ExpedienteLegalAptoData,
+  notaAdicional?: string | null
+): { subject: string; html: string } {
+  const edificio = datos.edificio.nombre || DEFAULT_EDIFICIO
+  const rif = datos.edificio.rif || 'J-12345678-9'
+  const apto = datos.apartamento.numero
+  const propNombre = datos.apartamento.propietario.nombre || 'Copropietario'
+  const portal = getBasePortalUrl()
+  const fechaHoyStr = new Date().toLocaleDateString('es-VE', { day: '2-digit', month: 'long', year: 'numeric' })
+  const tieneDeuda = datos.metricas.deudaTotalUsd > 0.01 || datos.metricas.deudaTotalBs > 0.01
+  const tieneSaldo = datos.metricas.saldoAFavorUsd > 0.01 || datos.metricas.saldoAFavorBs > 0.01
+  const esSolvente = !tieneDeuda
+
+  const banco = datos.edificio.banco || DEFAULT_BANCO
+  const cuenta = datos.edificio.cuentaBancaria || DEFAULT_CUENTA
+  const titular = datos.edificio.titularCuenta || DEFAULT_TITULAR
+
+  const subject = `⚖️ Expediente Legal y Estado de Cuenta: Apartamento ${apto} · ${edificio}`
+
+  // Renderizar filas de deudas si existen
+  let deudasFilasHtml = ''
+  if (datos.deudasDetalle && datos.deudasDetalle.length > 0) {
+    deudasFilasHtml = datos.deudasDetalle.map(d => `
+      <tr style="border-bottom:1px solid #1e293b;">
+        <td style="padding:10px 8px;font-size:12.5px;color:#f1f5f9;">
+          <strong>${d.concepto}</strong>
+          <div style="font-size:11px;color:#64748b;">${d.categoria} · Corte: ${d.fechaCorte}</div>
+        </td>
+        <td style="padding:10px 8px;text-align:right;font-size:12.5px;color:#f87171;font-weight:700;">
+          $${fmtUsd(d.montoUsd)}
+        </td>
+        <td style="padding:10px 8px;text-align:right;font-size:12px;color:#94a3b8;">
+          Bs. ${fmtBs(d.montoBs)}
+        </td>
+      </tr>
+    `).join('')
+  }
+
+  // Renderizar eventos recientes
+  let timelineHtml = ''
+  if (datos.lineaTiempo && datos.lineaTiempo.length > 0) {
+    const ultimosEventos = datos.lineaTiempo.slice(-4).reverse()
+    timelineHtml = ultimosEventos.map(ev => `
+      <div style="padding:8px 12px;background:#0b1120;border-left:3px solid #f97316;border-radius:4px;margin-bottom:6px;">
+        <div style="font-size:11px;color:#94a3b8;">${ev.fecha} · <strong style="color:#cbd5e1;">${ev.titulo}</strong></div>
+        <div style="font-size:12px;color:#f1f5f9;">${ev.detalle || ''}</div>
+      </div>
+    `).join('')
+  }
+
+  const html = `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#050811;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#f1f5f9;-webkit-font-smoothing:antialiased;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#050811;padding:24px 12px;">
+    <tr>
+      <td align="center">
+        <table width="100%" style="max-width:620px;background-color:#0e1626;border:1px solid #1e293b;border-radius:18px;overflow:hidden;box-shadow:0 15px 40px rgba(0,0,0,0.6);" cellpadding="0" cellspacing="0">
+          
+          <!-- TOP HEADER BANNER -->
+          <tr>
+            <td style="background:linear-gradient(135deg,#0a0f1d 0%,#182338 100%);padding:26px 24px;border-bottom:1px solid rgba(249,115,22,0.3);text-align:center;">
+              <div style="display:inline-block;padding:5px 14px;background:rgba(249,115,22,0.15);border:1px solid rgba(249,115,22,0.4);border-radius:20px;font-size:11px;font-weight:800;color:#f97316;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;">
+                ⚖️ Documento Probatorio · LPH Arts. 13 y 14
+              </div>
+              <h1 style="margin:0 0 4px;font-size:20px;font-weight:900;color:#ffffff;letter-spacing:-0.3px;">
+                ${edificio.toUpperCase()}
+              </h1>
+              <div style="font-size:12px;color:#94a3b8;font-weight:500;">
+                RIF: ${rif} · Expediente Legal y Estado de Cuenta Inmobiliario
+              </div>
+            </td>
+          </tr>
+
+          <!-- CONTENIDO PRINCIPAL -->
+          <tr>
+            <td style="padding:24px 22px;">
+
+              <!-- SALUDO Y ENCABEZADO -->
+              <div style="margin-bottom:20px;">
+                <p style="margin:0 0 6px;font-size:14px;color:#cbd5e1;line-height:1.5;">
+                  Estimado(a) copropietario(a): <strong>${propNombre}</strong>,
+                </p>
+                <p style="margin:0;font-size:13px;color:#94a3b8;line-height:1.5;">
+                  Por medio de la presente, la Administración y Junta de Condominio hace entrega formal del <strong>Expediente Legal y Estado de Cuenta Consolidado</strong> correspondiente al <strong>Apartamento ${apto}</strong>, emitido con fecha <strong>${fechaHoyStr}</strong>.
+                </p>
+              </div>
+
+              ${notaAdicional ? `
+              <!-- NOTA ADICIONAL DE LA ADMINISTRACIÓN -->
+              <div style="background:rgba(249,115,22,0.08);border-left:4px solid #f97316;border-radius:8px;padding:14px 16px;margin-bottom:20px;">
+                <div style="font-size:11.5px;font-weight:800;color:#f97316;text-transform:uppercase;margin-bottom:4px;letter-spacing:0.5px;">
+                  📌 Mensaje de la Administración:
+                </div>
+                <div style="font-size:13px;color:#f8fafc;line-height:1.5;font-style:italic;">
+                  "${notaAdicional}"
+                </div>
+              </div>` : ''}
+
+              <!-- 4 KPI CARDS FINANCIERAS -->
+              <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;">
+                <tr>
+                  <td width="50%" style="padding:0 6px 10px 0;">
+                    <div style="background:#090d18;border:1px solid ${tieneDeuda ? 'rgba(239,68,68,0.4)' : 'rgba(16,185,129,0.4)'};border-radius:12px;padding:14px;text-align:center;">
+                      <div style="font-size:11px;font-weight:700;color:${tieneDeuda ? '#f87171' : '#34d399'};text-transform:uppercase;letter-spacing:0.5px;">
+                        ${tieneDeuda ? 'Deuda Exigible' : 'Estado de Cuenta'}
+                      </div>
+                      <div style="font-size:22px;font-weight:900;color:${tieneDeuda ? '#ef4444' : '#10b981'};margin:4px 0;">
+                        ${tieneDeuda ? `$${fmtUsd(datos.metricas.deudaTotalUsd)} USD` : 'Solvente ✅'}
+                      </div>
+                      <div style="font-size:11px;color:#94a3b8;">
+                        ${tieneDeuda ? `≈ Bs. ${fmtBs(datos.metricas.deudaTotalBs)}` : 'Sin cuotas pendientes'}
+                      </div>
+                    </div>
+                  </td>
+                  <td width="50%" style="padding:0 0 10px 6px;">
+                    <div style="background:#090d18;border:1px solid ${tieneSaldo ? 'rgba(16,185,129,0.4)' : '#1e293b'};border-radius:12px;padding:14px;text-align:center;">
+                      <div style="font-size:11px;font-weight:700;color:${tieneSaldo ? '#34d399' : '#888'};text-transform:uppercase;letter-spacing:0.5px;">
+                        Saldo a Favor (Billetera)
+                      </div>
+                      <div style="font-size:22px;font-weight:900;color:${tieneSaldo ? '#34d399' : '#cbd5e1'};margin:4px 0;">
+                        +$${fmtUsd(datos.metricas.saldoAFavorUsd)} USD
+                      </div>
+                      <div style="font-size:11px;color:#94a3b8;">
+                        ${tieneSaldo ? `Crédito disponible para cuotas` : 'Sin crédito acumulado'}
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td width="50%" style="padding:0 6px 0 0;">
+                    <div style="background:#090d18;border:1px solid #1e293b;border-radius:12px;padding:12px;text-align:center;">
+                      <div style="font-size:10.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">
+                        Tasa BCV Oficial
+                      </div>
+                      <div style="font-size:16px;font-weight:800;color:#fff;margin:2px 0;">
+                        Bs. ${fmtBs(datos.edificio.tasaBcv)}
+                      </div>
+                      <div style="font-size:10px;color:#64748b;">
+                        Tipo de cambio legal vigente
+                      </div>
+                    </div>
+                  </td>
+                  <td width="50%" style="padding:0 0 0 6px;">
+                    <div style="background:#090d18;border:1px solid #1e293b;border-radius:12px;padding:12px;text-align:center;">
+                      <div style="font-size:10.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">
+                        Cumplimiento Histórico
+                      </div>
+                      <div style="font-size:16px;font-weight:800;color:#38bdf8;margin:2px 0;">
+                        ${datos.metricas.tasaCumplimientoPct}%
+                      </div>
+                      <div style="font-size:10px;color:#64748b;">
+                        ${datos.metricas.recibosPagados} de ${datos.metricas.totalRecibosEmitidos} recibos pagados
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- FICHA TÉCNICA DEL INMUEBLE -->
+              <div style="background:#090d18;border:1px solid #1e293b;border-radius:12px;padding:16px;margin-bottom:20px;">
+                <div style="font-size:11px;font-weight:800;color:#f97316;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:10px;border-bottom:1px solid #1e293b;padding-bottom:6px;">
+                  📋 Ficha Técnica del Inmueble
+                </div>
+                <table width="100%" style="font-size:12.5px;color:#cbd5e1;line-height:1.7;">
+                  <tr>
+                    <td style="color:#64748b;width:140px;">Apartamento / Inmueble:</td>
+                    <td><strong style="color:#fff;">Apto ${apto}</strong> ${datos.apartamento.piso !== null ? `(Piso ${datos.apartamento.piso})` : ''}</td>
+                  </tr>
+                  <tr>
+                    <td style="color:#64748b;">Propietario Legal:</td>
+                    <td><strong style="color:#fff;">${propNombre}</strong></td>
+                  </tr>
+                  ${datos.apartamento.propietario.cedula ? `
+                  <tr>
+                    <td style="color:#64748b;">Cédula / Identidad:</td>
+                    <td>${datos.apartamento.propietario.cedula}</td>
+                  </tr>` : ''}
+                  <tr>
+                    <td style="color:#64748b;">Alícuota de Condominio:</td>
+                    <td><strong>${formatAlicuotaPct(datos.apartamento.alicuotaDecimal)}</strong> ${datos.apartamento.esPh ? '(Penthouse)' : ''}</td>
+                  </tr>
+                  <tr>
+                    <td style="color:#64748b;">Condición Ocupacional:</td>
+                    <td><span style="text-transform:capitalize;">${datos.apartamento.estadoOcupacion.replace('_', ' ')}</span></td>
+                  </tr>
+                </table>
+              </div>
+
+              ${tieneDeuda && deudasFilasHtml ? `
+              <!-- DESGLOSE DE DEUDAS EXIGIBLES -->
+              <div style="background:#090d18;border:1px solid rgba(239,68,68,0.25);border-radius:12px;padding:16px;margin-bottom:20px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #1e293b;padding-bottom:8px;margin-bottom:10px;">
+                  <span style="font-size:11px;font-weight:800;color:#f87171;text-transform:uppercase;letter-spacing:0.8px;">
+                    ⚠️ Detalle de Cuotas Pendientes en Mora
+                  </span>
+                  <span style="font-size:11.5px;font-weight:800;color:#f87171;">
+                    Total: $${fmtUsd(datos.metricas.deudaTotalUsd)} USD
+                  </span>
+                </div>
+                <table width="100%" cellpadding="0" cellspacing="0" style="text-align:left;">
+                  <thead>
+                    <tr style="border-bottom:1px solid #334155;">
+                      <th style="padding:6px 8px;font-size:11px;color:#64748b;text-transform:uppercase;">Concepto</th>
+                      <th style="padding:6px 8px;font-size:11px;color:#64748b;text-align:right;text-transform:uppercase;">USD ($)</th>
+                      <th style="padding:6px 8px;font-size:11px;color:#64748b;text-align:right;text-transform:uppercase;">Bs.</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${deudasFilasHtml}
+                  </tbody>
+                </table>
+              </div>` : esSolvente ? `
+              <!-- BANNER DE SOLVENCIA -->
+              <div style="background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);border-radius:12px;padding:14px;text-align:center;margin-bottom:20px;">
+                <div style="font-size:24px;margin-bottom:4px;">🎖️</div>
+                <strong style="color:#34d399;font-size:14px;display:block;">Constancia de Solvencia</strong>
+                <p style="margin:4px 0 0;font-size:12.5px;color:#cbd5e1;">
+                  El presente inmueble no posee saldos deudores pendientes a la fecha de emisión. ¡Agradecemos su valioso compromiso!
+                </p>
+              </div>` : ''}
+
+              ${timelineHtml ? `
+              <!-- ÚLTIMOS EVENTOS REGISTRADOS -->
+              <div style="margin-bottom:20px;">
+                <div style="font-size:11px;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px;">
+                  🕒 Actividad y Movimientos Recientes
+                </div>
+                ${timelineHtml}
+              </div>` : ''}
+
+              ${tieneDeuda ? `
+              <!-- DATOS BANCARIOS OFICIALES PARA PAGO -->
+              <div style="background:#090d18;border:1px solid #1e293b;border-radius:12px;padding:16px;margin-bottom:20px;">
+                <div style="font-size:11px;font-weight:800;color:#38bdf8;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:10px;border-bottom:1px solid #1e293b;padding-bottom:6px;">
+                  🏦 Cuentas Oficiales para Regularización
+                </div>
+                <table width="100%" style="font-size:12.5px;color:#cbd5e1;line-height:1.7;">
+                  <tr><td style="color:#64748b;width:120px;">Banco:</td><td><strong style="color:#fff;">${banco}</strong></td></tr>
+                  <tr><td style="color:#64748b;">N° de Cuenta:</td><td><strong style="color:#fff;letter-spacing:0.5px;">${cuenta}</strong></td></tr>
+                  <tr><td style="color:#64748b;">Titular:</td><td><strong style="color:#fff;">${titular}</strong></td></tr>
+                  <tr><td style="color:#64748b;">RIF:</td><td><strong style="color:#fff;">${rif}</strong></td></tr>
+                </table>
+              </div>` : ''}
+
+              <!-- AVISO LEGAL Y ADJUNTO PDF -->
+              <div style="background:rgba(255,255,255,0.03);border:1px solid #1e293b;border-radius:10px;padding:14px;margin-bottom:22px;font-size:11.5px;color:#94a3b8;line-height:1.5;">
+                <strong style="color:#cbd5e1;display:block;margin-bottom:4px;">⚖️ Marco Legal y Efectos Probatorios:</strong>
+                De conformidad con el <strong>Artículo 14 de la Ley de Propiedad Horizontal</strong>, las liquidaciones y planillas aprobadas gozan de fuerza ejecutiva. El presente expediente certifica fehacientemente el estado patrimonial y financiero del inmueble.
+                <div style="margin-top:8px;padding-top:8px;border-top:1px dashed #334155;color:#38bdf8;">
+                  📎 <strong>Archivo Adjunto:</strong> Se adjunta a este correo el documento PDF oficial <em>Expediente_Legal_Apto_${apto}.pdf</em> con firmas digitales y código de verificación.
+                </div>
+              </div>
+
+              <!-- BOTÓN CTA PORTAL -->
+              <div style="text-align:center;margin-bottom:16px;">
+                <a href="${portal}" target="_blank" style="display:inline-block;background:linear-gradient(135deg,#f97316 0%,#ea580c 100%);color:#ffffff;text-decoration:none;padding:14px 28px;border-radius:12px;font-size:13.5px;font-weight:800;letter-spacing:0.3px;box-shadow:0 4px 16px rgba(249,115,22,0.35);">
+                  🌐 Abrir Portal del Condominio →
+                </a>
+              </div>
+
+              <!-- FIRMAS INSTITUCIONALES -->
+              <div style="margin-top:24px;padding-top:16px;border-top:1px solid #1e293b;text-align:center;font-size:11px;color:#64748b;">
+                <div style="color:#cbd5e1;font-weight:700;">${datos.emisor.autorNombre} · Administración de Condominio</div>
+                <div>${datos.emisor.presidenteJunta} · Presidente de la Junta</div>
+                <div>${datos.emisor.tesoreroJunta} · Comité de Finanzas</div>
+              </div>
+
+            </td>
+          </tr>
+
+          <!-- FOOTER -->
+          <tr>
+            <td style="background-color:#070b14;padding:18px 24px;text-align:center;border-top:1px solid #1e293b;font-size:11px;color:#475569;line-height:1.5;">
+              © ${new Date().getFullYear()} ${edificio} · Sistema Integral de Gestión Inmobiliaria DOMUS<br>
+              Notificación oficial emitida a través de canales administrativos certificados.
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`
+
+  return { subject, html }
+}
+
+/**
+ * Dispara el email de Expediente Legal con el PDF adjunto
+ */
+export async function despacharEmailExpedienteLegal(params: {
+  destinatarioEmail: string
+  datosExpediente: ExpedienteLegalAptoData
+  notaAdicional?: string | null
+  pdfBase64?: string
+  pdfFilename?: string
+}): Promise<{ ok: boolean; error?: string }> {
+  const { destinatarioEmail, datosExpediente, notaAdicional, pdfBase64, pdfFilename } = params
+  const { subject, html } = generarHtmlExpedienteLegal(datosExpediente, notaAdicional)
+
+  const attachments: EmailAttachment[] = []
+  if (pdfBase64) {
+    const aptoSanitizado = datosExpediente.apartamento.numero.replace(/[^a-zA-Z0-9_-]/g, '_')
+    const filename = pdfFilename || `Expediente_Legal_Apto_${aptoSanitizado}.pdf`
+    attachments.push({
+      filename,
+      content: pdfBase64
+    })
+  }
+
+  return enviarEmail({
+    to: destinatarioEmail,
+    subject,
+    html,
+    attachments: attachments.length > 0 ? attachments : undefined
+  })
 }
 
 

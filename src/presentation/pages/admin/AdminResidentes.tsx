@@ -13,6 +13,7 @@ import { CompensarDeudaModal } from '../../components/CompensarDeudaModal'
 import { descargarExpedienteLegalApto, ExpedienteLegalAptoData } from '../../../utils/expedienteLegalPdfGenerator'
 import { obtenerJunta } from '../../../data/juntaService'
 import { sendResidentPasswordReset } from '../../../data/passwordRecoveryService'
+import { EnviarExpedienteEmailModal } from '../../components/EnviarExpedienteEmailModal'
 
 interface PersonaContacto {
   nombre: string
@@ -103,6 +104,9 @@ export const AdminResidentes: React.FC = () => {
   const [loading, setLoading] = useState(true)
   const [generandoPdfId, setGenerandoPdfId] = useState<string | null>(null)
   const [enviandoResetAptoId, setEnviandoResetAptoId] = useState<string | null>(null)
+  const [modalEmailExpedienteOpen, setModalEmailExpedienteOpen] = useState(false)
+  const [expedienteParaEmail, setExpedienteParaEmail] = useState<ExpedienteLegalAptoData | null>(null)
+  const [cargandoExpedienteEmail, setCargandoExpedienteEmail] = useState(false)
   const [busqueda, setBusqueda] = useState('')
   const [filtroTipo, setFiltroTipo] = useState<'todos' | 'con_deuda' | 'solventes' | 'con_usuario' | 'ph'>('todos')
   const [tabActiva, setTabActiva] = useState<'deudas' | 'recibos' | 'pagos' | 'datos'>('deudas')
@@ -400,241 +404,244 @@ export const AdminResidentes: React.FC = () => {
     }
   }
 
+  // ── Construir estructura completa de datos del Expediente Legal ─────────────
+  const construirDatosExpedienteLegal = async (residente: Residente): Promise<ExpedienteLegalAptoData> => {
+    // 1. Obtener miembros de junta para firmas formales
+    let presidenteNombre = ''
+    let tesoreroNombre = ''
+    try {
+      const juntaRes = await obtenerJunta()
+      const junta = juntaRes.data || []
+      const presi = junta.find((m: any) => /presidente|administrador|coord/i.test(m.cargo))
+      const tesor = junta.find((m: any) => /tesorero|finanzas|control/i.test(m.cargo))
+      if (presi) presidenteNombre = presi.nombre
+      if (tesor) tesoreroNombre = tesor.nombre
+    } catch (e) {
+      console.warn('[AdminResidentes] No se pudo obtener organigrama para firmas:', e)
+    }
+
+    // 2. Consultar historial de auditoría y datos ampliados del apartamento
+    const [auditRes, aptoDbRes] = await Promise.all([
+      supabase
+        .from('historial_auditoria')
+        .select('*')
+        .or(`apartamento_id.eq.${residente.id},apartamento_numero.eq.${residente.apartamento}`)
+        .order('fecha', { ascending: true }),
+      supabase
+        .from('apartamentos')
+        .select('metros_cuadrados, propietario_cedula')
+        .eq('id', residente.id)
+        .maybeSingle()
+    ])
+
+    const auditLogs = auditRes.data || []
+    const aptoDb = aptoDbRes.data
+
+    // 3. Montar la Línea de Tiempo (Timeline) unificada y ordenada cronológicamente
+    const timelineItems: ExpedienteLegalAptoData['lineaTiempo'] = []
+
+    // A. Recibos emitidos
+    ;(residente.recibos_emitidos || []).forEach(r => {
+      const fecha = r.emitido_at ? r.emitido_at.substring(0, 10) : `${r.mes_facturado}-01`
+      timelineItems.push({
+        fecha,
+        tipo: 'recibo',
+        titulo: `Emisión Recibo ${r.mes_facturado}`,
+        detalle: `Cuota mensual facturada: $${Number(r.total_usd || 0).toFixed(2)} (${Number(r.total_bs || 0).toLocaleString('es-VE')} Bs)`,
+        montoUsd: r.total_usd,
+        montoBs: r.total_bs,
+        estado: r.estado === 'pagado' ? 'Pagado' : 'Pendiente'
+      })
+    })
+
+    // B. Pagos reportados
+    ;(residente.historial_pagos || []).forEach(p => {
+      const fecha = p.fecha ? p.fecha.substring(0, 10) : 'Sin fecha'
+      timelineItems.push({
+        fecha,
+        tipo: 'pago',
+        titulo: `Pago Reportado (Ref: ${p.referencia || 'S/R'})`,
+        detalle: `Banco: ${p.banco || 'Transferencia'}${p.notas_admin ? ` · Nota: ${p.notas_admin}` : ''}`,
+        montoUsd: p.monto_usd,
+        montoBs: p.monto_bs,
+        estado: p.estado === 'aprobado' ? 'Aprobado' : p.estado === 'rechazado' ? 'Rechazado' : 'En Verificación'
+      })
+    })
+
+    // C. Eventos de auditoría de este apartamento
+    auditLogs.forEach((log: any) => {
+      const fecha = log.fecha ? log.fecha.substring(0, 10) : (log.created_at?.substring(0, 10) || '')
+      timelineItems.push({
+        fecha,
+        tipo: 'auditoria',
+        titulo: log.titulo || 'Registro de Auditoría',
+        detalle: `${log.descripcion || log.motivo || ''} (Registrado por: ${log.autor_nombre})`,
+        montoUsd: log.monto_usd,
+        montoBs: log.monto_bs,
+        estado: 'Asentado en Libros'
+      })
+    })
+
+    // D. Cuotas especiales si están en el desglose de mora
+    const moraItems = residente.mora_item?.desglose?.items || []
+    moraItems.forEach(it => {
+      if (it.categoria === 'cuota_especial' || it.categoria === 'deuda_2025') {
+        timelineItems.push({
+          fecha: residente.mora_item?.fecha_corte || new Date().toISOString().substring(0, 10),
+          tipo: 'cargo',
+          titulo: it.label,
+          detalle: it.detalle || `Obligación especial (${it.categoria === 'deuda_2025' ? 'Deuda Consolidada 2025' : 'Cuota Extraordinaria'})`,
+          montoUsd: it.moneda === 'USD' ? it.monto : (it.monto / tasaBcvValida),
+          montoBs: it.moneda === 'BS' ? it.monto : (it.monto * tasaBcvValida),
+          estado: it.estado === 'pendiente' ? 'Pendiente' : 'Solventado'
+        })
+      }
+    })
+
+    // Ordenar cronológicamente (más antiguo al más reciente)
+    timelineItems.sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''))
+
+    // 4. Montar desglose de deudas
+    const deudasDetalle: ExpedienteLegalAptoData['deudasDetalle'] = []
+    if (moraItems.length > 0) {
+      moraItems.forEach(it => {
+        deudasDetalle.push({
+          concepto: it.label,
+          categoria: it.categoria === 'cuota_especial' ? 'Cuota Extraordinaria' : it.categoria === 'deuda_2025' ? 'Deuda Consolidada 2025' : 'Recibo Ordinario',
+          fechaCorte: residente.mora_item?.fecha_corte || new Date().toISOString().slice(0, 10),
+          montoUsd: it.moneda === 'USD' ? it.monto : (it.monto / tasaBcvValida),
+          montoBs: it.moneda === 'BS' ? it.monto : (it.monto * tasaBcvValida),
+          estado: it.estado === 'pendiente' ? 'Pendiente / Exigible' : 'Pagado'
+        })
+      })
+    } else if (residente.deuda_usd > 0.01 || residente.deuda_bs > 0.01) {
+      deudasDetalle.push({
+        concepto: residente.mora_item?.conceptos_detalle || `Cuotas pendientes de condominio (${residente.meses_deuda} meses)`,
+        categoria: 'Cuota de Condominio en Mora',
+        fechaCorte: residente.mora_item?.fecha_corte || new Date().toISOString().slice(0, 10),
+        montoUsd: residente.deuda_usd,
+        montoBs: residente.deuda_bs > 0 ? residente.deuda_bs : (residente.deuda_usd * tasaBcvValida),
+        estado: 'Exigible en Mora'
+      })
+    }
+
+    // 5. Estadísticas y Métricas
+    const totalFacturadoHistoricoUsd = (residente.recibos_emitidos || []).reduce((s, r) => s + (r.total_usd || 0), 0)
+    const totalFacturadoHistoricoBs = (residente.recibos_emitidos || []).reduce((s, r) => s + (r.total_bs || 0), 0)
+
+    const pagosAprobadosList = (residente.historial_pagos || []).filter(p => p.estado === 'aprobado')
+    const totalPagadoHistoricoUsd = pagosAprobadosList.reduce((s, p) => s + (p.monto_usd || 0), 0)
+    const totalPagadoHistoricoBs = pagosAprobadosList.reduce((s, p) => s + (p.monto_bs || 0), 0)
+
+    const totalRecibos = residente.recibos_emitidos.length
+    const recibosPagados = residente.recibos_emitidos.filter(r => r.estado === 'pagado').length
+    const recibosPendientes = residente.recibos_emitidos.filter(r => r.estado === 'pendiente').length
+
+    const pagosTotalCount = residente.historial_pagos.length
+    const pagosAprobadosCount = pagosAprobadosList.length
+    const pagosPendientesCount = (residente.historial_pagos || []).filter(p => p.estado === 'pendiente').length
+    const pagosRechazadosCount = (residente.historial_pagos || []).filter(p => p.estado === 'rechazado').length
+
+    let tasaCumplimiento = 100
+    if (totalFacturadoHistoricoUsd > 0) {
+      tasaCumplimiento = Math.min(100, Math.round((totalPagadoHistoricoUsd / totalFacturadoHistoricoUsd) * 100))
+    } else if (residente.deuda_usd > 0) {
+      tasaCumplimiento = Math.max(0, 100 - (residente.meses_deuda * 15))
+    }
+
+    const saldoApto = saldosPorApto.get(residente.id)
+    const saldoUsd = saldoApto?.saldo_a_favor_usd || 0
+    const saldoBs = saldoApto?.saldo_a_favor_bs || (saldoUsd * tasaBcvValida)
+
+    const esSolvente = residente.deuda_usd <= 0.01 && residente.deuda_bs <= 0.01
+    const tasaRiesgoCalculada = esSolvente ? 'solvente' : (residente.mora_item?.tasa_riesgo || 'azul')
+
+    let antiguedadDeudaTexto = 'Al día sin deuda acumulada'
+    if (!esSolvente) {
+      if (residente.meses_deuda > 0) {
+        antiguedadDeudaTexto = `Atraso acumulado de ${residente.meses_deuda} meses`
+      } else {
+        antiguedadDeudaTexto = 'Deuda corriente exigible'
+      }
+    }
+
+    // 6. Configuración del Edificio
+    const nombreEdificio = config?.nombre_edificio || 'Residencias Ocutuy 5'
+    const rifEdificio = config?.rif || 'J-12345678-9'
+    const direccionEdificio = config?.direccion || 'Urbanización Casa Blanca, Residencias Ocutuy 5'
+
+    return {
+      edificio: {
+        nombre: nombreEdificio,
+        rif: rifEdificio,
+        direccion: direccionEdificio,
+        telefono: config?.telefono,
+        emailContacto: config?.email_contacto,
+        banco: config?.banco,
+        cuentaBancaria: config?.cuenta_bancaria,
+        titularCuenta: config?.titular_cuenta,
+        tasaBcv: tasaBcvValida
+      },
+      apartamento: {
+        id: residente.id,
+        numero: residente.apartamento,
+        piso: residente.piso,
+        esPh: residente.es_ph,
+        alicuotaDecimal: residente.alicuota,
+        metrosCuadrados: aptoDb?.metros_cuadrados,
+        estadoOcupacion: residente.estado_ocupacion,
+        tieneUsuarioWeb: residente.tiene_usuario,
+        notasInternas: residente.notas_internas,
+        propietario: {
+          nombre: residente.propietario.nombre,
+          cedula: aptoDb?.propietario_cedula || residente.mora_item?.propietario_cedula || null,
+          telefono: residente.propietario.telefono,
+          email: residente.propietario.email
+        },
+        inquilino: residente.inquilino ? {
+          nombre: residente.inquilino.nombre,
+          telefono: residente.inquilino.telefono,
+          email: residente.inquilino.email
+        } : undefined
+      },
+      metricas: {
+        deudaTotalUsd: residente.deuda_usd,
+        deudaTotalBs: residente.deuda_bs > 0 ? residente.deuda_bs : (residente.deuda_usd * tasaBcvValida),
+        mesesDeuda: residente.meses_deuda,
+        saldoAFavorUsd: saldoUsd,
+        saldoAFavorBs: saldoBs,
+        totalFacturadoHistoricoUsd,
+        totalFacturadoHistoricoBs,
+        totalPagadoHistoricoUsd,
+        totalPagadoHistoricoBs,
+        tasaCumplimientoPct: tasaCumplimiento,
+        totalRecibosEmitidos: totalRecibos,
+        recibosPagados,
+        recibosPendientes,
+        totalPagosReportados: pagosTotalCount,
+        pagosAprobados: pagosAprobadosCount,
+        pagosPendientes: pagosPendientesCount,
+        pagosRechazados: pagosRechazadosCount,
+        tasaRiesgo: tasaRiesgoCalculada as any,
+        accionLegalRecomendada: residente.mora_item?.accion_legal?.replace(/_/g, ' ') || (esSolvente ? 'Solvente - Sin acción' : 'Cobro extrajudicial'),
+        antiguedadDeudaTexto
+      },
+      deudasDetalle,
+      lineaTiempo: timelineItems,
+      emisor: {
+        autorNombre: perfil?.nombre_completo || 'Administrador',
+        autorEmail: user?.email || null,
+        presidenteJunta: presidenteNombre || 'Presidente de la Junta de Condominio',
+        tesoreroJunta: tesoreroNombre || 'Tesorero / Comité de Finanzas'
+      }
+    }
+  }
+
   // ── Descargar Expediente Legal completo (Deuda, Timeline, Métricas, LPH Art. 14) ──
   const handleDescargarExpedienteLegal = async (residente: Residente) => {
     try {
       setGenerandoPdfId(residente.id)
-
-      // 1. Obtener miembros de junta para firmas formales
-      let presidenteNombre = ''
-      let tesoreroNombre = ''
-      try {
-        const juntaRes = await obtenerJunta()
-        const junta = juntaRes.data || []
-        const presi = junta.find((m: any) => /presidente|administrador|coord/i.test(m.cargo))
-        const tesor = junta.find((m: any) => /tesorero|finanzas|control/i.test(m.cargo))
-        if (presi) presidenteNombre = presi.nombre
-        if (tesor) tesoreroNombre = tesor.nombre
-      } catch (e) {
-        console.warn('[AdminResidentes] No se pudo obtener organigrama para firmas:', e)
-      }
-
-      // 2. Consultar historial de auditoría y datos ampliados del apartamento
-      const [auditRes, aptoDbRes] = await Promise.all([
-        supabase
-          .from('historial_auditoria')
-          .select('*')
-          .or(`apartamento_id.eq.${residente.id},apartamento_numero.eq.${residente.apartamento}`)
-          .order('fecha', { ascending: true }),
-        supabase
-          .from('apartamentos')
-          .select('metros_cuadrados, propietario_cedula')
-          .eq('id', residente.id)
-          .maybeSingle()
-      ])
-
-      const auditLogs = auditRes.data || []
-      const aptoDb = aptoDbRes.data
-
-      // 3. Montar la Línea de Tiempo (Timeline) unificada y ordenada cronológicamente
-      const timelineItems: ExpedienteLegalAptoData['lineaTiempo'] = []
-
-      // A. Recibos emitidos
-      ;(residente.recibos_emitidos || []).forEach(r => {
-        const fecha = r.emitido_at ? r.emitido_at.substring(0, 10) : `${r.mes_facturado}-01`
-        timelineItems.push({
-          fecha,
-          tipo: 'recibo',
-          titulo: `Emisión Recibo ${r.mes_facturado}`,
-          detalle: `Cuota mensual facturada: $${Number(r.total_usd || 0).toFixed(2)} (${Number(r.total_bs || 0).toLocaleString('es-VE')} Bs)`,
-          montoUsd: r.total_usd,
-          montoBs: r.total_bs,
-          estado: r.estado === 'pagado' ? 'Pagado' : 'Pendiente'
-        })
-      })
-
-      // B. Pagos reportados
-      ;(residente.historial_pagos || []).forEach(p => {
-        const fecha = p.fecha ? p.fecha.substring(0, 10) : 'Sin fecha'
-        timelineItems.push({
-          fecha,
-          tipo: 'pago',
-          titulo: `Pago Reportado (Ref: ${p.referencia || 'S/R'})`,
-          detalle: `Banco: ${p.banco || 'Transferencia'}${p.notas_admin ? ` · Nota: ${p.notas_admin}` : ''}`,
-          montoUsd: p.monto_usd,
-          montoBs: p.monto_bs,
-          estado: p.estado === 'aprobado' ? 'Aprobado' : p.estado === 'rechazado' ? 'Rechazado' : 'En Verificación'
-        })
-      })
-
-      // C. Eventos de auditoría de este apartamento
-      auditLogs.forEach((log: any) => {
-        const fecha = log.fecha ? log.fecha.substring(0, 10) : (log.created_at?.substring(0, 10) || '')
-        timelineItems.push({
-          fecha,
-          tipo: 'auditoria',
-          titulo: log.titulo || 'Registro de Auditoría',
-          detalle: `${log.descripcion || log.motivo || ''} (Registrado por: ${log.autor_nombre})`,
-          montoUsd: log.monto_usd,
-          montoBs: log.monto_bs,
-          estado: 'Asentado en Libros'
-        })
-      })
-
-      // D. Cuotas especiales si están en el desglose de mora
-      const moraItems = residente.mora_item?.desglose?.items || []
-      moraItems.forEach(it => {
-        if (it.categoria === 'cuota_especial' || it.categoria === 'deuda_2025') {
-          timelineItems.push({
-            fecha: residente.mora_item?.fecha_corte || new Date().toISOString().substring(0, 10),
-            tipo: 'cargo',
-            titulo: it.label,
-            detalle: it.detalle || `Obligación especial (${it.categoria === 'deuda_2025' ? 'Deuda Consolidada 2025' : 'Cuota Extraordinaria'})`,
-            montoUsd: it.moneda === 'USD' ? it.monto : (it.monto / tasaBcvValida),
-            montoBs: it.moneda === 'BS' ? it.monto : (it.monto * tasaBcvValida),
-            estado: it.estado === 'pendiente' ? 'Pendiente' : 'Solventado'
-          })
-        }
-      })
-
-      // Ordenar cronológicamente (más antiguo al más reciente)
-      timelineItems.sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''))
-
-      // 4. Montar desglose de deudas
-      const deudasDetalle: ExpedienteLegalAptoData['deudasDetalle'] = []
-      if (moraItems.length > 0) {
-        moraItems.forEach(it => {
-          deudasDetalle.push({
-            concepto: it.label,
-            categoria: it.categoria === 'cuota_especial' ? 'Cuota Extraordinaria' : it.categoria === 'deuda_2025' ? 'Deuda Consolidada 2025' : 'Recibo Ordinario',
-            fechaCorte: residente.mora_item?.fecha_corte || new Date().toISOString().slice(0, 10),
-            montoUsd: it.moneda === 'USD' ? it.monto : (it.monto / tasaBcvValida),
-            montoBs: it.moneda === 'BS' ? it.monto : (it.monto * tasaBcvValida),
-            estado: it.estado === 'pendiente' ? 'Pendiente / Exigible' : 'Pagado'
-          })
-        })
-      } else if (residente.deuda_usd > 0.01 || residente.deuda_bs > 0.01) {
-        deudasDetalle.push({
-          concepto: residente.mora_item?.conceptos_detalle || `Cuotas pendientes de condominio (${residente.meses_deuda} meses)`,
-          categoria: 'Cuota de Condominio en Mora',
-          fechaCorte: residente.mora_item?.fecha_corte || new Date().toISOString().slice(0, 10),
-          montoUsd: residente.deuda_usd,
-          montoBs: residente.deuda_bs > 0 ? residente.deuda_bs : (residente.deuda_usd * tasaBcvValida),
-          estado: 'Exigible en Mora'
-        })
-      }
-
-      // 5. Estadísticas y Métricas
-      const totalFacturadoHistoricoUsd = (residente.recibos_emitidos || []).reduce((s, r) => s + (r.total_usd || 0), 0)
-      const totalFacturadoHistoricoBs = (residente.recibos_emitidos || []).reduce((s, r) => s + (r.total_bs || 0), 0)
-
-      const pagosAprobadosList = (residente.historial_pagos || []).filter(p => p.estado === 'aprobado')
-      const totalPagadoHistoricoUsd = pagosAprobadosList.reduce((s, p) => s + (p.monto_usd || 0), 0)
-      const totalPagadoHistoricoBs = pagosAprobadosList.reduce((s, p) => s + (p.monto_bs || 0), 0)
-
-      const totalRecibos = residente.recibos_emitidos.length
-      const recibosPagados = residente.recibos_emitidos.filter(r => r.estado === 'pagado').length
-      const recibosPendientes = residente.recibos_emitidos.filter(r => r.estado === 'pendiente').length
-
-      const pagosTotalCount = residente.historial_pagos.length
-      const pagosAprobadosCount = pagosAprobadosList.length
-      const pagosPendientesCount = (residente.historial_pagos || []).filter(p => p.estado === 'pendiente').length
-      const pagosRechazadosCount = (residente.historial_pagos || []).filter(p => p.estado === 'rechazado').length
-
-      let tasaCumplimiento = 100
-      if (totalFacturadoHistoricoUsd > 0) {
-        tasaCumplimiento = Math.min(100, Math.round((totalPagadoHistoricoUsd / totalFacturadoHistoricoUsd) * 100))
-      } else if (residente.deuda_usd > 0) {
-        tasaCumplimiento = Math.max(0, 100 - (residente.meses_deuda * 15))
-      }
-
-      const saldoApto = saldosPorApto.get(residente.id)
-      const saldoUsd = saldoApto?.saldo_a_favor_usd || 0
-      const saldoBs = saldoApto?.saldo_a_favor_bs || (saldoUsd * tasaBcvValida)
-
-      const esSolvente = residente.deuda_usd <= 0.01 && residente.deuda_bs <= 0.01
-      const tasaRiesgoCalculada = esSolvente ? 'solvente' : (residente.mora_item?.tasa_riesgo || 'azul')
-
-      let antiguedadDeudaTexto = 'Al día sin deuda acumulada'
-      if (!esSolvente) {
-        if (residente.meses_deuda > 0) {
-          antiguedadDeudaTexto = `Atraso acumulado de ${residente.meses_deuda} meses`
-        } else {
-          antiguedadDeudaTexto = 'Deuda corriente exigible'
-        }
-      }
-
-      // 6. Configuración del Edificio
-      const nombreEdificio = config?.nombre_edificio || 'Residencias Ocutuy 5'
-      const rifEdificio = config?.rif || 'J-12345678-9'
-      const direccionEdificio = config?.direccion || 'Urbanización Casa Blanca, Residencias Ocutuy 5'
-
-      const payloadExpediente: ExpedienteLegalAptoData = {
-        edificio: {
-          nombre: nombreEdificio,
-          rif: rifEdificio,
-          direccion: direccionEdificio,
-          telefono: config?.telefono,
-          emailContacto: config?.email_contacto,
-          banco: config?.banco,
-          cuentaBancaria: config?.cuenta_bancaria,
-          titularCuenta: config?.titular_cuenta,
-          tasaBcv: tasaBcvValida
-        },
-        apartamento: {
-          id: residente.id,
-          numero: residente.apartamento,
-          piso: residente.piso,
-          esPh: residente.es_ph,
-          alicuotaDecimal: residente.alicuota,
-          metrosCuadrados: aptoDb?.metros_cuadrados,
-          estadoOcupacion: residente.estado_ocupacion,
-          tieneUsuarioWeb: residente.tiene_usuario,
-          notasInternas: residente.notas_internas,
-          propietario: {
-            nombre: residente.propietario.nombre,
-            cedula: aptoDb?.propietario_cedula || residente.mora_item?.propietario_cedula || null,
-            telefono: residente.propietario.telefono,
-            email: residente.propietario.email
-          },
-          inquilino: residente.inquilino ? {
-            nombre: residente.inquilino.nombre,
-            telefono: residente.inquilino.telefono,
-            email: residente.inquilino.email
-          } : undefined
-        },
-        metricas: {
-          deudaTotalUsd: residente.deuda_usd,
-          deudaTotalBs: residente.deuda_bs > 0 ? residente.deuda_bs : (residente.deuda_usd * tasaBcvValida),
-          mesesDeuda: residente.meses_deuda,
-          saldoAFavorUsd: saldoUsd,
-          saldoAFavorBs: saldoBs,
-          totalFacturadoHistoricoUsd,
-          totalFacturadoHistoricoBs,
-          totalPagadoHistoricoUsd,
-          totalPagadoHistoricoBs,
-          tasaCumplimientoPct: tasaCumplimiento,
-          totalRecibosEmitidos: totalRecibos,
-          recibosPagados,
-          recibosPendientes,
-          totalPagosReportados: pagosTotalCount,
-          pagosAprobados: pagosAprobadosCount,
-          pagosPendientes: pagosPendientesCount,
-          pagosRechazados: pagosRechazadosCount,
-          tasaRiesgo: tasaRiesgoCalculada as any,
-          accionLegalRecomendada: residente.mora_item?.accion_legal?.replace(/_/g, ' ') || (esSolvente ? 'Solvente - Sin acción' : 'Cobro extrajudicial'),
-          antiguedadDeudaTexto
-        },
-        deudasDetalle,
-        lineaTiempo: timelineItems,
-        emisor: {
-          autorNombre: perfil?.nombre_completo || 'Administrador',
-          autorEmail: user?.email || null,
-          presidenteJunta: presidenteNombre || 'Presidente de la Junta de Condominio',
-          tesoreroJunta: tesoreroNombre || 'Tesorero / Comité de Finanzas'
-        }
-      }
-
+      const payloadExpediente = await construirDatosExpedienteLegal(residente)
       descargarExpedienteLegalApto(payloadExpediente)
 
       setDeleteMessage({
@@ -649,6 +656,24 @@ export const AdminResidentes: React.FC = () => {
       })
     } finally {
       setGenerandoPdfId(null)
+    }
+  }
+
+  // ── Abrir Modal para Enviar Expediente por Correo Electrónico ──
+  const handleAbrirModalEnviarEmail = async (residente: Residente) => {
+    try {
+      setCargandoExpedienteEmail(true)
+      const payloadExpediente = await construirDatosExpedienteLegal(residente)
+      setExpedienteParaEmail(payloadExpediente)
+      setModalEmailExpedienteOpen(true)
+    } catch (err: any) {
+      console.error('[AdminResidentes] Error preparando expediente para email:', err)
+      setDeleteMessage({
+        type: 'error',
+        text: `Error al preparar expediente para envío: ${err.message || 'Intente nuevamente'}`
+      })
+    } finally {
+      setCargandoExpedienteEmail(false)
     }
   }
 
@@ -984,30 +1009,54 @@ export const AdminResidentes: React.FC = () => {
                 </div>
 
                 <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleDescargarExpedienteLegal(r)
-                    }}
-                    title="Descargar Expediente y Prueba Legal en PDF"
-                    style={{
-                      backgroundColor: '#1c1c22',
-                      color: '#f8fafc',
-                      border: '1px solid rgba(249, 115, 22, 0.35)',
-                      borderRadius: '6px',
-                      padding: '4px 7px',
-                      fontSize: '11px',
-                      fontWeight: 700,
-                      cursor: generandoPdfId === r.id ? 'wait' : 'pointer',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '3px',
-                      transition: 'all 0.15s ease'
-                    }}
-                  >
-                    {generandoPdfId === r.id ? '⌛' : '⚖️ PDF'}
-                  </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleDescargarExpedienteLegal(r)
+                      }}
+                      title="Descargar Expediente y Prueba Legal en PDF"
+                      style={{
+                        backgroundColor: '#1c1c22',
+                        color: '#f8fafc',
+                        border: '1px solid rgba(249, 115, 22, 0.35)',
+                        borderRadius: '6px',
+                        padding: '4px 7px',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        cursor: generandoPdfId === r.id ? 'wait' : 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '3px',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      {generandoPdfId === r.id ? '⌛' : '⚖️ PDF'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleAbrirModalEnviarEmail(r)
+                      }}
+                      title="Enviar Expediente Legal y Estado de Cuenta por Correo Electrónico"
+                      style={{
+                        backgroundColor: '#1c1c22',
+                        color: '#38bdf8',
+                        border: '1px solid rgba(56, 189, 248, 0.35)',
+                        borderRadius: '6px',
+                        padding: '4px 7px',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        cursor: cargandoExpedienteEmail ? 'wait' : 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '3px',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      ✉️
+                    </button>
                   <span style={{ color: 'var(--color-accent, #f97316)', fontSize: '13px', fontWeight: 800 }}>
                     →
                   </span>
@@ -1296,6 +1345,31 @@ export const AdminResidentes: React.FC = () => {
             >
               <span>⚖️</span>
               <span>{generandoPdfId === selected.id ? 'Generando PDF...' : 'Expediente Legal (PDF)'}</span>
+            </button>
+
+            <button
+              onClick={() => handleAbrirModalEnviarEmail(selected)}
+              disabled={cargandoExpedienteEmail}
+              style={{
+                backgroundColor: 'rgba(56, 189, 248, 0.12)',
+                color: '#38bdf8',
+                border: '1px solid rgba(56, 189, 248, 0.4)',
+                padding: '8px 14px',
+                borderRadius: '8px',
+                cursor: cargandoExpedienteEmail ? 'wait' : 'pointer',
+                fontSize: '12.5px',
+                fontWeight: 700,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                flex: isMobile ? 1 : 'none',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                transition: 'all 0.15s ease'
+              }}
+              title="Enviar Expediente Legal con Estado de Cuenta completo por correo electrónico"
+            >
+              <span>✉️</span>
+              <span>{cargandoExpedienteEmail ? 'Preparando...' : 'Enviar por Email'}</span>
             </button>
 
             <button
@@ -1779,6 +1853,30 @@ export const AdminResidentes: React.FC = () => {
                     >
                       <span>⚖️</span>
                       <span>{generandoPdfId === selected.id ? 'Generando PDF...' : 'Descargar Expediente / Prueba Legal (PDF)'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleAbrirModalEnviarEmail(selected)}
+                      disabled={cargandoExpedienteEmail}
+                      style={{
+                        backgroundColor: 'rgba(56, 189, 248, 0.12)',
+                        color: '#38bdf8',
+                        border: '1px solid rgba(56, 189, 248, 0.4)',
+                        padding: '8px 14px',
+                        borderRadius: '8px',
+                        fontSize: '12px',
+                        fontWeight: 800,
+                        cursor: cargandoExpedienteEmail ? 'wait' : 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                      }}
+                      title="Enviar Expediente Legal y Estado de Cuenta por correo electrónico"
+                    >
+                      <span>✉️</span>
+                      <span>{cargandoExpedienteEmail ? 'Preparando...' : 'Enviar por Email'}</span>
                     </button>
 
                     {cleanPhone && (
@@ -2627,6 +2725,18 @@ export const AdminResidentes: React.FC = () => {
           autorEmail={user?.email || null}
         />
       )}
+      {/* Modal para Enviar Expediente Legal por Correo Electrónico */}
+      <EnviarExpedienteEmailModal
+        isOpen={modalEmailExpedienteOpen}
+        onClose={() => setModalEmailExpedienteOpen(false)}
+        onSuccess={(destinatario) => {
+          setDeleteMessage({
+            type: 'success',
+            text: `✓ Expediente Legal del Apto ${expedienteParaEmail?.apartamento.numero} enviado exitosamente a ${destinatario}.`
+          })
+        }}
+        datosExpediente={expedienteParaEmail}
+      />
     </div>
   )
 }
