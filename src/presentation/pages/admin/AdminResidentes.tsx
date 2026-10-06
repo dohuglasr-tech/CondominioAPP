@@ -12,6 +12,7 @@ import { AbonarSaldoModal } from '../../components/AbonarSaldoModal'
 import { CompensarDeudaModal } from '../../components/CompensarDeudaModal'
 import { descargarExpedienteLegalApto, ExpedienteLegalAptoData } from '../../../utils/expedienteLegalPdfGenerator'
 import { obtenerJunta } from '../../../data/juntaService'
+import { sendResidentPasswordReset } from '../../../data/passwordRecoveryService'
 
 interface PersonaContacto {
   nombre: string
@@ -101,6 +102,7 @@ export const AdminResidentes: React.FC = () => {
   const [comprobanteModalUrl, setComprobanteModalUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [generandoPdfId, setGenerandoPdfId] = useState<string | null>(null)
+  const [enviandoResetAptoId, setEnviandoResetAptoId] = useState<string | null>(null)
   const [busqueda, setBusqueda] = useState('')
   const [filtroTipo, setFiltroTipo] = useState<'todos' | 'con_deuda' | 'solventes' | 'con_usuario' | 'ph'>('todos')
   const [tabActiva, setTabActiva] = useState<'deudas' | 'recibos' | 'pagos' | 'datos'>('deudas')
@@ -223,9 +225,7 @@ export const AdminResidentes: React.FC = () => {
           ? (perfil?.propietario_telefono || a.telefono_contacto || 'N/D')
           : (perfil?.telefono || a.telefono_contacto || 'Sin teléfono')
 
-        const propEmail = esAlquilado
-          ? (perfil?.propietario_email || '')
-          : (perfil?.email || '')
+        const propEmail = perfil?.propietario_email || perfil?.email || ''
 
         return {
           id: a.id,
@@ -649,6 +649,43 @@ export const AdminResidentes: React.FC = () => {
       })
     } finally {
       setGenerandoPdfId(null)
+    }
+  }
+
+  // ── Enviar restablecimiento de contraseña al residente ─────────────
+  const handleEnviarResetPassword = async (residente: Residente) => {
+    const emailDestino = (residente.propietario.email || residente.inquilino?.email || '').trim()
+    if (!emailDestino || !emailDestino.includes('@')) {
+      alert(`El apartamento ${residente.apartamento} no tiene un correo electrónico válido registrado. Por favor presiona "✏️ Editar Datos" para asignar el correo del residente antes de enviar el enlace de recuperación.`)
+      return
+    }
+
+    const confirmar = window.confirm(
+      `¿Deseas enviar un correo de restablecimiento de contraseña para el Apto ${residente.apartamento} a la dirección:\n\n${emailDestino}?`
+    )
+    if (!confirmar) return
+
+    setEnviandoResetAptoId(residente.id)
+    try {
+      const res = await sendResidentPasswordReset(emailDestino)
+      if (!res.success) {
+        setDeleteMessage({
+          type: 'error',
+          text: `Error al enviar correo de recuperación: ${res.error || 'Intente nuevamente'}`
+        })
+      } else {
+        setDeleteMessage({
+          type: 'success',
+          text: `✓ Enlace de recuperación de contraseña enviado exitosamente a ${emailDestino} (Apto ${residente.apartamento}).`
+        })
+      }
+    } catch (err: any) {
+      setDeleteMessage({
+        type: 'error',
+        text: `Error inesperado: ${err.message || 'Intente nuevamente'}`
+      })
+    } finally {
+      setEnviandoResetAptoId(null)
     }
   }
 
@@ -1295,6 +1332,33 @@ export const AdminResidentes: React.FC = () => {
             >
               📊 Calendario
             </button>
+
+            {selected.tiene_usuario && (
+              <button
+                type="button"
+                onClick={() => handleEnviarResetPassword(selected)}
+                disabled={enviandoResetAptoId === selected.id}
+                style={{
+                  backgroundColor: 'rgba(249, 115, 22, 0.12)',
+                  color: 'var(--color-accent, #f97316)',
+                  border: '1px solid rgba(249, 115, 22, 0.35)',
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  cursor: enviandoResetAptoId === selected.id ? 'not-allowed' : 'pointer',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  flex: isMobile ? 1 : 'none',
+                  transition: 'all 0.15s ease'
+                }}
+                title={`Enviar enlace de restablecimiento de contraseña al correo registrado para el Apto ${selected.apartamento}`}
+              >
+                <span>🔑</span>
+                <span>{enviandoResetAptoId === selected.id ? 'Enviando...' : 'Restablecer Clave'}</span>
+              </button>
+            )}
 
             {selected.tiene_usuario && (
               <button

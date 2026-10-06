@@ -21,7 +21,7 @@ interface AuthContextType {
   signIn: (apartamento: string, password: string) => Promise<{ error: string | null }>
   signOut: () => Promise<void>
   updatePassword: (newPassword: string, email?: string) => Promise<{ error: string | null }>
-  refreshPerfil: () => Promise<void>
+  refreshPerfil: (explicitUserId?: string) => Promise<void>
   refreshConfig: (forceRefresh?: boolean, explicitBuildingId?: string) => Promise<void>
   // Helpers de rol
   isSuperAdmin: boolean
@@ -53,6 +53,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const clearPasswordRecovery = () => {
     setIsPasswordRecovery(false)
     sessionStorage.removeItem('condominio_is_recovery')
+    if (typeof window !== 'undefined' && window.history?.replaceState) {
+      window.history.replaceState(null, '', window.location.pathname)
+    }
   }
 
   const [tenantSubdomain, setTenantSubdomain] = useState<string | null>(() => extractTenantSubdomain())
@@ -185,9 +188,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [cargarConfig])
 
-  const refreshPerfil = useCallback(async () => {
-    if (user) await cargarPerfil(user.id, user.email)
-  }, [user, cargarPerfil])
+  const refreshPerfil = useCallback(async (explicitUserId?: string) => {
+    const targetId = explicitUserId || user?.id || session?.user?.id
+    if (targetId) {
+      await cargarPerfil(targetId, user?.email || session?.user?.email)
+    } else {
+      const { data: { user: currentUser } } = await supabase.auth.getUser()
+      if (currentUser) {
+        setUser(currentUser)
+        await cargarPerfil(currentUser.id, currentUser.email)
+      }
+    }
+  }, [user, session, cargarPerfil])
 
   const refreshConfig = useCallback(async (forceRefresh = true, explicitBuildingId?: string) => {
     await cargarConfig(forceRefresh, explicitBuildingId)
@@ -210,7 +222,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, newSession) => {
-        if (event === 'PASSWORD_RECOVERY' || (typeof window !== 'undefined' && window.location.hash.includes('type=recovery'))) {
+        if (
+          event === 'PASSWORD_RECOVERY' ||
+          (typeof window !== 'undefined' && (
+            window.location.hash.includes('type=recovery') ||
+            window.location.search.includes('type=recovery')
+          ))
+        ) {
           setIsPasswordRecovery(true)
           sessionStorage.setItem('condominio_is_recovery', 'true')
         }

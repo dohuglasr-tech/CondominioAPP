@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useAuth } from '../../application/contexts/AuthContext'
 import { useNavigate, useLocation, useParams } from 'react-router-dom'
-import { supabase } from '../../data/supabase'
 import { AuthHeroPanel } from '../components/AuthHeroPanel'
 import {
   isBiometricsSupported,
@@ -12,6 +11,7 @@ import {
   disableBiometrics,
   BiometricSupport,
 } from '../../utils/biometricAuth'
+import { sendResidentPasswordReset } from '../../data/passwordRecoveryService'
 
 const FingerprintIcon = ({ size = 20, color = 'var(--color-accent, #f97316)' }: { size?: number; color?: string }) => (
   <svg
@@ -55,6 +55,7 @@ export function Login() {
   const [resetLoading, setResetLoading] = useState(false)
   const [resetError, setResetError] = useState<string | null>(null)
   const [resetSuccess, setResetSuccess] = useState(false)
+  const [resetSuccessInfo, setResetSuccessInfo] = useState<{ email: string; apto?: string } | null>(null)
 
   // ── Estados para Autenticación Biométrica (Face ID / Huella) ──
   const [bioSupport, setBioSupport] = useState<BiometricSupport>({
@@ -162,14 +163,15 @@ export function Login() {
     setResetEmail(email.trim())
     setResetError(null)
     setResetSuccess(false)
+    setResetSuccessInfo(null)
     setShowResetModal(true)
   }
 
   const handleSendResetEmail = async (e: React.FormEvent) => {
     e.preventDefault()
-    const clean = resetEmail.trim().toLowerCase()
-    if (!clean || !clean.includes('@')) {
-      setResetError('Por favor ingresa un correo electrónico válido.')
+    const clean = resetEmail.trim()
+    if (!clean) {
+      setResetError('Por favor ingresa tu correo, número de apartamento o cédula.')
       return
     }
 
@@ -177,17 +179,18 @@ export function Login() {
     setResetError(null)
 
     try {
-      const redirectUrl = `${window.location.origin}/reset-password`
-      const { error: resetErr } = await supabase.auth.resetPasswordForEmail(clean, {
-        redirectTo: redirectUrl
-      })
+      const res = await sendResidentPasswordReset(clean)
 
-      if (resetErr) {
-        setResetError(resetErr.message || 'No se pudo enviar el correo de recuperación. Verifica el correo e intenta de nuevo.')
+      if (!res.success) {
+        setResetError(res.error || 'No se pudo enviar el correo de recuperación. Verifica el dato ingresado.')
         setResetLoading(false)
         return
       }
 
+      setResetSuccessInfo({
+        email: res.maskedEmail || res.email || clean,
+        apto: res.apto,
+      })
       setResetSuccess(true)
     } catch (err: any) {
       setResetError(err?.message || 'Error inesperado al solicitar restablecimiento.')
@@ -1159,7 +1162,7 @@ export function Login() {
                 Restablecer contraseña
               </h2>
               <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0, lineHeight: 1.5 }}>
-                Ingresa el correo electrónico asociado a tu cuenta para recibir un enlace seguro de recuperación.
+                Ingresa tu correo, número de apartamento o cédula para recibir un enlace seguro de recuperación.
               </p>
             </div>
 
@@ -1180,7 +1183,7 @@ export function Login() {
                   <strong style={{ display: 'block', fontSize: '14px', marginBottom: '4px' }}>
                     ¡Enlace enviado!
                   </strong>
-                  Hemos enviado un correo a <span style={{ color: '#fff', fontWeight: 600 }}>{resetEmail}</span> con el enlace para restablecer tu contraseña.
+                  Hemos enviado un correo a <span style={{ color: '#fff', fontWeight: 600 }}>{resetSuccessInfo?.email || resetEmail}</span>{resetSuccessInfo?.apto ? ` (Apto ${resetSuccessInfo.apto})` : ''} con el enlace para restablecer tu contraseña.
                   <div style={{ marginTop: '8px', color: '#94a3b8', fontSize: '12px' }}>
                     Por favor revisa tu bandeja de entrada y la carpeta de spam o correo no deseado.
                   </div>
@@ -1232,12 +1235,12 @@ export function Login() {
                     textTransform: 'uppercase',
                     letterSpacing: '0.4px'
                   }}>
-                    Correo Electrónico
+                    Correo, N° Apartamento o Cédula
                   </label>
                   <input
-                    type="email"
+                    type="text"
                     required
-                    placeholder="correo@ejemplo.com"
+                    placeholder="Ej: 565, V-12345678 o correo@ejemplo.com"
                     value={resetEmail}
                     onChange={(e) => setResetEmail(e.target.value)}
                     disabled={resetLoading}

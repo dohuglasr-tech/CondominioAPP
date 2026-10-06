@@ -248,15 +248,20 @@ function AppShell() {
   // Detectar recuperación de contraseña globalmente y redirigir a /reset-password
   useEffect(() => {
     const hash = typeof window !== 'undefined' ? window.location.hash : ''
+    const search = typeof window !== 'undefined' ? window.location.search : ''
     const isRecoveryHash =
       hash.includes('type=recovery') ||
       hash.includes('otp_expired') ||
       (hash.includes('error=access_denied') && (hash.includes('otp') || hash.includes('expired')))
+    const isRecoverySearch =
+      search.includes('type=recovery') ||
+      search.includes('code=') ||
+      (search.includes('error=access_denied') && (search.includes('otp') || search.includes('expired')))
     const isRecoveryStorage = typeof window !== 'undefined' && sessionStorage.getItem('condominio_is_recovery') === 'true'
 
-    if (isRecoveryHash || isRecoveryStorage || isPasswordRecovery) {
+    if (isRecoveryHash || isRecoverySearch || isRecoveryStorage || isPasswordRecovery) {
       if (location.pathname !== '/reset-password') {
-        navigate('/reset-password' + hash, { replace: true })
+        navigate('/reset-password' + search + hash, { replace: true })
       }
     }
   }, [location.pathname, isPasswordRecovery, navigate])

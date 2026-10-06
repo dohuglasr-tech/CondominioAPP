@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../data/supabase'
 import { useAuth } from '../../application/contexts/AuthContext'
 import { AuthHeroPanel } from '../components/AuthHeroPanel'
+import { sendResidentPasswordReset, resolveResidentAccount } from '../../data/passwordRecoveryService'
 
 export const ResetPassword: React.FC = () => {
   const navigate = useNavigate()
@@ -24,6 +25,7 @@ export const ResetPassword: React.FC = () => {
   const [resendEmail, setResendEmail] = useState('')
   const [resendLoading, setResendLoading] = useState(false)
   const [resendSuccess, setResendSuccess] = useState(false)
+  const [resendSuccessInfo, setResendSuccessInfo] = useState<{ email: string; apto?: string } | null>(null)
   const [resendError, setResendError] = useState<string | null>(null)
 
   // Estado para verificar con código de 6 dígitos
@@ -33,78 +35,112 @@ export const ResetPassword: React.FC = () => {
   const [otpLoading, setOtpLoading] = useState(false)
   const [otpError, setOtpError] = useState<string | null>(null)
 
+  // Limpiar parámetros de autenticación del URL para evitar re-ejecuciones no deseadas
+  const cleanUrlAuthParams = () => {
+    if (typeof window !== 'undefined' && window.history?.replaceState) {
+      window.history.replaceState(null, '', window.location.pathname)
+    }
+  }
+
   // ── 1. Verificar si hay sesión de recuperación válida ─────────────
   useEffect(() => {
     let mounted = true
 
     const verifySession = async () => {
       try {
-        // A. Revisar si hay tokens en el hash de la URL (#access_token=...&type=recovery)
-        if (window.location.hash) {
-          const hash = window.location.hash.substring(1)
-          const params = new URLSearchParams(hash)
-          const accessToken = params.get('access_token')
-          const refreshToken = params.get('refresh_token')
-          const errorCode = params.get('error_code')
-
-          if (accessToken && refreshToken) {
-            const { data: setRes, error: sessionErr } = await supabase.auth.setSession({
-              access_token: accessToken,
-              refresh_token: refreshToken,
-            })
-            if (!sessionErr && setRes?.session && mounted) {
-              sessionStorage.setItem('condominio_is_recovery', 'true')
-              setHasValidSession(true)
-              setCheckingSession(false)
-              return
-            }
-          }
-
-          // Si vino un error en el hash (ej: otp_expired porque ya fue consumido el token),
-          // verificar si en el navegador ya quedó guardada la sesión activa
-          if (errorCode) {
-            const { data: { session } } = await supabase.auth.getSession()
-            if (session && mounted) {
-              sessionStorage.setItem('condominio_is_recovery', 'true')
-              setHasValidSession(true)
-              setCheckingSession(false)
-              return
-            }
-          }
+        // A. Verificar primero si Supabase ya detectó y activó la sesión automáticamente
+        // (por detectSessionInUrl: true en createClient)
+        const { data: { session: existingSession } } = await supabase.auth.getSession()
+        if (existingSession && mounted) {
+          sessionStorage.setItem('condominio_is_recovery', 'true')
+          setHasValidSession(true)
+          setCheckingSession(false)
+          cleanUrlAuthParams()
+          return
         }
 
         // B. Extraer código PKCE si vino por query params (?code=...)
         const queryParams = new URLSearchParams(window.location.search)
         const code = queryParams.get('code')
         if (code) {
-          const { error: codeErr } = await supabase.auth.exchangeCodeForSession(code)
-          if (!codeErr && mounted) {
-            setHasValidSession(true)
-            setCheckingSession(false)
-            return
+          try {
+            const { data: codeData, error: codeErr } = await supabase.auth.exchangeCodeForSession(code)
+            if (!codeErr && codeData?.session && mounted) {
+              sessionStorage.setItem('condominio_is_recovery', 'true')
+              setHasValidSession(true)
+              setCheckingSession(false)
+              cleanUrlAuthParams()
+              return
+            }
+          } catch (e) {
+            console.warn('[ResetPassword] Error intercambiando código PKCE:', e)
           }
         }
 
-        // C. Verificar si ya hay una sesión activa de Supabase
-        const { data: { session } } = await supabase.auth.getSession()
-        if (session && mounted) {
+        // C. Revisar si hay tokens en el hash de la URL (#access_token=...&type=recovery)
+        // SÓLO si getSession fue null y no hay errores de enlace
+        if (window.location.hash) {
+          const hash = window.location.hash.substring(1)
+          const params = new URLSearchParams(hash)
+          const accessToken = params.get('access_token')
+          const refreshToken = params.get('refresh_token')
+          const errorCode = params.get('error_code')
+          const errorDesc = params.get('error_description')
+
+          if (errorCode || errorDesc) {
+            console.warn('[ResetPassword] Error en enlace de recuperación:', errorCode, errorDesc)
+            // Enlace expirado o consumido previamente
+          } else if (accessToken && refreshToken) {
+            try {
+              const { data: setRes, error: sessionErr } = await supabase.auth.setSession({
+                access_token: accessToken,
+                refresh_token: refreshToken,
+              })
+              if (!sessionErr && setRes?.session && mounted) {
+                sessionStorage.setItem('condominio_is_recovery', 'true')
+                setHasValidSession(true)
+                setCheckingSession(false)
+                cleanUrlAuthParams()
+                return
+              }
+            } catch (e) {
+              console.warn('[ResetPassword] Error en setSession:', e)
+            }
+          }
+        }
+
+        // D. Comprobación final retardada por si el listener onAuthStateChange toma unos milisegundos
+        const { data: { session: finalCheck } } = await supabase.auth.getSession()
+        if (finalCheck && mounted) {
+          sessionStorage.setItem('condominio_is_recovery', 'true')
           setHasValidSession(true)
+          setCheckingSession(false)
+          cleanUrlAuthParams()
+          return
         }
       } catch (err) {
         console.warn('[ResetPassword] Error verificando sesión:', err)
       } finally {
-        if (mounted) setCheckingSession(false)
+        // Si no se activó después de 700ms, desbloquear UI para que muestre el formulario correspondiente
+        setTimeout(() => {
+          if (mounted) setCheckingSession(false)
+        }, 700)
       }
     }
 
     verifySession()
 
-    // D. Escuchar eventos de autenticación
+    // E. Escuchar eventos de autenticación
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'PASSWORD_RECOVERY' || (session && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED'))) {
+      if (
+        event === 'PASSWORD_RECOVERY' ||
+        (session && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED'))
+      ) {
         if (mounted) {
+          sessionStorage.setItem('condominio_is_recovery', 'true')
           setHasValidSession(true)
           setCheckingSession(false)
+          cleanUrlAuthParams()
         }
       }
     })
@@ -149,25 +185,27 @@ export const ResetPassword: React.FC = () => {
       }
 
       // Marcar perfil como activo y clave cambiada
-      if (data?.user?.id) {
+      const userId = data?.user?.id
+      if (userId) {
         await supabase
           .from('perfiles')
           .update({
             clave_cambiada: true,
             estado_cuenta: 'activa',
           })
-          .eq('id', data.user.id)
+          .eq('id', userId)
 
         await refreshPerfil?.()
       }
 
       clearPasswordRecovery?.()
       sessionStorage.removeItem('condominio_is_recovery')
+      cleanUrlAuthParams()
 
       setSuccess(true)
       setTimeout(() => {
         navigate('/', { replace: true })
-      }, 2000)
+      }, 1500)
     } catch (err: any) {
       setError(err?.message || 'Error inesperado al guardar la contraseña.')
     } finally {
@@ -175,12 +213,12 @@ export const ResetPassword: React.FC = () => {
     }
   }
 
-  // ── 3. Reenviar enlace de recuperación ───────────────────────────
+  // ── 3. Reenviar enlace de recuperación (por Correo, Apto o Cédula) ──
   const handleResendLink = async (e: React.FormEvent) => {
     e.preventDefault()
-    const clean = resendEmail.trim().toLowerCase()
-    if (!clean || !clean.includes('@')) {
-      setResendError('Por favor ingresa un correo electrónico válido.')
+    const clean = resendEmail.trim()
+    if (!clean) {
+      setResendError('Por favor ingresa tu correo, número de apartamento o cédula.')
       return
     }
 
@@ -188,17 +226,18 @@ export const ResetPassword: React.FC = () => {
     setResendError(null)
 
     try {
-      const redirectUrl = `${window.location.origin}/reset-password`
-      const { error: resetErr } = await supabase.auth.resetPasswordForEmail(clean, {
-        redirectTo: redirectUrl,
-      })
+      const res = await sendResidentPasswordReset(clean)
 
-      if (resetErr) {
-        setResendError(resetErr.message || 'No se pudo enviar el correo de recuperación.')
+      if (!res.success) {
+        setResendError(res.error || 'No se pudo enviar el correo de recuperación.')
         setResendLoading(false)
         return
       }
 
+      setResendSuccessInfo({
+        email: res.maskedEmail || res.email || clean,
+        apto: res.apto,
+      })
       setResendSuccess(true)
     } catch (err: any) {
       setResendError(err?.message || 'Error inesperado al enviar el enlace.')
@@ -210,11 +249,11 @@ export const ResetPassword: React.FC = () => {
   // ── 4. Validar código de 6 dígitos recibido por correo ────────────
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault()
-    const cleanMail = otpEmail.trim().toLowerCase()
+    const cleanMailOrApto = otpEmail.trim()
     const cleanCode = otpCode.trim()
 
-    if (!cleanMail || !cleanCode) {
-      setOtpError('Por favor ingresa tu correo y el código recibido.')
+    if (!cleanMailOrApto || !cleanCode) {
+      setOtpError('Por favor ingresa tu correo (o apartamento) y el código recibido.')
       return
     }
 
@@ -222,8 +261,20 @@ export const ResetPassword: React.FC = () => {
     setOtpError(null)
 
     try {
+      // Si ingresaron apartamento o cédula, resolver al correo registrado
+      let targetEmail = cleanMailOrApto.toLowerCase()
+      if (!cleanMailOrApto.includes('@')) {
+        const resolved = await resolveResidentAccount(cleanMailOrApto)
+        if (!resolved.success || !resolved.email) {
+          setOtpError(resolved.error || 'No pudimos identificar la cuenta asociada.')
+          setOtpLoading(false)
+          return
+        }
+        targetEmail = resolved.email
+      }
+
       const { data, error: otpErr } = await supabase.auth.verifyOtp({
-        email: cleanMail,
+        email: targetEmail,
         token: cleanCode,
         type: 'recovery',
       })
@@ -237,6 +288,7 @@ export const ResetPassword: React.FC = () => {
       if (data?.session) {
         sessionStorage.setItem('condominio_is_recovery', 'true')
         setHasValidSession(true)
+        cleanUrlAuthParams()
       }
     } catch (err: any) {
       setOtpError(err?.message || 'Error verificando el código.')
@@ -413,9 +465,13 @@ export const ResetPassword: React.FC = () => {
                       lineHeight: 1.4
                     }}>
                       <div style={{ fontSize: '24px', marginBottom: '6px' }}>✉️</div>
-                      <strong>¡Nuevo enlace enviado!</strong>
-                      <p style={{ margin: '6px 0 0', color: '#94a3b8', fontSize: '12px' }}>
-                        Revisa la bandeja de entrada o spam de <strong>{resendEmail}</strong> y ábrelo directamente.
+                      <strong style={{ fontSize: '14px', display: 'block', marginBottom: '4px' }}>¡Nuevo enlace enviado!</strong>
+                      <p style={{ margin: '6px 0 0', color: '#cbd5e1', fontSize: '12.5px', lineHeight: 1.5 }}>
+                        Hemos enviado el enlace seguro a <strong>{resendSuccessInfo?.email || resendEmail}</strong>
+                        {resendSuccessInfo?.apto ? ` (Apto ${resendSuccessInfo.apto})` : ''}.
+                      </p>
+                      <p style={{ margin: '8px 0 0', color: '#94a3b8', fontSize: '11.5px' }}>
+                        Por favor revisa tu bandeja de entrada y la carpeta de spam o correo no deseado.
                       </p>
                     </div>
                   ) : (
@@ -437,12 +493,12 @@ export const ResetPassword: React.FC = () => {
 
                       <div style={{ marginBottom: '16px' }}>
                         <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#cbd5e1', marginBottom: '6px', textTransform: 'uppercase' }}>
-                          Tu Correo Electrónico
+                          Correo, N° Apartamento o Cédula
                         </label>
                         <input
-                          type="email"
+                          type="text"
                           required
-                          placeholder="correo@ejemplo.com"
+                          placeholder="Ej: 565, V-12345678 o correo@ejemplo.com"
                           value={resendEmail}
                           onChange={(e) => setResendEmail(e.target.value)}
                           disabled={resendLoading}
@@ -501,12 +557,12 @@ export const ResetPassword: React.FC = () => {
 
                     <div style={{ marginBottom: '14px' }}>
                       <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#cbd5e1', marginBottom: '6px', textTransform: 'uppercase' }}>
-                        Correo Electrónico
+                        Correo o N° Apartamento
                       </label>
                       <input
-                        type="email"
+                        type="text"
                         required
-                        placeholder="correo@ejemplo.com"
+                        placeholder="Ej: 565 o correo@ejemplo.com"
                         value={otpEmail}
                         onChange={(e) => setOtpEmail(e.target.value)}
                         disabled={otpLoading}
