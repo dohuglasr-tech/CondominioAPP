@@ -68,7 +68,7 @@ export interface DatosPagoDeudaAtrasada {
   portalUrl?: string
 }
 
-const DEFAULT_PORTAL_URL = 'https://condominio-app-rouge.vercel.app'
+const DEFAULT_PORTAL_URL = 'https://domus-ve.vercel.app'
 
 /**
  * Normaliza números de teléfono para WhatsApp (añade código 58 si empieza por 04xx o 4xx).

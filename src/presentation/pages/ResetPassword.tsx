@@ -59,8 +59,32 @@ export const ResetPassword: React.FC = () => {
           return
         }
 
-        // B. Extraer código PKCE si vino por query params (?code=...)
+        // B. Extraer token_hash (?token_hash=...&type=recovery) o código PKCE (?code=...)
         const queryParams = new URLSearchParams(window.location.search)
+        const tokenHash = queryParams.get('token_hash')
+        const recoveryType = queryParams.get('type') || 'recovery'
+        
+        if (tokenHash) {
+          try {
+            const { data: verifyData, error: verifyErr } = await supabase.auth.verifyOtp({
+              token_hash: tokenHash,
+              type: recoveryType as any,
+            })
+            if (!verifyErr && verifyData?.session && mounted) {
+              sessionStorage.setItem('condominio_is_recovery', 'true')
+              setHasValidSession(true)
+              setCheckingSession(false)
+              cleanUrlAuthParams()
+              return
+            } else if (verifyErr) {
+              console.warn('[ResetPassword] Error verificando token_hash:', verifyErr)
+              setError('El enlace de recuperación es inválido o ha expirado. Puedes solicitar uno nuevo abajo.')
+            }
+          } catch (e) {
+            console.warn('[ResetPassword] Excepción verificando token_hash:', e)
+          }
+        }
+
         const code = queryParams.get('code')
         if (code) {
           try {

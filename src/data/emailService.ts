@@ -116,7 +116,7 @@ export interface DatosEmailRecordatorioRecibo {
   colorPrimario?: string | null
 }
 
-export const DEFAULT_PORTAL_URL = 'https://condominio-app-rouge.vercel.app'
+export const DEFAULT_PORTAL_URL = 'https://domus-ve.vercel.app'
 export const DEFAULT_EDIFICIO = 'Residencias Ocutuy 5'
 export const DEFAULT_BANCO = 'Banco Bicentenario'
 export const DEFAULT_CUENTA = '0175-0525-4100-7575-1351'
@@ -126,9 +126,12 @@ export const DEFAULT_RIF = 'V-6089037'
 export function getBasePortalUrl(): string {
   if (typeof window !== 'undefined' && window.location?.origin) {
     const origin = window.location.origin
-    // Si estamos en entorno de desarrollo local, usar la URL del portal de producción
-    // para que los enlaces enviados en los correos funcionen desde cualquier móvil o dispositivo externo
+    // Si estamos en entorno local o en una URL de preview/rama de Vercel que no sea el dominio principal
+    // usar siempre el portal de producción oficial para evitar bloqueos por Vercel Authentication
     if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+      return DEFAULT_PORTAL_URL
+    }
+    if (origin.includes('vercel.app') && !origin.includes('domus-ve')) {
       return DEFAULT_PORTAL_URL
     }
     return origin

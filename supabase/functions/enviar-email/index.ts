@@ -49,8 +49,9 @@ function generarHtmlRecuperacionPassword(params: {
   apto?: string;
   edificio: string;
   resetUrl: string;
+  codigoOtp?: string;
 }): string {
-  const { nombre, apto, edificio, resetUrl } = params;
+  const { nombre, apto, edificio, resetUrl, codigoOtp } = params;
   const saludo = nombre ? `Hola, <strong>${nombre}</strong>` : apto ? `Estimado(a) residente del <strong>Apto. ${apto}</strong>` : 'Estimado(a) residente';
 
   return `<!DOCTYPE html>
@@ -88,7 +89,7 @@ function generarHtmlRecuperacionPassword(params: {
                 ${saludo},
               </p>
               <p style="margin:0 0 20px;font-size:13.5px;color:#94a3b8;line-height:1.6;">
-                Hemos recibido una solicitud para restablecer la contraseña de acceso a tu cuenta en el sistema de condominio. Para definir una nueva contraseña, haz clic en el siguiente botón:
+                Hemos recibido una solicitud para restablecer la contraseña de acceso a tu cuenta en el sistema de condominio. Para definir tu nueva clave de acceso directamente, haz clic en el siguiente botón:
               </p>
 
               <!-- BOTÓN DE ACCIÓN -->
@@ -97,6 +98,18 @@ function generarHtmlRecuperacionPassword(params: {
                   Restablecer mi Contraseña ➔
                 </a>
               </div>
+
+              ${codigoOtp ? `
+              <!-- CÓDIGO DIRECTO DE SEGURIDAD -->
+              <div style="background:#070a13;border:1px dashed #f97316;border-radius:12px;padding:16px;margin:22px 0;text-align:center;">
+                <div style="font-size:11px;color:#94a3b8;font-weight:700;text-transform:uppercase;margin-bottom:6px;letter-spacing:0.5px;">
+                  O ingresa este código temporal en la aplicación:
+                </div>
+                <div style="font-size:26px;font-weight:900;letter-spacing:6px;color:#f97316;font-family:monospace;">
+                  ${codigoOtp}
+                </div>
+              </div>
+              ` : ''}
 
               <!-- ENLACE DIRECTO DE RESPALDO -->
               <div style="background:#070a13;border:1px solid #1e293b;border-radius:10px;padding:12px 14px;margin-bottom:24px;">
@@ -164,18 +177,18 @@ Deno.serve(async (req: Request) => {
         auth: { autoRefreshToken: false, persistSession: false },
       });
 
-      const redirectTo = body.redirectTo || "https://condominio-app.vercel.app/reset-password";
+      const targetBase = (body.redirectTo || "https://domus-ve.vercel.app/reset-password").trim();
 
       // Generar el enlace de recuperación oficial seguro de Supabase
       const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
         type: "recovery",
         email: emailDestino,
         options: {
-          redirectTo,
+          redirectTo: targetBase,
         },
       });
 
-      if (linkError || !linkData?.properties?.action_link) {
+      if (linkError || !linkData?.properties) {
         console.error("[enviar-email] Error generando enlace de recuperación:", linkError);
         return new Response(
           JSON.stringify({ ok: false, error: linkError?.message || "No se pudo generar el enlace de recuperación." }),
@@ -183,7 +196,16 @@ Deno.serve(async (req: Request) => {
         );
       }
 
-      const resetUrl = linkData.properties.action_link;
+      const hashedToken = linkData.properties.hashed_token;
+      const emailOtp = linkData.properties.email_otp;
+
+      // Usar enlace directo al portal con token_hash para entrar sin pasar por pantallas de login externas
+      let resetUrl = linkData.properties.action_link;
+      if (hashedToken && targetBase) {
+        const cleanBase = targetBase.split('?')[0];
+        resetUrl = `${cleanBase}?token_hash=${encodeURIComponent(hashedToken)}&type=recovery`;
+      }
+
       const edificioNombre = body.edificio || "Residencias Ocutuy 5";
 
       to = emailDestino;
@@ -193,6 +215,7 @@ Deno.serve(async (req: Request) => {
         apto: body.apto,
         edificio: edificioNombre,
         resetUrl,
+        codigoOtp: emailOtp,
       });
     }
 
