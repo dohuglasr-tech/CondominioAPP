@@ -114,6 +114,8 @@ export const AdminCalendarioDeudas: React.FC = () => {
   // Modal y Descarga de Cartelera para Ascensor en PDF (Tamaño Carta)
   const [modalCarteleraOpen, setModalCarteleraOpen] = useState(false)
   const [carteleraFiltro, setCarteleraFiltro] = useState<'todos' | 'con_deuda' | 'solventes'>('todos')
+  const [carteleraOrientacion, setCarteleraOrientacion] = useState<'portrait' | 'landscape'>('portrait')
+  const [carteleraPaginas, setCarteleraPaginas] = useState<1 | 2 | 3>(1)
   const [carteleraTitulo, setCarteleraTitulo] = useState('BOLETÍN INFORMATIVO DE COBRANZA Y SOLVENCIA')
   const [carteleraMensaje, setCarteleraMensaje] = useState(
     'El pago oportuno de las cuotas es indispensable para el mantenimiento preventivo de ascensores, bombas de agua, iluminación y seguridad. ¡Agradecemos su compromiso!'
@@ -1007,12 +1009,16 @@ export const AdminCalendarioDeudas: React.FC = () => {
         },
         mensajeComunidad: carteleraMensaje,
         filtro: filtroAplicar,
-        tituloPersonalizado: carteleraTitulo
+        tituloPersonalizado: carteleraTitulo,
+        orientacion: carteleraOrientacion,
+        distribucionPaginas: carteleraPaginas
       })
 
       const nomEdifClean = (config?.nombre_edificio || 'Condominio').replace(/[^a-zA-Z0-9_-]/g, '_')
-      doc.save(`Cartelera_Ascensor_${nomEdifClean}_${anioSeleccionado}.pdf`)
-      showToast('📄 ¡PDF de Cartelera para Ascensor descargado en tamaño Carta!')
+      const orientSufijo = carteleraOrientacion === 'landscape' ? 'Horizontal' : 'Vertical'
+      const pagsSufijo = `${carteleraPaginas}Hojas`
+      doc.save(`Cartelera_Ascensor_${nomEdifClean}_${anioSeleccionado}_${orientSufijo}_${pagsSufijo}.pdf`)
+      showToast(`📄 ¡PDF de Cartelera (${orientSufijo}, ${carteleraPaginas} ${carteleraPaginas === 1 ? 'hoja' : 'hojas'}) descargado correctamente!`)
       setModalCarteleraOpen(false)
     } catch (err: any) {
       console.error('[AdminCalendarioDeudas] Error generando PDF:', err)
@@ -4077,7 +4083,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
                     Cartelera Informativa para el Ascensor
                   </h3>
                   <p style={{ margin: '3px 0 0', color: 'var(--color-accent, #f97316)', fontSize: '11.5px', fontWeight: 600 }}>
-                    Formato Tamaño Carta (Letter) · Sin Márgenes · 1 Hoja
+                    Tamaño Carta · {carteleraOrientacion === 'landscape' ? 'Horizontal (Apaisado)' : 'Vertical'} · {carteleraPaginas} {carteleraPaginas === 1 ? 'Hoja' : 'Hojas'}
                   </p>
                 </div>
               </div>
@@ -4100,16 +4106,106 @@ export const AdminCalendarioDeudas: React.FC = () => {
 
             {/* Cuerpo del modal */}
             <div style={{ padding: '20px 24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {/* Opciones de Orientación y División de Páginas */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                {/* Selector de Orientación */}
+                <div>
+                  <label style={{ display: 'block', color: '#cbd5e1', fontSize: '12px', fontWeight: 700, marginBottom: '6px' }}>
+                    Orientación de Impresión:
+                  </label>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setCarteleraOrientacion('portrait')}
+                      style={{
+                        padding: '9px 8px',
+                        borderRadius: '9px',
+                        border: `1.5px solid ${carteleraOrientacion === 'portrait' ? 'var(--color-accent, #f97316)' : '#374151'}`,
+                        backgroundColor: carteleraOrientacion === 'portrait' ? 'rgba(249, 115, 22, 0.12)' : '#030712',
+                        color: carteleraOrientacion === 'portrait' ? '#fff' : '#94a3b8',
+                        cursor: 'pointer',
+                        textAlign: 'center',
+                        fontSize: '11.5px',
+                        fontWeight: 700,
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      📄 Vertical
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCarteleraOrientacion('landscape')}
+                      style={{
+                        padding: '9px 8px',
+                        borderRadius: '9px',
+                        border: `1.5px solid ${carteleraOrientacion === 'landscape' ? 'var(--color-accent, #f97316)' : '#374151'}`,
+                        backgroundColor: carteleraOrientacion === 'landscape' ? 'rgba(249, 115, 22, 0.12)' : '#030712',
+                        color: carteleraOrientacion === 'landscape' ? '#fff' : '#94a3b8',
+                        cursor: 'pointer',
+                        textAlign: 'center',
+                        fontSize: '11.5px',
+                        fontWeight: 700,
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      📑 Horizontal
+                    </button>
+                  </div>
+                </div>
+
+                {/* Selector de Hojas / División Mural */}
+                <div>
+                  <label style={{ display: 'block', color: '#cbd5e1', fontSize: '12px', fontWeight: 700, marginBottom: '6px' }}>
+                    Distribución de Hojas:
+                  </label>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
+                    {[
+                      { num: 1, label: '1 Hoja', sub: 'Compacta' },
+                      { num: 2, label: '2 Hojas', sub: 'Mediana' },
+                      { num: 3, label: '3 Hojas', sub: 'Mural / Grande' }
+                    ].map(opt => (
+                      <button
+                        key={opt.num}
+                        type="button"
+                        onClick={() => setCarteleraPaginas(opt.num as any)}
+                        style={{
+                          padding: '7px 4px',
+                          borderRadius: '9px',
+                          border: `1.5px solid ${carteleraPaginas === opt.num ? 'var(--color-accent, #f97316)' : '#374151'}`,
+                          backgroundColor: carteleraPaginas === opt.num ? 'rgba(249, 115, 22, 0.12)' : '#030712',
+                          color: carteleraPaginas === opt.num ? '#fff' : '#94a3b8',
+                          cursor: 'pointer',
+                          textAlign: 'center',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        <div style={{ fontWeight: 700, fontSize: '11.5px' }}>{opt.label}</div>
+                        <div style={{ fontSize: '9.5px', color: '#64748b' }}>{opt.sub}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Banner Explicativo de la Configuración Seleccionada */}
               <div style={{
-                backgroundColor: 'rgba(59, 130, 246, 0.08)',
-                border: '1px solid rgba(59, 130, 246, 0.25)',
+                backgroundColor: carteleraPaginas === 3 ? 'rgba(249, 115, 22, 0.1)' : 'rgba(59, 130, 246, 0.08)',
+                border: `1px solid ${carteleraPaginas === 3 ? 'rgba(249, 115, 22, 0.35)' : 'rgba(59, 130, 246, 0.25)'}`,
                 borderRadius: '10px',
-                padding: '12px 14px',
-                fontSize: '12px',
-                color: '#93c5fd',
+                padding: '11px 14px',
+                fontSize: '11.5px',
+                color: carteleraPaginas === 3 ? '#fdba74' : '#93c5fd',
                 lineHeight: 1.45
               }}>
-                📄 <strong>Optimizado para Ascensor:</strong> Organiza todos los apartamentos en 2 columnas paralelas para entrar en <strong>1 sola hoja Carta</strong>, con estatus de solvencia (verde/rojo), monto adeudado y recuadro inferior con datos bancarios oficiales para que los residentes paguen de inmediato.
+                {carteleraPaginas === 1 && (
+                  <span>📄 <strong>Modo 1 Hoja (Compacto):</strong> Todos los 62 apartamentos caben en 1 sola hoja Carta sin márgenes, con 2 columnas paralelas en vertical (o 3 en horizontal) y datos bancarios al pie.</span>
+                )}
+                {carteleraPaginas === 2 && (
+                  <span>📑 <strong>Modo 2 Hojas (Legibilidad Media):</strong> Divide el edificio en dos hojas con letra más grande (7.5pt). Página 1: KPIs y mitad de apartamentos; Página 2: segunda mitad y cuentas bancarias.</span>
+                )}
+                {carteleraPaginas === 3 && (
+                  <span>🖼️ <strong>Modo 3 Hojas (Unión Mural para Ascensor):</strong> Genera 3 hojas continuas con <strong>letra extra-grande (8.5pt)</strong> y alto contraste. Diseñado especialmente para que el administrador pegue las 3 hojas unidas en el ascensor y la información se lea fácilmente desde lejos.</span>
+                )}
               </div>
 
               {/* Filtro de Apartamentos */}
