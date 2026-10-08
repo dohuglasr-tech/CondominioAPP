@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { appCache } from './cacheService'
+import { comprimirImagen } from '../utils/imageCompressor'
 
 export interface ReportePagoPayload {
   apartamento_id: string
@@ -117,9 +118,6 @@ export async function reportarPago(payload: ReportePagoPayload): Promise<{ error
     return { error: err.message || 'Error de conexión. Intenta de nuevo.' }
   }
 }
-
-import { comprimirImagen } from '../utils/imageCompressor'
-
 /**
  * Sube un comprobante de pago al bucket de Supabase Storage.
  * Comprime la imagen en el cliente para ahorrar más del 90% de almacenamiento en Supabase.

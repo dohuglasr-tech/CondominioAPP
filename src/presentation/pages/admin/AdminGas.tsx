@@ -378,7 +378,7 @@ export const AdminGas: React.FC = () => {
 
   const handlePublicarCuota = async (e: React.FormEvent) => {
     e.preventDefault()
-    const montoNum = parseFloat(formCuota.monto)
+    const montoNum = parseFloat(String(formCuota.monto).replace(',', '.'))
     if (isNaN(montoNum) || montoNum <= 0) {
       showToast('Por favor introduce un monto válido mayor a 0')
       return

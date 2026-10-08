@@ -209,7 +209,7 @@ export const SuperAdminDashboard: React.FC = () => {
         .from('configuracion_edificio')
         .select('banner_emergencia_activo, banner_emergencia_texto, banner_emergencia_nivel, modo_mantenimiento, modo_mantenimiento_motivo, tasa_bcv_actual')
         .limit(1)
-        .single()
+        .maybeSingle()
 
       if (data) {
         setBannerActivo(Boolean(data.banner_emergencia_activo))
@@ -287,7 +287,7 @@ export const SuperAdminDashboard: React.FC = () => {
     // Comprobar rol del usuario tras autenticarse
     const { data: { user: authUser } } = await supabase.auth.getUser()
     if (authUser) {
-      const { data: p } = await supabase.from('perfiles').select('rol').eq('id', authUser.id).single()
+      const { data: p } = await supabase.from('perfiles').select('rol').eq('id', authUser.id).maybeSingle()
       if (p?.rol !== 'superadmin') {
         setLoginError('Acceso denegado: Esta cuenta no cuenta con rol de Super Administrador.')
         await signOut()

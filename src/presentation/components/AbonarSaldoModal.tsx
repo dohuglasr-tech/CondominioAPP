@@ -53,7 +53,7 @@ export const AbonarSaldoModal: React.FC<Props> = ({
   // Sincronización bidireccional USD <-> Bs
   const handleUsdChange = (val: string) => {
     setMontoUsd(val)
-    const num = parseFloat(val)
+    const num = parseFloat(val.replace(',', '.'))
     if (!isNaN(num) && num > 0) {
       setMontoBs((num * tasaValida).toFixed(2))
     } else {
@@ -63,7 +63,7 @@ export const AbonarSaldoModal: React.FC<Props> = ({
 
   const handleBsChange = (val: string) => {
     setMontoBs(val)
-    const num = parseFloat(val)
+    const num = parseFloat(val.replace(',', '.'))
     if (!isNaN(num) && num > 0) {
       setMontoUsd((num / tasaValida).toFixed(2))
     } else {
@@ -71,7 +71,7 @@ export const AbonarSaldoModal: React.FC<Props> = ({
     }
   }
 
-  const numUsd = parseFloat(montoUsd) || 0
+  const numUsd = parseFloat(montoUsd.replace(',', '.')) || 0
   const tieneDeuda = deudaActualUsd > 0.05 || deudaActualBs > 0.05
   const deudaTotalUsd = deudaActualUsd > 0 ? deudaActualUsd : (deudaActualBs / tasaValida)
 
@@ -101,7 +101,7 @@ export const AbonarSaldoModal: React.FC<Props> = ({
         apartamento_numero: apartamentoNumero,
         propietario_nombre: propietarioNombre,
         monto_usd: numUsd,
-        monto_bs: parseFloat(montoBs) || (numUsd * tasaValida),
+        monto_bs: parseFloat(String(montoBs).replace(',', '.')) || (numUsd * tasaValida),
         motivo: motivo.trim(),
         aplicar_a_deuda: aplicarADeuda && tieneDeuda,
         autor_nombre: autorNombre || 'Administrador',

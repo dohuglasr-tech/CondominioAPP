@@ -102,6 +102,14 @@ export const AdminRecibosEmitidos: React.FC = () => {
     return (mesSeleccionado || '').slice(0, 7) < fechaEntradaActual
   }, [mesSeleccionado, recibos, fechaEntradaActual, config?.fecha_inicio_gestion])
 
+  // Label amigable del mes
+  const mesLabelActivo = useMemo(() => {
+    if (!mesSeleccionado) return 'Sin emisión'
+    const [a, m] = mesSeleccionado.split('-')
+    const idx = (parseInt(m) || 1) - 1
+    return `${MESES[idx]} ${a}`
+  }, [mesSeleccionado])
+
   const [modalBulkPagadosOpen, setModalBulkPagadosOpen] = useState(false)
   const [modalBulkMoraOpen, setModalBulkMoraOpen] = useState(false)
   const [ejecutandoBulk, setEjecutandoBulk] = useState(false)
@@ -854,13 +862,6 @@ export const AdminRecibosEmitidos: React.FC = () => {
     }
   }, [recibos])
 
-  // Label amigable del mes
-  const mesLabelActivo = useMemo(() => {
-    if (!mesSeleccionado) return 'Sin emisión'
-    const [a, m] = mesSeleccionado.split('-')
-    const idx = (parseInt(m) || 1) - 1
-    return `${MESES[idx]} ${a}`
-  }, [mesSeleccionado])
 
   // ── 5. Recibos filtrados por búsqueda y estado ───────────────────────────
   const recibosFiltrados = useMemo(() => {

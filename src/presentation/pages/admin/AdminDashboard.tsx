@@ -192,7 +192,9 @@ export const AdminDashboard: React.FC = () => {
         subtitulo: `Ref: ${p.referencia || 'N/D'} · ${p.residente?.nombre_completo || 'Residente'}`,
         monto: `Bs. ${Number(p.monto_bs || 0).toLocaleString('es-VE', { minimumFractionDigits: 2 })}`,
         estado: p.estado,
-        fecha: new Date(p.created_at).toLocaleDateString('es-VE', { day: '2-digit', month: 'short' }),
+        fecha: p.created_at && !isNaN(new Date(p.created_at).getTime())
+          ? new Date(p.created_at).toLocaleDateString('es-VE', { day: '2-digit', month: 'short' })
+          : 'Reciente',
         rawDate: p.created_at
       }))
       setActividad(itemsPagos)

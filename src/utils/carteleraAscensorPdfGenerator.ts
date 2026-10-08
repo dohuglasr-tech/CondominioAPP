@@ -103,7 +103,6 @@ export function generarCarteleraAscensorPDF(datos: DatosCarteleraAscensor): jsPD
 
   const cDarkNavy: [number, number, number] = [15, 23, 42]
   const cAccentAmber: [number, number, number] = [245, 158, 11]
-  const cSlateDark: [number, number, number] = [30, 41, 59]
   const cSlateText: [number, number, number] = [51, 65, 85]
 
   // Filtrado de apartamentos

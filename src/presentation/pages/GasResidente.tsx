@@ -85,7 +85,7 @@ export const GasResidente: React.FC = () => {
       showToast('No hay una campaña de gas activa para reportar pago')
       return
     }
-    const montoNum = parseFloat(formReporte.monto)
+    const montoNum = parseFloat(formReporte.monto.replace(',', '.'))
     if (isNaN(montoNum) || montoNum <= 0) {
       showToast('Introduce un monto válido mayor a 0')
       return

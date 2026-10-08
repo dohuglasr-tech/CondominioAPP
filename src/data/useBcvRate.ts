@@ -60,7 +60,7 @@ export function useBcvRate(): BcvRateState {
             const { data: configData } = await supabase
               .from('configuracion_edificio')
               .select('tasa_bcv_actual, tasa_bcv_actualizada')
-              .single()
+              .maybeSingle()
 
             if (configData?.tasa_bcv_actual && Number(configData.tasa_bcv_actual) > 1) {
               return {

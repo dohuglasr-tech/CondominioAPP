@@ -289,7 +289,7 @@ export async function guardarMiembroJunta(item: Partial<MiembroJunta>): Promise<
           .from('junta_condominio')
           .insert([payload])
           .select()
-          .single()
+          .maybeSingle()
 
         if (dbErr) {
           console.warn('[juntaService] Error insertando en Supabase:', dbErr.message)

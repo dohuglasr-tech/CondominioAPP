@@ -64,7 +64,7 @@ export const AdminLogin: React.FC = () => {
         .from('perfiles')
         .select('rol')
         .eq('id', authData.user.id)
-        .single()
+        .maybeSingle()
 
       if (perfilError || !perfil) {
         await supabase.auth.signOut()

@@ -45,7 +45,7 @@ export const RetirarSaldoModal: React.FC<Props> = ({
 
   if (!isOpen) return null
 
-  const montoNum = parseFloat(montoRetirar) || 0
+  const montoNum = parseFloat(montoRetirar.replace(',', '.')) || 0
   const tasaValida = tasaBcv > 1 ? tasaBcv : 859.06
   const montoBs = montoNum * tasaValida
   const saldoRestante = Math.max(0, saldoAFavorUsd - montoNum)

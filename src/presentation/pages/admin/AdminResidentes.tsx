@@ -300,8 +300,10 @@ export const AdminResidentes: React.FC = () => {
         })
 
         if (rpcError) {
-          console.warn('[AdminResidentes] RPC falló, usando borrado directo:', rpcError.message)
-          await supabase.from('pagos_reportados').delete().eq('reportado_por', selected.usuario_id)
+          const { error: updPagosErr } = await supabase.from('pagos_reportados').update({ reportado_por: null }).eq('reportado_por', selected.usuario_id)
+          if (updPagosErr) {
+            await supabase.from('pagos_reportados').delete().eq('reportado_por', selected.usuario_id)
+          }
           const { error: delPerfilesErr } = await supabase.from('perfiles').delete().eq('id', selected.usuario_id)
           if (delPerfilesErr) throw delPerfilesErr
         }

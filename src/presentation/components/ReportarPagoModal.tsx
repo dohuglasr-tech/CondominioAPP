@@ -330,6 +330,11 @@ export function ReportarPagoModal({ apartamentoId, onClose, onSuccess, config: c
       return
     }
 
+    if (montoFinalUsd <= 0 && montoFinalBs <= 0) {
+      setError('El monto a reportar debe ser mayor a 0.')
+      return
+    }
+
     setLoading(true); setError(null)
 
     let comprobanteUrl: string | null = null

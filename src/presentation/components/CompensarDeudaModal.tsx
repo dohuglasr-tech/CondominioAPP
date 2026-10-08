@@ -47,7 +47,7 @@ export const CompensarDeudaModal: React.FC<Props> = ({
 
   if (!isOpen) return null
 
-  const montoNum = parseFloat(montoAplicar) || 0
+  const montoNum = parseFloat(montoAplicar.replace(',', '.')) || 0
   const saldoRestanteUsd = Math.max(0, saldoAFavorDisponibleUsd - montoNum)
   const deudaRestanteUsd = Math.max(0, deudaActualUsd - montoNum)
 

@@ -767,7 +767,7 @@ export const AdminCasos: React.FC = () => {
                       min="0"
                       placeholder="0.00"
                       value={formMontoUsd}
-                      onChange={e => setFormMontoUsd(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                      onChange={e => setFormMontoUsd(e.target.value === '' ? '' : (parseFloat(e.target.value.replace(',', '.')) || 0))}
                       style={{
                         width: '100%', boxSizing: 'border-box', background: '#0a0d13',
                         border: '1px solid rgba(255, 255, 255, 0.12)', color: '#fff',
@@ -786,7 +786,7 @@ export const AdminCasos: React.FC = () => {
                       min="0"
                       placeholder="0.00"
                       value={formMontoBs}
-                      onChange={e => setFormMontoBs(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                      onChange={e => setFormMontoBs(e.target.value === '' ? '' : (parseFloat(e.target.value.replace(',', '.')) || 0))}
                       style={{
                         width: '100%', boxSizing: 'border-box', background: '#0a0d13',
                         border: '1px solid rgba(255, 255, 255, 0.12)', color: '#fff',

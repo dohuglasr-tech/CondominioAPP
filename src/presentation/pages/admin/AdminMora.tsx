@@ -1299,7 +1299,7 @@ export const AdminMora: React.FC = () => {
                       min="0"
                       placeholder="0.00"
                       value={formMontoUsd}
-                      onChange={e => setFormMontoUsd(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                      onChange={e => setFormMontoUsd(e.target.value === '' ? '' : (parseFloat(e.target.value.replace(',', '.')) || 0))}
                       style={{
                         width: '100%', boxSizing: 'border-box', background: '#0a0d13',
                         border: '1px solid rgba(255, 255, 255, 0.12)', color: '#fff',
@@ -1318,7 +1318,7 @@ export const AdminMora: React.FC = () => {
                       min="0"
                       placeholder="0.00"
                       value={formMontoBs}
-                      onChange={e => setFormMontoBs(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                      onChange={e => setFormMontoBs(e.target.value === '' ? '' : (parseFloat(e.target.value.replace(',', '.')) || 0))}
                       style={{
                         width: '100%', boxSizing: 'border-box', background: '#0a0d13',
                         border: '1px solid rgba(255, 255, 255, 0.12)', color: '#fff',
@@ -1758,7 +1758,7 @@ export const AdminMora: React.FC = () => {
                         min="0"
                         required
                         value={pagoMontoUsd}
-                        onChange={e => setPagoMontoUsd(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                        onChange={e => setPagoMontoUsd(e.target.value === '' ? '' : (parseFloat(e.target.value.replace(',', '.')) || 0))}
                         style={{
                           width: '100%', boxSizing: 'border-box', background: '#0a0d13',
                           border: '1px solid rgba(255, 255, 255, 0.12)', color: '#fff',
@@ -1776,7 +1776,7 @@ export const AdminMora: React.FC = () => {
                         step="0.01"
                         min="0"
                         value={pagoMontoBs}
-                        onChange={e => setPagoMontoBs(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                        onChange={e => setPagoMontoBs(e.target.value === '' ? '' : (parseFloat(e.target.value.replace(',', '.')) || 0))}
                         style={{
                           width: '100%', boxSizing: 'border-box', background: '#0a0d13',
                           border: '1px solid rgba(255, 255, 255, 0.12)', color: '#fff',

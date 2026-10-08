@@ -697,7 +697,7 @@ export async function updateEmergencySettings(params: {
       .from('configuracion_edificio')
       .select('id')
       .limit(1)
-      .single()
+      .maybeSingle()
 
     if (!config?.id) throw new Error('Configuración de edificio no encontrada')
 
@@ -728,7 +728,7 @@ export async function forceBcvRate(rate: number): Promise<{ success: boolean; er
       .from('configuracion_edificio')
       .select('id')
       .limit(1)
-      .single()
+      .maybeSingle()
 
     if (!config?.id) throw new Error('Edificio no encontrado')
 
@@ -1035,7 +1035,7 @@ export async function runComprehensiveDiagnostic(): Promise<SystemDiagnosticRepo
     .from('configuracion_edificio')
     .select('tasa_bcv_actual, tasa_bcv_actualizada')
     .limit(1)
-    .single()
+    .maybeSingle()
 
   if (bcvData) {
     const lastUpdate = bcvData.tasa_bcv_actualizada ? new Date(bcvData.tasa_bcv_actualizada).getTime() : 0

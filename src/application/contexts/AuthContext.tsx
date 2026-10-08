@@ -145,16 +145,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .from('perfiles')
         .select('*, apartamento:apartamento_id(numero)')
         .eq('id', userId)
-        .single()
+        .maybeSingle()
 
-      if (error) {
-        console.error('[Auth] Error cargando perfil con join:', error.message)
+      if (error || !data) {
+        if (error) console.error('[Auth] Error cargando perfil con join:', error.message)
         // Fallback robusto sin join
         const { data: fallbackData } = await supabase
           .from('perfiles')
           .select('*')
           .eq('id', userId)
-          .single()
+          .maybeSingle()
         if (fallbackData) {
           setPerfil(fallbackData)
           if ((fallbackData as any).edificio_id) {

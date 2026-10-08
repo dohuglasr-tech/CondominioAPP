@@ -326,7 +326,7 @@ export const AdminEdificio: React.FC = () => {
           .eq('id', (config as any).id)
         dbError = error
       } else {
-        const { data: existing } = await supabase.from('configuracion_edificio').select('id').limit(1).single()
+        const { data: existing } = await supabase.from('configuracion_edificio').select('id').limit(1).maybeSingle()
         if (existing?.id) {
           const { error } = await supabase
             .from('configuracion_edificio')

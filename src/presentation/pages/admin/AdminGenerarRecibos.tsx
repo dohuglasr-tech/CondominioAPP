@@ -180,8 +180,8 @@ export const AdminGenerarRecibos: React.FC = () => {
   // ── Cargo especial ───────────────────────────────────────────────────
   const agregarCargo = async () => {
     if (!cargoForm?.descripcion || !cargoForm.monto_usd) return
-    const musd = parseFloat(cargoForm.monto_usd)
-    const mbs  = parseFloat(cargoForm.monto_bs) || 0
+    const musd = parseFloat(cargoForm.monto_usd.replace(',', '.'))
+    const mbs  = parseFloat(String(cargoForm.monto_bs || '').replace(',', '.')) || 0
     if (isNaN(musd) || musd <= 0) return
 
     const { data, error } = await supabase.from('cargos_especiales')

@@ -156,10 +156,8 @@ export function Dashboard() {
         appCache.fetch(
           `dashboard_pagos_${targetKey}`,
           async () => {
-            const queryPagos = apartamentoId
-              ? supabase.from('pagos_reportados').select('*').eq('apartamento_id', apartamentoId).order('created_at', { ascending: false }).limit(5)
-              : supabase.from('pagos_reportados').select('*').order('created_at', { ascending: false }).limit(5)
-            const { data } = await queryPagos
+            if (!apartamentoId) return []
+            const { data } = await supabase.from('pagos_reportados').select('*').eq('apartamento_id', apartamentoId).order('created_at', { ascending: false }).limit(5)
             return (data || []) as PagoItem[]
           },
           { ttlMs: 3 * 60 * 1000, tags: ['pagos'], forceRefresh }

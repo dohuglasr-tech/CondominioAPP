@@ -754,7 +754,7 @@ export async function guardarDeudaMora(item: Partial<DeudaMoraItem>): Promise<{ 
           .from('deudas_mora')
           .upsert(payload, { onConflict: 'apartamento_id' })
           .select()
-          .single()
+          .maybeSingle()
 
         if (dbData) {
           nuevoItem.id = dbData.id
