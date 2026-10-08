@@ -56,18 +56,21 @@ function formatearNombreResidente(nombre?: string | null): string {
  * Genera un PDF en formato Carta (Letter) con distribución moderna y ejecutiva (Swiss Layout),
  * optimizado para ser impreso y colocado en la cartelera del ascensor.
  * 
- * Características visuales:
- * - Insignias redondeadas azul marino oscuro para identificar el apartamento.
- * - Píldoras tipo badge en tonos pastel suaves (verde menta para AL DÍA, coral pastel para PENDIENTE).
- * - Cero cuadrículas toscas tipo Excel; se emplean sutiles micro-hairlines horizontales.
- * - Eliminación del texto repetitivo "Propietario".
- * - Distribución en 1, 2 o 3 hojas para murales en ascensor de alta visibilidad.
+ * Reglas de diseño estrictas:
+ * 1. Cuando las páginas sean más de una (2 o 3 hojas mural):
+ *    - Cada línea horizontal abarca UN solo apartamento (1 columna de ancho completo), no dos.
+ *    - Las filas se expanden dinámicamente para rellenar el 100% del espacio vertical de la hoja (CERO espacio en blanco).
+ * 2. Insignias redondeadas azul marino oscuro (#0f172a) para identificar el apartamento.
+ * 3. Píldoras tipo badge en tonos pastel suaves (verde menta para AL DÍA, coral pastel para PENDIENTE).
+ * 4. Cero cuadrículas toscas tipo Excel; se emplean micro-hairlines horizontales sutiles.
+ * 5. Tarjeta ejecutiva de datos bancarios para conciliar pagos en la última hoja.
  */
 export function generarCarteleraAscensorPDF(datos: DatosCarteleraAscensor): jsPDF {
   const orientacion = datos.orientacion || 'portrait'
   const distribucion = (datos.distribucionPaginas && [1, 2, 3].includes(datos.distribucionPaginas))
     ? datos.distribucionPaginas
     : 1
+  const isMultiPagina = distribucion > 1
 
   const doc = new jsPDF({
     orientation: orientacion,
@@ -136,10 +139,10 @@ export function generarCarteleraAscensorPDF(datos: DatosCarteleraAscensor): jsPD
     const totalPaginas = distribucion
 
     // ─────────────────────────────────────────────────────────────────────────
-    // 1. ENCABEZADO EJECUTIVO (Header Bar con esquinas suaves y píldora BCV)
+    // 1. ENCABEZADO EJECUTIVO (Header Bar con píldora BCV)
     // ─────────────────────────────────────────────────────────────────────────
     const headerTop = 4.5
-    const headerHeight = orientacion === 'landscape' ? 20 : 23
+    const headerHeight = orientacion === 'landscape' ? 19 : 22
 
     // Fondo azul marino con bordes redondeados
     doc.setFillColor(...cDarkNavy)
@@ -147,36 +150,36 @@ export function generarCarteleraAscensorPDF(datos: DatosCarteleraAscensor): jsPD
 
     // Acento naranja superior sutil
     doc.setFillColor(...cAccentOrange)
-    doc.rect(marginX + 3, headerTop, anchoUtil - 6, 1.0, 'F')
+    doc.rect(marginX + 3, headerTop, anchoUtil - 6, 0.9, 'F')
 
     // Título edificio
     doc.setTextColor(255, 255, 255)
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(orientacion === 'landscape' ? 11 : 12.5)
     const nombreEdif = (datos.nombreEdificio || 'CONDOMINIO RESIDENCIAL').toUpperCase()
-    doc.text(nombreEdif, marginX + 4.5, headerTop + 7.5)
+    doc.text(nombreEdif, marginX + 4.5, headerTop + 7.2)
 
     // Subtítulo / Propósito del boletín
     doc.setFont('helvetica', 'bold')
-    doc.setFontSize(orientacion === 'landscape' ? 7.8 : 8.5)
+    doc.setFontSize(orientacion === 'landscape' ? 7.6 : 8.3)
     doc.setTextColor(...cAccentOrange)
     const titBase = datos.tituloPersonalizado || 'ESTADO DE CUENTAS · CARTELERA DE ASCENSOR'
     const parteBadge = totalPaginas > 1 ? ` · (PANEL ${numPagina} DE ${totalPaginas})` : ''
-    doc.text(`${titBase.toUpperCase()}${parteBadge}`, marginX + 4.5, headerTop + 12.2)
+    doc.text(`${titBase.toUpperCase()}${parteBadge}`, marginX + 4.5, headerTop + 11.8)
 
     // RIF y Ubicación
     doc.setFont('helvetica', 'normal')
-    doc.setFontSize(6.5)
+    doc.setFontSize(6.4)
     doc.setTextColor(203, 213, 225)
     const rifStr = datos.rifEdificio ? `RIF: ${datos.rifEdificio} · ` : ''
     const dirTxt = datos.direccionEdificio ? datos.direccionEdificio : 'Publicación Comunitaria para el Ascensor'
-    doc.text(`${rifStr}${dirTxt}`.slice(0, 75), marginX + 4.5, headerTop + 16.5)
+    doc.text(`${rifStr}${dirTxt}`.slice(0, 75), marginX + 4.5, headerTop + 16.0)
 
     // Píldora derecha (Fecha y Tasa BCV Oficial)
     const pillPWidth = orientacion === 'landscape' ? 62 : 58
-    const pillPHeight = 12
+    const pillPHeight = 11.5
     const pillPX = marginX + anchoUtil - pillPWidth - 3.5
-    const pillPY = headerTop + 5
+    const pillPY = headerTop + 4.8
 
     doc.setFillColor(30, 41, 59) // slate-800
     doc.setDrawColor(51, 65, 85) // slate-700
@@ -186,21 +189,21 @@ export function generarCarteleraAscensorPDF(datos: DatosCarteleraAscensor): jsPD
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(7.2)
     doc.setTextColor(255, 255, 255)
-    doc.text(`TASA BCV: Bs. ${fmtBs(datos.tasaBcv)}/USD`, pillPX + pillPWidth / 2, pillPY + 4.2, { align: 'center' })
+    doc.text(`TASA BCV: Bs. ${fmtBs(datos.tasaBcv)}/USD`, pillPX + pillPWidth / 2, pillPY + 4.0, { align: 'center' })
 
     doc.setFont('helvetica', 'normal')
-    doc.setFontSize(6.2)
+    doc.setFontSize(6.0)
     doc.setTextColor(148, 163, 184)
-    doc.text(`Emisión: ${fechaHoy} · ${mesActualLabel}`, pillPX + pillPWidth / 2, pillPY + 8.8, { align: 'center' })
+    doc.text(`Emisión: ${fechaHoy} · ${mesActualLabel}`, pillPX + pillPWidth / 2, pillPY + 8.4, { align: 'center' })
 
-    let currentY = headerTop + headerHeight + 3.5
+    let currentY = headerTop + headerHeight + 3.0
 
     // ─────────────────────────────────────────────────────────────────────────
     // 2. INDICADORES RESIDENCIALES (KPI Cards)
     // ─────────────────────────────────────────────────────────────────────────
     const mostrarKpisCompletos = (numPagina === 1)
     if (mostrarKpisCompletos) {
-      const cardHeight = orientacion === 'landscape' ? 10.5 : 12
+      const cardHeight = orientacion === 'landscape' ? 10.0 : 11.5
       const numCards = 4
       const gapCards = 2.5
       const cardWidth = (anchoUtil - gapCards * (numCards - 1)) / numCards
@@ -237,134 +240,181 @@ export function generarCarteleraAscensorPDF(datos: DatosCarteleraAscensor): jsPD
 
       kpis.forEach((kpi, idx) => {
         const x = marginX + idx * (cardWidth + gapCards)
-        // Fondo tarjeta blanco con borde suave
         doc.setFillColor(255, 255, 255)
         doc.roundedRect(x, currentY, cardWidth, cardHeight, 1.8, 1.8, 'F')
         doc.setDrawColor(226, 232, 240) // slate-200
         doc.setLineWidth(0.25)
         doc.roundedRect(x, currentY, cardWidth, cardHeight, 1.8, 1.8, 'S')
 
-        // Etiqueta superior
         doc.setFont('helvetica', 'bold')
         doc.setFontSize(5.2)
         doc.setTextColor(...cMutedText)
-        doc.text(kpi.title, x + 2.5, currentY + 3.4)
+        doc.text(kpi.title, x + 2.5, currentY + 3.2)
 
-        // Valor principal
-        doc.setFontSize(7.6)
+        doc.setFontSize(7.5)
         doc.setTextColor(kpi.valColor[0], kpi.valColor[1], kpi.valColor[2])
-        doc.text(kpi.val, x + 2.5, currentY + 7.2)
+        doc.text(kpi.val, x + 2.5, currentY + 6.9)
 
-        // Subtexto
         doc.setFont('helvetica', 'normal')
-        doc.setFontSize(4.8)
+        doc.setFontSize(4.7)
         doc.setTextColor(148, 163, 184)
-        doc.text(kpi.sub, x + 2.5, currentY + 10.4)
+        doc.text(kpi.sub, x + 2.5, currentY + 9.9)
       })
 
-      currentY += cardHeight + 2.5
+      currentY += cardHeight + 2.2
 
       // Mensaje de la Comunidad (Banner elegante pastel)
       if (datos.mensajeComunidad) {
-        const msgHeight = orientacion === 'landscape' ? 5.8 : 6.8
+        const msgHeight = orientacion === 'landscape' ? 5.5 : 6.4
         doc.setFillColor(254, 243, 199) // amber-50
         doc.setDrawColor(245, 158, 11)  // amber-400
         doc.setLineWidth(0.2)
         doc.roundedRect(marginX, currentY, anchoUtil, msgHeight, 1.2, 1.2, 'FD')
 
         doc.setFont('helvetica', 'bold')
-        doc.setFontSize(5.6)
+        doc.setFontSize(5.5)
         doc.setTextColor(146, 64, 14)
-        doc.text('📢 MENSAJE DE LA ADMINISTRACIÓN:', marginX + 2.5, currentY + 2.6)
+        doc.text('📢 MENSAJE DE LA ADMINISTRACIÓN:', marginX + 2.5, currentY + 2.5)
 
         doc.setFont('helvetica', 'normal')
-        doc.setFontSize(5.3)
+        doc.setFontSize(5.2)
         doc.setTextColor(120, 53, 15)
-        doc.text(datos.mensajeComunidad.slice(0, 160), marginX + 2.5, currentY + 5.2)
+        doc.text(datos.mensajeComunidad.slice(0, 160), marginX + 2.5, currentY + 5.0)
 
-        currentY += msgHeight + 2.5
+        currentY += msgHeight + 2.2
       }
     } else {
       // En páginas 2 o 3, mostramos una franja sutil de ubicación de panel mural
       doc.setFillColor(248, 250, 252)
       doc.setDrawColor(226, 232, 240)
       doc.setLineWidth(0.2)
-      doc.roundedRect(marginX, currentY, anchoUtil, 5.2, 1, 1, 'FD')
+      doc.roundedRect(marginX, currentY, anchoUtil, 5.0, 1, 1, 'FD')
 
       doc.setFont('helvetica', 'bold')
-      doc.setFontSize(6.2)
+      doc.setFontSize(6.0)
       doc.setTextColor(30, 41, 59)
+      const primerApto = aptosChunk[0]?.apartamento_numero || ''
+      const ultimoApto = aptosChunk[aptosChunk.length - 1]?.apartamento_numero || ''
+      const rangoTxt = (primerApto && ultimoApto) ? ` (Aptos ${primerApto} al ${ultimoApto})` : ''
+
       const panelInfo = numPagina === 2 && totalPaginas === 2
-        ? '📋 PANEL II: CONTINUACIÓN DE INMUEBLES Y DATOS BANCARIOS DE RECAUDACIÓN'
+        ? `📋 PANEL II: CONTINUACIÓN DE INMUEBLES${rangoTxt} Y CANALES BANCARIOS`
         : numPagina === 2
-        ? '📋 PANEL CENTRAL: RELACIÓN INTERMEDIA DE APARTAMENTOS'
-        : '💳 PANEL DE CIERRE: ÚLTIMA RELACIÓN DE INMUEBLES Y CANALES DE PAGO OFICIALES'
-      doc.text(panelInfo, marginX + 3, currentY + 3.5)
+        ? `📋 PANEL CENTRAL: RELACIÓN INTERMEDIA DE APARTAMENTOS${rangoTxt}`
+        : `💳 PANEL FINAL: ÚLTIMA RELACIÓN DE INMUEBLES${rangoTxt} Y DATOS DE PAGO`
+      doc.text(panelInfo, marginX + 3, currentY + 3.4)
 
-      currentY += 7.0
+      currentY += 6.5
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // 3. CALCULO DE ESPACIO PARA TABLA Y CAJA DE PAGO INFERIOR
+    // 3. DETERMINACIÓN DE COLUMNAS Y CALCULO DE ALTURA DINÁMICA
     // ─────────────────────────────────────────────────────────────────────────
-    const debeDibujarBancos = (distribucion === 1) || (distribucion === 2 && numPagina === 2) || (distribucion === 3 && numPagina === 3)
-    const bankBoxHeight = orientacion === 'landscape' ? 22 : (distribucion === 3 ? 34 : 26)
-    const bankBoxY = pageHeight - bankBoxHeight - 6.5
-
-    // Determinar número de sub-columnas paralelas en la hoja
-    let numSubCols = 2
-    if (orientacion === 'landscape') {
-      numSubCols = distribucion === 1 ? 3 : 2
+    // REGLA CRUCIAL DEL USUARIO:
+    // "cuando las paginas sean mas de una hay que rellenar todo el espacio, no puede haber ningun
+    // espacio en blanco, ademas que una linea abarque un departamento, no dos."
+    let numSubCols = 1
+    if (!isMultiPagina) {
+      if (aptosChunk.length > 18) {
+        numSubCols = orientacion === 'landscape' ? 3 : 2
+      } else {
+        numSubCols = 1
+      }
     } else {
-      numSubCols = 2
+      // Cuando son 2 o 3 páginas mural: SIEMPRE 1 sola columna que abarca todo el ancho
+      // para que 1 línea corresponda a 1 solo apartamento!
+      numSubCols = 1
     }
 
-    const gapSubCols = 4
+    // La caja de bancos se dibuja en la última página
+    const debeDibujarBancos = (distribucion === 1) || (distribucion === 2 && numPagina === 2) || (distribucion === 3 && numPagina === 3)
+    const bankBoxHeight = orientacion === 'landscape' ? 22 : (isMultiPagina ? 32 : 26)
+    const bankBoxY = pageHeight - bankBoxHeight - 6.5
+    const footerMargin = 6.5
+
+    // Altura máxima a la que puede llegar la tabla sin solapar nada
+    const maxY = debeDibujarBancos ? (bankBoxY - 2.5) : (pageHeight - footerMargin)
+    const safeMaxY = maxY - 2.0
+    const startTableY = currentY
+    const availableTableHeight = safeMaxY - startTableY
+
+    const gapSubCols = 4.0
     const subColWidth = (anchoUtil - (numSubCols - 1) * gapSubCols) / numSubCols
     const rowsPerSubCol = Math.ceil(aptosChunk.length / numSubCols)
 
-    // Ajuste dinámico de fuente y padding según densidad de apartamentos y número de páginas
-    let fontSizeTable = 6.4
-    let cellPaddingTable = 1.0
+    // Altura del encabezado de la tabla
+    const headHeight = numSubCols === 1 ? (isMultiPagina ? 8.5 : 7.5) : 6.8
+    const availableBodyHeight = availableTableHeight - headHeight
 
-    if (distribucion === 1) {
-      if (rowsPerSubCol > 26) {
-        fontSizeTable = 5.8
-        cellPaddingTable = 0.7
-      } else if (rowsPerSubCol > 20) {
-        fontSizeTable = 6.2
-        cellPaddingTable = 0.9
+    // Cálculo dinámico de altura por fila para RELLENAR TODO EL ESPACIO (CERO ESPACIO EN BLANCO)
+    const calcRowH = rowsPerSubCol > 0 ? (availableBodyHeight / rowsPerSubCol) : 8.0
+    const bodyRowHeight = Math.min(22.0, Math.max(5.2, Math.floor(calcRowH * 10) / 10))
+
+    // Tipografía proporcional a la altura de celda
+    let fontSizeTable = 6.4
+    if (numSubCols === 1) {
+      if (bodyRowHeight >= 16) {
+        fontSizeTable = 11.0
+      } else if (bodyRowHeight >= 13) {
+        fontSizeTable = 10.0
+      } else if (bodyRowHeight >= 10) {
+        fontSizeTable = 9.0
+      } else if (bodyRowHeight >= 8) {
+        fontSizeTable = 8.0
       } else {
-        fontSizeTable = 6.8
-        cellPaddingTable = 1.2
+        fontSizeTable = 7.0
       }
-    } else if (distribucion === 2) {
-      fontSizeTable = 7.4
-      cellPaddingTable = 1.4
     } else {
-      // 3 Páginas mural: tipografía grande para leer de lejos en el ascensor
-      fontSizeTable = 8.4
-      cellPaddingTable = 1.8
+      // 2 o 3 columnas en 1 sola hoja
+      if (bodyRowHeight >= 8.5) {
+        fontSizeTable = 7.5
+      } else if (bodyRowHeight >= 7.0) {
+        fontSizeTable = 6.8
+      } else if (bodyRowHeight >= 6.0) {
+        fontSizeTable = 6.2
+      } else {
+        fontSizeTable = 5.6
+      }
     }
 
-    const startTableY = currentY
+    const cellPaddingTable = Math.max(0.6, Math.min(2.5, (bodyRowHeight - (fontSizeTable * 0.35)) / 2))
 
-    // Anchos proporcionales dentro de cada sub-columna (Apto, Residente, Estado, Total $, Total Bs)
-    const colW_Apto = subColWidth * 0.15      // ~14.7 mm
-    const colW_Nombre = subColWidth * 0.31    // ~30.5 mm
-    const colW_Estado = subColWidth * 0.20    // ~19.6 mm
-    const colW_Usd = subColWidth * 0.16       // ~15.7 mm
-    const colW_Bs = subColWidth * 0.18        // ~17.6 mm
+    // Anchos de columnas proporcionales
+    let colW_Apto: number
+    let colW_Nombre: number
+    let colW_Estado: number
+    let colW_Usd: number
+    let colW_Bs: number
+
+    if (numSubCols === 1) {
+      // 1 Línea por apartamento a lo largo de toda la hoja
+      colW_Apto = subColWidth * 0.13    // ~26.4 mm
+      colW_Nombre = subColWidth * 0.35  // ~71.0 mm (Espacio enorme para nombre completo sin truncar)
+      colW_Estado = subColWidth * 0.18  // ~36.5 mm
+      colW_Usd = subColWidth * 0.16     // ~32.5 mm
+      colW_Bs = subColWidth * 0.18      // ~36.5 mm
+    } else if (numSubCols === 2) {
+      colW_Apto = subColWidth * 0.14
+      colW_Nombre = subColWidth * 0.31
+      colW_Estado = subColWidth * 0.20
+      colW_Usd = subColWidth * 0.17
+      colW_Bs = subColWidth * 0.18
+    } else {
+      // 3 columnas (landscape 1 página)
+      colW_Apto = subColWidth * 0.14
+      colW_Nombre = subColWidth * 0.30
+      colW_Estado = subColWidth * 0.20
+      colW_Usd = subColWidth * 0.18
+      colW_Bs = subColWidth * 0.18
+    }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // 4. RENDERIZADO DE TABLAS PARALELAS CON DISEÑO SUIZO ELEGANTE
+    // 4. RENDERIZADO DE TABLA (Línea por apartamento que rellena todo el espacio)
     // ─────────────────────────────────────────────────────────────────────────
     for (let cIdx = 0; cIdx < numSubCols; cIdx++) {
       const subList = aptosChunk.slice(cIdx * rowsPerSubCol, (cIdx + 1) * rowsPerSubCol)
       if (subList.length === 0) continue
 
-      // Formatear filas:
-      // Dejamos Apto y Estado vacíos en texto para dibujarlos con insignias personalizadas en didDrawCell
       const subBody = subList.map(item => {
         const nombreLimpio = formatearNombreResidente(item.propietario_nombre)
 
@@ -390,11 +440,15 @@ export function generarCarteleraAscensorPDF(datos: DatosCarteleraAscensor): jsPD
 
       autoTable(doc, {
         startY: startTableY,
-        margin: { left: leftX, right: rightMargin },
+        margin: {
+          left: leftX,
+          right: rightMargin,
+          bottom: Math.max(5.0, pageHeight - safeMaxY)
+        },
         tableWidth: subColWidth,
         head: [['APTO', 'RESIDENTE', 'ESTADO', 'TOTAL ($)', 'TOTAL (Bs)']],
         body: subBody,
-        theme: 'plain', // Cero cuadrículas toscas tipo Excel!
+        theme: 'plain',
         styles: {
           fontSize: fontSizeTable,
           cellPadding: cellPaddingTable,
@@ -404,13 +458,17 @@ export function generarCarteleraAscensorPDF(datos: DatosCarteleraAscensor): jsPD
           valign: 'middle'
         },
         headStyles: {
-          fillColor: [241, 245, 249], // slate-100 elegante
-          textColor: [71, 85, 105],    // slate-600
+          fillColor: [241, 245, 249],
+          textColor: [71, 85, 105],
           fontStyle: 'bold',
-          fontSize: fontSizeTable,
+          fontSize: Math.min(fontSizeTable, 9.5),
+          minCellHeight: headHeight,
           cellPadding: cellPaddingTable + 0.3,
           halign: 'left',
           valign: 'middle'
+        },
+        bodyStyles: {
+          minCellHeight: bodyRowHeight
         },
         columnStyles: {
           0: { cellWidth: colW_Apto, halign: 'center' },
@@ -430,9 +488,12 @@ export function generarCarteleraAscensorPDF(datos: DatosCarteleraAscensor): jsPD
           if (data.section === 'body') {
             const item = subList[data.row.index]
             if (item) {
-              if (data.column.index === 3) {
+              if (data.column.index === 1) {
+                // Nombre en negrita slate
+                data.cell.styles.fontStyle = item.propietario_nombre ? 'bold' : 'normal'
+              } else if (data.column.index === 3) {
                 if (!item.estado_solvente) {
-                  data.cell.styles.textColor = [15, 23, 42] // bold dark navy/slate
+                  data.cell.styles.textColor = [15, 23, 42] // dark navy bold
                 } else if (item.saldo_a_favor_usd > 0) {
                   data.cell.styles.textColor = [5, 150, 105] // emerald
                 } else {
@@ -451,10 +512,10 @@ export function generarCarteleraAscensorPDF(datos: DatosCarteleraAscensor): jsPD
           }
         },
         didDrawCell: (data) => {
-          // 1. Línea horizontal sutil (Hairline) debajo de cada celda del cuerpo
+          // Línea horizontal tenue (Hairline) debajo de cada celda del cuerpo
           if (data.section === 'body') {
-            doc.setDrawColor(241, 245, 249) // #f1f5f9
-            doc.setLineWidth(0.12)
+            doc.setDrawColor(241, 245, 249)
+            doc.setLineWidth(0.15)
             doc.line(
               data.cell.x,
               data.cell.y + data.cell.height,
@@ -463,9 +524,9 @@ export function generarCarteleraAscensorPDF(datos: DatosCarteleraAscensor): jsPD
             )
           }
 
-          // Línea separadora tenue debajo del encabezado
+          // Línea divisoria debajo del encabezado
           if (data.section === 'head') {
-            doc.setDrawColor(203, 213, 225) // slate-300
+            doc.setDrawColor(203, 213, 225)
             doc.setLineWidth(0.2)
             doc.line(
               data.cell.x,
@@ -475,22 +536,22 @@ export function generarCarteleraAscensorPDF(datos: DatosCarteleraAscensor): jsPD
             )
           }
 
-          // 2. Insignia personalizada para el Apartamento (Columna 0)
+          // Insignia del Apartamento (Columna 0)
           if (data.section === 'body' && data.column.index === 0) {
             const item = subList[data.row.index]
             if (item) {
-              const badgeH = Math.min(data.cell.height - 1.0, 4.8)
-              const badgeW = Math.min(data.cell.width - 2.0, 13.5)
+              const badgeH = Math.min(data.cell.height - 2.4, 8.5)
+              const badgeW = Math.min(data.cell.width - 4.0, numSubCols === 1 ? 22.0 : 14.0)
               const badgeX = data.cell.x + (data.cell.width - badgeW) / 2
               const badgeY = data.cell.y + (data.cell.height - badgeH) / 2
 
               // Rectángulo redondeado azul marino oscuro
               doc.setFillColor(15, 23, 42) // #0f172a
-              doc.roundedRect(badgeX, badgeY, badgeW, badgeH, 1.3, 1.3, 'F')
+              doc.roundedRect(badgeX, badgeY, badgeW, badgeH, 1.4, 1.4, 'F')
 
               // Texto del apartamento en blanco negrita
               doc.setFont('helvetica', 'bold')
-              doc.setFontSize(fontSizeTable - 0.2)
+              doc.setFontSize(Math.min(fontSizeTable + 0.5, 11.5))
               doc.setTextColor(255, 255, 255)
               doc.text(
                 item.apartamento_numero.trim(),
@@ -501,12 +562,12 @@ export function generarCarteleraAscensorPDF(datos: DatosCarteleraAscensor): jsPD
             }
           }
 
-          // 3. Píldora de Estado Pastel (Columna 2)
+          // Píldora de Estado Pastel (Columna 2)
           if (data.section === 'body' && data.column.index === 2) {
             const item = subList[data.row.index]
             if (item) {
-              const pillH = Math.min(data.cell.height - 1.2, 4.4)
-              const pillW = Math.min(data.cell.width - 2.0, 19.5)
+              const pillH = Math.min(data.cell.height - 2.6, 8.0)
+              const pillW = Math.min(data.cell.width - 4.0, numSubCols === 1 ? 32.0 : 20.0)
               const pillX = data.cell.x + (data.cell.width - pillW) / 2
               const pillY = data.cell.y + (data.cell.height - pillH) / 2
 
@@ -514,11 +575,11 @@ export function generarCarteleraAscensorPDF(datos: DatosCarteleraAscensor): jsPD
                 // Píldora Verde Menta Pastel (AL DÍA)
                 doc.setFillColor(220, 252, 231) // #dcfce7
                 doc.setDrawColor(187, 247, 208) // #bbf7d0
-                doc.setLineWidth(0.18)
-                doc.roundedRect(pillX, pillY, pillW, pillH, 1.2, 1.2, 'FD')
+                doc.setLineWidth(0.2)
+                doc.roundedRect(pillX, pillY, pillW, pillH, 1.3, 1.3, 'FD')
 
                 doc.setFont('helvetica', 'bold')
-                doc.setFontSize(fontSizeTable - 0.7)
+                doc.setFontSize(Math.max(fontSizeTable - 0.7, 7.2))
                 doc.setTextColor(21, 128, 61)   // #15803d
                 doc.text(
                   'AL DÍA',
@@ -530,11 +591,11 @@ export function generarCarteleraAscensorPDF(datos: DatosCarteleraAscensor): jsPD
                 // Píldora Coral Pastel (PENDIENTE / DEUDA)
                 doc.setFillColor(254, 226, 226) // #fee2e2
                 doc.setDrawColor(254, 202, 202) // #fecaca
-                doc.setLineWidth(0.18)
-                doc.roundedRect(pillX, pillY, pillW, pillH, 1.2, 1.2, 'FD')
+                doc.setLineWidth(0.2)
+                doc.roundedRect(pillX, pillY, pillW, pillH, 1.3, 1.3, 'FD')
 
                 doc.setFont('helvetica', 'bold')
-                doc.setFontSize(fontSizeTable - 0.8)
+                doc.setFontSize(Math.max(fontSizeTable - 0.8, 7.0))
                 doc.setTextColor(185, 28, 28)   // #b91c1c
                 const lblDeuda = item.meses_con_deuda && item.meses_con_deuda > 1
                   ? `DEUDA (${item.meses_con_deuda}m)`
@@ -569,12 +630,12 @@ export function generarCarteleraAscensorPDF(datos: DatosCarteleraAscensor): jsPD
       doc.rect(marginX, bankBoxY + headBankH - 1.5, anchoUtil, 1.5, 'F') // empalmar esquina recta inferior
 
       doc.setFont('helvetica', 'bold')
-      doc.setFontSize(orientacion === 'landscape' ? 6.2 : 6.6)
+      doc.setFontSize(orientacion === 'landscape' ? 6.2 : 6.8)
       doc.setTextColor(255, 255, 255)
       doc.text('DATOS OFICIALES PARA PAGO Y CONCILIACIÓN', marginX + 3.5, bankBoxY + 3.4)
 
       doc.setFont('helvetica', 'normal')
-      doc.setFontSize(5.5)
+      doc.setFontSize(5.6)
       doc.setTextColor(203, 213, 225)
       doc.text('Transferencia Bancaria & Pago Móvil', marginX + anchoUtil - 3.5, bankBoxY + 3.4, { align: 'right' })
 
@@ -584,46 +645,46 @@ export function generarCarteleraAscensorPDF(datos: DatosCarteleraAscensor): jsPD
       // Columna 1: Transferencia Bancaria
       const b1X = marginX + 3.5
       doc.setFont('helvetica', 'bold')
-      doc.setFontSize(orientacion === 'landscape' ? 5.8 : 6.2)
+      doc.setFontSize(orientacion === 'landscape' ? 5.8 : 6.4)
       doc.setTextColor(...cAccentOrange)
       doc.text('🏦 TRANSFERENCIA BANCARIA (Bs):', b1X, bankBoxY + 8.2)
 
       doc.setFont('helvetica', 'normal')
-      doc.setFontSize(orientacion === 'landscape' ? 5.2 : 5.6)
+      doc.setFontSize(orientacion === 'landscape' ? 5.2 : 5.8)
       doc.setTextColor(51, 65, 85)
       const bancoNombre = cfgB.banco || 'Bicentenario / Banco Nacional'
       const titular = cfgB.titular || datos.nombreEdificio || 'Junta de Condominio'
       const cedula = cfgB.cedulaRif || datos.rifEdificio || 'J-XXXXXXXX-X'
       const cuentaNum = cfgB.cuentaBancaria || '0175-XXXX-XX-XXXXXXXXXX'
 
-      doc.text(`Banco: ${bancoNombre}`, b1X, bankBoxY + 11.8)
-      doc.text(`Titular: ${titular} · RIF/C.I.: ${cedula}`, b1X, bankBoxY + 15.2)
+      doc.text(`Banco: ${bancoNombre}`, b1X, bankBoxY + 12.0)
+      doc.text(`Titular: ${titular} · RIF/C.I.: ${cedula}`, b1X, bankBoxY + 15.6)
       doc.setFont('helvetica', 'bold')
-      doc.text(`Cuenta (20 dígitos): ${cuentaNum}`, b1X, bankBoxY + 18.8)
+      doc.text(`Cuenta (20 dígitos): ${cuentaNum}`, b1X, bankBoxY + 19.4)
 
       // Columna 2: Pago Móvil / Divisas
       const b2X = marginX + colBankW + 4.5
       doc.setFont('helvetica', 'bold')
-      doc.setFontSize(orientacion === 'landscape' ? 5.8 : 6.2)
+      doc.setFontSize(orientacion === 'landscape' ? 5.8 : 6.4)
       doc.setTextColor(...cAccentOrange)
       doc.text('📱 PAGO MÓVIL INTERBANCARIO (Bs):', b2X, bankBoxY + 8.2)
 
       doc.setFont('helvetica', 'normal')
-      doc.setFontSize(orientacion === 'landscape' ? 5.2 : 5.6)
+      doc.setFontSize(orientacion === 'landscape' ? 5.2 : 5.8)
       doc.setTextColor(51, 65, 85)
       const pmBanco = cfgB.pagoMovilBanco || cfgB.banco || 'Bicentenario'
       const pmTelf = cfgB.pagoMovilTelefono || '0414-XXXXXXX'
       const pmCed = cfgB.pagoMovilCedula || cfgB.cedulaRif || 'J-XXXXXXXX'
 
-      doc.text(`Banco: ${pmBanco} · Teléfono: ${pmTelf}`, b2X, bankBoxY + 11.8)
-      doc.text(`Cédula / RIF: ${pmCed}`, b2X, bankBoxY + 15.2)
+      doc.text(`Banco: ${pmBanco} · Teléfono: ${pmTelf}`, b2X, bankBoxY + 12.0)
+      doc.text(`Cédula / RIF: ${pmCed}`, b2X, bankBoxY + 15.6)
 
       if (cfgB.zelleEmail) {
         doc.setFont('helvetica', 'bold')
-        doc.text(`🟣 Zelle / Divisas: ${cfgB.zelleEmail}`, b2X, bankBoxY + 18.8)
+        doc.text(`🟣 Zelle / Divisas: ${cfgB.zelleEmail}`, b2X, bankBoxY + 19.4)
       } else {
         doc.setFont('helvetica', 'italic')
-        doc.text('Divisas en efectivo: previo acuerdo con administración.', b2X, bankBoxY + 18.8)
+        doc.text('Divisas en efectivo: previo acuerdo con administración.', b2X, bankBoxY + 19.4)
       }
 
       // Franja inferior informativa de reporte
@@ -633,7 +694,7 @@ export function generarCarteleraAscensorPDF(datos: DatosCarteleraAscensor): jsPD
         doc.rect(marginX + 0.3, bankBoxY + bankBoxHeight - barH - 0.3, anchoUtil - 0.6, barH, 'F')
 
         doc.setFont('helvetica', 'bold')
-        doc.setFontSize(5.1)
+        doc.setFontSize(5.2)
         doc.setTextColor(71, 85, 105)
         doc.text(
           '✓ REPORTE DE PAGO: Al realizar su pago, repórtelo en la App del Condominio con el número de referencia para su inmediata conciliación.',
