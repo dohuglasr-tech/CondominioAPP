@@ -954,6 +954,26 @@ export function Dashboard() {
                 </div>
                 <span className="quick-action-label">Averías</span>
               </button>
+
+              {/* 7. Normas de Convivencia */}
+              <button
+                className="quick-action-btn"
+                onClick={() => navigate('/normas')}
+              >
+                <div className="quick-action-circle" style={{
+                  backgroundColor: 'rgba(249, 115, 22, 0.15)',
+                  border: '1px solid rgba(249, 115, 22, 0.35)',
+                  color: 'var(--color-accent, #f97316)'
+                }}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+                    <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+                    <line x1="8" y1="6" x2="16" y2="6"/>
+                    <line x1="8" y1="10" x2="16" y2="10"/>
+                  </svg>
+                </div>
+                <span className="quick-action-label">Normas</span>
+              </button>
             </div>
           </div>
 
@@ -1659,7 +1679,36 @@ export function Dashboard() {
             {/* COLUMNA LATERAL (ACCESOS RÁPIDOS Y COMUNIDAD) */}
             <div className="bento-col-side">
 
-              {/* 1. Tarjeta Junta Directiva / Organigrama */}
+              {/* 1. Tarjeta Normas de Convivencia */}
+              <div
+                className="desktop-card"
+                style={{ cursor: 'pointer', border: '1px solid rgba(249, 115, 22, 0.25)' }}
+                onClick={() => navigate('/normas')}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                  <div style={{
+                    width: '48px', height: '48px', borderRadius: '14px',
+                    backgroundColor: 'rgba(249, 115, 22, 0.15)',
+                    border: '1px solid rgba(249, 115, 22, 0.35)',
+                    color: 'var(--color-accent, #f97316)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '22px'
+                  }}>
+                    📜
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ color: '#fff', fontSize: '16px', fontWeight: 800 }}>
+                      Normas de Convivencia
+                    </div>
+                    <div style={{ color: '#7e8b9b', fontSize: '12px', marginTop: '2px' }}>
+                      Reglamento interno oficial y descarga en PDF
+                    </div>
+                  </div>
+                  <span style={{ color: 'var(--color-accent, #f97316)', fontSize: '18px' }}>→</span>
+                </div>
+              </div>
+
+              {/* 2. Tarjeta Junta Directiva / Organigrama */}
               <div
                 className="desktop-card"
                 style={{ cursor: 'pointer' }}

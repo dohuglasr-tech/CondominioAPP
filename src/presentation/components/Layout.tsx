@@ -87,6 +87,15 @@ const SVG = {
       <path d="M3 22h12"/>
     </svg>
   ),
+  normas: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+      <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+      <line x1="8" y1="6" x2="16" y2="6"/>
+      <line x1="8" y1="10" x2="16" y2="10"/>
+      <line x1="8" y1="14" x2="12" y2="14"/>
+    </svg>
+  ),
 }
 
 export const Layout: React.FC = () => {
@@ -122,6 +131,7 @@ export const Layout: React.FC = () => {
   const navItems: { label: string; desc: string; path: string; icon: keyof typeof SVG }[] = [
     { label: 'Inicio',               desc: 'Estado de cuenta y resumen', path: '/',           icon: 'inicio' },
     { label: 'Mis Recibos',          desc: 'Historial y recibos emitidos', path: '/recibos',  icon: 'recibos' },
+    { label: 'Normas',               desc: 'Reglamento y convivencia',    path: '/normas',   icon: 'normas' },
     { label: 'Servicio de Gas',      desc: 'Tanque y cuota independiente', path: '/gas',      icon: 'gas' },
     { label: 'Junta de Condominio',  desc: 'Organigrama y directiva',    path: '/junta',    icon: 'junta' },
     { label: 'Lista de Mora',        desc: 'Transparencia comunitaria',  path: '/mora',     icon: 'mora' },
@@ -468,6 +478,20 @@ export const Layout: React.FC = () => {
               <span>👥</span> COMUNIDAD Y CONVIVENCIA
             </div>
             <div className="drawer-grid">
+              {/* Normas y Reglamento */}
+              <button
+                className="drawer-item-btn"
+                onClick={() => {
+                  setDrawerOpen(false)
+                  navigate('/normas')
+                }}
+              >
+                <div className={`drawer-circle-icon ${pathname.startsWith('/normas') ? 'active' : ''}`}>
+                  {SVG.normas}
+                </div>
+                <span className={`drawer-label ${pathname.startsWith('/normas') ? 'active' : ''}`}>Normas</span>
+              </button>
+
               {/* Junta Directiva */}
               <button
                 className="drawer-item-btn"

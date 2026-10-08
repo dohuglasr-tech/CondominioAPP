@@ -38,6 +38,7 @@ import { AdminGas } from './presentation/pages/admin/AdminGas'
 import { ListaMoraResidente } from './presentation/pages/ListaMoraResidente'
 import { JuntaCondominioResidente } from './presentation/pages/JuntaCondominioResidente'
 import { GasResidente } from './presentation/pages/GasResidente'
+import { NormasResidente } from './presentation/pages/NormasResidente'
 import { Register } from './presentation/pages/Register'
 import { InactivityManager } from './presentation/components/InactivityManager'
 import { SuperAdminDashboard } from './presentation/pages/superadmin/SuperAdminDashboard'
@@ -347,6 +348,7 @@ function AppShell() {
           <Route index element={<Dashboard />} />
           <Route path="gastos"     element={<GastosPanel onClose={() => navigate('/')} />} />
           <Route path="recibos"    element={<RecibosPanel onClose={() => navigate('/')} />} />
+          <Route path="normas"     element={<NormasResidente />} />
           <Route path="gas"        element={<GasResidente />} />
           <Route path="junta"      element={<JuntaCondominioResidente />} />
           <Route path="mora"       element={<ListaMoraResidente />} />

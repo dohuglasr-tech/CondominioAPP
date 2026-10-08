@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../../data/supabase'
 import { appCache } from '../../../data/cacheService'
 import { useAuth } from '../../../application/contexts/AuthContext'
@@ -17,6 +18,7 @@ import { guardarTasaBcvEnDb, sincronizarTasaBcvConApi } from '../../../data/bcvS
 
 export const AdminEdificio: React.FC = () => {
   const { config, refreshConfig, perfil } = useAuth()
+  const navigate = useNavigate()
 
   // Tab activo: 'edificio' o 'organigrama'
   const [activeTab, setActiveTab] = useState<'edificio' | 'organigrama'>('edificio')
@@ -535,11 +537,35 @@ export const AdminEdificio: React.FC = () => {
       `}</style>
 
       {/* Header Principal */}
-      <div style={{ marginBottom: '24px' }}>
-        <h1 style={{ color: '#fff', fontSize: '28px', fontWeight: 800, margin: 0 }}>🏢 Edificio y Organigrama</h1>
-        <p style={{ color: '#888', fontSize: '14px', margin: '4px 0 0 0' }}>
-          Configuración general del condominio, datos de cuenta bancaria y estructura de la Junta de Condominio
-        </p>
+      <div style={{ marginBottom: '24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px' }}>
+        <div>
+          <h1 style={{ color: '#fff', fontSize: '28px', fontWeight: 800, margin: 0 }}>🏢 Edificio y Organigrama</h1>
+          <p style={{ color: '#888', fontSize: '14px', margin: '4px 0 0 0' }}>
+            Configuración general del condominio, datos de cuenta bancaria y estructura de la Junta de Condominio
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => navigate('/normas')}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '8px',
+            background: 'rgba(249, 115, 22, 0.12)',
+            border: '1px solid rgba(249, 115, 22, 0.35)',
+            color: 'var(--color-accent, #f97316)',
+            padding: '9px 16px',
+            borderRadius: '12px',
+            fontSize: '13px',
+            fontWeight: 700,
+            cursor: 'pointer',
+            transition: 'all 0.18s'
+          }}
+          title="Ver o descargar el Reglamento de Convivencia oficial en PDF"
+        >
+          <span>📜</span>
+          <span>Ver Reglamento y Normas</span>
+        </button>
       </div>
 
       {/* TABS DE NAVEGACIÓN */}
