@@ -2,7 +2,7 @@
 // Archivo: public/sw.js
 // Se registra automáticamente desde el hook useNotifications
 
-const CACHE_NAME = 'condominio-app-v1'
+const CACHE_NAME = 'condominio-app-v2'
 
 // ── Instalación del Service Worker ─────────────────────────────────────────
 self.addEventListener('install', (event) => {
@@ -10,7 +10,13 @@ self.addEventListener('install', (event) => {
 })
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(clients.claim())
+  event.waitUntil(
+    caches.keys().then((keys) => {
+      return Promise.all(
+        keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
+      )
+    }).then(() => clients.claim())
+  )
 })
 
 // ── Fetch handler (Requerido para elegibilidad de instalación PWA en Chrome/Android) ──
