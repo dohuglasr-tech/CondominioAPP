@@ -2,7 +2,7 @@
 // Archivo: public/sw.js
 // Se registra automáticamente desde el hook useNotifications
 
-const CACHE_NAME = 'condominio-app-v4'
+const CACHE_NAME = 'condominio-app-v5'
 
 // ── Instalación del Service Worker ─────────────────────────────────────────
 self.addEventListener('install', (event) => {
