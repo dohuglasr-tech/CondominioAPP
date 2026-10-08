@@ -39,39 +39,61 @@ const fmtBs = (n: number) =>
 const fmtUsd = (n: number) =>
   (n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-/**
- * Obtiene el nombre del propietario o una descripción formal y digna si no está cargado.
- */
-function obtenerNombreFormal(nombre?: string | null, numApto = ''): string {
-  if (!nombre) return `Copropietario Apto ${numApto}`
-  const trimmed = nombre.trim()
-  if (!trimmed || trimmed.toLowerCase() === 'propietario' || trimmed.toLowerCase() === 'sin asignar') {
-    return `Copropietario Apto ${numApto}`
+const MESES_ABR = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC']
+
+function formatearNombrePropietario(nombre?: string | null, numApto = ''): string {
+  if (!nombre) return `Copropietario ${numApto}`
+  const t = nombre.trim()
+  if (!t || t.toLowerCase() === 'propietario' || t.toLowerCase() === 'sin asignar') {
+    return `Copropietario ${numApto}`
   }
-  return trimmed
+  return t
 }
 
 /**
- * Genera un PDF en formato Carta (Letter) con distribución arquitectónica, minimalista y ejecutiva,
- * diseñada para maximizar el impacto visual en la cartelera del ascensor (Diseño WOW).
- * 
- * Principios garantizados:
- * 1. Lista de apartamentos continua y homogénea, cubriendo el 100% del espacio vertical.
- * 2. CERO páginas residuales o vacíos en blanco (pageBreak estrictamente controlado).
- * 3. En modo mural (2 o 3 páginas), cada línea horizontal corresponde a 1 solo apartamento con información detallada:
- *    - Inmueble (Apto, Piso, Alícuota)
- *    - Propietario / Residente
- *    - Detalle del concepto / cuotas
- *    - Estatus con insignia pastel
- *    - Monto total en USD y Bs
- * 4. Tarjeta bancaria ejecutiva al pie para facilitar la cobranza inmediata.
+ * Obtiene el detalle verídico de los meses adeudados de un apartamento.
+ */
+function obtenerDetalleMeses(item: FilaCalendarioApto, anio: number): string {
+  if (item.estado_solvente) {
+    if (item.saldo_a_favor_usd > 0) {
+      return `Solvente (Saldo a favor: +$${fmtUsd(item.saldo_a_favor_usd)})`
+    }
+    return 'Solvente (Al dia en cuotas)'
+  }
+
+  const mesesMora: string[] = []
+  MESES_ABR.forEach((mStr, idx) => {
+    const k = `${anio}-${idx < 9 ? '0' + (idx + 1) : (idx + 1)}`
+    const rec = item.meses ? item.meses[k] : null
+    if (rec && rec.estado === 'pendiente') {
+      mesesMora.push(mStr)
+    }
+  })
+
+  if (mesesMora.length > 0) {
+    if (mesesMora.length <= 4) {
+      return `Debe: ${mesesMora.join(', ')} (${mesesMora.length}m)`
+    }
+    return `Debe: ${mesesMora[0]} a ${mesesMora[mesesMora.length - 1]} (${mesesMora.length} meses)`
+  }
+
+  const cant = item.meses_con_deuda || 1
+  return `Deuda acumulada (${cant} ${cant === 1 ? 'mes' : 'meses'})`
+}
+
+/**
+ * Genera el PDF oficial de Cartelera de Ascensor:
+ * - En modo Horizontal (Landscape): Presenta la matriz completa del CALENDARIO mensual (12 meses con estatus OK/MORA).
+ * - En modo Vertical (Portrait): Presenta la relación con detalle de meses adeudados y ubicación de inmueble.
+ * - En 1, 2 o 3 páginas: Control estricto de altura para garantizar CERO páginas extras y CERO vacíos en blanco.
+ * - CERO caracteres corruptos (sin emojis que se rompen en el motor PDF).
  */
 export function generarCarteleraAscensorPDF(datos: DatosCarteleraAscensor): jsPDF {
   const orientacion = datos.orientacion || 'portrait'
+  const isLandscape = orientacion === 'landscape'
   const distribucion = (datos.distribucionPaginas && [1, 2, 3].includes(datos.distribucionPaginas))
     ? datos.distribucionPaginas
     : 1
-  const isMultiPagina = distribucion > 1
 
   const doc = new jsPDF({
     orientation: orientacion,
@@ -79,14 +101,12 @@ export function generarCarteleraAscensorPDF(datos: DatosCarteleraAscensor): jsPD
     format: 'letter'
   })
 
-  // Paleta de colores ejecutiva (Swiss Minimalist Editorial)
-  const cDarkNavy: [number, number, number] = [15, 23, 42]        // #0f172a
-  const cAccentAmber: [number, number, number] = [245, 158, 11]    // #f59e0b
-  const cSlateDark: [number, number, number] = [30, 41, 59]        // #1e293b
-  const cSlateText: [number, number, number] = [51, 65, 85]        // #334155
-  const cMutedText: [number, number, number] = [100, 116, 139]     // #64748b
+  const cDarkNavy: [number, number, number] = [15, 23, 42]
+  const cAccentAmber: [number, number, number] = [245, 158, 11]
+  const cSlateDark: [number, number, number] = [30, 41, 59]
+  const cSlateText: [number, number, number] = [51, 65, 85]
 
-  // Filtrado de apartamentos según preferencia
+  // Filtrado de apartamentos
   let aptos = [...datos.filas]
   if (datos.filtro === 'con_deuda') {
     aptos = aptos.filter(f => !f.estado_solvente)
@@ -94,7 +114,7 @@ export function generarCarteleraAscensorPDF(datos: DatosCarteleraAscensor): jsPD
     aptos = aptos.filter(f => f.estado_solvente)
   }
 
-  // Ordenar numéricamente o alfabéticamente por apartamento
+  // Ordenar numéricamente por número de apartamento
   aptos.sort((a, b) => {
     const numA = a.apartamento_numero.trim()
     const numB = b.apartamento_numero.trim()
@@ -109,7 +129,7 @@ export function generarCarteleraAscensorPDF(datos: DatosCarteleraAscensor): jsPD
 
   const mesActualLabel = (datos.mesActualLabel || new Date().toLocaleDateString('es-VE', { month: 'long', year: 'numeric' })).toUpperCase()
 
-  // División proporcional exacta de apartamentos por página
+  // División equitativa de apartamentos por página
   const chunksAptos: FilaCalendarioApto[][] = []
   if (distribucion === 1) {
     chunksAptos.push(aptos)
@@ -118,16 +138,12 @@ export function generarCarteleraAscensorPDF(datos: DatosCarteleraAscensor): jsPD
     chunksAptos.push(aptos.slice(0, mitad))
     chunksAptos.push(aptos.slice(mitad))
   } else {
-    // 3 páginas
     const tercio = Math.ceil(aptos.length / 3)
     chunksAptos.push(aptos.slice(0, tercio))
     chunksAptos.push(aptos.slice(tercio, tercio * 2))
     chunksAptos.push(aptos.slice(tercio * 2))
   }
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // RENDERIZADO PÁGINA POR PÁGINA
-  // ─────────────────────────────────────────────────────────────────────────────
   chunksAptos.forEach((aptosChunk, pageIndex) => {
     if (pageIndex > 0) {
       doc.addPage('letter', orientacion)
@@ -142,72 +158,76 @@ export function generarCarteleraAscensorPDF(datos: DatosCarteleraAscensor): jsPD
     const isLastPage = numPagina === totalPaginas
 
     // ─────────────────────────────────────────────────────────────────────────
-    // 1. ENCABEZADO EJECUTIVO SUPERIOR
+    // 1. ENCABEZADO EJECUTIVO SUPERIOR (Sin emojis corruptos)
     // ─────────────────────────────────────────────────────────────────────────
     const headerTop = 4.5
-    const headerHeight = orientacion === 'landscape' ? 18.5 : 21.5
+    const headerHeight = isLandscape ? 13.5 : 17.5
 
-    // Fondo azul marino con bordes suaves
+    // Fondo azul marino con esquinas redondeadas
     doc.setFillColor(...cDarkNavy)
-    doc.roundedRect(marginX, headerTop, anchoUtil, headerHeight, 2.5, 2.5, 'F')
+    doc.roundedRect(marginX, headerTop, anchoUtil, headerHeight, 2.0, 2.0, 'F')
 
-    // Acento dorado superior
+    // Barra de acento ámbar
     doc.setFillColor(...cAccentAmber)
-    doc.rect(marginX + 3.0, headerTop, anchoUtil - 6.0, 0.9, 'F')
+    doc.rect(marginX + 2.5, headerTop, anchoUtil - 5.0, 0.8, 'F')
 
     // Título edificio
     doc.setTextColor(255, 255, 255)
     doc.setFont('helvetica', 'bold')
-    doc.setFontSize(orientacion === 'landscape' ? 11.0 : 12.5)
+    doc.setFontSize(isLandscape ? 10.5 : 12.0)
     const nombreEdif = (datos.nombreEdificio || 'CONDOMINIO RESIDENCIAL').toUpperCase()
-    doc.text(nombreEdif, marginX + 4.5, headerTop + 7.2)
+    doc.text(nombreEdif, marginX + 4.0, headerTop + 6.5)
 
-    // Subtítulo
+    // Subtítulo con tipo de reporte y año
     doc.setFont('helvetica', 'bold')
-    doc.setFontSize(orientacion === 'landscape' ? 7.5 : 8.2)
+    doc.setFontSize(isLandscape ? 6.8 : 7.8)
     doc.setTextColor(...cAccentAmber)
-    const titBase = datos.tituloPersonalizado || 'ESTADO DE SOLVENCIA Y RECAUDACIÓN MENSUAL'
-    const parteBadge = totalPaginas > 1 ? ` · (PANEL ${numPagina} DE ${totalPaginas})` : ''
-    doc.text(`${titBase.toUpperCase()}${parteBadge}`, marginX + 4.5, headerTop + 11.6)
+    const titReporte = datos.tituloPersonalizado
+      ? datos.tituloPersonalizado.toUpperCase()
+      : (isLandscape ? `CALENDARIO MENSUAL DE DEUDAS Y COBRANZA - ANIO ${datos.anio}` : `ESTADO DE SOLVENCIA Y COBRANZA - ANIO ${datos.anio}`)
+    const parteBadge = totalPaginas > 1 ? ` - (PANEL ${numPagina} DE ${totalPaginas})` : ''
+    doc.text(`${titReporte}${parteBadge}`, marginX + 4.0, headerTop + 10.4)
 
-    // RIF y Ubicación
-    doc.setFont('helvetica', 'normal')
-    doc.setFontSize(6.4)
-    doc.setTextColor(203, 213, 225)
-    const rifStr = datos.rifEdificio ? `RIF: ${datos.rifEdificio} · ` : ''
-    const dirTxt = datos.direccionEdificio ? datos.direccionEdificio : 'Cartelera Oficial Informativa del Ascensor'
-    doc.text(`${rifStr}${dirTxt}`.slice(0, 75), marginX + 4.5, headerTop + 15.6)
+    // Información de RIF o Ubicación
+    if (!isLandscape) {
+      doc.setFont('helvetica', 'normal')
+      doc.setFontSize(5.8)
+      doc.setTextColor(203, 213, 225)
+      const rifStr = datos.rifEdificio ? `RIF: ${datos.rifEdificio} · ` : ''
+      const dirTxt = datos.direccionEdificio || 'Cartelera Oficial del Ascensor'
+      doc.text(`${rifStr}${dirTxt}`.slice(0, 80), marginX + 4.0, headerTop + 14.2)
+    }
 
-    // Píldora derecha (BCV, Emisión y Página)
-    const pillPWidth = orientacion === 'landscape' ? 62 : 58
-    const pillPHeight = 11.5
-    const pillPX = marginX + anchoUtil - pillPWidth - 3.5
-    const pillPY = headerTop + 4.6
+    // Píldora de Metadatos derecha
+    const pillW = isLandscape ? 70 : 60
+    const pillH = isLandscape ? 9.5 : 10.5
+    const pillX = marginX + anchoUtil - pillW - 3.0
+    const pillY = headerTop + 2.5
 
     doc.setFillColor(30, 41, 59)
     doc.setDrawColor(51, 65, 85)
     doc.setLineWidth(0.2)
-    doc.roundedRect(pillPX, pillPY, pillPWidth, pillPHeight, 2, 2, 'FD')
+    doc.roundedRect(pillX, pillY, pillW, pillH, 1.5, 1.5, 'FD')
 
     doc.setFont('helvetica', 'bold')
-    doc.setFontSize(7.2)
+    doc.setFontSize(6.8)
     doc.setTextColor(255, 255, 255)
-    doc.text(`TASA BCV: Bs. ${fmtBs(datos.tasaBcv)}/USD`, pillPX + pillPWidth / 2, pillPY + 4.0, { align: 'center' })
+    doc.text(`TASA BCV: Bs. ${fmtBs(datos.tasaBcv)}/USD`, pillX + pillW / 2, pillY + 3.8, { align: 'center' })
 
     doc.setFont('helvetica', 'normal')
-    doc.setFontSize(5.8)
+    doc.setFontSize(5.4)
     doc.setTextColor(203, 213, 225)
-    doc.text(`${mesActualLabel} · Hoja ${numPagina}/${totalPaginas}`, pillPX + pillPWidth / 2, pillPY + 8.4, { align: 'center' })
+    doc.text(`${mesActualLabel} | Hoja ${numPagina} de ${totalPaginas}`, pillX + pillW / 2, pillY + 7.5, { align: 'center' })
 
-    let currentY = headerTop + headerHeight + 3.0
+    let currentY = headerTop + headerHeight + 2.5
 
     // ─────────────────────────────────────────────────────────────────────────
-    // 2. INDICADORES RESIDENCIALES (KPIs) O CINTILLO CONTINUO
+    // 2. CINTILLO RESIDENCIAL DE METRICAS
     // ─────────────────────────────────────────────────────────────────────────
     if (numPagina === 1) {
-      const cardHeight = orientacion === 'landscape' ? 10.0 : 11.5
+      const kpiHeight = isLandscape ? 7.5 : 9.5
       const numCards = 4
-      const gapCards = 2.5
+      const gapCards = 2.0
       const cardWidth = (anchoUtil - gapCards * (numCards - 1)) / numCards
       const pctSolvente = datos.totalApartamentos > 0
         ? ((datos.apartamentosSolventes / datos.totalApartamentos) * 100).toFixed(1)
@@ -217,576 +237,428 @@ export function generarCarteleraAscensorPDF(datos: DatosCarteleraAscensor): jsPD
         {
           title: 'TOTAL INMUEBLES',
           val: `${datos.totalApartamentos} Aptos`,
-          sub: '100% Catastro del Edificio',
-          valColor: cDarkNavy
+          color: cDarkNavy
         },
         {
-          title: 'SOLVENTES AL DÍA',
+          title: 'SOLVENTES AL DIA',
           val: `${datos.apartamentosSolventes} (${pctSolvente}%)`,
-          sub: 'Al día en mantenimiento',
-          valColor: [16, 149, 93] as [number, number, number] // emerald-600
+          color: [16, 149, 93] as [number, number, number]
         },
         {
-          title: 'CON CUOTAS PENDIENTES',
+          title: 'CON MORA / DEUDA',
           val: `${datos.apartamentosMorosos} Aptos`,
-          sub: 'Por regularizar pago',
-          valColor: [220, 38, 38] as [number, number, number] // red-600
+          color: [220, 38, 38] as [number, number, number]
         },
         {
-          title: 'TOTAL RECAUDACIÓN',
+          title: 'DEUDA TOTAL EDIFICIO',
           val: `$${fmtUsd(datos.totalDeudaUsd)}`,
-          sub: `≈ Bs. ${fmtBs(datos.totalDeudaBs)}`,
-          valColor: [194, 65, 12] as [number, number, number] // amber-700
+          color: [194, 65, 12] as [number, number, number]
         }
       ]
 
       kpis.forEach((kpi, idx) => {
         const x = marginX + idx * (cardWidth + gapCards)
         doc.setFillColor(255, 255, 255)
-        doc.roundedRect(x, currentY, cardWidth, cardHeight, 1.8, 1.8, 'F')
+        doc.roundedRect(x, currentY, cardWidth, kpiHeight, 1.2, 1.2, 'F')
         doc.setDrawColor(226, 232, 240)
-        doc.setLineWidth(0.25)
-        doc.roundedRect(x, currentY, cardWidth, cardHeight, 1.8, 1.8, 'S')
+        doc.setLineWidth(0.2)
+        doc.roundedRect(x, currentY, cardWidth, kpiHeight, 1.2, 1.2, 'S')
 
         doc.setFont('helvetica', 'bold')
-        doc.setFontSize(5.0)
-        doc.setTextColor(...cMutedText)
-        doc.text(kpi.title, x + 2.5, currentY + 3.2)
-
-        doc.setFontSize(7.4)
-        doc.setTextColor(kpi.valColor[0], kpi.valColor[1], kpi.valColor[2])
-        doc.text(kpi.val, x + 2.5, currentY + 6.9)
-
-        doc.setFont('helvetica', 'normal')
         doc.setFontSize(4.6)
-        doc.setTextColor(148, 163, 184)
-        doc.text(kpi.sub, x + 2.5, currentY + 9.9)
+        doc.setTextColor(100, 116, 139)
+        doc.text(kpi.title, x + 2.0, currentY + (isLandscape ? 2.6 : 3.2))
+
+        doc.setFontSize(isLandscape ? 6.4 : 7.2)
+        doc.setTextColor(kpi.color[0], kpi.color[1], kpi.color[2])
+        doc.text(kpi.val, x + 2.0, currentY + (isLandscape ? 5.8 : 7.0))
       })
 
-      currentY += cardHeight + 2.2
-
-      // Mensaje de la Junta / Administración
-      if (datos.mensajeComunidad) {
-        const msgHeight = orientacion === 'landscape' ? 5.2 : 6.0
-        doc.setFillColor(254, 243, 199)
-        doc.setDrawColor(245, 158, 11)
-        doc.setLineWidth(0.2)
-        doc.roundedRect(marginX, currentY, anchoUtil, msgHeight, 1.2, 1.2, 'FD')
-
-        doc.setFont('helvetica', 'bold')
-        doc.setFontSize(5.4)
-        doc.setTextColor(146, 64, 14)
-        doc.text('📢 COMUNICADO DE LA JUNTA:', marginX + 2.5, currentY + 2.4)
-
-        doc.setFont('helvetica', 'normal')
-        doc.setFontSize(5.1)
-        doc.setTextColor(120, 53, 15)
-        doc.text(datos.mensajeComunidad.slice(0, 160), marginX + 2.5, currentY + 4.7)
-
-        currentY += msgHeight + 2.2
-      }
+      currentY += kpiHeight + 2.0
     } else {
-      // Cintillo de Panel Continuo en páginas 2 y 3
+      // Indicador de panel de continuación en páginas 2 y 3
+      const ribbonH = isLandscape ? 4.5 : 5.0
       doc.setFillColor(248, 250, 252)
       doc.setDrawColor(226, 232, 240)
       doc.setLineWidth(0.2)
-      doc.roundedRect(marginX, currentY, anchoUtil, 4.8, 1, 1, 'FD')
+      doc.roundedRect(marginX, currentY, anchoUtil, ribbonH, 1.0, 1.0, 'FD')
 
       doc.setFont('helvetica', 'bold')
-      doc.setFontSize(6.0)
+      doc.setFontSize(5.6)
       doc.setTextColor(30, 41, 59)
       const primerApto = aptosChunk[0]?.apartamento_numero || ''
       const ultimoApto = aptosChunk[aptosChunk.length - 1]?.apartamento_numero || ''
-      const panelInfo = `📋 RELACIÓN CONTINUA DE INMUEBLES · DEL APARTAMENTO ${primerApto} AL ${ultimoApto} · (PANEL ${numPagina} DE ${totalPaginas})`
-      doc.text(panelInfo, marginX + 3, currentY + 3.2)
+      doc.text(
+        `RELACION DE INMUEBLES: APARTAMENTOS DEL ${primerApto} AL ${ultimoApto} - (PANEL ${numPagina} DE ${totalPaginas})`,
+        marginX + 3.0,
+        currentY + (isLandscape ? 3.0 : 3.4)
+      )
 
-      currentY += 6.0
+      currentY += ribbonH + 2.0
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // 3. DETERMINACIÓN DE COLUMNAS Y CALCULO DE ALTURA EXACTA (SIN VACÍOS)
+    // 3. CALCULO EXACTO DE ALTURA PARA CERO ESPACIO EN BLANCO Y CERO DESBORDES
     // ─────────────────────────────────────────────────────────────────────────
-    // En modo multi-página (2 o 3 hojas), CADA LÍNEA ES UN APARTAMENTO A ANCHO COMPLETO.
-    // En modo 1 página, si hay <= 20 aptos, también es 1 línea completa; si son > 20 aptos, 2 columnas paralelas.
-    let numSubCols = 1
-    if (!isMultiPagina) {
-      numSubCols = aptosChunk.length > 20 ? (orientacion === 'landscape' ? 3 : 2) : 1
-    } else {
-      numSubCols = 1
-    }
+    const bankBoxHeight = isLastPage ? (isLandscape ? 21.0 : 26.0) : 0
+    const footerMargin = 6.0
 
-    const bankBoxHeight = orientacion === 'landscape' ? 22.0 : 30.0
-    const footerMargin = 7.0
+    // Límite donde termina la tabla exactamente
+    const bottomLimit = isLastPage
+      ? (pageHeight - bankBoxHeight - 5.0)
+      : (pageHeight - footerMargin - 2.0)
 
-    // Límite inferior donde debe terminar la tabla
-    const bottomLimit = isLastPage ? (pageHeight - bankBoxHeight - 9.0) : (pageHeight - footerMargin - 2.0)
     const startTableY = currentY
-    const availTableHeight = Math.max(40, bottomLimit - startTableY)
-
-    const gapSubCols = 4.0
-    const subColWidth = (anchoUtil - (numSubCols - 1) * gapSubCols) / numSubCols
-    const rowsPerSubCol = Math.ceil(aptosChunk.length / numSubCols)
-
-    // Altura del encabezado
-    const headHeight = numSubCols === 1 ? (isMultiPagina ? 8.0 : 7.2) : 6.5
+    const availTableHeight = Math.max(30, bottomLimit - startTableY)
+    const headHeight = isLandscape ? 6.2 : 6.8
     const availBodyHeight = availTableHeight - headHeight
 
-    // Cálculo riguroso de la altura de cada fila para rellenar el 100% del espacio vertical
-    // Se usa Math.floor con 1 decimal y margen de seguridad para evitar NUNCA desbordamientos
-    const calcRowH = rowsPerSubCol > 0 ? ((availBodyHeight - 2.0) / rowsPerSubCol) : 8.0
-    const bodyRowHeight = Math.max(5.4, Math.min(22.0, Math.floor(calcRowH * 10) / 10))
+    // Altura de fila calculada de forma segura para rellenar toda la hoja
+    const calcRowH = aptosChunk.length > 0 ? ((availBodyHeight - 3.0) / aptosChunk.length) : 7.0
+    const bodyRowHeight = Math.max(5.0, Math.min(isLandscape ? 11.5 : 18.0, Math.floor(calcRowH * 10) / 10))
 
-    // Tipografía proporcional
-    let fontSizeTable = 6.4
-    if (numSubCols === 1) {
-      if (bodyRowHeight >= 15) {
-        fontSizeTable = 9.8
-      } else if (bodyRowHeight >= 12) {
-        fontSizeTable = 9.0
-      } else if (bodyRowHeight >= 9.5) {
-        fontSizeTable = 8.2
-      } else if (bodyRowHeight >= 7.5) {
-        fontSizeTable = 7.4
-      } else {
-        fontSizeTable = 6.5
+    // ─────────────────────────────────────────────────────────────────────────
+    // 4. CONSTRUCCIÓN DE COLUMNAS DE LA TABLA
+    // ─────────────────────────────────────────────────────────────────────────
+    let tableHeaders: string[] = []
+    let columnStylesMap: Record<number, any> = {}
+
+    if (isLandscape) {
+      // MODO HORIZONTAL: Matriz completa del Calendario con los 12 meses
+      tableHeaders = ['APTO', 'PROPIETARIO', ...MESES_ABR, 'ESTADO', 'TOTAL ($)', 'TOTAL (Bs)']
+
+      const colW_Apto = 14.0
+      const colW_Nom = 40.0
+      const colW_Mes = 11.2 // 12 meses * 11.2 = 134.4 mm
+      const colW_Est = 17.0
+      const colW_Usd = 18.0
+      const colW_Bs = 23.0
+
+      columnStylesMap = {
+        0: { cellWidth: colW_Apto, halign: 'center', fontStyle: 'bold' },
+        1: { cellWidth: colW_Nom, halign: 'left' }
       }
+
+      // Columnas 2 a 13: Los 12 meses
+      for (let m = 0; m < 12; m++) {
+        columnStylesMap[2 + m] = { cellWidth: colW_Mes, halign: 'center', fontStyle: 'bold' }
+      }
+
+      columnStylesMap[14] = { cellWidth: colW_Est, halign: 'center', fontStyle: 'bold' }
+      columnStylesMap[15] = { cellWidth: colW_Usd, halign: 'right', fontStyle: 'bold' }
+      columnStylesMap[16] = { cellWidth: colW_Bs, halign: 'right' }
     } else {
-      fontSizeTable = bodyRowHeight >= 7.0 ? 6.5 : 5.8
+      // MODO VERTICAL: Relación con detalle explícito de meses en mora y ubicación
+      tableHeaders = ['APTO', 'PROPIETARIO', 'UBICACION', 'DETALLE DE COBRANZA', 'ESTADO', 'TOTAL ($)', 'TOTAL (Bs)']
+
+      const colW_Apto = anchoUtil * 0.11     // ~22.3 mm
+      const colW_Nom = anchoUtil * 0.24      // ~48.7 mm
+      const colW_Ubic = anchoUtil * 0.14     // ~28.4 mm
+      const colW_Det = anchoUtil * 0.23      // ~46.6 mm
+      const colW_Est = anchoUtil * 0.10      // ~20.3 mm
+      const colW_Usd = anchoUtil * 0.09      // ~18.3 mm
+      const colW_Bs = anchoUtil * 0.09       // ~18.3 mm
+
+      columnStylesMap = {
+        0: { cellWidth: colW_Apto, halign: 'center', fontStyle: 'bold' },
+        1: { cellWidth: colW_Nom, halign: 'left' },
+        2: { cellWidth: colW_Ubic, halign: 'left' },
+        3: { cellWidth: colW_Det, halign: 'left' },
+        4: { cellWidth: colW_Est, halign: 'center', fontStyle: 'bold' },
+        5: { cellWidth: colW_Usd, halign: 'right', fontStyle: 'bold' },
+        6: { cellWidth: colW_Bs, halign: 'right' }
+      }
     }
 
-    const cellPaddingTable = Math.max(0.6, Math.min(2.5, (bodyRowHeight - (fontSizeTable * 0.35)) / 2))
+    // Filas de datos
+    const subBody = aptosChunk.map(item => {
+      const nom = formatearNombrePropietario(item.propietario_nombre, item.apartamento_numero)
+      const totalUsdTxt = item.estado_solvente
+        ? (item.saldo_a_favor_usd > 0 ? `+${fmtUsd(item.saldo_a_favor_usd)}` : '$0.00')
+        : `$${fmtUsd(item.total_usd)}`
+      const totalBsTxt = item.estado_solvente
+        ? (item.saldo_a_favor_bs > 0 ? `+${fmtBs(item.saldo_a_favor_bs)}` : 'Bs. 0')
+        : `Bs. ${fmtBs(item.total_bs)}`
+      const estadoTxt = item.estado_solvente ? 'AL DIA' : 'PENDIENTE'
 
-    // Anchos proporcionales de columnas detalladas
-    let colW_Apto: number
-    let colW_Nombre: number
-    let colW_Detalle: number
-    let colW_Estado: number
-    let colW_Usd: number
-    let colW_Bs: number
+      if (isLandscape) {
+        // En horizontal: Evaluar los 12 meses directamente del recibo
+        const monthCols = MESES_ABR.map((_, mIdx) => {
+          const k = `${datos.anio}-${mIdx < 9 ? '0' + (mIdx + 1) : (mIdx + 1)}`
+          const rec = item.meses ? item.meses[k] : null
+          if (!rec) return '-'
+          return rec.estado === 'pagado' ? 'OK' : 'MORA'
+        })
 
-    if (numSubCols === 1) {
-      // 1 Línea continua detallada por apartamento (Diseño WOW)
-      colW_Apto = subColWidth * 0.11     // ~22.3 mm (Insignia Apto)
-      colW_Nombre = subColWidth * 0.29   // ~58.8 mm (Propietario + Piso/Alícuota)
-      colW_Detalle = subColWidth * 0.26  // ~52.8 mm (Concepto / Cuotas / Saldo a favor)
-      colW_Estado = subColWidth * 0.14   // ~28.4 mm (Píldora Pastel Estado)
-      colW_Usd = subColWidth * 0.10      // ~20.3 mm (Total USD)
-      colW_Bs = subColWidth * 0.10       // ~20.3 mm (Total Bs)
-    } else {
-      // 2 o 3 columnas compactas en 1 sola hoja
-      colW_Apto = subColWidth * 0.14
-      colW_Nombre = subColWidth * 0.30
-      colW_Detalle = 0 // omitido en multivariable compacta para legibilidad
-      colW_Estado = subColWidth * 0.20
-      colW_Usd = subColWidth * 0.18
-      colW_Bs = subColWidth * 0.18
-    }
+        return [
+          item.apartamento_numero,
+          nom,
+          ...monthCols,
+          estadoTxt,
+          totalUsdTxt,
+          totalBsTxt
+        ]
+      } else {
+        // En vertical: Ubicación y detalle explícito
+        const pisoTxt = item.piso ? `Piso ${item.piso}` : `Nivel ${item.apartamento_numero[0] || '1'}`
+        const alicTxt = item.alicuota ? `${(item.alicuota * 100).toFixed(2)}%` : 'General'
+        const ubicacion = `${pisoTxt} (${alicTxt})`
+        const detalle = obtenerDetalleMeses(item, datos.anio)
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // 4. TABLA MAESTRA CONTINUA
-    // ─────────────────────────────────────────────────────────────────────────
-    for (let cIdx = 0; cIdx < numSubCols; cIdx++) {
-      const subList = aptosChunk.slice(cIdx * rowsPerSubCol, (cIdx + 1) * rowsPerSubCol)
-      if (subList.length === 0) continue
+        return [
+          item.apartamento_numero,
+          nom,
+          ubicacion,
+          detalle,
+          estadoTxt,
+          totalUsdTxt,
+          totalBsTxt
+        ]
+      }
+    })
 
-      const tableHeaders = numSubCols === 1
-        ? ['APTO', 'PROPIETARIO / INMUEBLE', 'DETALLE DE COBRANZA', 'ESTADO', 'TOTAL ($)', 'TOTAL (Bs)']
-        : ['APTO', 'PROPIETARIO', 'ESTADO', 'TOTAL ($)', 'TOTAL (Bs)']
-
-      const subBody = subList.map(item => {
-        const totalUsdTxt = item.estado_solvente
-          ? (item.saldo_a_favor_usd > 0 ? `+${fmtUsd(item.saldo_a_favor_usd)}` : '$0.00')
-          : `$${fmtUsd(item.total_usd)}`
-
-        const totalBsTxt = item.estado_solvente
-          ? (item.saldo_a_favor_bs > 0 ? `+${fmtBs(item.saldo_a_favor_bs)}` : 'Bs. 0')
-          : `Bs. ${fmtBs(item.total_bs)}`
-
-        if (numSubCols === 1) {
-          return [
-            '', // Col 0: Badge Apto en didDrawCell
-            '', // Col 1: Propietario multilínea en didDrawCell
-            '', // Col 2: Detalle cobranza en didDrawCell
-            '', // Col 3: Píldora estado en didDrawCell
-            totalUsdTxt, // Col 4: USD
-            totalBsTxt   // Col 5: Bs
-          ]
-        } else {
-          const nom = obtenerNombreFormal(item.propietario_nombre, item.apartamento_numero)
-          return [
-            '', // Col 0: Badge Apto
-            nom,
-            '', // Col 2: Píldora estado
-            totalUsdTxt,
-            totalBsTxt
-          ]
+    autoTable(doc, {
+      startY: startTableY,
+      margin: {
+        left: marginX,
+        right: marginX,
+        top: 4.5,
+        bottom: 4.0 // margen seguro para que autoTable NUNCA genere un salto de página
+      },
+      tableWidth: anchoUtil,
+      head: [tableHeaders],
+      body: subBody,
+      theme: 'plain',
+      styles: {
+        fontSize: isLandscape ? 6.2 : 6.8,
+        cellPadding: 1.0,
+        textColor: cSlateText,
+        overflow: 'ellipsize',
+        font: 'helvetica',
+        valign: 'middle'
+      },
+      headStyles: {
+        fillColor: [241, 245, 249],
+        textColor: [71, 85, 105],
+        fontStyle: 'bold',
+        fontSize: isLandscape ? 6.0 : 6.5,
+        minCellHeight: headHeight,
+        halign: 'center',
+        valign: 'middle'
+      },
+      bodyStyles: {
+        minCellHeight: bodyRowHeight
+      },
+      columnStyles: columnStylesMap,
+      didParseCell: (data) => {
+        if (data.section === 'head') {
+          if (data.column.index === 1 || (!isLandscape && (data.column.index === 2 || data.column.index === 3))) {
+            data.cell.styles.halign = 'left'
+          }
         }
-      })
+        if (data.section === 'body') {
+          // Fondo cebra tenue
+          data.cell.styles.fillColor = data.row.index % 2 === 1 ? [248, 250, 252] : [255, 255, 255]
 
-      const leftX = marginX + cIdx * (subColWidth + gapSubCols)
-      const rightMargin = pageWidth - (leftX + subColWidth)
-
-      const colStylesMap: Record<number, any> = numSubCols === 1
-        ? {
-            0: { cellWidth: colW_Apto, halign: 'center' },
-            1: { cellWidth: colW_Nombre, halign: 'left' },
-            2: { cellWidth: colW_Detalle, halign: 'left' },
-            3: { cellWidth: colW_Estado, halign: 'center' },
-            4: { cellWidth: colW_Usd, halign: 'right', fontStyle: 'bold' },
-            5: { cellWidth: colW_Bs, halign: 'right' }
-          }
-        : {
-            0: { cellWidth: colW_Apto, halign: 'center' },
-            1: { cellWidth: colW_Nombre, halign: 'left' },
-            2: { cellWidth: colW_Estado, halign: 'center' },
-            3: { cellWidth: colW_Usd, halign: 'right', fontStyle: 'bold' },
-            4: { cellWidth: colW_Bs, halign: 'right' }
-          }
-
-      autoTable(doc, {
-        startY: startTableY,
-        margin: {
-          left: leftX,
-          right: rightMargin,
-          bottom: 5.0 // margen seguro para que autoTable NUNCA genere un salto de página no deseado
-        },
-        tableWidth: subColWidth,
-        head: [tableHeaders],
-        body: subBody,
-        theme: 'plain',
-        styles: {
-          fontSize: fontSizeTable,
-          cellPadding: cellPaddingTable,
-          textColor: cSlateText,
-          overflow: 'ellipsize',
-          font: 'helvetica',
-          valign: 'middle'
-        },
-        headStyles: {
-          fillColor: [241, 245, 249],
-          textColor: [71, 85, 105],
-          fontStyle: 'bold',
-          fontSize: Math.min(fontSizeTable, 8.8),
-          minCellHeight: headHeight,
-          cellPadding: cellPaddingTable + 0.3,
-          halign: 'left',
-          valign: 'middle'
-        },
-        bodyStyles: {
-          minCellHeight: bodyRowHeight
-        },
-        columnStyles: colStylesMap,
-        didParseCell: (data) => {
-          if (data.section === 'head') {
-            if (data.column.index === 0 || (numSubCols === 1 ? data.column.index === 3 : data.column.index === 2)) {
-              data.cell.styles.halign = 'center'
-            } else if (numSubCols === 1 ? (data.column.index === 4 || data.column.index === 5) : (data.column.index === 3 || data.column.index === 4)) {
-              data.cell.styles.halign = 'right'
-            }
-          }
-          if (data.section === 'body') {
-            // Fondo cebra ultra-sutil
-            data.cell.styles.fillColor = data.row.index % 2 === 1 ? [248, 250, 252] : [255, 255, 255]
-
-            const item = subList[data.row.index]
-            if (item) {
-              const colUsdIdx = numSubCols === 1 ? 4 : 3
-              const colBsIdx = numSubCols === 1 ? 5 : 4
-
-              if (data.column.index === colUsdIdx) {
-                if (!item.estado_solvente) {
-                  data.cell.styles.textColor = [15, 23, 42] // bold navy
-                } else if (item.saldo_a_favor_usd > 0) {
-                  data.cell.styles.textColor = [5, 150, 105] // emerald
-                } else {
-                  data.cell.styles.textColor = [148, 163, 184]
-                }
-              } else if (data.column.index === colBsIdx) {
-                if (!item.estado_solvente) {
-                  data.cell.styles.textColor = [51, 65, 85]
-                } else if (item.saldo_a_favor_bs > 0) {
-                  data.cell.styles.textColor = [5, 150, 105]
-                } else {
-                  data.cell.styles.textColor = [148, 163, 184]
-                }
-              }
-            }
-          }
-        },
-        didDrawCell: (data) => {
-          // 1. Línea horizontal sutil en cada fila
-          if (data.section === 'body') {
-            doc.setDrawColor(226, 232, 240)
-            doc.setLineWidth(0.12)
-            doc.line(
-              data.cell.x,
-              data.cell.y + data.cell.height,
-              data.cell.x + data.cell.width,
-              data.cell.y + data.cell.height
-            )
-          }
-
-          // Línea debajo del encabezado
-          if (data.section === 'head') {
-            doc.setDrawColor(203, 213, 225)
-            doc.setLineWidth(0.2)
-            doc.line(
-              data.cell.x,
-              data.cell.y + data.cell.height,
-              data.cell.x + data.cell.width,
-              data.cell.y + data.cell.height
-            )
-          }
-
-          const item = subList[data.row.index]
+          const item = aptosChunk[data.row.index]
           if (!item) return
 
-          // 2. Insignia Apartamento (Columna 0)
-          if (data.section === 'body' && data.column.index === 0) {
-            const badgeH = Math.min(data.cell.height - 2.2, 8.2)
-            const badgeW = Math.min(data.cell.width - 4.0, numSubCols === 1 ? 20.0 : 13.5)
-            const badgeX = data.cell.x + (data.cell.width - badgeW) / 2
-            const badgeY = data.cell.y + (data.cell.height - badgeH) / 2
-
-            doc.setFillColor(...cDarkNavy)
-            doc.roundedRect(badgeX, badgeY, badgeW, badgeH, 1.4, 1.4, 'F')
-
-            doc.setFont('helvetica', 'bold')
-            doc.setFontSize(Math.min(fontSizeTable + 0.5, 11.0))
-            doc.setTextColor(255, 255, 255)
-            doc.text(
-              item.apartamento_numero.trim(),
-              badgeX + badgeW / 2,
-              badgeY + badgeH / 2,
-              { align: 'center', baseline: 'middle' }
-            )
-          }
-
-          // 3. Propietario / Inmueble multilínea (Columna 1 en numSubCols === 1)
-          if (data.section === 'body' && data.column.index === 1 && numSubCols === 1) {
-            const nomTitular = obtenerNombreFormal(item.propietario_nombre, item.apartamento_numero)
-            const pisoTxt = item.piso ? `Piso ${item.piso}` : `Nivel ${item.apartamento_numero[0] || '1'}`
-            const alicTxt = item.alicuota ? `Alícuota: ${(item.alicuota * 100).toFixed(2)}%` : 'Alíc. General'
-            const subMeta = `${pisoTxt} · ${alicTxt}`
-
-            const midY = data.cell.y + data.cell.height / 2
-
-            doc.setFont('helvetica', 'bold')
-            doc.setFontSize(fontSizeTable)
-            doc.setTextColor(...cSlateDark)
-            doc.text(nomTitular.slice(0, 36), data.cell.x + 2.0, midY - 1.8, { baseline: 'middle' })
-
-            doc.setFont('helvetica', 'normal')
-            doc.setFontSize(Math.max(fontSizeTable - 1.8, 5.2))
-            doc.setTextColor(...cMutedText)
-            doc.text(subMeta, data.cell.x + 2.0, midY + 2.4, { baseline: 'middle' })
-          }
-
-          // 4. Detalle de Cobranza (Columna 2 en numSubCols === 1)
-          if (data.section === 'body' && data.column.index === 2 && numSubCols === 1) {
-            const midY = data.cell.y + data.cell.height / 2
-            if (item.estado_solvente) {
-              if (item.saldo_a_favor_usd > 0) {
-                doc.setFont('helvetica', 'bold')
-                doc.setFontSize(fontSizeTable - 0.4)
-                doc.setTextColor(5, 150, 105)
-                doc.text('Saldo a favor acreditado', data.cell.x + 2.0, midY - 1.8, { baseline: 'middle' })
-
-                doc.setFont('helvetica', 'normal')
-                doc.setFontSize(Math.max(fontSizeTable - 2.0, 5.0))
-                doc.setTextColor(16, 185, 129)
-                doc.text(`+$${fmtUsd(item.saldo_a_favor_usd)} / +Bs. ${fmtBs(item.saldo_a_favor_bs)}`, data.cell.x + 2.0, midY + 2.4, { baseline: 'middle' })
+          if (isLandscape) {
+            // Columnas de meses (index 2 a 13)
+            if (data.column.index >= 2 && data.column.index <= 13) {
+              const val = data.cell.text[0]
+              if (val === 'OK') {
+                data.cell.styles.fillColor = [220, 252, 231] // verde menta
+                data.cell.styles.textColor = [21, 128, 61]   // verde esmeralda
+                data.cell.styles.fontStyle = 'bold'
+              } else if (val === 'MORA') {
+                data.cell.styles.fillColor = [254, 226, 226] // coral suave
+                data.cell.styles.textColor = [185, 28, 28]   // rojo
+                data.cell.styles.fontStyle = 'bold'
               } else {
-                doc.setFont('helvetica', 'normal')
-                doc.setFontSize(fontSizeTable - 0.5)
-                doc.setTextColor(71, 85, 105)
-                doc.text('Cuotas de condominio solventes', data.cell.x + 2.0, midY - 1.8, { baseline: 'middle' })
-
-                doc.setFont('helvetica', 'normal')
-                doc.setFontSize(Math.max(fontSizeTable - 2.0, 5.0))
-                doc.setTextColor(148, 163, 184)
-                doc.text('Sin deudas ordinarias pendientes', data.cell.x + 2.0, midY + 2.4, { baseline: 'middle' })
+                data.cell.styles.textColor = [148, 163, 184]
               }
-            } else {
-              const meses = item.meses_con_deuda || 1
-              doc.setFont('helvetica', 'bold')
-              doc.setFontSize(fontSizeTable - 0.4)
-              doc.setTextColor(185, 28, 28)
-              doc.text(`Deuda: ${meses} cuota${meses > 1 ? 's' : ''} pendiente${meses > 1 ? 's' : ''}`, data.cell.x + 2.0, midY - 1.8, { baseline: 'middle' })
-
-              doc.setFont('helvetica', 'normal')
-              doc.setFontSize(Math.max(fontSizeTable - 2.0, 5.0))
-              doc.setTextColor(148, 163, 184)
-              doc.text('Mantenimiento y servicios comunes', data.cell.x + 2.0, midY + 2.4, { baseline: 'middle' })
+            } else if (data.column.index === 14) {
+              // Estatus
+              if (item.estado_solvente) {
+                data.cell.styles.fillColor = [220, 252, 231]
+                data.cell.styles.textColor = [21, 128, 61]
+              } else {
+                data.cell.styles.fillColor = [254, 226, 226]
+                data.cell.styles.textColor = [185, 28, 28]
+              }
+            } else if (data.column.index === 15) {
+              data.cell.styles.textColor = item.estado_solvente ? [148, 163, 184] : [15, 23, 42]
             }
-          }
-
-          // 5. Píldora de Estado (Columna 3 en 1 col, o Columna 2 en 2 cols)
-          const estadoColIdx = numSubCols === 1 ? 3 : 2
-          if (data.section === 'body' && data.column.index === estadoColIdx) {
-            const pillH = Math.min(data.cell.height - 2.4, 7.6)
-            const pillW = Math.min(data.cell.width - 3.5, numSubCols === 1 ? 26.0 : 19.5)
-            const pillX = data.cell.x + (data.cell.width - pillW) / 2
-            const pillY = data.cell.y + (data.cell.height - pillH) / 2
-
-            if (item.estado_solvente) {
-              doc.setFillColor(220, 252, 231) // #dcfce7
-              doc.setDrawColor(187, 247, 208) // #bbf7d0
-              doc.setLineWidth(0.2)
-              doc.roundedRect(pillX, pillY, pillW, pillH, 1.3, 1.3, 'FD')
-
-              doc.setFont('helvetica', 'bold')
-              doc.setFontSize(Math.max(fontSizeTable - 0.8, 6.8))
-              doc.setTextColor(21, 128, 61)   // #15803d
-              doc.text('AL DÍA', pillX + pillW / 2, pillY + pillH / 2, { align: 'center', baseline: 'middle' })
-            } else {
-              doc.setFillColor(254, 226, 226) // #fee2e2
-              doc.setDrawColor(254, 202, 202) // #fecaca
-              doc.setLineWidth(0.2)
-              doc.roundedRect(pillX, pillY, pillW, pillH, 1.3, 1.3, 'FD')
-
-              doc.setFont('helvetica', 'bold')
-              doc.setFontSize(Math.max(fontSizeTable - 0.9, 6.6))
-              doc.setTextColor(185, 28, 28)   // #b91c1c
-              const lbl = (item.meses_con_deuda && item.meses_con_deuda > 1) ? `DEUDA (${item.meses_con_deuda}m)` : 'PENDIENTE'
-              doc.text(lbl, pillX + pillW / 2, pillY + pillH / 2, { align: 'center', baseline: 'middle' })
+          } else {
+            // Modo Vertical
+            if (data.column.index === 4) {
+              // Estatus
+              if (item.estado_solvente) {
+                data.cell.styles.fillColor = [220, 252, 231]
+                data.cell.styles.textColor = [21, 128, 61]
+              } else {
+                data.cell.styles.fillColor = [254, 226, 226]
+                data.cell.styles.textColor = [185, 28, 28]
+              }
+            } else if (data.column.index === 3) {
+              // Detalle
+              data.cell.styles.textColor = item.estado_solvente ? [16, 149, 93] : [185, 28, 28]
+              data.cell.styles.fontStyle = item.estado_solvente ? 'normal' : 'bold'
+            } else if (data.column.index === 5) {
+              data.cell.styles.textColor = item.estado_solvente ? [148, 163, 184] : [15, 23, 42]
             }
           }
         }
-      })
-    }
+      },
+      didDrawCell: (data) => {
+        // Línea horizontal tenue en cada fila
+        if (data.section === 'body') {
+          doc.setDrawColor(226, 232, 240)
+          doc.setLineWidth(0.12)
+          doc.line(
+            data.cell.x,
+            data.cell.y + data.cell.height,
+            data.cell.x + data.cell.width,
+            data.cell.y + data.cell.height
+          )
+        }
+
+        // Línea debajo del encabezado
+        if (data.section === 'head') {
+          doc.setDrawColor(203, 213, 225)
+          doc.setLineWidth(0.2)
+          doc.line(
+            data.cell.x,
+            data.cell.y + data.cell.height,
+            data.cell.x + data.cell.width,
+            data.cell.y + data.cell.height
+          )
+        }
+
+        // Insignia del apartamento (Columna 0)
+        if (data.section === 'body' && data.column.index === 0) {
+          const item = aptosChunk[data.row.index]
+          if (item) {
+            const bH = Math.min(data.cell.height - 1.8, 6.0)
+            const bW = Math.min(data.cell.width - 2.5, 12.5)
+            const bX = data.cell.x + (data.cell.width - bW) / 2
+            const bY = data.cell.y + (data.cell.height - bH) / 2
+
+            doc.setFillColor(...cDarkNavy)
+            doc.roundedRect(bX, bY, bW, bH, 1.2, 1.2, 'F')
+
+            doc.setFont('helvetica', 'bold')
+            doc.setFontSize(isLandscape ? 6.2 : 6.8)
+            doc.setTextColor(255, 255, 255)
+            doc.text(item.apartamento_numero.trim(), bX + bW / 2, bY + bH / 2, { align: 'center', baseline: 'middle' })
+          }
+        }
+      }
+    })
 
     // ─────────────────────────────────────────────────────────────────────────
-    // 5. CAJA DE BANCOS (ÚLTIMA HOJA) O TARJETA INFORMATIVA RESIDENCIAL (PÁG 1 Y 2)
+    // 5. CAJA DE BANCOS AL PIE DE LA ÚLTIMA PÁGINA
     // ─────────────────────────────────────────────────────────────────────────
-    const finalTableY = (doc as any).lastAutoTable ? (doc as any).lastAutoTable.finalY : currentY
-    const espaciolibre = (pageHeight - footerMargin - 2.0) - finalTableY
-
     if (isLastPage) {
-      // Caja bancaria ejecutiva al pie de la última página
-      const bankY = Math.max(finalTableY + 2.5, pageHeight - bankBoxHeight - 6.5)
+      const finalTableY = (doc as any).lastAutoTable ? (doc as any).lastAutoTable.finalY : currentY
+      const bankY = Math.max(finalTableY + 2.0, pageHeight - bankBoxHeight - 5.5)
 
       doc.setFillColor(255, 255, 255)
       doc.setDrawColor(203, 213, 225)
       doc.setLineWidth(0.3)
-      doc.roundedRect(marginX, bankY, anchoUtil, bankBoxHeight, 2, 2, 'FD')
+      doc.roundedRect(marginX, bankY, anchoUtil, bankBoxHeight, 1.8, 1.8, 'FD')
 
       // Encabezado de la caja
-      const headBankH = 4.8
+      const headBankH = isLandscape ? 4.0 : 4.5
       doc.setFillColor(...cDarkNavy)
-      doc.roundedRect(marginX, bankY, anchoUtil, headBankH, 2, 2, 'F')
-      doc.rect(marginX, bankY + headBankH - 1.5, anchoUtil, 1.5, 'F')
+      doc.roundedRect(marginX, bankY, anchoUtil, headBankH, 1.8, 1.8, 'F')
+      doc.rect(marginX, bankY + headBankH - 1.2, anchoUtil, 1.2, 'F')
 
       doc.setFont('helvetica', 'bold')
-      doc.setFontSize(orientacion === 'landscape' ? 6.2 : 6.8)
+      doc.setFontSize(isLandscape ? 5.8 : 6.4)
       doc.setTextColor(255, 255, 255)
-      doc.text('CANALES BANCARIOS OFICIALES PARA PAGO Y REGULARIZACIÓN', marginX + 3.5, bankY + 3.4)
+      doc.text('DATOS BANCARIOS OFICIALES PARA PAGO Y CONCILIACION', marginX + 3.0, bankY + (isLandscape ? 2.8 : 3.2))
 
       doc.setFont('helvetica', 'normal')
-      doc.setFontSize(5.6)
+      doc.setFontSize(5.2)
       doc.setTextColor(203, 213, 225)
-      doc.text('Transferencia Bancaria & Pago Móvil', marginX + anchoUtil - 3.5, bankY + 3.4, { align: 'right' })
+      doc.text('Transferencia Bancaria y Pago Movil', marginX + anchoUtil - 3.0, bankY + (isLandscape ? 2.8 : 3.2), { align: 'right' })
 
       const cfgB = datos.configBanco || {}
-      const colBankW = (anchoUtil - 7) / 2
+      const colBankW = (anchoUtil - 6.0) / 2
 
       // Columna 1: Transferencia Bancaria
-      const b1X = marginX + 3.5
+      const b1X = marginX + 3.0
       doc.setFont('helvetica', 'bold')
-      doc.setFontSize(orientacion === 'landscape' ? 5.8 : 6.4)
+      doc.setFontSize(isLandscape ? 5.4 : 5.8)
       doc.setTextColor(...cAccentAmber)
-      doc.text('🏦 TRANSFERENCIA BANCARIA (Bs):', b1X, bankY + 8.2)
+      doc.text('TRANSFERENCIA BANCARIA (Bs):', b1X, bankY + (isLandscape ? 7.2 : 8.0))
 
       doc.setFont('helvetica', 'normal')
-      doc.setFontSize(orientacion === 'landscape' ? 5.2 : 5.8)
+      doc.setFontSize(isLandscape ? 4.8 : 5.2)
       doc.setTextColor(51, 65, 85)
       const bancoNombre = cfgB.banco || 'Bicentenario / Banco Nacional'
       const titular = cfgB.titular || datos.nombreEdificio || 'Junta de Condominio'
       const cedula = cfgB.cedulaRif || datos.rifEdificio || 'J-XXXXXXXX-X'
       const cuentaNum = cfgB.cuentaBancaria || '0175-XXXX-XX-XXXXXXXXXX'
 
-      doc.text(`Banco: ${bancoNombre}`, b1X, bankY + 12.0)
-      doc.text(`Titular: ${titular} · RIF/C.I.: ${cedula}`, b1X, bankY + 15.6)
+      doc.text(`Banco: ${bancoNombre} | Titular: ${titular} | C.I/RIF: ${cedula}`, b1X, bankY + (isLandscape ? 10.5 : 11.8))
       doc.setFont('helvetica', 'bold')
-      doc.text(`Cuenta (20 dígitos): ${cuentaNum}`, b1X, bankY + 19.4)
+      doc.text(`Cuenta (20 digitos): ${cuentaNum}`, b1X, bankY + (isLandscape ? 13.8 : 15.4))
 
       // Columna 2: Pago Móvil / Divisas
-      const b2X = marginX + colBankW + 4.5
+      const b2X = marginX + colBankW + 4.0
       doc.setFont('helvetica', 'bold')
-      doc.setFontSize(orientacion === 'landscape' ? 5.8 : 6.4)
+      doc.setFontSize(isLandscape ? 5.4 : 5.8)
       doc.setTextColor(...cAccentAmber)
-      doc.text('📱 PAGO MÓVIL INTERBANCARIO (Bs):', b2X, bankY + 8.2)
+      doc.text('PAGO MOVIL INTERBANCARIO (Bs):', b2X, bankY + (isLandscape ? 7.2 : 8.0))
 
       doc.setFont('helvetica', 'normal')
-      doc.setFontSize(orientacion === 'landscape' ? 5.2 : 5.8)
+      doc.setFontSize(isLandscape ? 4.8 : 5.2)
       doc.setTextColor(51, 65, 85)
       const pmBanco = cfgB.pagoMovilBanco || cfgB.banco || 'Bicentenario'
       const pmTelf = cfgB.pagoMovilTelefono || '0414-XXXXXXX'
       const pmCed = cfgB.pagoMovilCedula || cfgB.cedulaRif || 'J-XXXXXXXX'
 
-      doc.text(`Banco: ${pmBanco} · Teléfono: ${pmTelf}`, b2X, bankY + 12.0)
-      doc.text(`Cédula / RIF: ${pmCed}`, b2X, bankY + 15.6)
+      doc.text(`Banco: ${pmBanco} | Telefono: ${pmTelf} | CI/RIF: ${pmCed}`, b2X, bankY + (isLandscape ? 10.5 : 11.8))
 
       if (cfgB.zelleEmail) {
         doc.setFont('helvetica', 'bold')
-        doc.text(`🟣 Zelle / Divisas: ${cfgB.zelleEmail}`, b2X, bankY + 19.4)
+        doc.text(`Zelle / Divisas: ${cfgB.zelleEmail}`, b2X, bankY + (isLandscape ? 13.8 : 15.4))
       } else {
         doc.setFont('helvetica', 'italic')
-        doc.text('Divisas en efectivo: previo acuerdo con administración.', b2X, bankY + 19.4)
+        doc.text('Efectivo Divisas: Previo acuerdo con administracion.', b2X, bankY + (isLandscape ? 13.8 : 15.4))
       }
 
-      // Franja inferior informativa de reporte
-      if (bankBoxHeight > 23) {
-        const barH = 5.2
-        doc.setFillColor(248, 250, 252)
-        doc.rect(marginX + 0.3, bankY + bankBoxHeight - barH - 0.3, anchoUtil - 0.6, barH, 'F')
-
-        doc.setFont('helvetica', 'bold')
-        doc.setFontSize(5.2)
-        doc.setTextColor(71, 85, 105)
-        doc.text(
-          '✓ REPORTE DE PAGO: Al realizar su pago, repórtelo en la App del Condominio con el número de referencia para su inmediata conciliación.',
-          marginX + 3.5,
-          bankY + bankBoxHeight - 1.8
-        )
-      }
-    } else if (espaciolibre > 14.0) {
-      // En páginas intermedias, si queda espacio residual, rellenamos con una tarjeta elegante de convivencia comunitaria
-      const cardNormasY = finalTableY + 2.5
-      const cardNormasH = espaciolibre - 2.0
-
+      // Franja inferior de recordatorio
+      const barH = isLandscape ? 3.8 : 4.4
       doc.setFillColor(248, 250, 252)
-      doc.setDrawColor(226, 232, 240)
-      doc.setLineWidth(0.25)
-      doc.roundedRect(marginX, cardNormasY, anchoUtil, cardNormasH, 1.8, 1.8, 'FD')
+      doc.rect(marginX + 0.3, bankY + bankBoxHeight - barH - 0.3, anchoUtil - 0.6, barH, 'F')
 
       doc.setFont('helvetica', 'bold')
-      doc.setFontSize(6.4)
-      doc.setTextColor(...cDarkNavy)
-      doc.text('🏢 NORMAS RESIDENCIALES Y CONSERVACIÓN DE ÁREAS COMUNES', marginX + 3.5, cardNormasY + 4.2)
-
-      doc.setFont('helvetica', 'normal')
-      doc.setFontSize(5.5)
-      doc.setTextColor(...cSlateText)
+      doc.setFontSize(isLandscape ? 4.6 : 5.0)
+      doc.setTextColor(71, 85, 105)
       doc.text(
-        '• Cuidado de Ascensores: Respete la capacidad de carga y evite retener las puertas para prolongar la vida útil del sistema motriz.\n• Su aporte puntual: Garantiza el suministro continuo de agua hidroneumática, iluminación LED de áreas comunes y seguridad integral.',
-        marginX + 3.5,
-        cardNormasY + 8.0,
-        { maxWidth: anchoUtil - 7.0 }
+        'REPORTE DE PAGO: Al transferir o pagar movil, repórtelo en la App del Condominio con su numero de referencia para conciliarlo de inmediato.',
+        marginX + 3.0,
+        bankY + bankBoxHeight - 1.4
       )
     }
 
     // ─────────────────────────────────────────────────────────────────────────
     // 6. PIE DE PÁGINA
     // ─────────────────────────────────────────────────────────────────────────
-    const footerY = pageHeight - 3.8
+    const footerY = pageHeight - 3.2
     doc.setFont('helvetica', 'normal')
-    doc.setFontSize(orientacion === 'landscape' ? 5.0 : 5.4)
+    doc.setFontSize(isLandscape ? 4.6 : 5.0)
     doc.setTextColor(148, 163, 184)
-    const pieInfo = totalPaginas > 1
-      ? `Cartelera Informativa de Ascensor · ${fechaHoy} · Hoja ${numPagina} de ${totalPaginas} · Documento Oficial Emitido por Administración`
-      : `Cartelera Informativa de Ascensor · ${fechaHoy} · Documento Oficial Emitido por Administración · Su compromiso mantiene nuestro condominio.`
-    doc.text(pieInfo, pageWidth / 2, footerY, { align: 'center' })
+    doc.text(
+      `Cartelera Informativa de Ascensor | Emision: ${fechaHoy} | Hoja ${numPagina} de ${totalPaginas} | Documento Oficial del Condominio`,
+      pageWidth / 2,
+      footerY,
+      { align: 'center' }
+    )
   })
 
   return doc
