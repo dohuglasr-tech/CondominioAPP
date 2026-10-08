@@ -435,19 +435,17 @@ export async function abonarSaldoAFavorApartamento(params: {
     const refCodigo = `ABONO-${Date.now().toString(36).toUpperCase()}`
 
     // 1. Asentar el pago acreditado en pagos_reportados
+    let metodoNorm: 'transferencia_bs' | 'pago_movil' | 'efectivo_usd' | 'efectivo_bs' | 'zelle' | 'otro' = 'otro'
     const { error: errPago } = await supabase.from('pagos_reportados').insert({
       apartamento_id: params.apartamento_id,
       monto_usd: montoUsd,
       monto_bs: montoBs,
-      tasa_bcv: tasa,
-      metodo_pago: 'abono_saldo_favor',
+      metodo: metodoNorm,
       referencia: refCodigo,
-      banco_origen: 'Administración',
-      banco_destino: 'Billetera Comunitaria',
       fecha_pago: new Date().toISOString().slice(0, 10),
       fecha_revision: new Date().toISOString(),
       estado: 'aprobado',
-      notas_admin: `Abono de Saldo a Favor por administración. Motivo: ${params.motivo.trim()}`
+      notas_admin: `Abono de Saldo a Favor por administración. Banco Origen: Administración · Motivo: ${params.motivo.trim()}`
     })
 
     if (errPago) {

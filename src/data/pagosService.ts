@@ -58,6 +58,36 @@ export async function reportarPago(payload: ReportePagoPayload): Promise<{ error
       }
     }
 
+    // Normalizar de forma infalible el método para cumplir con el enum PostgreSQL `metodo_pago`:
+    // ['zelle', 'pago_movil', 'transferencia_bs', 'transferencia_usd', 'efectivo_usd', 'efectivo_bs', 'zinli', 'otro']
+    let metodoNormalizado: 'zelle' | 'pago_movil' | 'transferencia_bs' | 'transferencia_usd' | 'efectivo_usd' | 'efectivo_bs' | 'zinli' | 'otro' = 'transferencia_bs'
+    const mStr = (payload.metodo || '').toLowerCase().trim()
+    if (mStr === 'pago_movil' || mStr.includes('movil')) {
+      metodoNormalizado = 'pago_movil'
+    } else if (mStr === 'zelle') {
+      metodoNormalizado = 'zelle'
+    } else if (mStr === 'zinli') {
+      metodoNormalizado = 'zinli'
+    } else if (mStr === 'transferencia_usd') {
+      metodoNormalizado = 'transferencia_usd'
+    } else if (mStr === 'transferencia' || mStr === 'transferencia_bs' || mStr.includes('transferencia')) {
+      metodoNormalizado = (payload.monto_usd && payload.monto_usd > 0 && (!payload.monto_bs || payload.monto_bs === 0)) || mStr.includes('usd')
+        ? 'transferencia_usd'
+        : 'transferencia_bs'
+    } else if (mStr === 'efectivo_usd') {
+      metodoNormalizado = 'efectivo_usd'
+    } else if (mStr === 'efectivo_bs') {
+      metodoNormalizado = 'efectivo_bs'
+    } else if (mStr === 'efectivo' || mStr.includes('efectivo')) {
+      metodoNormalizado = (payload.monto_usd && payload.monto_usd > 0) || mStr.includes('usd')
+        ? 'efectivo_usd'
+        : 'efectivo_bs'
+    } else if (['zelle', 'pago_movil', 'transferencia_bs', 'transferencia_usd', 'efectivo_usd', 'efectivo_bs', 'zinli', 'otro'].includes(mStr)) {
+      metodoNormalizado = mStr as any
+    } else {
+      metodoNormalizado = 'otro'
+    }
+
     const { error } = await supabase
       .from('pagos_reportados')
       .insert({
@@ -65,7 +95,7 @@ export async function reportarPago(payload: ReportePagoPayload): Promise<{ error
         monto_bs: payload.monto_bs,
         monto_usd: payload.monto_usd ?? null,
         referencia: payload.numero_referencia,
-        metodo: payload.metodo || 'transferencia_bs',
+        metodo: metodoNormalizado,
         notas_admin: payload.notas_admin || `Banco Origen: ${payload.banco_origen}`,
         comprobante_url: payload.comprobante_url ?? null,
         estado: 'pendiente',

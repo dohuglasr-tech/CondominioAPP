@@ -1066,16 +1066,23 @@ export async function marcarDeudaMoraComoPagada(
     // 4. Registrar en pagos_reportados como aprobado
     if (realAptoId) {
       try {
+        let metodoNorm: 'transferencia_bs' | 'pago_movil' | 'efectivo_usd' | 'efectivo_bs' | 'zelle' | 'otro' = 'transferencia_bs'
+        const mLow = (metodoPago || '').toLowerCase()
+        if (mLow.includes('movil')) metodoNorm = 'pago_movil'
+        else if (mLow.includes('efectivo')) metodoNorm = 'efectivo_usd'
+        else if (mLow.includes('zelle')) metodoNorm = 'zelle'
+        else if (mLow.includes('transferencia')) metodoNorm = 'transferencia_bs'
+        else metodoNorm = 'otro'
+
         await supabase.from('pagos_reportados').insert({
           apartamento_id: realAptoId,
           monto_bs: montoBs,
           monto_usd: montoUsd,
           referencia: referencia || 'PAGO-DEUDA-ATRASADA',
-          banco_origen: metodoPago,
-          metodo_pago: metodoPago.toLowerCase().includes('movil') ? 'pago_movil' : metodoPago.toLowerCase().includes('efectivo') ? 'efectivo_usd' : 'transferencia',
+          metodo: metodoNorm,
           estado: 'aprobado',
           fecha_pago: fechaPago,
-          notas_admin: `Liquidación de deuda atrasada (${metodoPago}). Validado por Administración. Ref: ${referencia}. ${notas ? `Notas: ${notas}` : ''}`
+          notas_admin: `Banco/Canal: ${metodoPago}. Liquidación de deuda atrasada. Validado por Administración. Ref: ${referencia}. ${notas ? `Notas: ${notas}` : ''}`
         })
       } catch (errP) {
         console.warn('[moraService] Aviso registrando pago en pagos_reportados:', errP)

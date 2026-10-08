@@ -23,6 +23,7 @@ import {
 } from '../../../data/calendarioDeudasService'
 import { useAuth } from '../../../application/contexts/AuthContext'
 import { SkeletonTable } from '../../components/Skeleton'
+import { generarCarteleraAscensorPDF } from '../../../utils/carteleraAscensorPdfGenerator'
 
 const fmtBs = (n: number) => (n || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtUsd = (n: number) => (n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -109,6 +110,15 @@ export const AdminCalendarioDeudas: React.FC = () => {
 
   // Sincronización Inicial Excel
   const [sincronizandoExcel, setSincronizandoExcel] = useState(false)
+
+  // Modal y Descarga de Cartelera para Ascensor en PDF (Tamaño Carta)
+  const [modalCarteleraOpen, setModalCarteleraOpen] = useState(false)
+  const [carteleraFiltro, setCarteleraFiltro] = useState<'todos' | 'con_deuda' | 'solventes'>('todos')
+  const [carteleraTitulo, setCarteleraTitulo] = useState('BOLETÍN INFORMATIVO DE COBRANZA Y SOLVENCIA')
+  const [carteleraMensaje, setCarteleraMensaje] = useState(
+    'El pago oportuno de las cuotas es indispensable para el mantenimiento preventivo de ascensores, bombas de agua, iluminación y seguridad. ¡Agradecemos su compromiso!'
+  )
+  const [generandoPdf, setGenerandoPdf] = useState(false)
 
   const showToast = (msg: string) => {
     setToastMsg(msg)
@@ -958,6 +968,60 @@ export const AdminCalendarioDeudas: React.FC = () => {
     showToast('📥 Archivo CSV descargado correctamente')
   }
 
+  // ── Descargar PDF Cartelera de Ascensor (Tamaño Carta Sin Márgenes) ────────
+  const handleDescargarCarteleraPdf = (filtroDirecto?: 'todos' | 'con_deuda' | 'solventes') => {
+    if (filas.length === 0) {
+      showToast('⚠️ No hay apartamentos disponibles para generar el PDF')
+      return
+    }
+
+    setGenerandoPdf(true)
+    try {
+      const filtroAplicar = filtroDirecto || carteleraFiltro
+      const tasaVal = (resumen?.tasaBcvActual && Number(resumen.tasaBcvActual) > 1)
+        ? Number(resumen.tasaBcvActual)
+        : (config?.tasa_bcv_actual && Number(config.tasa_bcv_actual) > 1 ? Number(config.tasa_bcv_actual) : 859.06)
+
+      const doc = generarCarteleraAscensorPDF({
+        nombreEdificio: config?.nombre_edificio || 'Condominio',
+        rifEdificio: config?.rif || null,
+        direccionEdificio: config?.direccion || null,
+        anio: anioSeleccionado,
+        tasaBcv: tasaVal,
+        totalApartamentos: resumen?.totalApartamentos || filas.length,
+        apartamentosSolventes: resumen?.apartamentosSolventes || filas.filter(f => f.estado_solvente).length,
+        apartamentosMorosos: resumen?.apartamentosMorosos || filas.filter(f => !f.estado_solvente).length,
+        totalDeudaUsd: resumen?.totalDeudaEdificioUsd || filas.reduce((s, f) => s + f.total_usd, 0),
+        totalDeudaBs: resumen?.totalDeudaEdificioBs || filas.reduce((s, f) => s + f.total_bs, 0),
+        filas: filas,
+        configBanco: {
+          banco: config?.banco,
+          titular: config?.titular_cuenta,
+          cedulaRif: config?.cedula_cuenta,
+          tipoCuenta: config?.tipo_cuenta,
+          cuentaBancaria: config?.cuenta_bancaria,
+          pagoMovilBanco: config?.pago_movil_banco,
+          pagoMovilCedula: config?.pago_movil_cedula,
+          pagoMovilTelefono: config?.pago_movil_telefono,
+          zelleEmail: config?.zelle_email
+        },
+        mensajeComunidad: carteleraMensaje,
+        filtro: filtroAplicar,
+        tituloPersonalizado: carteleraTitulo
+      })
+
+      const nomEdifClean = (config?.nombre_edificio || 'Condominio').replace(/[^a-zA-Z0-9_-]/g, '_')
+      doc.save(`Cartelera_Ascensor_${nomEdifClean}_${anioSeleccionado}.pdf`)
+      showToast('📄 ¡PDF de Cartelera para Ascensor descargado en tamaño Carta!')
+      setModalCarteleraOpen(false)
+    } catch (err: any) {
+      console.error('[AdminCalendarioDeudas] Error generando PDF:', err)
+      showToast(`❌ Error generando PDF: ${err.message || 'Error desconocido'}`)
+    } finally {
+      setGenerandoPdf(false)
+    }
+  }
+
   // ── Render ───────────────────────────────────────────────────────────────
   return (
     <div className="calendario-page-root" style={{ padding: '24px 32px', maxWidth: '100%', margin: '0 auto', color: '#f3f4f6' }}>
@@ -1321,6 +1385,29 @@ export const AdminCalendarioDeudas: React.FC = () => {
             }}
           >
             📥 Exportar Excel (CSV)
+          </button>
+
+          {/* Botón Descargar Cartelera para Ascensor (PDF Carta) */}
+          <button
+            onClick={() => setModalCarteleraOpen(true)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              backgroundColor: 'rgba(249, 115, 22, 0.16)',
+              color: 'var(--color-accent, #f97316)',
+              border: '1px solid rgba(249, 115, 22, 0.45)',
+              padding: '9px 16px',
+              borderRadius: '10px',
+              fontSize: '12px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              boxShadow: '0 2px 10px rgba(249, 115, 22, 0.18)',
+              transition: 'all 0.15s ease'
+            }}
+            title="Descargar boletín oficial en tamaño carta sin márgenes para imprimir y colocar en el ascensor"
+          >
+            <span>🖨️</span> Cartelera Ascensor (PDF Carta)
           </button>
 
           {/* Selector Rápido de Año con Pestañas/Pills */}
@@ -3935,6 +4022,248 @@ export const AdminCalendarioDeudas: React.FC = () => {
                 style={{ padding: '9px 20px', backgroundColor: 'var(--color-accent, #f97316)', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: procesandoAccion ? 'not-allowed' : 'pointer' }}
               >
                 {procesandoAccion ? 'Guardando...' : 'Guardar Conceptos'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal Configuración y Descarga de Cartelera Ascensor (PDF Carta) ── */}
+      {modalCarteleraOpen && (
+        <div
+          className="calendario-modal-overlay"
+          onClick={() => setModalCarteleraOpen(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.82)',
+            backdropFilter: 'blur(6px)',
+            zIndex: 100000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px'
+          }}
+        >
+          <div
+            className="calendario-modal-card"
+            onClick={e => e.stopPropagation()}
+            style={{
+              backgroundColor: '#111827',
+              border: '1px solid #374151',
+              borderRadius: '18px',
+              width: '100%',
+              maxWidth: '560px',
+              maxHeight: '90vh',
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '0 25px 60px rgba(0, 0, 0, 0.85), 0 0 30px rgba(249, 115, 22, 0.12)'
+            }}
+          >
+            {/* Header del modal */}
+            <div style={{
+              padding: '18px 24px',
+              backgroundColor: '#0f172a',
+              borderBottom: '1px solid #1e293b',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '24px' }}>🖨️</span>
+                <div>
+                  <h3 style={{ margin: 0, color: '#fff', fontSize: '16px', fontWeight: 800 }}>
+                    Cartelera Informativa para el Ascensor
+                  </h3>
+                  <p style={{ margin: '3px 0 0', color: 'var(--color-accent, #f97316)', fontSize: '11.5px', fontWeight: 600 }}>
+                    Formato Tamaño Carta (Letter) · Sin Márgenes · 1 Hoja
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalCarteleraOpen(false)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#94a3b8',
+                  fontSize: '20px',
+                  cursor: 'pointer',
+                  padding: '4px 8px',
+                  borderRadius: '6px'
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Cuerpo del modal */}
+            <div style={{ padding: '20px 24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{
+                backgroundColor: 'rgba(59, 130, 246, 0.08)',
+                border: '1px solid rgba(59, 130, 246, 0.25)',
+                borderRadius: '10px',
+                padding: '12px 14px',
+                fontSize: '12px',
+                color: '#93c5fd',
+                lineHeight: 1.45
+              }}>
+                📄 <strong>Optimizado para Ascensor:</strong> Organiza todos los apartamentos en 2 columnas paralelas para entrar en <strong>1 sola hoja Carta</strong>, con estatus de solvencia (verde/rojo), monto adeudado y recuadro inferior con datos bancarios oficiales para que los residentes paguen de inmediato.
+              </div>
+
+              {/* Filtro de Apartamentos */}
+              <div>
+                <label style={{ display: 'block', color: '#cbd5e1', fontSize: '12px', fontWeight: 700, marginBottom: '6px' }}>
+                  Inmuebles a incluir en la Cartelera:
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+                  {[
+                    { id: 'todos', label: '🏢 Todos', sub: `${filas.length} Aptos` },
+                    { id: 'con_deuda', label: '🔴 Solo Deuda', sub: `${filas.filter(f => !f.estado_solvente).length} Morosos` },
+                    { id: 'solventes', label: '🟢 Solo Solventes', sub: `${filas.filter(f => f.estado_solvente).length} Al día` }
+                  ].map(opt => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => setCarteleraFiltro(opt.id as any)}
+                      style={{
+                        padding: '10px 8px',
+                        borderRadius: '10px',
+                        border: `1.5px solid ${carteleraFiltro === opt.id ? 'var(--color-accent, #f97316)' : '#374151'}`,
+                        backgroundColor: carteleraFiltro === opt.id ? 'rgba(249, 115, 22, 0.12)' : '#030712',
+                        color: carteleraFiltro === opt.id ? '#fff' : '#94a3b8',
+                        cursor: 'pointer',
+                        textAlign: 'center',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      <div style={{ fontWeight: 700, fontSize: '12px' }}>{opt.label}</div>
+                      <div style={{ fontSize: '10px', color: '#64748b', marginTop: '2px' }}>{opt.sub}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Título de la Cartelera */}
+              <div>
+                <label style={{ display: 'block', color: '#cbd5e1', fontSize: '12px', fontWeight: 700, marginBottom: '6px' }}>
+                  Título del Boletín:
+                </label>
+                <input
+                  type="text"
+                  value={carteleraTitulo}
+                  onChange={e => setCarteleraTitulo(e.target.value)}
+                  style={{
+                    width: '100%',
+                    backgroundColor: '#030712',
+                    border: '1px solid #374151',
+                    borderRadius: '8px',
+                    padding: '9px 12px',
+                    color: '#fff',
+                    fontSize: '13px',
+                    boxSizing: 'border-box'
+                  }}
+                  placeholder="Ej: BOLETÍN INFORMATIVO DE COBRANZA Y SOLVENCIA"
+                />
+              </div>
+
+              {/* Mensaje de la Comunidad */}
+              <div>
+                <label style={{ display: 'block', color: '#cbd5e1', fontSize: '12px', fontWeight: 700, marginBottom: '6px' }}>
+                  Mensaje Institucional / Llamado al Pago:
+                </label>
+                <textarea
+                  rows={3}
+                  value={carteleraMensaje}
+                  onChange={e => setCarteleraMensaje(e.target.value)}
+                  style={{
+                    width: '100%',
+                    backgroundColor: '#030712',
+                    border: '1px solid #374151',
+                    borderRadius: '8px',
+                    padding: '9px 12px',
+                    color: '#fff',
+                    fontSize: '12px',
+                    lineHeight: 1.4,
+                    boxSizing: 'border-box',
+                    resize: 'vertical'
+                  }}
+                  placeholder="Mensaje para los residentes que se leerá en el ascensor..."
+                />
+              </div>
+
+              {/* Vista previa de datos bancarios incluidos */}
+              <div style={{
+                backgroundColor: '#030712',
+                border: '1px solid #1f2937',
+                borderRadius: '10px',
+                padding: '12px 14px'
+              }}>
+                <div style={{ fontSize: '11px', fontWeight: 700, color: '#fb923c', marginBottom: '6px' }}>
+                  💳 CUENTAS BANCARIAS INCLUIDAS EN EL PIE DEL PDF:
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '11px', color: '#94a3b8' }}>
+                  <div>
+                    <strong style={{ color: '#fff' }}>Banco:</strong> {config?.banco || 'Bicentenario'}<br />
+                    <strong style={{ color: '#fff' }}>Titular:</strong> {config?.titular_cuenta || config?.nombre_edificio || 'Junta Condominio'}<br />
+                    <strong style={{ color: '#fff' }}>Cédula/RIF:</strong> {config?.cedula_cuenta || config?.rif || 'No registrado'}
+                  </div>
+                  <div>
+                    <strong style={{ color: '#fff' }}>Pago Móvil:</strong> {config?.pago_movil_banco || config?.banco || 'Bicentenario'}<br />
+                    <strong style={{ color: '#fff' }}>Teléfono:</strong> {config?.pago_movil_telefono || 'No configurado'}<br />
+                    <strong style={{ color: '#fff' }}>Tasa BCV:</strong> Bs. {fmtBs(resumen?.tasaBcvActual || 859.06)}/USD
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer con botón de descarga */}
+            <div style={{
+              padding: '16px 24px',
+              backgroundColor: '#0f172a',
+              borderTop: '1px solid #1e293b',
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: '12px'
+            }}>
+              <button
+                type="button"
+                onClick={() => setModalCarteleraOpen(false)}
+                style={{
+                  padding: '10px 18px',
+                  backgroundColor: 'transparent',
+                  color: '#cbd5e1',
+                  border: '1px solid #374151',
+                  borderRadius: '10px',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  cursor: 'pointer'
+                }}
+              >
+                Cerrar
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleDescargarCarteleraPdf()}
+                disabled={generandoPdf}
+                style={{
+                  padding: '10px 22px',
+                  backgroundColor: 'var(--color-accent, #f97316)',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '10px',
+                  fontSize: '13px',
+                  fontWeight: 800,
+                  cursor: generandoPdf ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  boxShadow: '0 4px 15px rgba(249, 115, 22, 0.35)'
+                }}
+              >
+                {generandoPdf ? '⏳ Generando PDF Carta...' : '📥 Descargar PDF para Imprimir (Carta)'}
               </button>
             </div>
           </div>

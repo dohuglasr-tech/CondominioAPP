@@ -341,15 +341,21 @@ export function ReportarPagoModal({ apartamentoId, onClose, onSuccess, config: c
 
     const conceptosLabels = deudasSeleccionadas.map(d => d.label).join(', ')
 
+    const metodoMapeado = metodo === 'transferencia'
+      ? 'transferencia_bs'
+      : metodo === 'efectivo'
+      ? 'efectivo_usd'
+      : (metodo || 'transferencia_bs')
+
     const { error: pagoErr } = await reportarPago({
       apartamento_id: apartamentoId,
       monto_bs: montoFinalBs,
       monto_usd: montoFinalUsd,
-      metodo: metodo || 'transferencia_bs',
+      metodo: metodoMapeado,
       numero_referencia: refEfectiva,
       banco_origen: bancoEfectivo,
       comprobante_url: comprobanteUrl,
-      notas_admin: `Método: ${(metodo || 'otro').toUpperCase()} · Conceptos: ${conceptosLabels || 'Pago general'} · Monto USD: $${montoFinalUsd.toFixed(2)} · Monto Bs: ${montoFinalBs.toLocaleString('es-VE')}`
+      notas_admin: `Método: ${(metodo || 'otro').toUpperCase()} · Banco: ${bancoEfectivo} · Conceptos: ${conceptosLabels || 'Pago general'} · Monto USD: $${montoFinalUsd.toFixed(2)} · Monto Bs: ${montoFinalBs.toLocaleString('es-VE')}`
     })
 
     if (pagoErr) { setError(pagoErr); setLoading(false); return }
