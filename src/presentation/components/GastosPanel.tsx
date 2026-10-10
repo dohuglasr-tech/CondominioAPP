@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useState } from 'react'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import {
@@ -47,7 +47,6 @@ export function GastosPanel({ onClose }: Props) {
   const [mesActual, setMesActual] = useState<string>('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [closing, setClosing] = useState(false)
 
   // ── Modal visor de comprobantes para residente ──
   const [modalGasto, setModalGasto] = useState<GastoComun | null>(null)
@@ -71,11 +70,6 @@ export function GastosPanel({ onClose }: Props) {
 
   const MOCK_MESES = ['2025-01-01', '2024-12-01', '2024-11-01'];
   const mesesAMostrar = meses.length > 0 ? meses : MOCK_MESES;
-
-  const handleClose = useCallback(() => {
-    setClosing(true)
-    setTimeout(() => onClose(), 250)
-  }, [onClose])
 
   // Cargar meses disponibles al montar
   useEffect(() => {
@@ -103,21 +97,28 @@ export function GastosPanel({ onClose }: Props) {
   }, [mesActual])
 
   const st = {
-    overlay: {
-      width: '100%', height: '100%',
-      backgroundColor: '#0a0a0a',
-      display: 'flex', flexDirection: 'column' as const,
-      padding: '20px',
+    container: {
+      width: '100%',
+      minHeight: '100%',
+      backgroundColor: '#090a0d',
+      display: 'flex',
+      flexDirection: 'column' as const,
+      padding: '20px 16px 80px',
+      maxWidth: '1000px',
+      margin: '0 auto',
+      fontFamily: "'Inter', sans-serif",
+      boxSizing: 'border-box' as const,
     },
     panel: {
-      flex: 1,
+      width: '100%',
       backgroundColor: '#1c1c1c',
       border: '1px solid #2a2a2a',
       borderRadius: '20px',
       fontFamily: "'Inter', sans-serif",
       position: 'relative' as const,
-      display: 'flex', flexDirection: 'column' as const,
-      overflow: 'hidden',
+      display: 'flex',
+      flexDirection: 'column' as const,
+      boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
     },
     topAccent: {
       position: 'absolute' as const, top: 0, left: '20px', right: '20px', height: '3px',
@@ -125,8 +126,7 @@ export function GastosPanel({ onClose }: Props) {
       borderRadius: '0 0 4px 4px',
     },
     header: {
-      padding: '28px 28px 0 28px',
-      flexShrink: 0,
+      padding: '24px 24px 0 24px',
     },
     headerRow: {
       display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -135,22 +135,22 @@ export function GastosPanel({ onClose }: Props) {
     title: { color: '#fff', fontSize: '20px', fontWeight: 700 },
     // Selector de mes
     summary: {
-      padding: '20px 28px',
+      padding: '20px 24px',
       borderBottom: '1px solid #2a2a2a',
       display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end',
+      flexWrap: 'wrap' as const,
+      gap: '12px',
     },
     body: {
-      flex: 1,
-      overflowY: 'auto' as const,
-      padding: '16px 28px 28px 28px',
+      padding: '16px 24px 28px 24px',
     },
     gastoCard: {
       backgroundColor: '#141414',
       border: '1px solid #2a2a2a',
       borderRadius: '14px',
-      padding: '18px 20px',
+      padding: '16px 18px',
       marginBottom: '10px',
-      transition: 'transform 0.2s cubic-bezier(0.16,1,0.3,1), border-color 0.2s',
+      transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
     },
     row: {
       display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -263,12 +263,8 @@ export function GastosPanel({ onClose }: Props) {
   };
 
   return (
-    <div style={st.overlay} className="modal-overlay" onClick={handleClose}>
-      <div
-        style={st.panel}
-        className={`modal-card ${closing ? 'closing' : ''}`}
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div style={st.container}>
+      <div style={st.panel}>
         <div style={st.topAccent} />
 
         {/* HEADER */}
@@ -276,12 +272,16 @@ export function GastosPanel({ onClose }: Props) {
           <div style={st.headerRow}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
               <button
-                onClick={() => navigate('/')}
+                onClick={() => {
+                  if (onClose) onClose()
+                  else navigate('/')
+                }}
                 style={{
                   background: 'transparent', border: 'none', color: '#888',
                   fontSize: '24px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
                   padding: 0
                 }}
+                title="Volver al inicio"
               >
                 ←
               </button>
@@ -372,12 +372,24 @@ export function GastosPanel({ onClose }: Props) {
                         ...st.gastoCard, 
                         gridColumn: isExpanded ? '1 / -1' : 'auto',
                         borderColor: isExpanded ? 'var(--color-accent, #f97316)' : '#2a2a2a',
+                        boxShadow: isExpanded ? '0 4px 20px rgba(0,0,0,0.5)' : 'none',
                         marginBottom: 0
                       }} 
-                      className="card-interactive"
-                      onClick={() => setExpandedCat(isExpanded ? null : catKey)}
                     >
-                      <div style={{ ...st.row, flexWrap: 'nowrap' }}>
+                      {/* Header de la tarjeta clickeable para abrir/cerrar */}
+                      <div 
+                        style={{ ...st.row, flexWrap: 'nowrap', cursor: 'pointer', userSelect: 'none' }}
+                        onClick={() => setExpandedCat(isExpanded ? null : catKey)}
+                        role="button"
+                        aria-expanded={isExpanded}
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault()
+                            setExpandedCat(isExpanded ? null : catKey)
+                          }
+                        }}
+                      >
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0 }}>
                           <div style={{ flexShrink: 0, fontSize: '24px', backgroundColor: '#222', width: '40px', height: '40px', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                             {cfg.icon}
@@ -387,25 +399,40 @@ export function GastosPanel({ onClose }: Props) {
                             <p style={{ color: '#888', fontSize: '12px', marginTop: '2px' }}>{grupo.items.length} {grupo.items.length === 1 ? 'item' : 'items'}</p>
                           </div>
                         </div>
-                        <div style={{ textAlign: 'right', flexShrink: 0, paddingLeft: '8px' }}>
-                          <p style={{ color: '#fff', fontSize: '15px', fontWeight: 700 }}>
-                            Bs. {tasa > 0 ? formatUsd(grupo.totalUsd * tasa) : '---'}
-                          </p>
-                          <p style={{ color: '#888', fontSize: '11px', marginTop: '2px' }}>
-                            ${formatUsd(grupo.totalUsd)}
-                          </p>
+                        <div style={{ textAlign: 'right', flexShrink: 0, paddingLeft: '8px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <div>
+                            <p style={{ color: '#fff', fontSize: '15px', fontWeight: 700 }}>
+                              Bs. {tasa > 0 ? formatUsd(grupo.totalUsd * tasa) : '---'}
+                            </p>
+                            <p style={{ color: '#888', fontSize: '11px', marginTop: '2px' }}>
+                              ${formatUsd(grupo.totalUsd)}
+                            </p>
+                          </div>
+                          <span style={{
+                            color: isExpanded ? 'var(--color-accent, #f97316)' : '#666',
+                            fontSize: '11px',
+                            transition: 'transform 0.2s ease',
+                            transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                            display: 'inline-block'
+                          }}>
+                            ▼
+                          </span>
                         </div>
                       </div>
 
                       {/* Detalle expandido */}
                       {isExpanded && (
-                        <div style={{ marginTop: '16px', borderTop: '1px solid #2a2a2a', paddingTop: '12px' }} className="animate-slide-up">
+                        <div 
+                          style={{ marginTop: '16px', borderTop: '1px solid #2a2a2a', paddingTop: '12px' }} 
+                          className="animate-slide-up"
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           {grupo.items.map(item => {
                             const comp = parseComprobantesGasto(item.factura_url)
                             return (
                               <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', gap: '12px' }}>
                                 <div style={{ flex: 1, minWidth: 0 }}>
-                                  <p style={{ color: '#ccc', fontSize: '13px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.descripcion}</p>
+                                  <p style={{ color: '#ccc', fontSize: '13px', lineHeight: 1.4, wordBreak: 'break-word' }}>{item.descripcion}</p>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
                                     <span style={st.badge(TIPO_CONFIG[item.tipo]?.color || '#888')}>{TIPO_CONFIG[item.tipo]?.label || item.tipo}</span>
                                     {comp.factura_url && (
@@ -422,7 +449,7 @@ export function GastosPanel({ onClose }: Props) {
                                           color: 'var(--color-accent, #f97316)',
                                           border: '1px solid var(--color-accent-glow, #f9731635)',
                                           borderRadius: '6px',
-                                          padding: '2px 8px',
+                                          padding: '4px 10px',
                                           fontSize: '11px',
                                           fontWeight: 700,
                                           cursor: 'pointer',
@@ -457,7 +484,7 @@ export function GastosPanel({ onClose }: Props) {
                                           color: '#10b981',
                                           border: '1px solid #10b98135',
                                           borderRadius: '6px',
-                                          padding: '2px 8px',
+                                          padding: '4px 10px',
                                           fontSize: '11px',
                                           fontWeight: 700,
                                           cursor: 'pointer',

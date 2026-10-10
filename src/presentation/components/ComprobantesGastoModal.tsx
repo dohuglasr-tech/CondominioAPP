@@ -86,6 +86,8 @@ export const ComprobantesGastoModal: React.FC<ComprobantesGastoModalProps> = ({
         justifyContent: 'center',
         padding: '16px',
         animation: 'fadeIn 0.2s ease-out',
+        overflowY: 'auto',
+        WebkitOverflowScrolling: 'touch',
       }}
       onClick={onClose}
     >
@@ -101,6 +103,7 @@ export const ComprobantesGastoModal: React.FC<ComprobantesGastoModalProps> = ({
           flexDirection: 'column',
           overflow: 'hidden',
           boxShadow: '0 24px 60px rgba(0,0,0,0.9), 0 0 0 1px rgba(249,115,22,0.15)',
+          margin: 'auto',
         }}
         onClick={(e) => e.stopPropagation()}
       >
