@@ -3,6 +3,7 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../application/contexts/AuthContext'
 import { supabase } from '../../data/supabase'
 import { ThemeToggle } from './ThemeToggle'
+import { BotonLimpiarCache } from './BotonLimpiarCache'
 
 // ── Minimalist SVG Line Icons para Admin ──
 const ADMIN_ICONS: Record<string, React.ReactNode> = {
@@ -917,6 +918,14 @@ export const AdminLayout: React.FC = () => {
             </div>
           </div>
 
+          {/* SECCIÓN MANTENIMIENTO / SISTEMA */}
+          <div style={{ marginTop: '16px', paddingTop: '14px', borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}>
+            <div className="offcanvas-section-title">
+              <span>⚡</span> SISTEMA
+            </div>
+            <BotonLimpiarCache variant="drawer" />
+          </div>
+
           {/* BOTÓN CERRAR SESIÓN */}
           <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid rgba(255, 255, 255, 0.06)' }}>
             <button
@@ -1091,6 +1100,7 @@ export const AdminLayout: React.FC = () => {
           <div style={{ marginBottom: '10px' }}>
             <ThemeToggle variant="button" />
           </div>
+          <BotonLimpiarCache variant="menuItem" />
           <p style={{ color: '#555', fontSize: '11px', marginBottom: '8px' }}>{adminNombre}</p>
           <button
             onClick={handleLogout}

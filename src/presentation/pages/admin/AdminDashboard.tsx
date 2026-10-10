@@ -5,6 +5,7 @@ import { supabase } from '../../../data/supabase'
 import { appCache } from '../../../data/cacheService'
 import { SkeletonCard } from '../../components/Skeleton'
 import { PublicarAvisoModal } from '../../components/PublicarAvisoModal'
+import { BotonLimpiarCache } from '../../components/BotonLimpiarCache'
 
 interface StatCardProps {
   icon: string
@@ -404,7 +405,7 @@ export const AdminDashboard: React.FC = () => {
             Acciones rápidas
           </h2>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '18px 12px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '18px 8px' }}>
             {/* 1. Registrar Gasto (Verde) */}
             <button
               onClick={() => navigate('/admin/gastos')}
@@ -601,6 +602,9 @@ export const AdminDashboard: React.FC = () => {
               </div>
               <span style={{ color: '#d4d4d8', fontSize: '12px', fontWeight: 600 }}>Avisos</span>
             </button>
+
+            {/* 8. Limpiar Caché Global */}
+            <BotonLimpiarCache variant="quickAction" />
           </div>
         </div>
 
@@ -791,6 +795,8 @@ export const AdminDashboard: React.FC = () => {
             >
               🔄 Actualizar
             </button>
+
+            <BotonLimpiarCache variant="button" />
 
             <button
               onClick={() => setAvisoModalOpen(true)}

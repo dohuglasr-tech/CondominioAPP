@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import { Session, User } from '@supabase/supabase-js'
 import { supabase, Perfil, ConfigEdificio, Rol } from '../../data/supabase'
-import { appCache } from '../../data/cacheService'
+import { appCache, purgarCacheLocalNavegador } from '../../data/cacheService'
 import { applyTheme } from '../../utils/themeManager'
 import { extractTenantSubdomain, resolveTenantBuilding } from '../../data/tenantService'
 import { debeSincronizarTasa, sincronizarTasaBcvConApi } from '../../data/bcvService'
@@ -60,6 +60,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const [tenantSubdomain, setTenantSubdomain] = useState<string | null>(() => extractTenantSubdomain())
 
+  // ── Helper para purgar automáticamente caché en clientes que estuvieron offline ──
+  const verificarPurgaGlobalOffline = (updatedAt?: string | null): boolean => {
+    if (updatedAt && typeof window !== 'undefined') {
+      const serverUpdateMs = new Date(updatedAt).getTime()
+      const lastPurgeMs = Number(localStorage.getItem('domus_last_cache_purge') || 0)
+      if (lastPurgeMs > 0 && serverUpdateMs > lastPurgeMs) {
+        localStorage.setItem('domus_last_cache_purge', String(serverUpdateMs))
+        purgarCacheLocalNavegador(false).then(() => {
+          window.location.reload()
+        })
+        return true
+      } else if (!lastPurgeMs) {
+        localStorage.setItem('domus_last_cache_purge', String(serverUpdateMs))
+      }
+    }
+    return false
+  }
+
   // ── Cargar configuración del edificio con resolución de subdominio & multi-tenant ──
   const cargarConfig = useCallback(async (forceRefresh = false, explicitBuildingId?: string) => {
     try {
@@ -75,6 +93,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
           setConfig(tenantBuilding)
           applyTheme(tenantBuilding.color_primario)
+          if (verificarPurgaGlobalOffline(tenantBuilding.updated_at)) return
           return
         }
       }
@@ -88,6 +107,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
           setConfig(tenantBuilding)
           applyTheme(tenantBuilding.color_primario)
+          if (verificarPurgaGlobalOffline(tenantBuilding.updated_at)) return
           return
         }
       }
@@ -114,6 +134,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (data) {
         setConfig(data)
         applyTheme(data.color_primario)
+
+        if (verificarPurgaGlobalOffline(data.updated_at)) return
 
         // Sincronización en segundo plano con el BCV si la tasa tiene más de 4 horas o es de fecha previa
         if (debeSincronizarTasa(data.tasa_bcv_actualizada)) {
@@ -260,9 +282,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       )
       .subscribe()
 
+    // ── Escucha de orden de purga de caché global emitida por administrador ──
+    const purgeRealtimeChannel = supabase
+      .channel('global_cache_purge_subscriber')
+      .on('broadcast', { event: 'purge_cache' }, async (payload) => {
+        const purgeTime = payload?.payload?.timestamp || Date.now()
+        const lastPurge = Number(localStorage.getItem('domus_last_cache_purge') || 0)
+        // Evitar duplicar reload si este cliente fue quien lo emitió
+        if (lastPurge && Math.abs(lastPurge - purgeTime) < 5000) {
+          return
+        }
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('domus_last_cache_purge', String(purgeTime))
+        }
+        await purgarCacheLocalNavegador(false)
+        window.location.reload()
+      })
+      .subscribe()
+
     return () => {
       subscription.unsubscribe()
       configRealtimeChannel.unsubscribe()
+      purgeRealtimeChannel.unsubscribe()
     }
   }, [cargarPerfil, cargarConfig])
 
