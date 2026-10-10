@@ -8,6 +8,8 @@
  * 4. Sincronización transparente con Supabase Realtime.
  */
 
+import { supabase } from './supabase'
+
 export interface CacheEntry<T> {
   data: T
   timestamp: number
@@ -246,8 +248,6 @@ class CacheService {
   }
 }
 
-import { supabase } from './supabase'
-
 export const appCache = new CacheService()
 
 /**
@@ -292,76 +292,57 @@ export async function purgarCacheLocalNavegador(recargar: boolean = false): Prom
 }
 
 /**
- * Purgado Global Total:
- * - Emite la orden por Supabase Realtime a todos los dispositivos conectados.
- * - Actualiza el timestamp de configuracion_edificio para forzar purga en clientes offline.
- * - Limpia la memoria y caché local del navegador.
+ * Purgado Global de Caché:
+ * - Limpia appCache en memoria y sessionStorage
+ * - Elimina cachés de CacheStorage (Service Worker y HTTP)
+ * - Actualiza Service Workers
+ * - Invalida tags de caché y registra en auditoría
  */
 export async function purgarCacheGlobalTotal(adminNombre?: string): Promise<{ ok: boolean; error?: string }> {
   try {
     const ahora = Date.now()
     const ahoraIso = new Date(ahora).toISOString()
 
-    // 1. Notificar a todos los clientes activos vía Realtime broadcast
-    try {
-      const channel = supabase.channel('global_app_cache_purge')
-      await channel.subscribe()
-      await channel.send({
-        type: 'broadcast',
-        event: 'purge_cache',
-        payload: {
-          timestamp: ahora,
-          source: adminNombre || 'Administrador',
-        },
-      })
-      setTimeout(() => {
-        supabase.removeChannel(channel).catch(() => {})
-      }, 1000)
-    } catch (realtimeErr) {
-      console.warn('[CacheService] Error emitiendo broadcast de caché:', realtimeErr)
+    // 1. Limpiar appCache en memoria y sessionStorage
+    appCache.clear()
+    if (typeof window !== 'undefined') {
+      try {
+        sessionStorage.clear()
+      } catch {}
     }
 
-    // 2. Persistir timestamp en la base de datos para usuarios offline
-    try {
-      const { data: cfg } = await supabase
-        .from('configuracion_edificio')
-        .select('id')
-        .limit(1)
-        .maybeSingle()
-
-      if (cfg?.id) {
-        await supabase
-          .from('configuracion_edificio')
-          .update({ updated_at: ahoraIso })
-          .eq('id', cfg.id)
-      }
-    } catch (dbErr) {
-      console.warn('[CacheService] Error actualizando timestamp en configuracion_edificio:', dbErr)
+    // 2. Limpiar CacheStorage del navegador (caches de Service Worker y assets antiguos)
+    if (typeof window !== 'undefined' && 'caches' in window) {
+      try {
+        const names = await caches.keys()
+        await Promise.all(names.map((name) => caches.delete(name).catch(() => false)))
+      } catch {}
     }
 
-    // 3. Registrar auditoría si es posible
+    // 3. Forzar actualización de Service Workers registrados
+    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+      try {
+        const registrations = await navigator.serviceWorker.getRegistrations()
+        await Promise.all(registrations.map((reg) => reg.update().catch(() => {})))
+      } catch {}
+    }
+
+    // 4. Invalida todas las etiquetas en memoria
+    appCache.invalidateTags(['config', 'tasa_bcv', 'pagos', 'recibos', 'saldos', 'gastos', 'apartamentos', 'auditoria'])
+
+    // 5. Registrar auditoría si es posible
     try {
       await supabase.from('historial_auditoria').insert([{
         id: crypto.randomUUID ? crypto.randomUUID() : `log_${ahora}_${Math.random().toString(36).substring(2, 7)}`,
         fecha: ahoraIso,
         tipo_accion: 'SISTEMA_PURGA_CACHE',
         titulo: 'Limpieza Global de Caché',
-        descripcion: `El administrador ${adminNombre || ''} ejecutó la purga global de caché y actualización de la aplicación.`,
+        descripcion: `El administrador ${adminNombre || ''} purgó la caché y forzó la actualización de la aplicación.`,
         motivo: 'Mantenimiento y actualización de versión global',
         autor_nombre: adminNombre || 'Administrador',
         created_at: ahoraIso,
       }])
     } catch {}
-
-    // 4. Actualizar timestamp local
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.setItem('domus_last_cache_purge', String(ahora))
-      } catch {}
-    }
-
-    // 5. Purgar caché local del navegador
-    await purgarCacheLocalNavegador(false)
 
     return { ok: true }
   } catch (err: any) {
