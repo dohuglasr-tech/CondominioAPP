@@ -6,6 +6,8 @@ import { appCache } from '../../../data/cacheService'
 import { SkeletonCard } from '../../components/Skeleton'
 import { PublicarAvisoModal } from '../../components/PublicarAvisoModal'
 import { BotonLimpiarCache } from '../../components/BotonLimpiarCache'
+import { ModalRecibosSolventes, ReciboSolventeItem } from '../../components/ModalRecibosSolventes'
+import { ModalTimelineAprobaciones } from '../../components/ModalTimelineAprobaciones'
 
 interface StatCardProps {
   icon: string
@@ -60,15 +62,28 @@ const StatCard: React.FC<StatCardProps> = ({ icon, label, value, sub, color = 'v
   </div>
 )
 
-interface ActividadItem {
+export interface ActividadItem {
   id: string
-  tipo: 'pago' | 'reporte'
+  tipo: 'pago' | 'reporte' | 'pago_reportado' | 'aprobacion_admin' | 'conciliacion_calendario'
   titulo: string
   subtitulo: string
-  monto?: string
+  monto: string
+  montoUsd?: string
+  montoNumBs: number
+  montoNumUsd: number
   estado: string
   fecha: string
+  fechaHoraCompleta?: string
   rawDate: string
+  origen: 'admin' | 'residente' | 'sistema'
+  origenBadge: string
+  autor: string
+  referencia: string
+  apartamentoNumero: string
+  propietario?: string
+  periodo?: string
+  metodo?: string
+  nota?: string
 }
 
 const MESES_NOMBRES = [
@@ -114,14 +129,27 @@ export const AdminDashboard: React.FC = () => {
   // Ocultar/mostrar saldo
   const [ocultarSaldos, setOcultarSaldos] = useState(false)
   const [avisoModalOpen, setAvisoModalOpen] = useState(false)
+  const [modalSolventesOpen, setModalSolventesOpen] = useState(false)
+  const [listaSolventes, setListaSolventes] = useState<ReciboSolventeItem[]>([])
+  const [modalTimelineOpen, setModalTimelineOpen] = useState(false)
+  const [filtroTabActividad, setFiltroTabActividad] = useState<'todos' | 'admin' | 'residente'>('todos')
+
+  const conteoAdmin = useMemo(() => actividad.filter(a => a.origen === 'admin').length, [actividad])
+  const conteoResidente = useMemo(() => actividad.filter(a => a.origen === 'residente').length, [actividad])
+
+  const actividadFiltradaWidget = useMemo(() => {
+    if (filtroTabActividad === 'admin') return actividad.filter(a => a.origen === 'admin')
+    if (filtroTabActividad === 'residente') return actividad.filter(a => a.origen === 'residente')
+    return actividad
+  }, [actividad, filtroTabActividad])
 
   const cargarMetricas = useCallback(async (forceRefresh = false) => {
     try {
       const data = await appCache.fetch(
         'admin_dashboard_metricas',
         async () => {
-          const [aptRes, pagosRes, recibosRes, gastosRes, falRes, propRes] = await Promise.all([
-            supabase.from('apartamentos').select('*', { count: 'exact', head: true }),
+          const [aptRes, pagosRes, recibosRes, gastosRes, falRes, propRes, moraRes] = await Promise.all([
+            supabase.from('apartamentos').select('id, numero, propietario_nombre').order('numero'),
             supabase.from('pagos_reportados').select(`
               id,
               monto_bs,
@@ -133,22 +161,25 @@ export const AdminDashboard: React.FC = () => {
               apartamento:apartamento_id ( numero ),
               residente:reportado_por ( nombre_completo )
             `).order('created_at', { ascending: false }),
-            supabase.from('recibos_generados').select('mes_facturado').order('mes_facturado', { ascending: false }),
+            supabase.from('recibos_generados').select('*').order('mes_facturado', { ascending: false }),
             supabase.from('gastos_comunes').select('monto_usd, monto_bs, mes_aplicacion'),
             supabase.from('falencias').select('*', { count: 'exact', head: true }),
-            supabase.from('propuestas').select('*', { count: 'exact', head: true }).eq('estado', 'activa')
+            supabase.from('propuestas').select('*', { count: 'exact', head: true }).eq('estado', 'activa'),
+            supabase.from('deudas_mora').select('*').eq('estado', 'solventado')
           ])
 
           return {
-            aptCount: aptRes.count ?? 0,
+            aptList: aptRes.data || [],
+            aptCount: (aptRes.data || []).length,
             pagosList: pagosRes.data || [],
             recibosList: recibosRes.data || [],
             gastosList: gastosRes.data || [],
             falCount: falRes.count ?? 0,
             propCount: propRes.count ?? 0,
+            moraSolventadaList: moraRes.data || []
           }
         },
-        { ttlMs: 2 * 60 * 1000, tags: ['apartamentos', 'pagos', 'recibos', 'gastos', 'falencias'], forceRefresh }
+        { ttlMs: 2 * 60 * 1000, tags: ['apartamentos', 'pagos', 'recibos', 'gastos', 'falencias', 'mora'], forceRefresh }
       )
 
       setApartamentosCount(data.aptCount)
@@ -185,20 +216,255 @@ export const AdminDashboard: React.FC = () => {
       const mesesArr = Array.from(mesesSet).sort().reverse()
       setMesesDisponibles(mesesArr)
 
-      // Actividad reciente
-      const itemsPagos: ActividadItem[] = data.pagosList.slice(0, 6).map((p: any) => ({
-        id: p.id,
-        tipo: 'pago',
-        titulo: `Pago Apto ${p.apartamento?.numero || 'S/N'}`,
-        subtitulo: `Ref: ${p.referencia || 'N/D'} · ${p.residente?.nombre_completo || 'Residente'}`,
-        monto: `Bs. ${Number(p.monto_bs || 0).toLocaleString('es-VE', { minimumFractionDigits: 2 })}`,
-        estado: p.estado,
-        fecha: p.created_at && !isNaN(new Date(p.created_at).getTime())
-          ? new Date(p.created_at).toLocaleDateString('es-VE', { day: '2-digit', month: 'short' })
-          : 'Reciente',
-        rawDate: p.created_at
-      }))
-      setActividad(itemsPagos)
+      // Consolidar lista de recibos, facturas y atrasos solventes/pagados
+      const aptosMap = new Map<string, any>()
+      ;(data.aptList || []).forEach((a: any) => {
+        if (a.id) aptosMap.set(a.id, a)
+      })
+
+      // Unificar actividad cronológica: pagos de residentes + aprobaciones manuales de admin
+      const todosItemsActividad: ActividadItem[] = []
+      const refsProcesadas = new Set<string>()
+      const idsProcesados = new Set<string>()
+
+      // 1. Pagos reportados (residentes y aprobaciones)
+      ;(data.pagosList || []).forEach((p: any) => {
+        const aptoNum = p.apartamento?.numero || 'S/N'
+        const ref = p.referencia || 'S/R'
+        const notasLower = (p.notas_admin || '').toLowerCase()
+        const esAdmin = notasLower.includes('calendario') ||
+                        notasLower.includes('administrador') ||
+                        Boolean(p.revisado_por)
+        
+        const fechaRaw = p.fecha_pago || p.created_at || new Date().toISOString()
+        const fechaDate = new Date(fechaRaw)
+        const fechaFmt = !isNaN(fechaDate.getTime())
+          ? fechaDate.toLocaleDateString('es-VE', { day: '2-digit', month: 'short' })
+          : 'Reciente'
+        const fechaHoraFmt = !isNaN(fechaDate.getTime())
+          ? fechaDate.toLocaleDateString('es-VE', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+          : 'Reciente'
+
+        const montoBsNum = Number(p.monto_bs || 0)
+        const montoUsdNum = Number(p.monto_usd || (montoBsNum > 0 ? montoBsNum / currentRate : 0))
+
+        const autorNombre = esAdmin
+          ? 'Administrador'
+          : (p.residente?.nombre_completo || 'Residente')
+
+        const origenTipo: 'admin' | 'residente' = esAdmin ? 'admin' : 'residente'
+        const origenBadge = esAdmin
+          ? '🛡️ Aprobado Admin'
+          : '📱 Reporte Residente'
+
+        todosItemsActividad.push({
+          id: p.id,
+          tipo: esAdmin ? 'aprobacion_admin' : 'pago_reportado',
+          titulo: `Pago Apto ${aptoNum}`,
+          subtitulo: `Ref: ${ref} · ${esAdmin ? 'Aprobado por Admin' : (p.residente?.nombre_completo || 'Residente')}`,
+          monto: `Bs. ${montoBsNum.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          montoUsd: `$${montoUsdNum.toFixed(2)}`,
+          montoNumBs: montoBsNum,
+          montoNumUsd: montoUsdNum,
+          estado: p.estado || 'aprobado',
+          fecha: fechaFmt,
+          fechaHoraCompleta: fechaHoraFmt,
+          rawDate: p.created_at || fechaRaw,
+          origen: origenTipo,
+          origenBadge,
+          autor: autorNombre,
+          referencia: ref,
+          apartamentoNumero: aptoNum,
+          propietario: p.residente?.nombre_completo || aptosMap.get(p.apartamento_id)?.propietario_nombre,
+          metodo: p.metodo ? p.metodo.replace(/_/g, ' ') : 'Transferencia',
+          nota: p.notas_admin || ''
+        })
+
+        idsProcesados.add(p.id)
+        if (ref && ref !== 'S/R') refsProcesadas.add(ref)
+      })
+
+      // 2. Recibos mensuales pagados directamente en recibos_generados (Calendario / Conciliación)
+      ;(data.recibosList || []).forEach((r: any) => {
+        if (r.estado === 'pagado') {
+          const pInfo = r.data_json?.pago_info
+          const ref = pInfo?.referencia || r.data_json?.referencia || r.data_json?.ultima_referencia || 'S/R'
+          const pagoIdRelacionado = pInfo?.pago_id
+
+          if (pagoIdRelacionado && idsProcesados.has(pagoIdRelacionado)) return
+          if (ref && ref !== 'S/R' && refsProcesadas.has(ref)) return
+
+          const apto = aptosMap.get(r.apartamento_id)
+          const aptoNum = apto?.numero || 'S/N'
+          const mesKey = (r.mes_facturado || '').substring(0, 7)
+          const periodoLabel = mesKey ? getMesLabel(mesKey) : 'Mes Facturado'
+
+          const fechaRaw = pInfo?.fecha_pago || r.data_json?.editado_at || r.emitido_at || r.created_at || new Date().toISOString()
+          const fechaDate = new Date(fechaRaw)
+          const fechaFmt = !isNaN(fechaDate.getTime())
+            ? fechaDate.toLocaleDateString('es-VE', { day: '2-digit', month: 'short' })
+            : 'Reciente'
+          const fechaHoraFmt = !isNaN(fechaDate.getTime())
+            ? fechaDate.toLocaleDateString('es-VE', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+            : 'Reciente'
+
+          const montoBsNum = Number(r.total_bs || 0)
+          const montoUsdNum = Number(r.total_usd || (montoBsNum > 0 ? montoBsNum / currentRate : 0))
+          const autor = r.data_json?.editado_por || pInfo?.autor || 'Administrador'
+
+          todosItemsActividad.push({
+            id: `recibo_${r.id}`,
+            tipo: 'aprobacion_admin',
+            titulo: `Pago Apto ${aptoNum}`,
+            subtitulo: `Ref: ${ref} · Solvente en Calendario (${periodoLabel})`,
+            monto: `Bs. ${montoBsNum.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+            montoUsd: `$${montoUsdNum.toFixed(2)}`,
+            montoNumBs: montoBsNum,
+            montoNumUsd: montoUsdNum,
+            estado: 'aprobado',
+            fecha: fechaFmt,
+            fechaHoraCompleta: fechaHoraFmt,
+            rawDate: fechaRaw,
+            origen: 'admin',
+            origenBadge: '🛡️ Admin · Calendario',
+            autor,
+            referencia: ref,
+            apartamentoNumero: aptoNum,
+            propietario: apto?.propietario_nombre || 'Propietario',
+            periodo: periodoLabel,
+            metodo: pInfo?.metodo || 'Conciliación Directa',
+            nota: pInfo?.nota || r.data_json?.nota || 'Cuota marcada como solvente por la administración'
+          })
+
+          if (ref && ref !== 'S/R') refsProcesadas.add(ref)
+        }
+      })
+
+      // 3. Atrasos históricos solventados de deudas_mora
+      ;(data.moraSolventadaList || []).forEach((m: any) => {
+        const apto = aptosMap.get(m.apartamento_id)
+        const aptoNum = apto?.numero || 'S/N'
+        const fechaRaw = m.updated_at || m.created_at || new Date().toISOString()
+        const fechaDate = new Date(fechaRaw)
+        const fechaFmt = !isNaN(fechaDate.getTime())
+          ? fechaDate.toLocaleDateString('es-VE', { day: '2-digit', month: 'short' })
+          : 'Reciente'
+        const fechaHoraFmt = !isNaN(fechaDate.getTime())
+          ? fechaDate.toLocaleDateString('es-VE', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+          : 'Reciente'
+
+        const montoBsNum = Number(m.monto_bs || 0)
+        const montoUsdNum = Number(m.monto_usd || (montoBsNum > 0 ? montoBsNum / currentRate : 0))
+
+        todosItemsActividad.push({
+          id: `mora_${m.id}`,
+          tipo: 'aprobacion_admin',
+          titulo: `Solvencia Mora Apto ${aptoNum}`,
+          subtitulo: `Deuda Histórica 2025 conciliada como solvente`,
+          monto: `Bs. ${montoBsNum.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          montoUsd: `$${montoUsdNum.toFixed(2)}`,
+          montoNumBs: montoBsNum,
+          montoNumUsd: montoUsdNum,
+          estado: 'aprobado',
+          fecha: fechaFmt,
+          fechaHoraCompleta: fechaHoraFmt,
+          rawDate: fechaRaw,
+          origen: 'admin',
+          origenBadge: '🛡️ Admin · Convenio Mora',
+          autor: 'Administrador',
+          referencia: 'CONCIL-MORA',
+          apartamentoNumero: aptoNum,
+          propietario: apto?.propietario_nombre || 'Propietario',
+          periodo: 'Deuda Anterior 2025',
+          metodo: 'Convenio de Pago / Solvencia',
+          nota: 'Atraso histórico finiquitado por el administrador'
+        })
+      })
+
+      // Ordenar todo cronológicamente: los más recientes primero
+      todosItemsActividad.sort((a, b) => new Date(b.rawDate).getTime() - new Date(a.rawDate).getTime())
+
+      setActividad(todosItemsActividad)
+
+      const solventesArr: ReciboSolventeItem[] = []
+
+      // 1. Recibos mensuales pagados en recibos_generados
+      ;(data.recibosList || []).forEach((r: any) => {
+        if (r.estado === 'pagado') {
+          const apto = aptosMap.get(r.apartamento_id)
+          const mesKey = (r.mes_facturado || '').substring(0, 7)
+          const periodoLabel = mesKey ? getMesLabel(mesKey) : 'Mes Desconocido'
+          const pInfo = r.data_json?.pago_info
+          const ref = pInfo?.referencia || r.data_json?.referencia || r.data_json?.ultima_referencia || 'S/R'
+          const metodo = pInfo?.metodo || r.data_json?.metodo || 'Conciliación Directa'
+          const fechaPago = pInfo?.fecha_pago || r.emitido_at || r.created_at || ''
+
+          let origen = 'Sistema'
+          if (pInfo?.pago_id) {
+            origen = 'Reporte Residente'
+          } else if (r.data_json?.editado_manualmente) {
+            origen = 'Calendario de Deudas'
+          } else if (r.data_json?.origen?.includes('excel')) {
+            origen = 'Sincronización Inicial'
+          }
+
+          solventesArr.push({
+            id: r.id,
+            tipo: 'recibo_mensual',
+            apartamento_id: r.apartamento_id,
+            apartamento_numero: apto?.numero || 'S/N',
+            propietario: apto?.propietario_nombre || 'Propietario',
+            mes_facturado: r.mes_facturado || '',
+            periodo_label: periodoLabel,
+            mes_key: mesKey,
+            monto_usd: Number(r.total_usd || 0),
+            monto_bs: Number(r.total_bs || 0),
+            tasa_bcv: Number(r.tasa_bcv || 0),
+            estado: 'pagado',
+            referencia: ref,
+            metodo,
+            fecha_pago: fechaPago ? fechaPago.slice(0, 10) : '',
+            fecha_registro: r.emitido_at || r.created_at || '',
+            origen,
+            nota: pInfo?.nota || r.data_json?.nota || ''
+          })
+        }
+      })
+
+      // 2. Atrasos históricos solventados en deudas_mora
+      ;(data.moraSolventadaList || []).forEach((m: any) => {
+        const apto = aptosMap.get(m.apartamento_id)
+        solventesArr.push({
+          id: m.id,
+          tipo: 'atraso_historico',
+          apartamento_id: m.apartamento_id,
+          apartamento_numero: apto?.numero || 'S/N',
+          propietario: apto?.propietario_nombre || 'Propietario',
+          mes_facturado: '2025-12-01',
+          periodo_label: 'Deuda Histórica 2025',
+          mes_key: '2025',
+          monto_usd: Number(m.monto_usd || 0),
+          monto_bs: Number(m.monto_bs || 0),
+          tasa_bcv: 859.06,
+          estado: 'solvente',
+          referencia: 'CONCIL-MORA',
+          metodo: 'Convenio / Solvencia Total',
+          fecha_pago: (m.updated_at || m.created_at || '').slice(0, 10),
+          fecha_registro: m.updated_at || m.created_at || '',
+          origen: 'Mora y Deudores',
+          nota: 'Atraso anterior conciliado como solvente'
+        })
+      })
+
+      // Ordenar: primero los más recientes por mes_facturado, y luego por número de apartamento
+      solventesArr.sort((a, b) => {
+        if (b.mes_facturado !== a.mes_facturado) {
+          return b.mes_facturado.localeCompare(a.mes_facturado)
+        }
+        return a.apartamento_numero.localeCompare(b.apartamento_numero, undefined, { numeric: true })
+      })
+
+      setListaSolventes(solventesArr)
 
     } catch (err) {
       console.error('[AdminDashboard] Error cargando métricas:', err)
@@ -233,6 +499,8 @@ export const AdminDashboard: React.FC = () => {
 
     const totalUsdMes = rate > 0 ? recaudadoMesBs / rate : 0
     const totalUsdHistorico = rate > 0 ? recaudadoTotalBs / rate : 0
+    const totalSolventes = listaSolventes.length
+    const totalSolventesMes = listaSolventes.filter(i => i.mes_key === mesSeleccionado).length
 
     return {
       pendientesTotal,
@@ -241,9 +509,11 @@ export const AdminDashboard: React.FC = () => {
       totalUsdMes,
       aprobadosTotal,
       recaudadoTotalBs,
-      totalUsdHistorico
+      totalUsdHistorico,
+      totalSolventes,
+      totalSolventesMes
     }
-  }, [todosLosPagos, mesSeleccionado, rate])
+  }, [todosLosPagos, listaSolventes, mesSeleccionado, rate])
 
   useEffect(() => {
     cargarMetricas()
@@ -261,6 +531,10 @@ export const AdminDashboard: React.FC = () => {
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'recibos_generados' }, () => {
         appCache.invalidateTags(['recibos', 'saldos', 'mora'])
+        cargarMetricas(true)
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'deudas_mora' }, () => {
+        appCache.invalidateTags(['mora', 'recibos', 'saldos'])
         cargarMetricas(true)
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'falencias' }, () => {
@@ -397,6 +671,58 @@ export const AdminDashboard: React.FC = () => {
               </div>
             </div>
           </div>
+        </div>
+
+        {/* BANNER INTERACTIVO: FACTURAS Y RECIBOS SOLVENTADOS */}
+        <div
+          onClick={() => setModalSolventesOpen(true)}
+          style={{
+            background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.16) 0%, rgba(5, 150, 105, 0.08) 100%)',
+            border: '1px solid rgba(16, 185, 129, 0.35)',
+            borderRadius: '20px',
+            padding: '16px 18px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            cursor: 'pointer',
+            boxShadow: '0 8px 24px rgba(0, 0, 0, 0.35)',
+            transition: 'all 0.2s ease'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <div style={{
+              width: '44px',
+              height: '44px',
+              borderRadius: '14px',
+              backgroundColor: 'rgba(16, 185, 129, 0.22)',
+              border: '1px solid rgba(16, 185, 129, 0.35)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '22px'
+            }}>
+              🧾
+            </div>
+            <div>
+              <div style={{ color: '#fff', fontSize: '15px', fontWeight: 800 }}>
+                {stats.totalSolventes} Facturas y Recibos Pagados
+              </div>
+              <div style={{ color: '#a7f3d0', fontSize: '11px', marginTop: '2px', fontWeight: 500 }}>
+                Toca para ver desglose por apartamento y mes
+              </div>
+            </div>
+          </div>
+          <span style={{
+            backgroundColor: '#10b981',
+            color: '#000',
+            fontSize: '11px',
+            fontWeight: 800,
+            padding: '6px 14px',
+            borderRadius: '10px',
+            boxShadow: '0 2px 8px rgba(16, 185, 129, 0.4)'
+          }}>
+            Ver →
+          </span>
         </div>
 
         {/* SECCIÓN: ACCIONES RÁPIDAS DE CONDOMINIO */}
@@ -630,13 +956,57 @@ export const AdminDashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* SECCIÓN: ÚLTIMOS PAGOS REPORTADOS */}
+        {/* SECCIÓN: HISTORIAL Y TIMELINE DE PAGOS Y APROBACIONES (MOBILE) */}
         <div>
-          <h2 style={{ color: '#fff', fontSize: '18px', fontWeight: 800, margin: '0 0 14px', letterSpacing: '-0.3px' }}>
-            Últimos Pagos Reportados
-          </h2>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+            <h2 style={{ color: '#fff', fontSize: '17px', fontWeight: 800, margin: 0, letterSpacing: '-0.3px' }}>
+              📋 Pagos y Aprobaciones
+            </h2>
+            <button
+              onClick={() => setModalTimelineOpen(true)}
+              style={{
+                backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                color: '#34d399',
+                border: '1px solid rgba(16, 185, 129, 0.3)',
+                padding: '5px 10px',
+                borderRadius: '8px',
+                fontSize: '11px',
+                fontWeight: 700,
+                cursor: 'pointer'
+              }}
+            >
+              🕒 Ver Timeline
+            </button>
+          </div>
 
-          {actividad.length === 0 ? (
+          {/* Filtros rápidos mobile */}
+          <div style={{ display: 'flex', gap: '6px', marginBottom: '12px', overflowX: 'auto', paddingBottom: '4px' }}>
+            {[
+              { id: 'todos', label: `Todos (${actividad.length})` },
+              { id: 'admin', label: `🛡️ Admin (${conteoAdmin})` },
+              { id: 'residente', label: `📱 Residentes (${conteoResidente})` }
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setFiltroTabActividad(tab.id as any)}
+                style={{
+                  padding: '5px 10px',
+                  borderRadius: '7px',
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  border: filtroTabActividad === tab.id ? '1px solid #3b82f6' : '1px solid rgba(255,255,255,0.08)',
+                  backgroundColor: filtroTabActividad === tab.id ? 'rgba(59, 130, 246, 0.2)' : 'rgba(255,255,255,0.04)',
+                  color: filtroTabActividad === tab.id ? '#60a5fa' : '#94a3b8'
+                }}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {actividadFiltradaWidget.length === 0 ? (
             <div style={{
               backgroundColor: '#141519',
               border: '1px solid rgba(255, 255, 255, 0.08)',
@@ -645,43 +1015,72 @@ export const AdminDashboard: React.FC = () => {
               textAlign: 'center'
             }}>
               <p style={{ color: '#a1a1aa', fontSize: '14px', fontWeight: 600, margin: '0 0 8px' }}>
-                No hay pagos pendientes de revisión
+                No hay pagos ni aprobaciones en esta vista
               </p>
               <div
-                onClick={() => navigate('/admin/recibos')}
+                onClick={() => setModalTimelineOpen(true)}
                 style={{ color: 'var(--color-accent, #f97316)', fontSize: '13px', fontWeight: 700, cursor: 'pointer' }}
               >
-                Ver historial de recibos
+                Abrir timeline completo
               </div>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {actividad.slice(0, 4).map(item => {
+              {actividadFiltradaWidget.slice(0, 5).map(item => {
                 const isPendiente = item.estado === 'pendiente'
                 const isAprobado = item.estado === 'aprobado'
+                const esAdmin = item.origen === 'admin'
                 const colorEstado = isAprobado ? '#22c55e' : (isPendiente ? '#f59e0b' : '#ef4444')
 
                 return (
                   <div
                     key={item.id}
-                    onClick={() => navigate('/admin/recibos')}
+                    onClick={() => setModalTimelineOpen(true)}
                     style={{
                       backgroundColor: '#141519',
-                      border: '1px solid rgba(255, 255, 255, 0.08)',
+                      border: esAdmin ? '1px solid rgba(16, 185, 129, 0.25)' : '1px solid rgba(255, 255, 255, 0.08)',
                       borderRadius: '16px',
                       padding: '14px 16px',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
-                      cursor: 'pointer'
+                      cursor: 'pointer',
+                      gap: '12px'
                     }}
                   >
-                    <div>
-                      <div style={{ color: '#fff', fontSize: '13px', fontWeight: 700 }}>
-                        {item.titulo}
-                      </div>
-                      <div style={{ color: '#71717a', fontSize: '11px', marginTop: '2px' }}>
-                        {item.subtitulo} · {item.fecha}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <span style={{
+                        width: '32px',
+                        height: '32px',
+                        borderRadius: '8px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '15px',
+                        backgroundColor: esAdmin ? 'rgba(16, 185, 129, 0.15)' : 'rgba(56, 189, 248, 0.15)',
+                        border: esAdmin ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(56, 189, 248, 0.3)'
+                      }}>
+                        {esAdmin ? '🛡️' : '📱'}
+                      </span>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ color: '#fff', fontSize: '13px', fontWeight: 700 }}>
+                            {item.titulo}
+                          </span>
+                          <span style={{
+                            fontSize: '9px',
+                            fontWeight: 800,
+                            padding: '1px 5px',
+                            borderRadius: '4px',
+                            backgroundColor: esAdmin ? 'rgba(16, 185, 129, 0.2)' : 'rgba(56, 189, 248, 0.2)',
+                            color: esAdmin ? '#34d399' : '#38bdf8'
+                          }}>
+                            {esAdmin ? 'Admin' : 'Residente'}
+                          </span>
+                        </div>
+                        <div style={{ color: '#71717a', fontSize: '11px', marginTop: '2px' }}>
+                          Ref: {item.referencia} · {item.fecha}
+                        </div>
                       </div>
                     </div>
 
@@ -695,7 +1094,7 @@ export const AdminDashboard: React.FC = () => {
                         fontWeight: 800,
                         textTransform: 'uppercase'
                       }}>
-                        {item.estado}
+                        {esAdmin ? '✓ Aprobado' : item.estado}
                       </span>
                     </div>
                   </div>
@@ -890,6 +1289,15 @@ export const AdminDashboard: React.FC = () => {
                 onClick={() => navigate('/admin/recibos?filtro=pendiente')}
               />
               <StatCard
+                icon="🧾"
+                label="Recibos y Cuotas Pagadas"
+                value={stats.totalSolventes}
+                sub={`${stats.totalSolventesMes} en ${getMesSoloNombre(mesSeleccionado) || 'este mes'} · Clic para ver detalle →`}
+                color="#10b981"
+                badge={stats.totalSolventes > 0 ? "Solventes" : undefined}
+                onClick={() => setModalSolventesOpen(true)}
+              />
+              <StatCard
                 icon="💵"
                 label={`Recaudado (${getMesSoloNombre(mesSeleccionado)})`}
                 value={`Bs. ${stats.recaudadoMesBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
@@ -932,30 +1340,88 @@ export const AdminDashboard: React.FC = () => {
           )}
         </div>
 
-        {/* Actividad Reciente Desktop */}
+        {/* Actividad y Timeline de Aprobaciones Desktop */}
         <div style={{
           backgroundColor: '#141414',
           border: '1px solid #1e1e1e',
           borderRadius: '16px',
           padding: '24px',
         }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-            <h2 style={{ color: '#fff', fontSize: '18px', fontWeight: 700, margin: 0 }}>
-              📋 Últimos Pagos Reportados
-            </h2>
-            <button
-              onClick={() => navigate('/admin/recibos')}
-              style={{
-                backgroundColor: 'transparent',
-                color: 'var(--color-accent, #f97316)',
-                border: 'none',
-                fontSize: '13px',
-                fontWeight: 600,
-                cursor: 'pointer',
-              }}
-            >
-              Ver todos →
-            </button>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+            <div>
+              <h2 style={{ color: '#fff', fontSize: '18px', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span>📋</span> Historial y Timeline de Pagos y Aprobaciones
+              </h2>
+              <p style={{ margin: '4px 0 0', color: '#71717a', fontSize: '12px' }}>
+                Visualización combinada de pagos reportados por residentes y cuotas aprobadas manualmente por la administración.
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <button
+                type="button"
+                onClick={() => setModalTimelineOpen(true)}
+                style={{
+                  backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                  color: '#34d399',
+                  border: '1px solid rgba(16, 185, 129, 0.35)',
+                  padding: '7px 14px',
+                  borderRadius: '10px',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  transition: 'all 0.2s'
+                }}
+              >
+                <span>🕒</span> Ver Timeline Completo
+              </button>
+
+              <button
+                type="button"
+                onClick={() => navigate('/admin/recibos')}
+                style={{
+                  backgroundColor: 'transparent',
+                  color: 'var(--color-accent, #f97316)',
+                  border: 'none',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Validar Pagos →
+              </button>
+            </div>
+          </div>
+
+          {/* Pestañas de Filtro Rápido en el Widget */}
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
+            {[
+              { id: 'todos', label: `Todos (${actividad.length})` },
+              { id: 'admin', label: `🛡️ Aprobados por Admin (${conteoAdmin})` },
+              { id: 'residente', label: `📱 Reportes Residentes (${conteoResidente})` }
+            ].map(tab => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setFiltroTabActividad(tab.id as any)}
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: '8px',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  border: filtroTabActividad === tab.id ? '1px solid #3b82f6' : '1px solid rgba(255,255,255,0.08)',
+                  backgroundColor: filtroTabActividad === tab.id ? 'rgba(59, 130, 246, 0.18)' : 'rgba(255,255,255,0.03)',
+                  color: filtroTabActividad === tab.id ? '#60a5fa' : '#94a3b8',
+                  transition: 'all 0.15s'
+                }}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
 
           {loading ? (
@@ -963,56 +1429,106 @@ export const AdminDashboard: React.FC = () => {
               <div style={{ height: '48px', backgroundColor: '#1a1a1a', borderRadius: '10px' }} />
               <div style={{ height: '48px', backgroundColor: '#1a1a1a', borderRadius: '10px' }} />
             </div>
-          ) : actividad.length === 0 ? (
+          ) : actividadFiltradaWidget.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '36px 0', color: '#666' }}>
-              No hay pagos reportados recientemente.
+              No hay pagos ni aprobaciones para mostrar en este filtro.
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {actividad.map(item => {
+              {actividadFiltradaWidget.slice(0, 6).map(item => {
                 const isPendiente = item.estado === 'pendiente'
                 const isAprobado = item.estado === 'aprobado'
+                const esAdmin = item.origen === 'admin'
                 const colorEstado = isAprobado ? '#10b981' : (isPendiente ? '#f59e0b' : '#ef4444')
 
                 return (
                   <div
                     key={item.id}
+                    onClick={() => setModalTimelineOpen(true)}
                     style={{
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
-                      padding: '14px 16px',
+                      padding: '14px 18px',
                       backgroundColor: '#0a0a0a',
-                      border: '1px solid #1e1e1e',
-                      borderRadius: '12px',
+                      border: esAdmin ? '1px solid rgba(16, 185, 129, 0.25)' : '1px solid #1e1e1e',
+                      borderRadius: '14px',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s',
+                      gap: '16px'
                     }}
                   >
-                    <div>
-                      <p style={{ color: '#fff', fontSize: '14px', fontWeight: 600, margin: 0 }}>
-                        {item.titulo}
-                      </p>
-                      <p style={{ color: '#777', fontSize: '12px', margin: '2px 0 0 0' }}>
-                        {item.subtitulo} · {item.fecha}
-                      </p>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                      <span style={{
+                        width: '38px',
+                        height: '38px',
+                        borderRadius: '10px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '18px',
+                        backgroundColor: esAdmin ? 'rgba(16, 185, 129, 0.15)' : 'rgba(56, 189, 248, 0.15)',
+                        border: esAdmin ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(56, 189, 248, 0.3)',
+                        flexShrink: 0
+                      }}>
+                        {esAdmin ? '🛡️' : '📱'}
+                      </span>
+
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ color: '#fff', fontSize: '14px', fontWeight: 700 }}>
+                            {item.titulo}
+                          </span>
+                          <span style={{
+                            padding: '2px 7px',
+                            borderRadius: '4px',
+                            fontSize: '10px',
+                            fontWeight: 800,
+                            backgroundColor: esAdmin ? 'rgba(16, 185, 129, 0.15)' : 'rgba(56, 189, 248, 0.15)',
+                            color: esAdmin ? '#34d399' : '#38bdf8',
+                            border: esAdmin ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(56, 189, 248, 0.3)'
+                          }}>
+                            {esAdmin ? 'Aprobado Admin' : 'Reporte Residente'}
+                          </span>
+                          {item.periodo && (
+                            <span style={{ fontSize: '11px', color: '#64748b' }}>
+                              ({item.periodo})
+                            </span>
+                          )}
+                        </div>
+
+                        <p style={{ color: '#777', fontSize: '12px', margin: '3px 0 0 0' }}>
+                          Ref: <strong style={{ color: '#cbd5e1' }}>{item.referencia}</strong> · {esAdmin ? `Por: ${item.autor} · ` : ''}{item.fecha}
+                        </p>
+                      </div>
                     </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                      {item.monto && (
-                        <span style={{ color: '#fff', fontSize: '15px', fontWeight: 700 }}>
-                          {item.monto}
-                        </span>
-                      )}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px', textAlign: 'right' }}>
+                      <div>
+                        {item.monto && (
+                          <div style={{ color: '#fff', fontSize: '15px', fontWeight: 800 }}>
+                            {item.monto}
+                          </div>
+                        )}
+                        {item.montoUsd && (
+                          <div style={{ color: '#64748b', fontSize: '11px', fontWeight: 600 }}>
+                            {item.montoUsd} USD
+                          </div>
+                        )}
+                      </div>
+
                       <span style={{
                         backgroundColor: `${colorEstado}20`,
                         color: colorEstado,
                         border: `1px solid ${colorEstado}40`,
-                        padding: '4px 10px',
+                        padding: '4px 12px',
                         borderRadius: '999px',
                         fontSize: '11px',
-                        fontWeight: 700,
+                        fontWeight: 800,
                         textTransform: 'capitalize',
+                        whiteSpace: 'nowrap'
                       }}>
-                        {item.estado}
+                        {esAdmin ? '✓ Aprobado' : (isPendiente ? '⏳ Pendiente' : '✓ Aprobado')}
                       </span>
                     </div>
                   </div>
@@ -1027,6 +1543,24 @@ export const AdminDashboard: React.FC = () => {
       <PublicarAvisoModal
         isOpen={avisoModalOpen}
         onClose={() => setAvisoModalOpen(false)}
+      />
+
+      {/* Modal de Detalle de Recibos y Atrasos Solventados */}
+      <ModalRecibosSolventes
+        isOpen={modalSolventesOpen}
+        onClose={() => setModalSolventesOpen(false)}
+        items={listaSolventes}
+        tasaBcv={rate || 859.06}
+      />
+
+      {/* Modal de Historial y Timeline Completo de Aprobaciones */}
+      <ModalTimelineAprobaciones
+        isOpen={modalTimelineOpen}
+        onClose={() => setModalTimelineOpen(false)}
+        items={actividad}
+        tasaBcv={rate || 859.06}
+        onNavigateToRecibos={() => navigate('/admin/recibos')}
+        onNavigateToCalendario={() => navigate('/admin/calendario-deudas')}
       />
     </div>
   )

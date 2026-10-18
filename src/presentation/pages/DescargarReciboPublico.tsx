@@ -95,7 +95,9 @@ export const DescargarReciboPublico: React.FC = () => {
           monto_bs: r.total_bs,
           monto_usd: r.total_usd,
           referencia: esHistorico ? 'REGISTRO HISTÓRICO' : undefined
-        } : undefined
+        } : undefined,
+        undefined,
+        r.data_json?.donaciones_espacios_comunes
       )
 
       const nombreArchivo = `Recibo_Apto${r.apartamento?.numero || ''}_${mesLabel}${anio}.pdf`

@@ -24,6 +24,8 @@ import {
 import { useAuth } from '../../../application/contexts/AuthContext'
 import { SkeletonTable } from '../../components/Skeleton'
 import { generarCarteleraAscensorPDF } from '../../../utils/carteleraAscensorPdfGenerator'
+import { despacharEmailPagoAprobado } from '../../../data/emailService'
+import { supabase } from '../../../data/supabase'
 
 const fmtBs = (n: number) => (n || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtUsd = (n: number) => (n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -74,6 +76,11 @@ export const AdminCalendarioDeudas: React.FC = () => {
   const [modalFechaPago, setModalFechaPago] = useState(new Date().toISOString().slice(0, 10))
   const [modalNota, setModalNota] = useState('')
   const [procesandoAccion, setProcesandoAccion] = useState(false)
+
+  // Estados para envío de correo de confirmación de pago / solvencia
+  const [modalEnviarEmail, setModalEnviarEmail] = useState<boolean>(true)
+  const [modalDestinatarioEmail, setModalDestinatarioEmail] = useState<string>('')
+  const [enviandoEmailManual, setEnviandoEmailManual] = useState<boolean>(false)
 
   // Modal Edición Concepto Histórico (2025 / Guaya / Cable / Arreglo)
   const [modalHistOpen, setModalHistOpen] = useState(false)
@@ -203,16 +210,45 @@ export const AdminCalendarioDeudas: React.FC = () => {
       ? (col.moneda === 'USD' ? recibo.total_usd : recibo.total_bs)
       : (col.moneda === 'USD' ? 12.91 : 2916.05)
 
+    const pagoInfo = recibo?.data_json?.pago_info
+    const refGuardada = pagoInfo?.referencia || recibo?.data_json?.referencia || recibo?.data_json?.ultima_referencia || ''
+    const metodoGuardado = pagoInfo?.metodo || 'Transferencia Bancaria'
+    const fechaGuardada = pagoInfo?.fecha_pago || new Date().toISOString().slice(0, 10)
+    const notaGuardada = pagoInfo?.nota || recibo?.data_json?.nota || ''
+
     setModalApto(apto)
     setModalCol(col)
     setModalRecibo(recibo)
     setModalMontoEditado(montoActual > 0 ? (col.moneda === 'BS' ? fmtBs(montoActual) : montoActual.toFixed(2)) : '')
     setModalMonedaEditada(col.moneda)
     setModalEstadoDeseado(recibo ? recibo.estado : 'pendiente')
-    setModalReferencia('')
-    setModalMetodo('Transferencia Bancaria')
-    setModalFechaPago(new Date().toISOString().slice(0, 10))
-    setModalNota('')
+    setModalReferencia(refGuardada)
+    setModalMetodo(metodoGuardado)
+    setModalFechaPago(fechaGuardada)
+    setModalNota(notaGuardada)
+
+    // Pre-cargar correo del residente para confirmación de solvencia / pago
+    const emailInicial = apto.email?.trim() || ''
+    setModalDestinatarioEmail(emailInicial)
+    setModalEnviarEmail(true)
+
+    // Si apto.email no estaba cargado, consultar perfiles en segundo plano
+    if (!emailInicial || !emailInicial.includes('@')) {
+      supabase
+        .from('perfiles')
+        .select('propietario_email')
+        .eq('apartamento_id', apto.apartamento_id)
+        .not('propietario_email', 'is', null)
+        .limit(1)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (data?.propietario_email) {
+            setModalDestinatarioEmail(data.propietario_email.trim())
+          }
+        })
+        .catch(err => console.debug('[Calendario] Error buscando email en perfiles:', err))
+    }
+
     setModalPagoOpen(true)
   }
 
@@ -225,6 +261,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
   ) => {
     const mesLabelCompleto = `${col.label} ${col.anio}`
     const monto = recibo ? (col.moneda === 'USD' ? recibo.total_usd : recibo.total_bs) : (col.moneda === 'USD' ? 12.91 : 2916.05)
+    const refExistente = recibo?.data_json?.pago_info?.referencia || recibo?.data_json?.referencia || recibo?.data_json?.ultima_referencia || ''
 
     // Actualización optimista local
     setFilas(prev => prev.map(f => {
@@ -233,7 +270,16 @@ export const AdminCalendarioDeudas: React.FC = () => {
       if (mesesActualizados[col.key]) {
         mesesActualizados[col.key] = {
           ...mesesActualizados[col.key]!,
-          estado: nuevoEstado
+          estado: nuevoEstado,
+          data_json: {
+            ...(mesesActualizados[col.key]!.data_json || {}),
+            ultima_referencia: refExistente || 'CHECKLIST_RAPIDO',
+            pago_info: nuevoEstado === 'pagado' ? {
+              referencia: refExistente || 'CHECKLIST_RAPIDO',
+              metodo: 'Modo Checklist Directo',
+              fecha_pago: new Date().toISOString().slice(0, 10)
+            } : mesesActualizados[col.key]!.data_json?.pago_info
+          }
         }
       }
 
@@ -280,12 +326,55 @@ export const AdminCalendarioDeudas: React.FC = () => {
       nuevoMonto: monto,
       moneda: col.moneda,
       estado: nuevoEstado,
-      referencia: 'CHECKLIST_RAPIDO',
+      referencia: refExistente || 'CHECKLIST_RAPIDO',
       metodo: 'Modo Checklist Directo',
       fechaPago: new Date().toISOString().slice(0, 10),
       autorNombre: perfil?.nombre_completo || 'Administrador'
     })
     await cargarDatos(true)
+  }
+
+  // ── Reenviar correo de pago aprobado / solvencia bajo demanda ─────────────
+  const handleEnviarEmailDirecto = async () => {
+    if (!modalApto || !modalCol) return
+    const emailDest = modalDestinatarioEmail.trim()
+    if (!emailDest || !emailDest.includes('@')) {
+      showToast('⚠️ Ingresa un correo electrónico válido para enviar la confirmación')
+      return
+    }
+
+    setEnviandoEmailManual(true)
+    try {
+      const tasaEmail = config?.tasa_bcv_actual && config.tasa_bcv_actual > 1 ? config.tasa_bcv_actual : 859.06
+      const montoFinal = parsearMontoFlexible(modalMontoEditado, modalMonedaEditada)
+      const nuevoMontoBs = modalMonedaEditada === 'BS' ? montoFinal : Number((montoFinal * tasaEmail).toFixed(2))
+      const nuevoMontoUsd = modalMonedaEditada === 'USD' ? montoFinal : Number((montoFinal / tasaEmail).toFixed(2))
+      const refFinal = modalReferencia.trim() || modalRecibo?.data_json?.pago_info?.referencia || modalRecibo?.data_json?.ultima_referencia || 'S/R'
+
+      const emailRes = await despacharEmailPagoAprobado({
+        destinatarioEmail: emailDest,
+        apartamentoNumero: modalApto.apartamento_numero,
+        propietarioNombre: modalApto.propietario_nombre || `Propietario Apto ${modalApto.apartamento_numero}`,
+        edificioNombre: config?.nombre_edificio || 'Residencias Ocutuy 5',
+        mesLabel: modalCol.label,
+        anio: modalCol.anio,
+        montoUsd: nuevoMontoUsd,
+        montoBs: nuevoMontoBs,
+        referencia: refFinal,
+        fechaPago: modalFechaPago || new Date().toISOString().slice(0, 10),
+        bancoOrigen: modalMetodo || 'Transferencia Bancaria'
+      })
+
+      if (emailRes.ok) {
+        showToast(`✉️ ¡Correo de "Pagado" y solvencia enviado exitosamente a ${emailDest}!`)
+      } else {
+        showToast(`❌ Error enviando correo: ${emailRes.error || 'Verifica la configuración del servicio'}`)
+      }
+    } catch (err: any) {
+      showToast(`❌ Error enviando correo: ${err.message || err}`)
+    } finally {
+      setEnviandoEmailManual(false)
+    }
   }
 
   // ── Guardar cambio de monto o estado desde Modal de Pago ──────────────────
@@ -311,6 +400,8 @@ export const AdminCalendarioDeudas: React.FC = () => {
       const nuevoMontoBs = monedaNueva === 'BS' ? montoFinal : Number((montoFinal * tasa).toFixed(2))
       const nuevoMontoUsd = monedaNueva === 'USD' ? montoFinal : Number((montoFinal / tasa).toFixed(2))
 
+      const refFinal = modalReferencia.trim() || prevRec?.data_json?.pago_info?.referencia || prevRec?.data_json?.ultima_referencia || ''
+
       mesesActualizados[targetColKey] = {
         id: prevRec?.id || `temp-${Date.now()}`,
         apartamento_id: targetAptoId,
@@ -319,7 +410,20 @@ export const AdminCalendarioDeudas: React.FC = () => {
         total_bs: nuevoMontoBs,
         tasa_bcv: tasa,
         estado: estadoNuevo,
-        emitido_at: prevRec?.emitido_at || new Date().toISOString()
+        emitido_at: prevRec?.emitido_at || new Date().toISOString(),
+        data_json: {
+          ...(prevRec?.data_json || {}),
+          editado_manualmente: true,
+          moneda_original: modalMonedaEditada,
+          monto_original: montoFinal,
+          ultima_referencia: refFinal || prevRec?.data_json?.ultima_referencia || undefined,
+          pago_info: estadoNuevo === 'pagado' ? {
+            referencia: refFinal,
+            metodo: modalMetodo || 'Transferencia Bancaria',
+            fecha_pago: modalFechaPago || new Date().toISOString().slice(0, 10),
+            nota: modalNota || null
+          } : null
+        }
       }
 
       let newBs = 0
@@ -390,7 +494,40 @@ export const AdminCalendarioDeudas: React.FC = () => {
       })
 
       if (res.success) {
-        showToast(`✅ Apto ${modalApto.apartamento_numero}: Cuota ${mesLabelCompleto} guardada como ${modalEstadoDeseado === 'pagado' ? 'SOLVENTE' : 'PENDIENTE'}`)
+        let emailMsg = ''
+        if (estadoNuevo === 'pagado' && modalEnviarEmail && modalDestinatarioEmail.trim() && modalDestinatarioEmail.includes('@')) {
+          try {
+            const tasaEmail = config?.tasa_bcv_actual && config.tasa_bcv_actual > 1 ? config.tasa_bcv_actual : 859.06
+            const nuevoMontoBs = monedaNueva === 'BS' ? montoFinal : Number((montoFinal * tasaEmail).toFixed(2))
+            const nuevoMontoUsd = monedaNueva === 'USD' ? montoFinal : Number((montoFinal / tasaEmail).toFixed(2))
+            const refFinal = modalReferencia.trim() || 'S/R'
+
+            const emailRes = await despacharEmailPagoAprobado({
+              destinatarioEmail: modalDestinatarioEmail.trim(),
+              apartamentoNumero: modalApto.apartamento_numero,
+              propietarioNombre: modalApto.propietario_nombre || `Propietario Apto ${modalApto.apartamento_numero}`,
+              edificioNombre: config?.nombre_edificio || 'Residencias Ocutuy 5',
+              mesLabel: modalCol.label,
+              anio: modalCol.anio,
+              montoUsd: nuevoMontoUsd,
+              montoBs: nuevoMontoBs,
+              referencia: refFinal,
+              fechaPago: modalFechaPago || new Date().toISOString().slice(0, 10),
+              bancoOrigen: modalMetodo || 'Transferencia Bancaria'
+            })
+
+            if (emailRes.ok) {
+              emailMsg = ` y correo de confirmación enviado a ${modalDestinatarioEmail.trim()} ✉️`
+            } else {
+              emailMsg = ` (⚠️ Nota: no se pudo enviar correo: ${emailRes.error || 'Error de servicio'})`
+            }
+          } catch (mailErr: any) {
+            console.warn('[CalendarioDeudas] Error despachando email:', mailErr)
+            emailMsg = ` (⚠️ Error correo: ${mailErr?.message || mailErr})`
+          }
+        }
+
+        showToast(`✅ Apto ${modalApto.apartamento_numero}: Cuota ${mesLabelCompleto} guardada como ${modalEstadoDeseado === 'pagado' ? 'SOLVENTE' : 'PENDIENTE'}${emailMsg}`)
         await cargarDatos(true)
       } else {
         showToast(`❌ Error: ${res.error}`)
@@ -770,24 +907,48 @@ export const AdminCalendarioDeudas: React.FC = () => {
       }
 
       if (recibo.estado === 'pagado') {
+        const refStr = recibo.data_json?.pago_info?.referencia || recibo.data_json?.referencia || recibo.data_json?.ultima_referencia || ''
         return (
           <td
             key={col.id}
             onClick={() => handleCellClick(apto, colMesObj)}
             style={{
-              padding: '10px 10px',
+              padding: '6px 8px',
               backgroundColor: 'rgba(16, 185, 129, 0.08)',
               color: '#34d399',
               textAlign: 'center',
               cursor: 'pointer'
             }}
-            title={`Solvente / Pagado: ${col.moneda === 'USD' ? `$${fmtUsd(recibo.total_usd)}` : `Bs. ${fmtBs(recibo.total_bs)}`}`}
+            title={`Solvente / Pagado: ${col.moneda === 'USD' ? `$${fmtUsd(recibo.total_usd)}` : `Bs. ${fmtBs(recibo.total_bs)}`}${refStr ? ` | Ref: ${refStr}` : ''}`}
           >
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontWeight: 700, fontSize: '11px' }}>
-              <span>✓</span>
-              <span style={{ textDecoration: 'line-through', opacity: 0.75 }}>
-                {col.moneda === 'USD' ? `$${fmtUsd(recibo.total_usd)}` : `Bs. ${fmtBs(recibo.total_bs)}`}
-              </span>
+            <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: '2px', fontWeight: 700, fontSize: '11px' }}>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                <span>✓</span>
+                <span style={{ textDecoration: 'line-through', opacity: 0.75 }}>
+                  {col.moneda === 'USD' ? `$${fmtUsd(recibo.total_usd)}` : `Bs. ${fmtBs(recibo.total_bs)}`}
+                </span>
+              </div>
+              {refStr && (
+                <span
+                  style={{
+                    fontSize: '9.5px',
+                    fontWeight: 600,
+                    color: '#a7f3d0',
+                    backgroundColor: 'rgba(16, 185, 129, 0.22)',
+                    border: '1px solid rgba(16, 185, 129, 0.35)',
+                    padding: '1px 5px',
+                    borderRadius: '4px',
+                    maxWidth: '85px',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    letterSpacing: '0.2px'
+                  }}
+                  title={`Referencia bancaria: ${refStr}`}
+                >
+                  #{refStr}
+                </span>
+              )}
             </div>
           </td>
         )
@@ -795,6 +956,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
 
       // Pendiente
       const monto = col.moneda === 'USD' ? recibo.total_usd : recibo.total_bs
+      const refPrevia = recibo.data_json?.ultima_referencia || recibo.data_json?.pago_info?.referencia || ''
       return (
         <td
           key={col.id}
@@ -807,7 +969,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
             cursor: 'pointer',
             textAlign: 'right'
           }}
-          title={`Pendiente: ${col.moneda === 'USD' ? `$${fmtUsd(monto)}` : `Bs. ${fmtBs(monto)}`}. Clic para pagar o editar`}
+          title={`Pendiente: ${col.moneda === 'USD' ? `$${fmtUsd(monto)}` : `Bs. ${fmtBs(monto)}`}${refPrevia ? ` | Ref previa: ${refPrevia}` : ''}. Clic para pagar o editar`}
         >
           {col.moneda === 'USD' ? `$${fmtUsd(monto)}` : `Bs. ${fmtBs(monto)}`}
         </td>
@@ -3285,6 +3447,9 @@ export const AdminCalendarioDeudas: React.FC = () => {
             borderRadius: '16px',
             width: '100%',
             maxWidth: '520px',
+            maxHeight: '92vh',
+            display: 'flex',
+            flexDirection: 'column',
             boxShadow: '0 25px 60px rgba(0,0,0,0.8)',
             overflow: 'hidden'
           }}>
@@ -3311,7 +3476,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
               </button>
             </div>
 
-            <div className="calendario-modal-body" style={{ padding: '24px' }}>
+            <div className="calendario-modal-body" style={{ padding: '20px 24px', overflowY: 'auto', flex: 1 }}>
               <div style={{
                 backgroundColor: '#030712',
                 border: '1px solid #1f2937',
@@ -3511,15 +3676,31 @@ export const AdminCalendarioDeudas: React.FC = () => {
                       />
                     </div>
                     <div>
-                      <label style={{ display: 'block', fontSize: '11px', color: '#94a3b8', marginBottom: '4px', fontWeight: 600 }}>
-                        Referencia Bancaria
-                      </label>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                        <label style={{ display: 'block', fontSize: '11px', color: '#94a3b8', fontWeight: 600 }}>
+                          Referencia Bancaria
+                        </label>
+                        {modalReferencia.trim() && (
+                          <span style={{ fontSize: '10px', color: '#34d399', fontWeight: 600 }}>
+                            ✓ Registrada
+                          </span>
+                        )}
+                      </div>
                       <input
                         type="text"
                         value={modalReferencia}
                         onChange={e => setModalReferencia(e.target.value)}
                         placeholder="Ej: 12345678"
-                        style={{ width: '100%', backgroundColor: '#030712', border: '1px solid #374151', padding: '8px 10px', borderRadius: '8px', color: '#fff', fontSize: '12px', boxSizing: 'border-box' }}
+                        style={{
+                          width: '100%',
+                          backgroundColor: '#030712',
+                          border: modalReferencia.trim() ? '1px solid #10b981' : '1px solid #374151',
+                          padding: '8px 10px',
+                          borderRadius: '8px',
+                          color: '#fff',
+                          fontSize: '12px',
+                          boxSizing: 'border-box'
+                        }}
                       />
                     </div>
                   </div>
@@ -3547,6 +3728,130 @@ export const AdminCalendarioDeudas: React.FC = () => {
                       placeholder="Nota interna de la administración..."
                       style={{ width: '100%', backgroundColor: '#030712', border: '1px solid #374151', padding: '8px 10px', borderRadius: '8px', color: '#fff', fontSize: '12px', boxSizing: 'border-box' }}
                     />
+                  </div>
+
+                  {/* SECCIÓN DE CORREO DE "PAGADO" Y SOLVENCIA */}
+                  <div style={{
+                    backgroundColor: 'rgba(16, 185, 129, 0.08)',
+                    border: '1px solid rgba(16, 185, 129, 0.3)',
+                    borderRadius: '12px',
+                    padding: '14px 16px',
+                    marginTop: '4px'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px' }}>
+                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer', flex: 1 }}>
+                        <input
+                          type="checkbox"
+                          checked={modalEnviarEmail}
+                          onChange={e => setModalEnviarEmail(e.target.checked)}
+                          style={{
+                            width: '18px',
+                            height: '18px',
+                            accentColor: '#10b981',
+                            cursor: 'pointer',
+                            marginTop: '2px',
+                            borderRadius: '4px'
+                          }}
+                        />
+                        <div>
+                          <span style={{ fontSize: '13px', fontWeight: 800, color: '#34d399', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                              <rect width="20" height="16" x="2" y="4" rx="2" />
+                              <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+                            </svg>
+                            Enviar correo de "Pagado" y solvencia al residente
+                          </span>
+                          <p style={{ margin: '3px 0 0', fontSize: '11px', color: '#94a3b8', lineHeight: 1.4 }}>
+                            Se despacha el mismo comprobante oficial y constancia que recibe el residente al confirmarse un pago.
+                          </p>
+                        </div>
+                      </label>
+
+                      {modalRecibo?.estado === 'pagado' && (
+                        <button
+                          type="button"
+                          onClick={handleEnviarEmailDirecto}
+                          disabled={enviandoEmailManual || !modalDestinatarioEmail.trim()}
+                          style={{
+                            padding: '6px 12px',
+                            backgroundColor: 'rgba(16, 185, 129, 0.2)',
+                            border: '1px solid #10b981',
+                            borderRadius: '8px',
+                            color: '#34d399',
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            cursor: enviandoEmailManual ? 'not-allowed' : 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                            <line x1="22" y1="2" x2="11" y2="13" />
+                            <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                          </svg>
+                          {enviandoEmailManual ? 'Enviando...' : 'Reenviar Ahora'}
+                        </button>
+                      )}
+                    </div>
+
+                    {modalEnviarEmail && (
+                      <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px dashed rgba(16, 185, 129, 0.25)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
+                          <label style={{ fontSize: '11px', color: '#cbd5e1', fontWeight: 700 }}>
+                            Correo destinatario:
+                          </label>
+                          {modalDestinatarioEmail.trim() && modalDestinatarioEmail.includes('@') ? (
+                            <span style={{ fontSize: '10px', color: '#34d399', fontWeight: 700 }}>
+                              ✓ Correo verificado
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: '10px', color: '#f87171', fontWeight: 700 }}>
+                              ⚠️ Ingrese email válido
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <input
+                            type="email"
+                            value={modalDestinatarioEmail}
+                            onChange={e => setModalDestinatarioEmail(e.target.value)}
+                            placeholder="residente@correo.com"
+                            style={{
+                              flex: 1,
+                              backgroundColor: '#030712',
+                              border: modalDestinatarioEmail.trim() && modalDestinatarioEmail.includes('@') ? '1px solid #10b981' : '1px solid #ef4444',
+                              padding: '8px 12px',
+                              borderRadius: '8px',
+                              color: '#fff',
+                              fontSize: '12px',
+                              outline: 'none',
+                              boxSizing: 'border-box'
+                            }}
+                          />
+                          {modalApto.email && modalDestinatarioEmail !== modalApto.email && (
+                            <button
+                              type="button"
+                              onClick={() => setModalDestinatarioEmail(modalApto.email || '')}
+                              title="Restablecer correo del propietario"
+                              style={{
+                                backgroundColor: '#1f2937',
+                                border: '1px solid #374151',
+                                borderRadius: '8px',
+                                color: '#cbd5e1',
+                                padding: '0 10px',
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                cursor: 'pointer'
+                              }}
+                            >
+                              Restablecer
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}

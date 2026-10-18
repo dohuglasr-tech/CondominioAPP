@@ -330,15 +330,42 @@ export async function purgarCacheGlobalTotal(adminNombre?: string): Promise<{ ok
     // 4. Invalida todas las etiquetas en memoria
     appCache.invalidateTags(['config', 'tasa_bcv', 'pagos', 'recibos', 'saldos', 'gastos', 'apartamentos', 'auditoria'])
 
-    // 5. Registrar auditoría si es posible
+    // 5. Enviar señal de recarga remota en tiempo real a todos los dispositivos conectados
+    try {
+      const channel = supabase.channel('realtime_edificio_theme_sync')
+      await channel.send({
+        type: 'broadcast',
+        event: 'force_app_reload',
+        payload: {
+          timestamp: ahora,
+          version: '1.0.2',
+          admin: adminNombre || 'Sistema',
+          motivo: 'Actualización y reinicio global en todos los dispositivos'
+        }
+      })
+    } catch (bcErr) {
+      console.warn('[CacheService] Error al emitir broadcast de reinicio:', bcErr)
+    }
+
+    // 6. Actualizar configuracion_edificio.updated_at para disparar postgres_changes en todos los clientes
+    try {
+      await supabase
+        .from('configuracion_edificio')
+        .update({ updated_at: ahoraIso })
+        .neq('id', '00000000-0000-0000-0000-000000000000') // Actualiza el registro de config del edificio
+    } catch (confErr) {
+      console.warn('[CacheService] Error actualizando timestamp de configuracion_edificio:', confErr)
+    }
+
+    // 7. Registrar auditoría si es posible
     try {
       await supabase.from('historial_auditoria').insert([{
         id: crypto.randomUUID ? crypto.randomUUID() : `log_${ahora}_${Math.random().toString(36).substring(2, 7)}`,
         fecha: ahoraIso,
         tipo_accion: 'SISTEMA_PURGA_CACHE',
-        titulo: 'Limpieza Global de Caché',
-        descripcion: `El administrador ${adminNombre || ''} purgó la caché y forzó la actualización de la aplicación.`,
-        motivo: 'Mantenimiento y actualización de versión global',
+        titulo: 'Limpieza Global de Caché y Reinicio Remoto',
+        descripcion: `El administrador ${adminNombre || ''} purgó la caché y forzó la actualización y reinicio remoto de la aplicación v1.0.2 en todos los dispositivos.`,
+        motivo: 'Mantenimiento y actualización de versión global v1.0.2',
         autor_nombre: adminNombre || 'Administrador',
         created_at: ahoraIso,
       }])
@@ -349,4 +376,11 @@ export async function purgarCacheGlobalTotal(adminNombre?: string): Promise<{ ok
     console.error('[CacheService] Error al purgar caché global:', err)
     return { ok: false, error: err?.message || 'Error desconocido' }
   }
+}
+
+/**
+ * Dispara el reinicio remoto e instantáneo de la aplicación en todos los dispositivos (residentes y administradores).
+ */
+export async function reiniciarAppEnTodosLosDispositivos(adminNombre: string = 'Administrador'): Promise<{ ok: boolean; error?: string }> {
+  return purgarCacheGlobalTotal(adminNombre)
 }

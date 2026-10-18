@@ -1,34 +1,54 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../application/contexts/AuthContext'
+import { supabase } from '../../data/supabase'
+import { appCache } from '../../data/cacheService'
+import { useBcvRate } from '../../data/useBcvRate'
+import { ReportarPagoModal } from '../components/ReportarPagoModal'
 import {
   obtenerGasServicioData,
   calcularMetricasGas,
   obtenerDeudaGasApartamento,
-  reportarPagoGasResidente,
-  GasServicioData
+  obtenerHistorialCuotasGasApartamento,
+  obtenerTodasLasDeudasGasApartamento,
+  GasServicioData,
+  HistorialCuotaGasApartamento,
+  EventoDiarioGas
 } from '../../data/gasService'
 
+const MESES_NOMBRES = [
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+]
+
+const fmtBs = (n: number) => (n || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const fmtUsd = (n: number) => (n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
 export const GasResidente: React.FC = () => {
-  const { perfil } = useAuth()
+  const { perfil, config } = useAuth()
   const [searchParams] = useSearchParams()
+
   const [data, setData] = useState<GasServicioData | null>(null)
   const [loading, setLoading] = useState<boolean>(true)
+  const [activeTab, setActiveTab] = useState<'deuda' | 'calendario' | 'tanque'>('deuda')
   const [copiedBank, setCopiedBank] = useState<boolean>(false)
   const [copiedAmount, setCopiedAmount] = useState<boolean>(false)
   const [toastMsg, setToastMsg] = useState<string | null>(null)
 
-  // Modal Reporte de Pago
+  // Deuda consolidada de condominio ordinario para sincronización
+  const [deudaCondominioBs, setDeudaCondominioBs] = useState<number>(0)
+  const [deudaCondominioUsd, setDeudaCondominioUsd] = useState<number>(0)
+
+  // Modal Reporte de Pago Unificado
   const [modalReportarOpen, setModalReportarOpen] = useState<boolean>(false)
-  const [guardandoReporte, setGuardandoReporte] = useState<boolean>(false)
-  const [formReporte, setFormReporte] = useState({
-    monto: '',
-    moneda: 'BS' as 'BS' | 'USD',
-    metodoPago: 'pago_movil' as 'pago_movil' | 'transferencia' | 'efectivo_bs' | 'efectivo_usd' | 'otro',
-    referencia: '',
-    fechaPago: new Date().toISOString().slice(0, 10),
-    observaciones: ''
-  })
+
+  // Calendario visual de Gas
+  const [calAnio, setCalAnio] = useState<number>(2026)
+  const [calMes, setCalMes] = useState<number>(10) // 1-12
+  const [diaSeleccionado, setDiaSeleccionado] = useState<string | null>(new Date().toISOString().slice(0, 10))
+
+  const { rate } = useBcvRate()
+  const tasaValida = rate && rate > 1 ? rate : (config?.tasa_bcv_actual && config.tasa_bcv_actual > 1 ? config.tasa_bcv_actual : 859.06)
 
   const p = perfil as any
   const aptoNumero = p?.apartamento?.numero || p?.apartamentos?.numero || p?.apartamento_id || ''
@@ -39,20 +59,94 @@ export const GasResidente: React.FC = () => {
     setTimeout(() => setToastMsg(null), 3500)
   }
 
+  // Cargar datos de gas y deuda general de condominio
+  const cargarDatos = useCallback(async (forceRefresh = false) => {
+    try {
+      const resGas = await obtenerGasServicioData(forceRefresh)
+      setData(resGas.data)
+
+      // Cargar deuda de condominio para mostrar la sincronización consolidada
+      if (apartamentoId) {
+        const { data: recibos } = await supabase
+          .from('recibos_generados')
+          .select('id, total_usd, total_bs, es_indexado')
+          .eq('apartamento_id', apartamentoId)
+          .eq('estado', 'pendiente')
+
+        let condBs = 0
+        let condUsd = 0
+        if (recibos && recibos.length > 0) {
+          recibos.forEach(r => {
+            const usd = Number(r.total_usd || 0)
+            const bs = Number(r.total_bs || 0)
+            if (r.es_indexado || usd > 0) {
+              condUsd += usd
+              condBs += usd * tasaValida
+            } else {
+              condBs += bs
+              condUsd += tasaValida > 0 ? bs / tasaValida : 0
+            }
+          })
+        }
+        setDeudaCondominioBs(condBs)
+        setDeudaCondominioUsd(condUsd)
+      }
+    } catch (err) {
+      console.error('[GasResidente] Error cargando datos:', err)
+    } finally {
+      setLoading(false)
+    }
+  }, [apartamentoId, tasaValida])
+
   useEffect(() => {
-    async function load() {
-      setLoading(true)
-      try {
-        const res = await obtenerGasServicioData()
-        setData(res.data)
-      } catch (e) {
-        console.error('Error cargando datos de gas:', e)
-      } finally {
-        setLoading(false)
+    cargarDatos(true)
+
+    // Detectar tab en la URL (ej: /gas?tab=calendario)
+    const urlTab = searchParams.get('tab')
+    if (urlTab === 'calendario' || urlTab === 'tanque' || urlTab === 'deuda') {
+      setActiveTab(urlTab)
+    }
+
+    if (searchParams.get('reportar') === '1') {
+      setModalReportarOpen(true)
+    }
+
+    // 1. Escuchar eventos broadcast locales
+    const onGasUpdated = () => {
+      appCache.invalidateTags(['gas', 'saldos', 'recibos'])
+      cargarDatos(true)
+    }
+    window.addEventListener('condominio_gas_updated', onGasUpdated)
+
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'gas_servicio_cache' || e.key === 'condominio_gas_cache_v2') {
+        cargarDatos(true)
       }
     }
-    load()
-  }, [])
+    window.addEventListener('storage', onStorage)
+
+    // 2. Suscripción Supabase Realtime a casos_comunidad (gas comunal)
+    const channelId = `gas_residente_${apartamentoId || 'guest'}_${Math.random().toString(36).slice(2, 7)}`
+    const channel = supabase
+      .channel(channelId)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'casos_comunidad' },
+        (payload: any) => {
+          if (payload?.new?.tipo === 'config_gas_servicio' || payload?.old?.tipo === 'config_gas_servicio') {
+            appCache.invalidateTags(['gas', 'saldos'])
+            cargarDatos(true)
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      window.removeEventListener('condominio_gas_updated', onGasUpdated)
+      window.removeEventListener('storage', onStorage)
+      supabase.removeChannel(channel)
+    }
+  }, [apartamentoId, cargarDatos, searchParams])
 
   const metricas = useMemo(() => {
     if (!data) return null
@@ -64,65 +158,108 @@ export const GasResidente: React.FC = () => {
     return obtenerDeudaGasApartamento(data, apartamentoId, aptoNumero)
   }, [data, apartamentoId, aptoNumero])
 
-  // Abrir modal automáticamente si vino desde el Dashboard con ?reportar=1
-  useEffect(() => {
-    if (searchParams.get('reportar') === '1' && miDeuda && miDeuda.tieneDeuda) {
-      setFormReporte({
-        monto: miDeuda.monedaPrincipal === 'BS' ? miDeuda.montoBs.toFixed(2) : miDeuda.montoUsd.toFixed(2),
-        moneda: miDeuda.monedaPrincipal,
-        metodoPago: 'pago_movil',
-        referencia: '',
-        fechaPago: new Date().toISOString().slice(0, 10),
-        observaciones: ''
+  const todasLasDeudasGas = useMemo(() => {
+    if (!data) return { tieneDeuda: false, totalBs: 0, totalUsd: 0, cuotasPendientes: [] }
+    return obtenerTodasLasDeudasGasApartamento(data, apartamentoId, aptoNumero)
+  }, [data, apartamentoId, aptoNumero])
+
+  const historialCuotas = useMemo(() => {
+    if (!data) return []
+    return obtenerHistorialCuotasGasApartamento(data, apartamentoId, aptoNumero)
+  }, [data, apartamentoId, aptoNumero])
+
+  // Cómputo de sincronización consolidada
+  const deudaGasBs = todasLasDeudasGas.tieneDeuda
+    ? todasLasDeudasGas.totalBs
+    : (miDeuda?.tieneDeuda ? miDeuda.montoBs : 0)
+  const deudaGasUsd = todasLasDeudasGas.tieneDeuda
+    ? todasLasDeudasGas.totalUsd
+    : (miDeuda?.tieneDeuda ? miDeuda.montoUsd : 0)
+
+  const deudaTotalConsolidadaBs = deudaGasBs + deudaCondominioBs
+  const deudaTotalConsolidadaUsd = deudaGasUsd + deudaCondominioUsd
+  const tieneDeudaGas = deudaGasBs > 0.05 || deudaGasUsd > 0.05
+  const isSolventeGas = !tieneDeudaGas
+
+  // Matriz de días para el Calendario Visual de Gas
+  const diasCalendario = useMemo(() => {
+    const primerDia = new Date(calAnio, calMes - 1, 1)
+    const ultimoDia = new Date(calAnio, calMes, 0)
+    const diasEnMes = ultimoDia.getDate()
+
+    let diaSemanaInicio = primerDia.getDay() - 1 // Lunes = 0
+    if (diaSemanaInicio === -1) diaSemanaInicio = 6
+
+    const celdas: Array<{ diaNum: number | null; fechaIso: string | null }> = []
+    for (let i = 0; i < diaSemanaInicio; i++) {
+      celdas.push({ diaNum: null, fechaIso: null })
+    }
+    for (let d = 1; d <= diasEnMes; d++) {
+      const mesStr = String(calMes).padStart(2, '0')
+      const diaStr = String(d).padStart(2, '0')
+      celdas.push({ diaNum: d, fechaIso: `${calAnio}-${mesStr}-${diaStr}` })
+    }
+    return celdas
+  }, [calAnio, calMes])
+
+  // Eventos de gas mapeados por fecha
+  const eventosPorFecha = useMemo(() => {
+    const map = new Map<string, Array<{ tipo: 'llenado' | 'recaudacion' | 'limite' | 'pago_residente' | 'otro'; titulo: string; descripcion: string; montoBs?: number; montoUsd?: number }>>()
+
+    // 1. Llenados de cisterna
+    data?.llenados.forEach(ll => {
+      if (!ll.fecha) return
+      const list = map.get(ll.fecha) || []
+      list.push({
+        tipo: 'llenado',
+        titulo: `🚛 Descarga de Cisterna (${ll.litrosCargados.toLocaleString()} L)`,
+        descripcion: `Proveedor: ${ll.proveedor || 'Cisterna'}. Nivel final tanque: ${ll.porcentajeFinal}%.`
       })
-      setModalReportarOpen(true)
-    }
-  }, [searchParams, miDeuda])
+      map.set(ll.fecha, list)
+    })
 
-  const handleEnviarReportePago = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!miDeuda?.campanaId) {
-      showToast('No hay una campaña de gas activa para reportar pago')
-      return
-    }
-    const montoNum = parseFloat(formReporte.monto.replace(',', '.'))
-    if (isNaN(montoNum) || montoNum <= 0) {
-      showToast('Introduce un monto válido mayor a 0')
-      return
-    }
-    if (['pago_movil', 'transferencia'].includes(formReporte.metodoPago) && !formReporte.referencia.trim()) {
-      showToast('Por favor escribe la referencia del comprobante')
-      return
-    }
-
-    setGuardandoReporte(true)
-    try {
-      const res = await reportarPagoGasResidente({
-        jornadaId: miDeuda.campanaId,
-        apartamentoId,
-        apartamentoNumero: aptoNumero,
-        monto: montoNum,
-        moneda: formReporte.moneda,
-        metodoPago: formReporte.metodoPago,
-        referencia: formReporte.referencia.trim(),
-        fechaPago: formReporte.fechaPago,
-        observaciones: formReporte.observaciones.trim(),
-        tasaBcv: data?.config.tasaBcv || 859.06
+    // 2. Eventos y recaudaciones del calendario de gas
+    data?.eventosCalendario?.forEach(ev => {
+      if (!ev.fecha) return
+      const list = map.get(ev.fecha) || []
+      list.push({
+        tipo: ev.tipo === 'llenado' ? 'llenado' : 'recaudacion',
+        titulo: ev.titulo,
+        descripcion: ev.descripcion,
+        montoBs: ev.montoBs,
+        montoUsd: ev.montoUsd
       })
+      map.set(ev.fecha, list)
+    })
 
-      if (res.success && res.data) {
-        setData(res.data)
-        setModalReportarOpen(false)
-        showToast('¡Pago de gas registrado exitosamente! Gracias por tu reporte.')
-      } else {
-        showToast(res.error || 'Error registrando el pago')
+    // 3. Fechas límite de cuotas de gas
+    data?.jornadas.forEach(j => {
+      if (j.fechaLimite) {
+        const list = map.get(j.fechaLimite) || []
+        list.push({
+          tipo: 'limite',
+          titulo: `⏳ Límite de Pago: ${j.titulo}`,
+          descripcion: `Cuota por apartamento: Bs. ${fmtBs(j.costoPorAptoBs)} (${fmtUsd(j.costoPorAptoUsd)} USD).`
+        })
+        map.set(j.fechaLimite, list)
       }
-    } catch (err: any) {
-      showToast(err.message || 'Error al procesar el reporte')
-    } finally {
-      setGuardandoReporte(false)
-    }
-  }
+    })
+
+    // 4. Fechas de pago registradas por este apartamento
+    historialCuotas.forEach(h => {
+      if (h.estado === 'pagado' && h.fechaPago) {
+        const list = map.get(h.fechaPago) || []
+        list.push({
+          tipo: 'pago_residente',
+          titulo: `💳 Pago Cuota de Gas (${h.titulo})`,
+          descripcion: `Apto ${aptoNumero}: Pagaste Bs. ${fmtBs(h.montoBs)} ($${fmtUsd(h.montoUsd)} USD). Ref: ${h.referencia || 'N/A'}`
+        })
+        map.set(h.fechaPago, list)
+      }
+    })
+
+    return map
+  }, [data, historialCuotas, aptoNumero])
 
   const copyBankData = () => {
     if (!data) return
@@ -135,7 +272,7 @@ export const GasResidente: React.FC = () => {
 
   const copyBsAmount = () => {
     if (!miDeuda) return
-    navigator.clipboard.writeText(miDeuda.montoBs.toFixed(2))
+    navigator.clipboard.writeText(deudaGasBs.toFixed(2))
     setCopiedAmount(true)
     setTimeout(() => setCopiedAmount(false), 2500)
   }
@@ -143,7 +280,7 @@ export const GasResidente: React.FC = () => {
   if (loading) {
     return (
       <div style={{
-        padding: '40px 20px',
+        padding: '60px 20px',
         textAlign: 'center',
         color: '#a1a1aa',
         minHeight: '60vh',
@@ -152,798 +289,952 @@ export const GasResidente: React.FC = () => {
         alignItems: 'center',
         justifyContent: 'center'
       }}>
-        <div style={{ fontSize: '36px', marginBottom: '14px' }}>⛽</div>
-        <div style={{ fontWeight: 700, fontSize: '15px', color: '#fff' }}>Consultando estado del gas comunal...</div>
-        <div style={{ fontSize: '12px', marginTop: '4px' }}>Sincronizando nivel del tanque y cuotas del edificio</div>
+        <div style={{ fontSize: '42px', marginBottom: '16px', animation: 'pulse 1.5s infinite' }}>⛽</div>
+        <div style={{ fontWeight: 800, fontSize: '18px', color: '#fff' }}>Sincronizando Servicio de Gas Comunal...</div>
+        <div style={{ fontSize: '13px', marginTop: '6px', color: '#71717a' }}>Verificando nivel del tanque, cuotas comunitarias y tu estado de cuenta</div>
       </div>
     )
   }
 
-  const isSolvente = miDeuda ? !miDeuda.tieneDeuda : true
   const datosPago = data?.config.datosPago
-  const esDeudaBs = miDeuda?.monedaPrincipal === 'BS'
+  const eventosDelDia = diaSeleccionado ? (eventosPorFecha.get(diaSeleccionado) || []) : []
 
   return (
     <div style={{
-      maxWidth: '780px',
+      maxWidth: '860px',
       margin: '0 auto',
-      padding: '16px 16px 80px',
+      padding: '20px 16px 80px',
       color: '#f4f4f5',
       fontFamily: 'Inter, system-ui, sans-serif'
     }}>
-      {/* HEADER / TITULAR */}
-      <div style={{ marginBottom: '20px', textAlign: 'left' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-          <span style={{ fontSize: '24px' }}>⛽</span>
-          <h1 style={{ fontSize: '22px', fontWeight: 900, margin: 0, letterSpacing: '-0.4px' }}>
-            Servicio de Gas Comunal
-          </h1>
+      {/* Toast Notification */}
+      {toastMsg && (
+        <div style={{
+          position: 'fixed',
+          top: '20px',
+          right: '20px',
+          zIndex: 9999,
+          backgroundColor: '#10b981',
+          color: '#fff',
+          padding: '12px 20px',
+          borderRadius: '12px',
+          fontWeight: 800,
+          boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)',
+          fontSize: '13px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px'
+        }}>
+          <span>✅</span>
+          <span>{toastMsg}</span>
         </div>
-        <p style={{ color: '#a1a1aa', fontSize: '13px', margin: 0 }}>
-          Tanque central, estado de recargas y cuota comunitaria independiente del recibo de condominio.
-        </p>
+      )}
+
+      {/* Modal Reporte de Pago Unificado */}
+      {modalReportarOpen && (
+        <ReportarPagoModal
+          apartamentoId={apartamentoId}
+          aptoNumero={aptoNumero}
+          initialTipo="gas"
+          onClose={() => setModalReportarOpen(false)}
+          onSuccess={() => {
+            setModalReportarOpen(false)
+            cargarDatos(true)
+            showToast('¡Pago de cuota de gas reportado exitosamente!')
+          }}
+        />
+      )}
+
+      {/* ── HEADER SUPERIOR ── */}
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'flex-start',
+        marginBottom: '20px',
+        flexWrap: 'wrap',
+        gap: '12px'
+      }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ fontSize: '28px' }}>⛽</span>
+            <h1 style={{ fontSize: '24px', fontWeight: 900, margin: 0, letterSpacing: '-0.5px' }}>
+              Servicio de Gas Comunal
+            </h1>
+            <span style={{
+              backgroundColor: 'var(--color-accent-light, rgba(249, 115, 22, 0.15))',
+              color: 'var(--color-accent, #f97316)',
+              border: '1px solid rgba(249, 115, 22, 0.35)',
+              padding: '3px 10px',
+              borderRadius: '999px',
+              fontSize: '12px',
+              fontWeight: 800
+            }}>
+              Apto {aptoNumero}
+            </span>
+          </div>
+          <p style={{ color: '#a1a1aa', fontSize: '13px', margin: '6px 0 0' }}>
+            Gestión independiente del gas, sincronizada con la deuda total de tu apartamento.
+          </p>
+        </div>
+
+        {/* Tasa BCV & Botón de Reporte */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{
+            background: 'rgba(255, 255, 255, 0.04)',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            borderRadius: '10px',
+            padding: '6px 12px',
+            fontSize: '12px',
+            color: '#cbd5e1'
+          }}>
+            Tasa BCV: <b style={{ color: '#fff' }}>Bs. {fmtBs(tasaValida)}</b>
+          </div>
+
+          <button
+            onClick={() => setModalReportarOpen(true)}
+            style={{
+              backgroundColor: 'var(--color-accent, #f97316)',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '12px',
+              padding: '9px 16px',
+              fontSize: '13px',
+              fontWeight: 800,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: 'var(--color-brand-shadow, 0 4px 14px rgba(249, 115, 22, 0.4))'
+            }}
+          >
+            <span>💳</span>
+            <span>Reportar Pago</span>
+          </button>
+        </div>
       </div>
 
-      {/* ── CARD PRINCIPAL: ESTADO PERSONAL DEL APARTAMENTO ────────── */}
+      {/* ── BARRA DE PESTAÑAS (TABS) ── */}
       <div style={{
-        background: isSolvente
-          ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.12) 0%, var(--color-bg-card, #12141a) 100%)'
-          : 'linear-gradient(135deg, rgba(239, 68, 68, 0.12) 0%, var(--color-bg-card, #12141a) 100%)',
-        border: `1px solid ${isSolvente ? 'rgba(34, 197, 94, 0.35)' : 'rgba(239, 68, 68, 0.4)'}`,
-        borderRadius: '20px',
-        padding: '22px',
-        marginBottom: '20px',
-        boxShadow: isSolvente
-          ? '0 10px 30px rgba(34, 197, 94, 0.08)'
-          : '0 10px 30px rgba(239, 68, 68, 0.12)',
-        position: 'relative',
-        overflow: 'hidden'
+        display: 'flex',
+        gap: '8px',
+        borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+        marginBottom: '22px',
+        overflowX: 'auto',
+        paddingBottom: '2px'
       }}>
-        {/* Badge superior */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-          <span style={{
-            fontSize: '11px',
-            fontWeight: 800,
-            textTransform: 'uppercase',
-            letterSpacing: '0.6px',
-            color: '#a1a1aa'
-          }}>
-            {aptoNumero ? `APARTAMENTO ${aptoNumero}` : 'ESTADO DE CUENTA DE GAS'}
-          </span>
-
-          <span style={{
-            backgroundColor: isSolvente ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)',
-            color: isSolvente ? '#22c55e' : '#ef4444',
-            border: `1px solid ${isSolvente ? 'rgba(34, 197, 94, 0.4)' : 'rgba(239, 68, 68, 0.4)'}`,
-            padding: '3px 10px',
-            borderRadius: '999px',
-            fontSize: '11px',
-            fontWeight: 800,
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '5px'
-          }}>
-            <span>{isSolvente ? '✅' : '⚠️'}</span>
-            <span>{isSolvente ? 'AL DÍA CON EL GAS' : 'CUOTA PENDIENTE'}</span>
-          </span>
-        </div>
-
-        {/* Mensaje de Estado */}
-        {isSolvente ? (
-          <div>
-            <div style={{ fontSize: '18px', fontWeight: 800, color: '#fff', marginBottom: '6px' }}>
-              {(!miDeuda?.campanaTitulo || (miDeuda.montoBs === 0 && miDeuda.montoUsd === 0))
-                ? 'No hay cuotas de gas pendientes actualmente'
-                : 'Tu apartamento está solvente con el gas'}
-            </div>
-            <p style={{ color: '#a1a1aa', fontSize: '13px', margin: '0 0 14px', lineHeight: 1.5 }}>
-              {(!miDeuda?.campanaTitulo || (miDeuda.montoBs === 0 && miDeuda.montoUsd === 0))
-                ? 'Tu apartamento se encuentra al día. Cuando la administración asigne una cuota ordinaria o cuota especial para la recarga del tanque, podrás verla aquí y recibirás un correo informativo.'
-                : `La cuota para la jornada actual (${miDeuda?.campanaTitulo || 'Recaudación de Gas'}) se encuentra al día. ¡Gracias por tu puntualidad vecinal!`}
-            </p>
-
-            {miDeuda?.detallePago?.referencia && (
-              <div style={{
-                backgroundColor: 'rgba(255, 255, 255, 0.04)',
-                border: '1px solid rgba(255, 255, 255, 0.08)',
-                borderRadius: '10px',
-                padding: '10px 14px',
-                fontSize: '12px',
+        {[
+          { key: 'deuda', label: '💳 Apartado de Deuda', badge: tieneDeudaGas ? 'Pendiente' : 'Solvente' },
+          { key: 'calendario', label: '📅 Calendario de Pago de Gas', count: historialCuotas.length },
+          { key: 'tanque', label: '🎛️ Tanque y Transparencia', level: metricas ? `${metricas.nivelPct}%` : undefined }
+        ].map(tab => {
+          const isActive = activeTab === tab.key
+          return (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key as any)}
+              style={{
+                backgroundColor: isActive ? 'var(--color-accent-light, rgba(249, 115, 22, 0.15))' : 'transparent',
+                color: isActive ? 'var(--color-accent, #f97316)' : '#a1a1aa',
+                border: 'none',
+                borderBottom: isActive ? '2px solid var(--color-accent, #f97316)' : '2px solid transparent',
+                padding: '11px 18px',
+                fontSize: '13px',
+                fontWeight: isActive ? 800 : 600,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'space-between',
-                color: '#d4d4d8'
-              }}>
-                <span>Referencia registrada: <b style={{ color: '#fff' }}>{miDeuda.detallePago.referencia}</b></span>
-                <span style={{ color: '#22c55e', fontWeight: 700 }}>
-                  {miDeuda.detallePago.metodoPago === 'pago_movil' ? 'Pago Móvil' : miDeuda.detallePago.metodoPago || 'Verificado'}
+                gap: '8px',
+                transition: 'all 0.15s'
+              }}
+            >
+              <span>{tab.label}</span>
+              {tab.badge && (
+                <span style={{
+                  fontSize: '10px',
+                  fontWeight: 800,
+                  padding: '2px 6px',
+                  borderRadius: '999px',
+                  backgroundColor: tab.badge === 'Pendiente' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(34, 197, 94, 0.2)',
+                  color: tab.badge === 'Pendiente' ? '#f87171' : '#4ade80',
+                  border: `1px solid ${tab.badge === 'Pendiente' ? 'rgba(239, 68, 68, 0.4)' : 'rgba(34, 197, 94, 0.4)'}`
+                }}>
+                  {tab.badge}
                 </span>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div>
-            {/* Si es cuota especial */}
-            {miDeuda?.esCuotaEspecial && (
-              <div style={{
-                backgroundColor: 'rgba(239, 68, 68, 0.15)',
-                border: '1px solid rgba(239, 68, 68, 0.4)',
-                borderRadius: '12px',
-                padding: '10px 14px',
-                marginBottom: '14px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '10px'
-              }}>
-                <span style={{ fontSize: '20px' }}>⚡</span>
-                <div>
-                  <div style={{ fontSize: '13px', fontWeight: 900, color: '#f87171' }}>
-                    CUOTA ESPECIAL POR GAS
-                  </div>
-                  <div style={{ fontSize: '11.5px', color: '#fca5a5' }}>
-                    {miDeuda.campanaTitulo || 'Aporte extraordinario para recarga del tanque'}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Monto de la deuda: Si la moneda es Bolívares, se destaca primero y prominentemente en Bs. */}
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
-              {esDeudaBs ? (
-                <>
-                  <span style={{ fontSize: '32px', fontWeight: 900, color: '#ef4444' }}>
-                    Bs. {(miDeuda?.montoBs || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
-                  <span style={{ fontSize: '14px', color: '#a1a1aa' }}>
-                    (≈ ${(miDeuda?.montoUsd || 0).toFixed(2)} USD a tasa BCV)
-                  </span>
-                </>
-              ) : (
-                <>
-                  <span style={{ fontSize: '32px', fontWeight: 900, color: '#ef4444' }}>
-                    ${(miDeuda?.montoUsd || 0).toFixed(2)} USD
-                  </span>
-                  <span style={{ fontSize: '14px', color: '#a1a1aa' }}>
-                    ≈ Bs. {(miDeuda?.montoBs || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
-                </>
               )}
-            </div>
+              {tab.level && (
+                <span style={{
+                  fontSize: '10px',
+                  fontWeight: 800,
+                  padding: '2px 6px',
+                  borderRadius: '999px',
+                  backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                  color: '#93c5fd'
+                }}>
+                  {tab.level}
+                </span>
+              )}
+            </button>
+          )
+        })}
+      </div>
 
-            <p style={{ color: '#fca5a5', fontSize: '12px', margin: '0 0 16px', lineHeight: 1.4 }}>
-              *Cuota de gas comunal para la recarga del tanque. Recuerda que este pago se efectúa directamente a la cuenta del gas, por fuera del recibo ordinario de condominio.
-            </p>
+      {/* ═════════════════════════════════════════════════════════════════════ */}
+      {/* ── TAB 1: APARTADO DE DEUDA DE GAS (SINCRONIZADO CON TOTAL) ─────── */}
+      {/* ═════════════════════════════════════════════════════════════════════ */}
+      {activeTab === 'deuda' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
-            {/* Fecha Límite */}
-            {miDeuda?.fechaLimite ? (
-              <div style={{
-                backgroundColor: 'rgba(239, 68, 68, 0.12)',
-                border: '1px solid rgba(239, 68, 68, 0.25)',
-                borderRadius: '10px',
-                padding: '8px 12px',
-                fontSize: '12px',
-                color: '#f87171',
-                fontWeight: 700,
+          {/* Tarjeta Hero: Estado del Apartamento en Gas */}
+          <div style={{
+            background: isSolventeGas
+              ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.12) 0%, #11141c 100%)'
+              : 'linear-gradient(135deg, rgba(239, 68, 68, 0.14) 0%, #151117 100%)',
+            border: `1px solid ${isSolventeGas ? 'rgba(34, 197, 94, 0.35)' : 'rgba(239, 68, 68, 0.4)'}`,
+            borderRadius: '24px',
+            padding: '24px',
+            boxShadow: isSolventeGas ? '0 10px 30px rgba(34, 197, 94, 0.08)' : '0 10px 30px rgba(239, 68, 68, 0.12)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <span style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: '#a1a1aa', letterSpacing: '0.6px' }}>
+                DEUDA ESPECÍFICA DE GAS · APTO {aptoNumero}
+              </span>
+              <span style={{
+                backgroundColor: isSolventeGas ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)',
+                color: isSolventeGas ? '#22c55e' : '#ef4444',
+                border: `1px solid ${isSolventeGas ? 'rgba(34, 197, 94, 0.4)' : 'rgba(239, 68, 68, 0.4)'}`,
+                padding: '4px 12px',
+                borderRadius: '999px',
+                fontSize: '11px',
+                fontWeight: 800,
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: '6px',
-                marginBottom: '16px'
+                gap: '5px'
               }}>
-                <span>⏳</span>
-                <span>Fecha límite de recaudación: <b>{miDeuda.fechaLimite}</b></span>
-              </div>
-            ) : null}
+                <span>{isSolventeGas ? '✅' : '⚠️'}</span>
+                <span>{isSolventeGas ? 'AL DÍA CON EL GAS' : 'CUOTA DE GAS PENDIENTE'}</span>
+              </span>
+            </div>
 
-            {/* Datos Bancarios para Pagar Gas */}
-            {datosPago && (
+            {/* Gran Cifra de Deuda de Gas */}
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', flexWrap: 'wrap', marginBottom: '8px' }}>
+              <span style={{ fontSize: '36px', fontWeight: 900, color: isSolventeGas ? '#22c55e' : '#ef4444', letterSpacing: '-0.5px' }}>
+                Bs. {fmtBs(deudaGasBs)}
+              </span>
+              <span style={{ fontSize: '16px', color: '#a1a1aa', fontWeight: 700 }}>
+                (≈ ${fmtUsd(deudaGasUsd)} USD)
+              </span>
+            </div>
+
+            <p style={{ color: '#cbd5e1', fontSize: '13px', margin: '0 0 16px', lineHeight: 1.4 }}>
+              {isSolventeGas
+                ? 'Tu apartamento no tiene cuotas de gas pendientes. Puedes consultar los registros pasados en el calendario de pago.'
+                : `Cuota comunitaria asignada por la administración para ${miDeuda?.campanaTitulo || 'la recarga del tanque central'}. Recuerda que este aporte se paga a la cuenta especial de gas.`}
+            </p>
+
+            {/* ── CUADRO DE SINCRONIZACIÓN CON DEUDA TOTAL ── */}
+            <div style={{
+              backgroundColor: 'rgba(0, 0, 0, 0.4)',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              borderRadius: '16px',
+              padding: '16px',
+              marginBottom: '16px'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: '#38bdf8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  ⚡ SINCRONIZACIÓN CON LA DEUDA TOTAL DEL APARTAMENTO
+                </span>
+                <span style={{ fontSize: '10px', color: '#a1a1aa' }}>
+                  Total en Tiempo Real
+                </span>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '12px' }}>
+                {/* Cuota Gas */}
+                <div style={{ backgroundColor: 'rgba(249, 115, 22, 0.08)', padding: '10px 12px', borderRadius: '10px', border: '1px solid rgba(249, 115, 22, 0.2)' }}>
+                  <span style={{ fontSize: '11px', color: '#fed7aa', fontWeight: 700 }}>⛽ Servicio de Gas:</span>
+                  <div style={{ fontSize: '15px', fontWeight: 900, color: tieneDeudaGas ? '#fb923c' : '#22c55e', marginTop: '2px' }}>
+                    Bs. {fmtBs(deudaGasBs)}
+                  </div>
+                  <div style={{ fontSize: '10.5px', color: '#a1a1aa' }}>≈ ${fmtUsd(deudaGasUsd)} USD</div>
+                </div>
+
+                {/* Condominio */}
+                <div style={{ backgroundColor: 'rgba(59, 130, 246, 0.08)', padding: '10px 12px', borderRadius: '10px', border: '1px solid rgba(59, 130, 246, 0.2)' }}>
+                  <span style={{ fontSize: '11px', color: '#bfdbfe', fontWeight: 700 }}>🏢 Condominio Ordinario:</span>
+                  <div style={{ fontSize: '15px', fontWeight: 900, color: deudaCondominioBs > 0 ? '#fff' : '#22c55e', marginTop: '2px' }}>
+                    Bs. {fmtBs(deudaCondominioBs)}
+                  </div>
+                  <div style={{ fontSize: '10.5px', color: '#a1a1aa' }}>≈ ${fmtUsd(deudaCondominioUsd)} USD</div>
+                </div>
+
+                {/* Total Consolidado */}
+                <div style={{ backgroundColor: 'rgba(255, 255, 255, 0.04)', padding: '10px 12px', borderRadius: '10px', border: '1px solid rgba(255, 255, 255, 0.12)' }}>
+                  <span style={{ fontSize: '11px', color: '#f4f4f5', fontWeight: 800 }}>💳 Deuda Consolidada Total:</span>
+                  <div style={{ fontSize: '15px', fontWeight: 900, color: 'var(--color-accent, #f97316)', marginTop: '2px' }}>
+                    Bs. {fmtBs(deudaTotalConsolidadaBs)}
+                  </div>
+                  <div style={{ fontSize: '10.5px', color: '#fed7aa' }}>≈ ${fmtUsd(deudaTotalConsolidadaUsd)} USD</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Botón de Pago de Gas */}
+            {tieneDeudaGas && (
+              <button
+                onClick={() => setModalReportarOpen(true)}
+                style={{
+                  width: '100%',
+                  backgroundColor: 'var(--color-accent, #f97316)',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '14px',
+                  padding: '13px 20px',
+                  fontSize: '14px',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  boxShadow: 'var(--color-brand-shadow, 0 4px 16px rgba(249, 115, 22, 0.4))'
+                }}
+              >
+                <span>💳</span>
+                <span>Pagar Cuota de Gas (Bs. {fmtBs(deudaGasBs)})</span>
+              </button>
+            )}
+          </div>
+
+          {/* Datos Bancarios Exclusivos del Gas */}
+          {datosPago && (
+            <div style={{
+              background: 'var(--color-bg-card, #12141a)',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              borderRadius: '20px',
+              padding: '20px'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '18px' }}>🏦</span>
+                  <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 800 }}>
+                    Datos Bancarios para el Pago del Gas
+                  </h3>
+                </div>
+
+                <button
+                  onClick={copyBankData}
+                  style={{
+                    backgroundColor: copiedBank ? '#22c55e' : 'rgba(255, 255, 255, 0.08)',
+                    color: '#fff',
+                    border: '1px solid rgba(255, 255, 255, 0.15)',
+                    padding: '5px 12px',
+                    borderRadius: '8px',
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  {copiedBank ? '✓ Copiado al portapapeles' : 'Copiar Datos Bancarios'}
+                </button>
+              </div>
+
               <div style={{
-                backgroundColor: 'rgba(0, 0, 0, 0.35)',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
-                borderRadius: '14px',
-                padding: '16px',
-                marginTop: '6px'
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                gap: '12px',
+                fontSize: '13px'
               }}>
+                <div style={{ backgroundColor: 'rgba(255, 255, 255, 0.02)', padding: '10px 12px', borderRadius: '10px' }}>
+                  <span style={{ color: '#a1a1aa', fontSize: '11px', display: 'block' }}>Banco:</span>
+                  <b>{datosPago.banco || 'Por definir'}</b>
+                </div>
+                <div style={{ backgroundColor: 'rgba(255, 255, 255, 0.02)', padding: '10px 12px', borderRadius: '10px' }}>
+                  <span style={{ color: '#a1a1aa', fontSize: '11px', display: 'block' }}>Teléfono Pago Móvil:</span>
+                  <b>{datosPago.telefono || 'Por definir'}</b>
+                </div>
+                <div style={{ backgroundColor: 'rgba(255, 255, 255, 0.02)', padding: '10px 12px', borderRadius: '10px' }}>
+                  <span style={{ color: '#a1a1aa', fontSize: '11px', display: 'block' }}>C.I. / RIF:</span>
+                  <b>{datosPago.rifCedula || 'Por definir'}</b>
+                </div>
+                <div style={{ backgroundColor: 'rgba(255, 255, 255, 0.02)', padding: '10px 12px', borderRadius: '10px' }}>
+                  <span style={{ color: '#a1a1aa', fontSize: '11px', display: 'block' }}>Titular de la Cuenta:</span>
+                  <b>{datosPago.titular}</b>
+                </div>
+              </div>
+
+              {tieneDeudaGas && (
                 <div style={{
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
-                  marginBottom: '10px'
-                }}>
-                  <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--color-accent, #f97316)' }}>
-                    💳 DATOS PARA PAGAR TU CUOTA DE GAS:
-                  </span>
-                  <button
-                    onClick={copyBankData}
-                    style={{
-                      background: copiedBank ? '#22c55e' : 'rgba(255, 255, 255, 0.1)',
-                      color: '#fff',
-                      border: 'none',
-                      borderRadius: '6px',
-                      padding: '4px 8px',
-                      fontSize: '11px',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      transition: 'all 0.2s'
-                    }}
-                  >
-                    {copiedBank ? '✓ Copiado' : 'Copiar Datos'}
-                  </button>
-                </div>
-
-                <div style={{
+                  marginTop: '14px',
+                  paddingTop: '12px',
+                  borderTop: '1px dashed rgba(255, 255, 255, 0.08)',
                   fontSize: '12px',
-                  color: '#e4e4e7',
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-                  gap: '8px 16px'
+                  color: '#cbd5e1'
                 }}>
-                  <div><span style={{ color: '#a1a1aa' }}>Banco:</span> <b>{datosPago.banco || 'Por definir'}</b></div>
-                  <div><span style={{ color: '#a1a1aa' }}>Teléfono:</span> <b>{datosPago.telefono || 'Por definir'}</b></div>
-                  <div><span style={{ color: '#a1a1aa' }}>C.I. / RIF:</span> <b>{datosPago.rifCedula || 'Por definir'}</b></div>
-                  <div><span style={{ color: '#a1a1aa' }}>Titular:</span> <b>{datosPago.titular}</b></div>
-                </div>
-
-                <div style={{
-                  marginTop: '12px',
-                  paddingTop: '10px',
-                  borderTop: '1px dashed rgba(255, 255, 255, 0.1)',
-                  fontSize: '11px',
-                  color: '#a1a1aa',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center'
-                }}>
-                  <span>Monto exacto en Bolívares: <b>Bs. {(miDeuda?.montoBs || 0).toFixed(2)}</b></span>
+                  <span>Monto exacto a transferir: <strong style={{ color: 'var(--color-accent, #f97316)' }}>Bs. {fmtBs(deudaGasBs)}</strong></span>
                   <button
                     onClick={copyBsAmount}
                     style={{
                       background: 'none',
                       border: 'none',
                       color: 'var(--color-accent, #f97316)',
-                      fontSize: '11px',
                       fontWeight: 700,
                       cursor: 'pointer',
-                      padding: 0
+                      fontSize: '12px'
                     }}
                   >
-                    {copiedAmount ? '✓ Monto Copiado' : 'Copiar Bs.'}
+                    {copiedAmount ? '✓ Monto Copiado' : 'Copiar Monto'}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ═════════════════════════════════════════════════════════════════════ */}
+      {/* ── TAB 2: EL MISMO CALENDARIO DE PAGO PERO SOLO PARA EL GAS ─────── */}
+      {/* ═════════════════════════════════════════════════════════════════════ */}
+      {activeTab === 'calendario' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
+
+          {/* 1. Cronograma / Historial de Cuotas del Apartamento */}
+          <div style={{
+            background: 'var(--color-bg-card, #12141a)',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            borderRadius: '20px',
+            padding: '22px'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800 }}>
+                  Cronograma y Cuotas de Gas del Apto {aptoNumero}
+                </h3>
+                <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#a1a1aa' }}>
+                  Matriz de pagos y cuotas emitidas exclusivamente para el servicio de gas.
+                </p>
+              </div>
+
+              <span style={{
+                backgroundColor: 'rgba(249, 115, 22, 0.15)',
+                color: 'var(--color-accent, #f97316)',
+                border: '1px solid rgba(249, 115, 22, 0.3)',
+                padding: '3px 10px',
+                borderRadius: '999px',
+                fontSize: '11px',
+                fontWeight: 800
+              }}>
+                {historialCuotas.length} Jornada(s)
+              </span>
+            </div>
+
+            {historialCuotas.length === 0 ? (
+              <div style={{
+                padding: '30px',
+                textAlign: 'center',
+                color: '#71717a',
+                fontSize: '13px',
+                backgroundColor: 'rgba(255, 255, 255, 0.02)',
+                borderRadius: '14px'
+              }}>
+                No hay jornadas o cuotas registradas aún para el gas comunal.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {historialCuotas.map(cuota => {
+                  const isPagado = cuota.estado === 'pagado'
+                  return (
+                    <div
+                      key={cuota.jornadaId}
+                      style={{
+                        padding: '14px 18px',
+                        borderRadius: '14px',
+                        backgroundColor: isPagado ? 'rgba(34, 197, 94, 0.05)' : 'rgba(239, 68, 68, 0.06)',
+                        border: `1px solid ${isPagado ? 'rgba(34, 197, 94, 0.25)' : 'rgba(239, 68, 68, 0.3)'}`,
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        gap: '12px'
+                      }}
+                    >
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ fontWeight: 800, fontSize: '14px', color: '#fff' }}>
+                            {cuota.titulo}
+                          </span>
+                          {cuota.esEspecial && (
+                            <span style={{
+                              fontSize: '10px',
+                              fontWeight: 800,
+                              backgroundColor: 'rgba(239, 68, 68, 0.2)',
+                              color: '#f87171',
+                              padding: '2px 6px',
+                              borderRadius: '4px'
+                            }}>
+                              ⚡ Especial
+                            </span>
+                          )}
+                          <span style={{
+                            fontSize: '11px',
+                            fontWeight: 800,
+                            color: isPagado ? '#4ade80' : '#f87171',
+                            backgroundColor: isPagado ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                            padding: '2px 8px',
+                            borderRadius: '999px'
+                          }}>
+                            {isPagado ? '✅ PAGADO' : '⏳ PENDIENTE'}
+                          </span>
+                        </div>
+
+                        <div style={{ color: '#a1a1aa', fontSize: '12px', marginTop: '4px' }}>
+                          Mes: <b>{cuota.mes}</b> {cuota.fechaLimite ? `· Límite: ${cuota.fechaLimite}` : ''}
+                          {isPagado && cuota.referencia && (
+                            <span style={{ color: '#38bdf8', marginLeft: '6px' }}>
+                              · Ref: <b>{cuota.referencia}</b> {cuota.fechaPago ? `(${cuota.fechaPago})` : ''}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontSize: '16px', fontWeight: 900, color: '#fff' }}>
+                            Bs. {fmtBs(cuota.montoBs)}
+                          </div>
+                          <div style={{ fontSize: '11px', color: '#a1a1aa' }}>
+                            ≈ ${fmtUsd(cuota.montoUsd)} USD
+                          </div>
+                        </div>
+
+                        {!isPagado && (
+                          <button
+                            onClick={() => setModalReportarOpen(true)}
+                            style={{
+                              backgroundColor: 'var(--color-accent, #f97316)',
+                              color: '#fff',
+                              border: 'none',
+                              padding: '8px 14px',
+                              borderRadius: '10px',
+                              fontSize: '12px',
+                              fontWeight: 800,
+                              cursor: 'pointer',
+                              boxShadow: 'var(--color-brand-shadow, 0 2px 8px rgba(249, 115, 22, 0.4))'
+                            }}
+                          >
+                            Pagar
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* 2. Calendario Mensual Interactivo de Gas */}
+          <div style={{
+            background: 'var(--color-bg-card, #12141a)',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            borderRadius: '20px',
+            padding: '22px'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800 }}>
+                  Calendario Mensual del Servicio de Gas
+                </h3>
+                <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#a1a1aa' }}>
+                  Descargas de cisterna 🚛, fechas límites ⏳ y pagos registrados de tu apartamento 💳.
+                </p>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '15px', fontWeight: 800, color: '#fff' }}>
+                  {MESES_NOMBRES[calMes - 1]} {calAnio}
+                </span>
+
+                <div style={{ display: 'flex', gap: '4px' }}>
+                  <button
+                    onClick={() => {
+                      if (calMes === 1) { setCalMes(12); setCalAnio(y => y - 1) }
+                      else { setCalMes(m => m - 1) }
+                    }}
+                    style={{
+                      backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                      border: 'none',
+                      color: '#fff',
+                      borderRadius: '8px',
+                      padding: '6px 10px',
+                      cursor: 'pointer',
+                      fontWeight: 700
+                    }}
+                  >
+                    ◀
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (calMes === 12) { setCalMes(1); setCalAnio(y => y + 1) }
+                      else { setCalMes(m => m + 1) }
+                    }}
+                    style={{
+                      backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                      border: 'none',
+                      color: '#fff',
+                      borderRadius: '8px',
+                      padding: '6px 10px',
+                      cursor: 'pointer',
+                      fontWeight: 700
+                    }}
+                  >
+                    ▶
                   </button>
                 </div>
               </div>
-            )}
-
-            {/* BOTÓN PARA REPORTAR PAGO DE GAS */}
-            <button
-              onClick={() => {
-                setFormReporte({
-                  monto: miDeuda ? (miDeuda.monedaPrincipal === 'BS' ? miDeuda.montoBs.toFixed(2) : miDeuda.montoUsd.toFixed(2)) : '',
-                  moneda: miDeuda?.monedaPrincipal || 'BS',
-                  metodoPago: 'pago_movil',
-                  referencia: '',
-                  fechaPago: new Date().toISOString().slice(0, 10),
-                  observaciones: ''
-                })
-                setModalReportarOpen(true)
-              }}
-              style={{
-                width: '100%',
-                marginTop: '16px',
-                backgroundColor: 'var(--color-accent, #f97316)',
-                color: '#fff',
-                border: 'none',
-                borderRadius: '12px',
-                padding: '13px 18px',
-                fontSize: '14px',
-                fontWeight: 800,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '8px',
-                boxShadow: 'var(--color-brand-shadow, 0 4px 16px rgba(249, 115, 22, 0.4))'
-              }}
-            >
-              <span>💳</span>
-              <span>Reportar Pago de Cuota de Gas</span>
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* ── CARD MEDIDOR DEL TANQUE COMUNAL ──────────────────────────── */}
-      {metricas && (
-        <div style={{
-          background: 'var(--color-bg-card, #12141a)',
-          border: '1px solid rgba(255, 255, 255, 0.08)',
-          borderRadius: '20px',
-          padding: '20px',
-          marginBottom: '20px'
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '18px' }}>🎛️</span>
-              <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 800 }}>
-                Nivel Actual del Tanque del Edificio
-              </h3>
             </div>
 
-            <span style={{
+            {/* Cabecera de Días de Semana */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(7, 1fr)',
+              gap: '6px',
+              textAlign: 'center',
               fontSize: '11px',
               fontWeight: 800,
-              backgroundColor: metricas.nivelPct <= 25 ? 'rgba(239, 68, 68, 0.15)' : 'rgba(34, 197, 94, 0.15)',
-              color: metricas.nivelPct <= 25 ? '#ef4444' : '#22c55e',
-              padding: '2px 8px',
-              borderRadius: '999px'
+              color: '#71717a',
+              marginBottom: '8px'
             }}>
-              {metricas.nivelPct > 0 ? metricas.nivelEstado.toUpperCase() : 'PENDIENTE CARGA'}
-            </span>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: '8px' }}>
-            <div>
-              <span style={{ fontSize: '32px', fontWeight: 900, color: metricas.nivelPct <= 25 ? '#ef4444' : '#22c55e' }}>
-                {metricas.nivelPct}%
-              </span>
-              <span style={{ fontSize: '13px', color: '#a1a1aa', marginLeft: '8px' }}>
-                ({metricas.litrosActuales.toLocaleString()} / {metricas.capacidadTotal.toLocaleString()} Litros)
-              </span>
+              <div>LUN</div><div>MAR</div><div>MIÉ</div><div>JUE</div><div>VIE</div><div>SÁB</div><div>DOM</div>
             </div>
-            <div style={{ textAlign: 'right', fontSize: '12px', color: '#a1a1aa' }}>
-              Autonomía: <b style={{ color: '#fff' }}>{metricas.diasAutonomia > 0 ? `~${metricas.diasAutonomia} días` : 'Sin estimar'}</b>
-            </div>
-          </div>
 
-          {/* Barra de Progreso del Tanque */}
-          <div style={{
-            width: '100%',
-            height: '10px',
-            backgroundColor: 'rgba(255, 255, 255, 0.08)',
-            borderRadius: '999px',
-            overflow: 'hidden',
-            marginBottom: '14px'
-          }}>
+            {/* Celdas del Calendario */}
             <div style={{
-              height: '100%',
-              width: `${metricas.nivelPct}%`,
-              background: metricas.nivelPct <= 25
-                ? 'linear-gradient(90deg, #ef4444 0%, #f97316 100%)'
-                : 'linear-gradient(90deg, #22c55e 0%, #3b82f6 100%)',
-              borderRadius: '999px',
-              transition: 'width 0.5s ease'
-            }} />
-          </div>
-
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-            gap: '12px',
-            backgroundColor: 'rgba(255, 255, 255, 0.03)',
-            borderRadius: '12px',
-            padding: '12px'
-          }}>
-            <div>
-              <div style={{ fontSize: '11px', color: '#a1a1aa' }}>Último Llenado Realizado:</div>
-              <div style={{ fontWeight: 700, fontSize: '13px', marginTop: '2px' }}>
-                {metricas.ultimoLlenado?.fecha || 'Sin registro previo'}
-              </div>
-            </div>
-
-            <div>
-              <div style={{ fontSize: '11px', color: '#a1a1aa' }}>Proveedor del Servicio:</div>
-              <div style={{ fontWeight: 700, fontSize: '13px', marginTop: '2px', color: 'var(--color-accent, #f97316)' }}>
-                {data?.config.proveedorActual || 'Por registrar'}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── CARD TRANSPARENCIA RECAUDACIÓN COMUNITARIA ───────────────── */}
-      {metricas && (
-        <div style={{
-          background: 'var(--color-bg-card, #12141a)',
-          border: '1px solid rgba(255, 255, 255, 0.08)',
-          borderRadius: '20px',
-          padding: '20px',
-          marginBottom: '20px'
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '18px' }}>📊</span>
-              <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 800 }}>
-                Avance de Recaudación del Edificio
-              </h3>
-            </div>
-
-            <span style={{
-              fontSize: '11px',
-              fontWeight: 800,
-              backgroundColor: 'rgba(34, 197, 94, 0.15)',
-              color: '#22c55e',
-              padding: '2px 8px',
-              borderRadius: '999px'
+              display: 'grid',
+              gridTemplateColumns: 'repeat(7, 1fr)',
+              gap: '6px'
             }}>
-              {metricas.porcentajeRecaudado}% Recaudado
-            </span>
-          </div>
+              {diasCalendario.map((celda, idx) => {
+                if (!celda.diaNum || !celda.fechaIso) {
+                  return <div key={`empty-${idx}`} style={{ minHeight: '64px' }} />
+                }
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '6px' }}>
-            <span style={{ color: '#a1a1aa' }}>Progreso de Apartamentos Solventes:</span>
-            <span>
-              <b style={{ color: '#22c55e' }}>{metricas.aptosSolventes}</b> de <b>{metricas.totalAptos}</b> apartamentos
-            </span>
-          </div>
+                const evs = eventosPorFecha.get(celda.fechaIso) || []
+                const isSelected = diaSeleccionado === celda.fechaIso
+                const hasLlenado = evs.some(e => e.tipo === 'llenado')
+                const hasLimite = evs.some(e => e.tipo === 'limite')
+                const hasPagoResidente = evs.some(e => e.tipo === 'pago_residente')
+                const hasRecaudacion = evs.some(e => e.tipo === 'recaudacion')
 
-          <div style={{
-            width: '100%',
-            height: '8px',
-            backgroundColor: 'rgba(255, 255, 255, 0.08)',
-            borderRadius: '999px',
-            overflow: 'hidden',
-            marginBottom: '12px'
-          }}>
-            <div style={{
-              height: '100%',
-              width: `${metricas.porcentajeRecaudado}%`,
-              background: 'linear-gradient(90deg, #22c55e 0%, #10b981 100%)',
-              borderRadius: '999px'
-            }} />
-          </div>
-
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#a1a1aa', flexWrap: 'wrap', gap: '4px' }}>
-            <span>Recaudado: <b style={{ color: '#fff' }}>Bs. {metricas.totalRecaudadoBs.toLocaleString('es-VE')} (${metricas.totalRecaudadoUsd.toFixed(2)} USD)</b></span>
-            <span>Meta: <b style={{ color: '#fff' }}>Bs. {metricas.metaBs.toLocaleString('es-VE')}</b></span>
-          </div>
-        </div>
-      )}
-
-      {/* ── CARD HISTORIAL DE LLENADOS TRANSPARENTE ───────────────────── */}
-      <div style={{
-        background: 'var(--color-bg-card, #12141a)',
-        border: '1px solid rgba(255, 255, 255, 0.08)',
-        borderRadius: '20px',
-        padding: '20px'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
-          <span style={{ fontSize: '18px' }}>📜</span>
-          <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 800 }}>
-            Historial de Descargas de Gas
-          </h3>
-        </div>
-
-        {(!data?.llenados || data.llenados.length === 0) ? (
-          <div style={{
-            padding: '24px',
-            textAlign: 'center',
-            color: '#71717a',
-            fontSize: '12px',
-            backgroundColor: 'rgba(255, 255, 255, 0.02)',
-            borderRadius: '12px'
-          }}>
-            No hay registros de descargas de gas registradas aún.
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {data.llenados.map(ll => {
-              const isCompletado = ll.estado === 'completado'
-              return (
-                <div
-                  key={ll.id}
-                  style={{
-                    padding: '12px 14px',
-                    borderRadius: '12px',
-                    backgroundColor: 'rgba(255, 255, 255, 0.03)',
-                    border: '1px solid rgba(255, 255, 255, 0.06)',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    fontSize: '12px'
-                  }}
-                >
-                  <div>
-                    <div style={{ fontWeight: 800, fontSize: '13px', color: '#fff' }}>
-                      {ll.litrosCargados.toLocaleString()} L · {ll.proveedor || 'Cisterna'}
-                    </div>
-                    <div style={{ color: '#a1a1aa', marginTop: '2px' }}>
-                      Fecha: <b>{ll.fecha}</b> {ll.responsableRecibio ? `· Responsable: ${ll.responsableRecibio}` : ''}
-                    </div>
-                  </div>
-
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontWeight: 800, color: '#22c55e' }}>
-                      {ll.costoTotalBs > 0 ? `Bs. ${ll.costoTotalBs.toLocaleString('es-VE')}` : `$${ll.costoTotalUsd.toFixed(2)} USD`}
-                    </div>
-                    <span style={{
-                      fontSize: '10px',
-                      fontWeight: 700,
-                      color: isCompletado ? '#22c55e' : 'var(--color-accent, #f97316)'
-                    }}>
-                      {ll.estado.toUpperCase()}
-                    </span>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* ── TOAST NOTIFICACIÓN ────────────────────────── */}
-      {toastMsg && (
-        <div style={{
-          position: 'fixed',
-          top: '24px',
-          right: '24px',
-          backgroundColor: 'var(--color-accent, #f97316)',
-          color: '#fff',
-          padding: '12px 20px',
-          borderRadius: '12px',
-          boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
-          fontWeight: 700,
-          fontSize: '13px',
-          zIndex: 999999,
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px'
-        }}>
-          <span>⛽</span>
-          <span>{toastMsg}</span>
-        </div>
-      )}
-
-      {/* ── MODAL REPORTAR PAGO DE GAS ─────────────────── */}
-      {modalReportarOpen && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.85)',
-          backdropFilter: 'blur(8px)',
-          zIndex: 99999,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '16px'
-        }}>
-          <div style={{
-            background: 'linear-gradient(145deg, #181920 0%, #101116 100%)',
-            border: '1px solid rgba(249, 115, 22, 0.35)',
-            boxShadow: '0 20px 60px rgba(0, 0, 0, 0.6), 0 0 30px rgba(249, 115, 22, 0.15)',
-            borderRadius: '24px',
-            padding: '24px',
-            width: '100%',
-            maxWidth: '500px',
-            maxHeight: '92vh',
-            overflowY: 'auto'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span style={{ fontSize: '24px' }}>💳</span>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: '#fff' }}>
-                    Reportar Pago de Cuota de Gas
-                  </h3>
-                  <div style={{ fontSize: '11px', color: '#a1a1aa', marginTop: '2px' }}>
-                    Apartamento {aptoNumero} · {miDeuda?.campanaTitulo || 'Gas Comunal'}
-                  </div>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setModalReportarOpen(false)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: '#a1a1aa',
-                  fontSize: '20px',
-                  cursor: 'pointer'
-                }}
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleEnviarReportePago} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              {/* Moneda y Monto */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div>
-                  <label style={{ fontSize: '11px', color: '#a1a1aa', fontWeight: 700, textTransform: 'uppercase' }}>
-                    MONEDA PAGADA
-                  </label>
-                  <select
-                    value={formReporte.moneda}
-                    onChange={e => setFormReporte(prev => ({ ...prev, moneda: e.target.value as 'BS' | 'USD' }))}
+                return (
+                  <div
+                    key={celda.fechaIso}
+                    onClick={() => setDiaSeleccionado(celda.fechaIso)}
                     style={{
-                      width: '100%',
-                      backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                      border: '1px solid rgba(255, 255, 255, 0.12)',
-                      padding: '10px 12px',
+                      minHeight: '64px',
+                      backgroundColor: isSelected
+                        ? 'var(--color-accent-light, rgba(249, 115, 22, 0.2))'
+                        : 'rgba(255, 255, 255, 0.02)',
+                      border: isSelected
+                        ? '2px solid var(--color-accent, #f97316)'
+                        : '1px solid rgba(255, 255, 255, 0.06)',
                       borderRadius: '10px',
-                      color: '#fff',
-                      marginTop: '4px',
-                      fontSize: '13px'
+                      padding: '6px 4px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'space-between',
+                      transition: 'all 0.15s'
                     }}
                   >
-                    <option value="BS">Bolívares (Bs.)</option>
-                    <option value="USD">Dólares ($ USD)</option>
-                  </select>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '12px', fontWeight: isSelected ? 900 : 700, color: isSelected ? 'var(--color-accent, #f97316)' : '#fff' }}>
+                        {celda.diaNum}
+                      </span>
+                      {hasPagoResidente && <span style={{ fontSize: '11px' }} title="Tu pago registrado">💳</span>}
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '3px', flexWrap: 'wrap', marginTop: '4px' }}>
+                      {hasLlenado && (
+                        <span style={{ fontSize: '10px', backgroundColor: 'rgba(59, 130, 246, 0.3)', padding: '1px 3px', borderRadius: '3px' }} title="Descarga de cisterna">
+                          🚛
+                        </span>
+                      )}
+                      {hasLimite && (
+                        <span style={{ fontSize: '10px', backgroundColor: 'rgba(239, 68, 68, 0.3)', padding: '1px 3px', borderRadius: '3px' }} title="Fecha límite">
+                          ⏳
+                        </span>
+                      )}
+                      {hasRecaudacion && (
+                        <span style={{ fontSize: '10px', backgroundColor: 'rgba(34, 197, 94, 0.3)', padding: '1px 3px', borderRadius: '3px' }} title="Recaudación comunitaria">
+                          💰
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Panel de Detalle del Día Seleccionado */}
+            {diaSeleccionado && (
+              <div style={{
+                marginTop: '16px',
+                padding: '14px 18px',
+                backgroundColor: 'rgba(255, 255, 255, 0.03)',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                borderRadius: '14px'
+              }}>
+                <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--color-accent, #f97316)', textTransform: 'uppercase', marginBottom: '8px' }}>
+                  Detalle del día: {diaSeleccionado}
                 </div>
 
-                <div>
-                  <label style={{ fontSize: '11px', color: '#a1a1aa', fontWeight: 700, textTransform: 'uppercase' }}>
-                    MONTO TRANSFERIDO
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0.01"
-                    value={formReporte.monto}
-                    onChange={e => setFormReporte(prev => ({ ...prev, monto: e.target.value }))}
+                {eventosDelDia.length === 0 ? (
+                  <div style={{ fontSize: '12px', color: '#71717a' }}>
+                    No hay eventos o descargas registradas en esta fecha.
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {eventosDelDia.map((ev, i) => (
+                      <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', fontSize: '12px' }}>
+                        <span style={{ fontSize: '16px' }}>
+                          {ev.tipo === 'llenado' ? '🚛' : ev.tipo === 'pago_residente' ? '💳' : ev.tipo === 'limite' ? '⏳' : '💰'}
+                        </span>
+                        <div>
+                          <b style={{ color: '#fff' }}>{ev.titulo}</b>
+                          <div style={{ color: '#a1a1aa', marginTop: '2px' }}>{ev.descripcion}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ═════════════════════════════════════════════════════════════════════ */}
+      {/* ── TAB 3: TANQUE Y TRANSPARENCIA COMUNITARIA ─────────────────────── */}
+      {/* ═════════════════════════════════════════════════════════════════════ */}
+      {activeTab === 'tanque' && metricas && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+
+          {/* Medidor de Nivel del Tanque Central */}
+          <div style={{
+            background: 'var(--color-bg-card, #12141a)',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            borderRadius: '20px',
+            padding: '24px'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '20px' }}>🎛️</span>
+                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800 }}>
+                  Nivel del Tanque del Edificio en Tiempo Real
+                </h3>
+              </div>
+
+              <span style={{
+                fontSize: '11px',
+                fontWeight: 800,
+                backgroundColor: metricas.nivelPct <= 25 ? 'rgba(239, 68, 68, 0.15)' : 'rgba(34, 197, 94, 0.15)',
+                color: metricas.nivelPct <= 25 ? '#ef4444' : '#22c55e',
+                border: `1px solid ${metricas.nivelPct <= 25 ? 'rgba(239, 68, 68, 0.35)' : 'rgba(34, 197, 94, 0.35)'}`,
+                padding: '3px 10px',
+                borderRadius: '999px'
+              }}>
+                {metricas.nivelPct > 0 ? metricas.nivelEstado.toUpperCase() : 'PENDIENTE CARGA'}
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: '8px' }}>
+              <div>
+                <span style={{ fontSize: '36px', fontWeight: 900, color: metricas.nivelPct <= 25 ? '#ef4444' : '#22c55e' }}>
+                  {metricas.nivelPct}%
+                </span>
+                <span style={{ fontSize: '13px', color: '#a1a1aa', marginLeft: '8px' }}>
+                  ({metricas.litrosActuales.toLocaleString()} / {metricas.capacidadTotal.toLocaleString()} Litros)
+                </span>
+              </div>
+              <div style={{ textAlign: 'right', fontSize: '12px', color: '#a1a1aa' }}>
+                Autonomía Estimada: <b style={{ color: '#fff' }}>{metricas.diasAutonomia > 0 ? `~${metricas.diasAutonomia} días` : 'Por estimar'}</b>
+              </div>
+            </div>
+
+            {/* Barra Visual */}
+            <div style={{
+              width: '100%',
+              height: '10px',
+              backgroundColor: 'rgba(255, 255, 255, 0.08)',
+              borderRadius: '999px',
+              overflow: 'hidden',
+              marginBottom: '16px'
+            }}>
+              <div style={{
+                height: '100%',
+                width: `${metricas.nivelPct}%`,
+                background: metricas.nivelPct <= 25
+                  ? 'linear-gradient(90deg, #ef4444 0%, #f97316 100%)'
+                  : 'linear-gradient(90deg, #22c55e 0%, #3b82f6 100%)',
+                borderRadius: '999px',
+                transition: 'width 0.5s ease'
+              }} />
+            </div>
+
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
+              gap: '12px',
+              backgroundColor: 'rgba(255, 255, 255, 0.03)',
+              borderRadius: '12px',
+              padding: '12px'
+            }}>
+              <div>
+                <span style={{ fontSize: '11px', color: '#a1a1aa' }}>Último Llenado Realizado:</span>
+                <div style={{ fontWeight: 700, fontSize: '13px', marginTop: '2px' }}>
+                  {metricas.ultimoLlenado?.fecha || 'Sin registro previo'}
+                </div>
+              </div>
+              <div>
+                <span style={{ fontSize: '11px', color: '#a1a1aa' }}>Proveedor del Servicio:</span>
+                <div style={{ fontWeight: 700, fontSize: '13px', marginTop: '2px', color: 'var(--color-accent, #f97316)' }}>
+                  {data?.config.proveedorActual || 'Por registrar'}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Avance de Recaudación Comunitaria */}
+          <div style={{
+            background: 'var(--color-bg-card, #12141a)',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            borderRadius: '20px',
+            padding: '24px'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '18px' }}>📊</span>
+                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800 }}>
+                  Progreso de Recaudación del Edificio
+                </h3>
+              </div>
+
+              <span style={{
+                fontSize: '11px',
+                fontWeight: 800,
+                backgroundColor: 'rgba(34, 197, 94, 0.15)',
+                color: '#22c55e',
+                padding: '3px 10px',
+                borderRadius: '999px'
+              }}>
+                {metricas.porcentajeRecaudado}% Recaudado
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '6px' }}>
+              <span style={{ color: '#a1a1aa' }}>Apartamentos Solventes con el Gas:</span>
+              <span>
+                <b style={{ color: '#22c55e' }}>{metricas.aptosSolventes}</b> de <b>{metricas.totalAptos}</b> apartamentos
+              </span>
+            </div>
+
+            <div style={{
+              width: '100%',
+              height: '8px',
+              backgroundColor: 'rgba(255, 255, 255, 0.08)',
+              borderRadius: '999px',
+              overflow: 'hidden',
+              marginBottom: '12px'
+            }}>
+              <div style={{
+                height: '100%',
+                width: `${metricas.porcentajeRecaudado}%`,
+                background: 'linear-gradient(90deg, #22c55e 0%, #10b981 100%)',
+                borderRadius: '999px'
+              }} />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#a1a1aa', flexWrap: 'wrap', gap: '4px' }}>
+              <span>Recaudado: <b style={{ color: '#fff' }}>Bs. {fmtBs(metricas.totalRecaudadoBs)} (${fmtUsd(metricas.totalRecaudadoUsd)} USD)</b></span>
+              <span>Meta: <b style={{ color: '#fff' }}>Bs. {fmtBs(metricas.metaBs)}</b></span>
+            </div>
+          </div>
+
+          {/* Historial de Descargas de Cisterna */}
+          <div style={{
+            background: 'var(--color-bg-card, #12141a)',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            borderRadius: '20px',
+            padding: '24px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+              <span style={{ fontSize: '18px' }}>📜</span>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800 }}>
+                Historial de Descargas de Gas Recibidas
+              </h3>
+            </div>
+
+            {(!data?.llenados || data.llenados.length === 0) ? (
+              <div style={{
+                padding: '24px',
+                textAlign: 'center',
+                color: '#71717a',
+                fontSize: '12px',
+                backgroundColor: 'rgba(255, 255, 255, 0.02)',
+                borderRadius: '12px'
+              }}>
+                No hay registros de descargas de gas registradas aún.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {data.llenados.map(ll => (
+                  <div
+                    key={ll.id}
                     style={{
-                      width: '100%',
-                      backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                      border: '1px solid rgba(255, 255, 255, 0.12)',
-                      padding: '10px 12px',
-                      borderRadius: '10px',
-                      color: '#fff',
-                      marginTop: '4px',
-                      fontSize: '13px',
-                      fontWeight: 700
+                      padding: '12px 14px',
+                      borderRadius: '12px',
+                      backgroundColor: 'rgba(255, 255, 255, 0.03)',
+                      border: '1px solid rgba(255, 255, 255, 0.06)',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      fontSize: '12px'
                     }}
-                    required
-                  />
-                </div>
+                  >
+                    <div>
+                      <div style={{ fontWeight: 800, fontSize: '13px', color: '#fff' }}>
+                        {ll.litrosCargados.toLocaleString()} L · {ll.proveedor || 'Cisterna'}
+                      </div>
+                      <div style={{ color: '#a1a1aa', marginTop: '2px' }}>
+                        Fecha: <b>{ll.fecha}</b> {ll.responsableRecibio ? `· Responsable: ${ll.responsableRecibio}` : ''}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <span style={{
+                        fontSize: '11px',
+                        fontWeight: 800,
+                        backgroundColor: 'rgba(34, 197, 94, 0.15)',
+                        color: '#22c55e',
+                        padding: '2px 8px',
+                        borderRadius: '999px'
+                      }}>
+                        Descarga Exitosa
+                      </span>
+                    </div>
+                  </div>
+                ))}
               </div>
-
-              {/* Método de pago */}
-              <div>
-                <label style={{ fontSize: '11px', color: '#a1a1aa', fontWeight: 700, textTransform: 'uppercase' }}>
-                  MÉTODO DE PAGO
-                </label>
-                <select
-                  value={formReporte.metodoPago}
-                  onChange={e => setFormReporte(prev => ({ ...prev, metodoPago: e.target.value as any }))}
-                  style={{
-                    width: '100%',
-                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                    border: '1px solid rgba(255, 255, 255, 0.12)',
-                    padding: '10px 12px',
-                    borderRadius: '10px',
-                    color: '#fff',
-                    marginTop: '4px',
-                    fontSize: '13px'
-                  }}
-                >
-                  <option value="pago_movil">Pago Móvil</option>
-                  <option value="transferencia">Transferencia Bancaria</option>
-                  <option value="efectivo_bs">Efectivo Bolívares</option>
-                  <option value="efectivo_usd">Efectivo Divisas ($)</option>
-                  <option value="otro">Otro método</option>
-                </select>
-              </div>
-
-              {/* Número de Referencia */}
-              {['pago_movil', 'transferencia'].includes(formReporte.metodoPago) && (
-                <div>
-                  <label style={{ fontSize: '11px', color: '#a1a1aa', fontWeight: 700, textTransform: 'uppercase' }}>
-                    NÚMERO DE REFERENCIA / COMPROBANTE *
-                  </label>
-                  <input
-                    type="text"
-                    value={formReporte.referencia}
-                    onChange={e => setFormReporte(prev => ({ ...prev, referencia: e.target.value }))}
-                    placeholder="Últimos 4 a 6 dígitos o número de comprobante"
-                    style={{
-                      width: '100%',
-                      backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                      border: '1px solid rgba(255, 255, 255, 0.12)',
-                      padding: '10px 12px',
-                      borderRadius: '10px',
-                      color: '#fff',
-                      marginTop: '4px',
-                      fontSize: '13px'
-                    }}
-                    required
-                  />
-                </div>
-              )}
-
-              {/* Fecha de pago */}
-              <div>
-                <label style={{ fontSize: '11px', color: '#a1a1aa', fontWeight: 700, textTransform: 'uppercase' }}>
-                  FECHA DEL PAGO
-                </label>
-                <input
-                  type="date"
-                  value={formReporte.fechaPago}
-                  onChange={e => setFormReporte(prev => ({ ...prev, fechaPago: e.target.value }))}
-                  style={{
-                    width: '100%',
-                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                    border: '1px solid rgba(255, 255, 255, 0.12)',
-                    padding: '10px 12px',
-                    borderRadius: '10px',
-                    color: '#fff',
-                    marginTop: '4px',
-                    fontSize: '13px'
-                  }}
-                  required
-                />
-              </div>
-
-              {/* Observaciones */}
-              <div>
-                <label style={{ fontSize: '11px', color: '#a1a1aa', fontWeight: 700, textTransform: 'uppercase' }}>
-                  NOTAS / OBSERVACIONES (OPCIONAL)
-                </label>
-                <input
-                  type="text"
-                  value={formReporte.observaciones}
-                  onChange={e => setFormReporte(prev => ({ ...prev, observaciones: e.target.value }))}
-                  placeholder="Ej: Pago realizado desde cuenta titular"
-                  style={{
-                    width: '100%',
-                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                    border: '1px solid rgba(255, 255, 255, 0.12)',
-                    padding: '10px 12px',
-                    borderRadius: '10px',
-                    color: '#fff',
-                    marginTop: '4px',
-                    fontSize: '13px'
-                  }}
-                />
-              </div>
-
-              {/* Botones de acción */}
-              <div style={{ display: 'flex', gap: '12px', marginTop: '10px' }}>
-                <button
-                  type="button"
-                  onClick={() => setModalReportarOpen(false)}
-                  disabled={guardandoReporte}
-                  style={{
-                    flex: 1,
-                    padding: '11px',
-                    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: '12px',
-                    cursor: 'pointer',
-                    fontWeight: 600,
-                    fontSize: '13px'
-                  }}
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={guardandoReporte}
-                  style={{
-                    flex: 2,
-                    padding: '11px',
-                    backgroundColor: 'var(--color-accent, #f97316)',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: '12px',
-                    cursor: guardandoReporte ? 'not-allowed' : 'pointer',
-                    fontWeight: 800,
-                    fontSize: '13px',
-                    boxShadow: 'var(--color-brand-shadow, 0 4px 14px rgba(249, 115, 22, 0.4))',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '6px'
-                  }}
-                >
-                  {guardandoReporte ? 'Registrando...' : 'Confirmar Reporte de Pago'}
-                </button>
-              </div>
-            </form>
+            )}
           </div>
         </div>
       )}
     </div>
   )
 }
+
 export default GasResidente

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react'
+import { supabase } from '../../../data/supabase'
 import {
   obtenerGasServicioData,
   actualizarConfigTanque,
@@ -118,6 +119,40 @@ export const AdminGas: React.FC = () => {
 
   useEffect(() => {
     cargarDatos()
+
+    // 1. Escuchar eventos broadcast locales / entre pestañas
+    const onGasUpdated = () => {
+      cargarDatos()
+    }
+    window.addEventListener('condominio_gas_updated', onGasUpdated)
+
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'gas_servicio_cache' || e.key === 'condominio_gas_cache_v2') {
+        cargarDatos()
+      }
+    }
+    window.addEventListener('storage', onStorage)
+
+    // 2. Suscripción Supabase Realtime a casos_comunidad
+    const channelId = `admin_gas_${Math.random().toString(36).slice(2, 7)}`
+    const channel = supabase
+      .channel(channelId)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'casos_comunidad' },
+        (payload: any) => {
+          if (payload?.new?.tipo === 'config_gas_servicio' || payload?.old?.tipo === 'config_gas_servicio') {
+            cargarDatos()
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      window.removeEventListener('condominio_gas_updated', onGasUpdated)
+      window.removeEventListener('storage', onStorage)
+      supabase.removeChannel(channel)
+    }
   }, [])
 
   const metricas = useMemo(() => {

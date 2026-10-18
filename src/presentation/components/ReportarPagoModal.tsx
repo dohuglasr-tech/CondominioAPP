@@ -6,6 +6,14 @@ import { obtenerDeudasMora, DesgloseConceptoItem } from '../../data/moraService'
 import { obtenerJunta, MiembroJunta } from '../../data/juntaService'
 import { useAuth } from '../../application/contexts/AuthContext'
 import { ConfigEdificio, supabase } from '../../data/supabase'
+import {
+  obtenerGasServicioData,
+  obtenerTodasLasDeudasGasApartamento,
+  reportarPagoGasResidente,
+  DatosPagoGas,
+  GasServicioData
+} from '../../data/gasService'
+import { appCache } from '../../data/cacheService'
 
 const BANCOS_VE = [
   'Banesco', 'Mercantil', 'Provincial', 'Venezuela',
@@ -27,9 +35,11 @@ interface DeudaSeleccionable extends DesgloseConceptoItem {
 
 interface Props {
   apartamentoId: string
+  aptoNumero?: string
   onClose: () => void
   onSuccess: () => void
   config?: ConfigEdificio | null
+  initialTipo?: 'todos' | 'gas' | 'condominio'
 }
 
 function createRipple(e: React.MouseEvent<HTMLButtonElement>) {
@@ -138,7 +148,14 @@ function StepIndicator({ current, total }: { current: number; total: number }) {
   )
 }
 
-export function ReportarPagoModal({ apartamentoId, onClose, onSuccess, config: configProp }: Props) {
+export function ReportarPagoModal({
+  apartamentoId,
+  aptoNumero,
+  onClose,
+  onSuccess,
+  config: configProp,
+  initialTipo = 'todos'
+}: Props) {
   const { config: authConfig } = useAuth()
   const config = configProp || authConfig
 
@@ -150,6 +167,9 @@ export function ReportarPagoModal({ apartamentoId, onClose, onSuccess, config: c
   const [loadingDeudas, setLoadingDeudas] = useState(true)
   const [deudas, setDeudas] = useState<DeudaSeleccionable[]>([])
   const [saldoAFavor, setSaldoAFavor] = useState(0)
+  const [gasData, setGasData] = useState<GasServicioData | null>(null)
+  const [gasBancarios, setGasBancarios] = useState<DatosPagoGas | null>(null)
+  const [cuentaActivaTab, setCuentaActivaTab] = useState<'gas' | 'condominio'>('condominio')
 
   // Paso 2: resumen/monto
   const [otroMonto, setOtroMonto] = useState('')
@@ -187,18 +207,20 @@ export function ReportarPagoModal({ apartamentoId, onClose, onSuccess, config: c
     }
   }, [])
 
-  // Cargar deudas y saldo a favor con forceRefresh = true
+  // Cargar deudas de condominio y gas con forceRefresh
   useEffect(() => {
     let mounted = true
     const cargar = async () => {
       setLoadingDeudas(true)
       try {
-        const [moraRes, saldoRes] = await Promise.all([
+        const [moraRes, saldoRes, gasRes] = await Promise.all([
           obtenerDeudasMora(true, true),
           obtenerSaldoAFavorApartamento(apartamentoId).catch(() => null),
+          obtenerGasServicioData(true).catch(() => null)
         ])
         if (!mounted) return
-        const cleanTarget = String(apartamentoId || '').trim().toUpperCase().replace(/^APTO\.?\s*/i, '')
+
+        const cleanTarget = String(aptoNumero || apartamentoId || '').trim().toUpperCase().replace(/^APTO\.?\s*/i, '')
         const miDeuda = moraRes.data.find(d => {
           const num = String(d.apartamento_numero || '').trim().toUpperCase().replace(/^APTO\.?\s*/i, '')
           return (
@@ -239,11 +261,42 @@ export function ReportarPagoModal({ apartamentoId, onClose, onSuccess, config: c
           } catch (_) {}
         }
 
-        setDeudas(
-          items
-            .filter(it => it.estado === 'pendiente' && it.monto > 0)
-            .map(it => ({ ...it, selected: true }))
-        )
+        // Cargar cuotas de gas pendientes
+        const itemsGas: DeudaSeleccionable[] = []
+        if (gasRes?.data) {
+          setGasData(gasRes.data)
+          setGasBancarios(gasRes.data.config.datosPago)
+          const infoGas = obtenerTodasLasDeudasGasApartamento(gasRes.data, apartamentoId, aptoNumero)
+          if (infoGas.tieneDeuda && infoGas.cuotasPendientes.length > 0) {
+            infoGas.cuotasPendientes.forEach(c => {
+              itemsGas.push({
+                id: `gas-${c.campanaId}`,
+                label: `${c.esEspecial ? '⚡ Cuota Especial Gas' : '⛽ Cuota de Gas'}: ${c.titulo}`,
+                categoria: 'gas',
+                monto: c.monedaPrincipal === 'BS' ? c.montoBs : c.montoUsd,
+                moneda: c.monedaPrincipal,
+                estado: 'pendiente',
+                icono: c.esEspecial ? '⚡' : '⛽',
+                selected: initialTipo === 'gas' ? true : (initialTipo === 'condominio' ? false : true)
+              })
+            })
+          }
+        }
+
+        const itemsCondominio = items
+          .filter(it => it.estado === 'pendiente' && it.monto > 0)
+          .map(it => ({
+            ...it,
+            selected: initialTipo === 'gas' ? false : true
+          }))
+
+        // Si vino initialTipo === 'gas', preseleccionar pestaña de cuenta bancaria gas
+        if (initialTipo === 'gas' && itemsGas.length > 0) {
+          setCuentaActivaTab('gas')
+        }
+
+        setDeudas([...itemsGas, ...itemsCondominio])
+
         const saldoUsd = (saldoRes as any)?.saldo_a_favor_usd
         if (saldoUsd && saldoUsd > 0) {
           setSaldoAFavor(Number(saldoUsd))
@@ -256,7 +309,7 @@ export function ReportarPagoModal({ apartamentoId, onClose, onSuccess, config: c
     }
     cargar()
     return () => { mounted = false }
-  }, [apartamentoId])
+  }, [apartamentoId, aptoNumero, initialTipo])
 
   // Auto-scroll al botón cuando sube comprobante
   useEffect(() => {
@@ -304,6 +357,8 @@ export function ReportarPagoModal({ apartamentoId, onClose, onSuccess, config: c
 
   const seleccionarTodas = () => setDeudas(prev => prev.map(d => ({ ...d, selected: true })))
   const deseleccionarTodas = () => setDeudas(prev => prev.map(d => ({ ...d, selected: false })))
+  const seleccionarSoloGas = () => setDeudas(prev => prev.map(d => ({ ...d, selected: d.categoria === 'gas' })))
+  const seleccionarSoloCondominio = () => setDeudas(prev => prev.map(d => ({ ...d, selected: d.categoria !== 'gas' })))
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0] ?? null
@@ -352,6 +407,30 @@ export function ReportarPagoModal({ apartamentoId, onClose, onSuccess, config: c
       ? 'efectivo_usd'
       : (metodo || 'transferencia_bs')
 
+    // Sincronizar cuotas de gas pagadas
+    const itemsGas = deudasSeleccionadas.filter(d => d.categoria === 'gas')
+    if (itemsGas.length > 0) {
+      for (const itemGas of itemsGas) {
+        const campanaId = itemGas.id.replace(/^gas-/, '')
+        try {
+          await reportarPagoGasResidente({
+            jornadaId: campanaId.startsWith('activa') ? undefined : campanaId,
+            apartamentoId,
+            apartamentoNumero: aptoNumero || '',
+            monto: itemGas.monto,
+            moneda: itemGas.moneda,
+            metodoPago: metodoMapeado,
+            referencia: refEfectiva,
+            fechaPago: new Date().toISOString().slice(0, 10),
+            observaciones: `Reportado vía portal de pagos · Banco: ${bancoEfectivo} · Ref: ${refEfectiva}`,
+            tasaBcv
+          })
+        } catch (eGas) {
+          console.warn('[ReportarPagoModal] Error reportando cuota de gas:', eGas)
+        }
+      }
+    }
+
     const { error: pagoErr } = await reportarPago({
       apartamento_id: apartamentoId,
       monto_bs: montoFinalBs,
@@ -364,6 +443,9 @@ export function ReportarPagoModal({ apartamentoId, onClose, onSuccess, config: c
     })
 
     if (pagoErr) { setError(pagoErr); setLoading(false); return }
+
+    appCache.invalidateTags(['gas', 'deudas_gas', 'saldos', 'recibos', 'mora', 'pagos'])
+
     setStep('exito')
     setLoading(false)
   }
@@ -547,6 +629,53 @@ export function ReportarPagoModal({ apartamentoId, onClose, onSuccess, config: c
           </div>
         ) : (
           <>
+            {/* Filtros rápidos: Todo / Solo Gas / Solo Condominio */}
+            <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
+              <button
+                type="button"
+                onClick={seleccionarTodas}
+                style={{
+                  flex: 1, padding: '6px 10px', borderRadius: '8px', border: '1px solid #333',
+                  background: todasSel ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.03)',
+                  color: todasSel ? '#fff' : '#888', fontSize: '11px', fontWeight: 700, cursor: 'pointer'
+                }}
+              >
+                Todo
+              </button>
+              {deudas.some(d => d.categoria === 'gas') && (
+                <button
+                  type="button"
+                  onClick={seleccionarSoloGas}
+                  style={{
+                    flex: 1, padding: '6px 10px', borderRadius: '8px',
+                    border: '1px solid rgba(249,115,22,0.35)',
+                    background: deudas.filter(d => d.selected).every(d => d.categoria === 'gas') && deudas.some(d => d.selected)
+                      ? 'rgba(249,115,22,0.2)'
+                      : 'rgba(249,115,22,0.06)',
+                    color: 'var(--color-accent, #f97316)', fontSize: '11px', fontWeight: 800, cursor: 'pointer'
+                  }}
+                >
+                  Solo Gas ⛽
+                </button>
+              )}
+              {deudas.some(d => d.categoria !== 'gas') && (
+                <button
+                  type="button"
+                  onClick={seleccionarSoloCondominio}
+                  style={{
+                    flex: 1, padding: '6px 10px', borderRadius: '8px',
+                    border: '1px solid rgba(59,130,246,0.35)',
+                    background: deudas.filter(d => d.selected).every(d => d.categoria !== 'gas') && deudas.some(d => d.selected)
+                      ? 'rgba(59,130,246,0.2)'
+                      : 'rgba(59,130,246,0.06)',
+                    color: '#60a5fa', fontSize: '11px', fontWeight: 800, cursor: 'pointer'
+                  }}
+                >
+                  Solo Condominio 🏢
+                </button>
+              )}
+            </div>
+
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
               <span style={{ color: '#888', fontSize: '12px' }}>{deudas.filter(d => d.selected).length} de {deudas.length} seleccionados</span>
               <button type="button" onClick={todasSel ? deseleccionarTodas : seleccionarTodas}
@@ -568,8 +697,23 @@ export function ReportarPagoModal({ apartamentoId, onClose, onSuccess, config: c
                     style={{ width: '18px', height: '18px', accentColor: 'var(--color-accent, #f97316)', cursor: 'pointer', flexShrink: 0 }} />
                   <span style={{ fontSize: '18px', flexShrink: 0 }}>{deuda.icono || '📌'}</span>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ color: '#fff', fontSize: '13px', fontWeight: 600, marginBottom: '2px' }}>{deuda.label}</p>
-                    <p style={{ color: '#aaa', fontSize: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
+                      <p style={{ color: '#fff', fontSize: '13px', fontWeight: 600, margin: 0 }}>{deuda.label}</p>
+                      {deuda.categoria === 'gas' ? (
+                        <span style={{
+                          fontSize: '9px', padding: '1px 5px', borderRadius: '4px',
+                          background: 'rgba(249,115,22,0.2)', color: 'var(--color-accent, #f97316)',
+                          fontWeight: 800
+                        }}>GAS</span>
+                      ) : (
+                        <span style={{
+                          fontSize: '9px', padding: '1px 5px', borderRadius: '4px',
+                          background: 'rgba(59,130,246,0.15)', color: '#60a5fa',
+                          fontWeight: 800
+                        }}>CONDOMINIO</span>
+                      )}
+                    </div>
+                    <p style={{ color: '#aaa', fontSize: '12px', margin: 0 }}>
                       {deuda.moneda === 'USD' ? (
                         <>
                           <strong style={{ color: '#60a5fa' }}>${deuda.monto.toFixed(2)} USD</strong>
@@ -821,10 +965,96 @@ export function ReportarPagoModal({ apartamentoId, onClose, onSuccess, config: c
           ))}
         </div>
 
-        {/* Datos según método */}
-        {metodo === 'transferencia' && (
+        {/* Selector de cuenta si seleccionó tanto Gas como Condominio */}
+        {deudasSeleccionadas.some(d => d.categoria === 'gas') && deudasSeleccionadas.some(d => d.categoria !== 'gas') && (
+          <div style={{ marginBottom: '14px' }}>
+            <div style={{ fontSize: '11.5px', color: '#fb923c', marginBottom: '6px', textAlign: 'center', fontWeight: 600 }}>
+              💡 Seleccionaste pagar Gas y Condominio. Selecciona cuál cuenta deseas consultar:
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                type="button"
+                onClick={() => setCuentaActivaTab('gas')}
+                style={{
+                  flex: 1, padding: '8px 10px', borderRadius: '10px',
+                  border: cuentaActivaTab === 'gas' ? '2px solid var(--color-accent, #f97316)' : '1px solid #333',
+                  background: cuentaActivaTab === 'gas' ? 'rgba(249,115,22,0.18)' : 'rgba(255,255,255,0.03)',
+                  color: cuentaActivaTab === 'gas' ? 'var(--color-accent, #f97316)' : '#aaa',
+                  fontWeight: 700, fontSize: '12px', cursor: 'pointer'
+                }}
+              >
+                ⛽ Cuenta de Gas
+              </button>
+              <button
+                type="button"
+                onClick={() => setCuentaActivaTab('condominio')}
+                style={{
+                  flex: 1, padding: '8px 10px', borderRadius: '10px',
+                  border: cuentaActivaTab === 'condominio' ? '2px solid #3b82f6' : '1px solid #333',
+                  background: cuentaActivaTab === 'condominio' ? 'rgba(59,130,246,0.18)' : 'rgba(255,255,255,0.03)',
+                  color: cuentaActivaTab === 'condominio' ? '#60a5fa' : '#aaa',
+                  fontWeight: 700, fontSize: '12px', cursor: 'pointer'
+                }}
+              >
+                🏢 Cuenta Condominio
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Datos de cuenta para Gas */}
+        {(
+          (deudasSeleccionadas.some(d => d.categoria === 'gas') && !deudasSeleccionadas.some(d => d.categoria !== 'gas')) ||
+          (deudasSeleccionadas.some(d => d.categoria === 'gas') && cuentaActivaTab === 'gas')
+        ) && (metodo === 'transferencia' || metodo === 'pago_movil') && (
+          <div style={{ background: 'rgba(249,115,22,0.08)', border: '1px solid rgba(249,115,22,0.28)', borderRadius: '14px', padding: '14px', marginBottom: '16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+              <p style={{ color: 'var(--color-accent, #f97316)', fontSize: '12px', fontWeight: 800, margin: 0, letterSpacing: '0.05em' }}>
+                ⛽ DATOS PAGO DE GAS COMUNAL
+              </p>
+              {gasBancarios && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const text = [
+                      `Banco: ${gasBancarios.banco}`,
+                      `Teléfono: ${gasBancarios.telefono}`,
+                      `Cédula/RIF: ${gasBancarios.rifCedula}`,
+                      `Titular: ${gasBancarios.titular}`,
+                      gasBancarios.nota ? `Concepto: ${gasBancarios.nota}` : ''
+                    ].filter(Boolean).join('\n')
+                    await copyToClipboard(text)
+                  }}
+                  style={{
+                    background: 'rgba(249,115,22,0.2)', border: '1px solid rgba(249,115,22,0.35)',
+                    borderRadius: '6px', color: '#fff', fontSize: '11px',
+                    fontWeight: 700, padding: '3px 8px', cursor: 'pointer'
+                  }}
+                >
+                  ⧉ Copiar Todo
+                </button>
+              )}
+            </div>
+            {gasBancarios?.banco && <DataRow label="Banco" value={gasBancarios.banco} />}
+            {gasBancarios?.telefono && <DataRow label="Teléfono / Pago Móvil" value={gasBancarios.telefono} />}
+            {gasBancarios?.rifCedula && <DataRow label="Cédula / RIF" value={gasBancarios.rifCedula} />}
+            {gasBancarios?.titular && <DataRow label="Titular de la Cuenta" value={gasBancarios.titular} />}
+            {gasBancarios?.tipoCuenta && <DataRow label="Tipo de Cuenta" value={gasBancarios.tipoCuenta} />}
+            {gasBancarios?.nota && (
+              <div style={{ fontSize: '11.5px', color: '#fca5a5', marginTop: '6px', backgroundColor: 'rgba(239, 68, 68, 0.1)', padding: '6px 10px', borderRadius: '8px' }}>
+                📌 {gasBancarios.nota}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Datos de cuenta para Condominio */}
+        {(
+          !deudasSeleccionadas.some(d => d.categoria === 'gas') ||
+          cuentaActivaTab === 'condominio'
+        ) && metodo === 'transferencia' && (
           <div style={{ background: 'rgba(59,130,246,0.07)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: '14px', padding: '14px', marginBottom: '16px' }}>
-            <p style={{ color: '#60a5fa', fontSize: '12px', fontWeight: 700, marginBottom: '12px', letterSpacing: '0.05em' }}>💳 DATOS BANCARIOS (PAGO EN BS)</p>
+            <p style={{ color: '#60a5fa', fontSize: '12px', fontWeight: 700, marginBottom: '12px', letterSpacing: '0.05em' }}>💳 DATOS BANCARIOS CONDOMINIO (BS)</p>
             {config?.banco && <DataRow label="Banco" value={config.banco} />}
             {config?.titular_cuenta && <DataRow label="Titular" value={config.titular_cuenta} />}
             {config?.cedula_cuenta && <DataRow label="Cédula / RIF" value={config.cedula_cuenta} />}
@@ -838,9 +1068,12 @@ export function ReportarPagoModal({ apartamentoId, onClose, onSuccess, config: c
           </div>
         )}
 
-        {metodo === 'pago_movil' && (
+        {(
+          !deudasSeleccionadas.some(d => d.categoria === 'gas') ||
+          cuentaActivaTab === 'condominio'
+        ) && metodo === 'pago_movil' && (
           <div style={{ background: 'rgba(139,92,246,0.07)', border: '1px solid rgba(139,92,246,0.2)', borderRadius: '14px', padding: '14px', marginBottom: '16px' }}>
-            <p style={{ color: '#a78bfa', fontSize: '12px', fontWeight: 700, marginBottom: '12px', letterSpacing: '0.05em' }}>📱 DATOS PAGO MÓVIL (BS)</p>
+            <p style={{ color: '#a78bfa', fontSize: '12px', fontWeight: 700, marginBottom: '12px', letterSpacing: '0.05em' }}>📱 DATOS PAGO MÓVIL CONDOMINIO (BS)</p>
             {config?.pago_movil_banco && <DataRow label="Banco" value={config.pago_movil_banco} />}
             {config?.pago_movil_cedula && <DataRow label="Cédula / RIF" value={config.pago_movil_cedula} />}
             {config?.pago_movil_telefono && <DataRow label="Teléfono" value={config.pago_movil_telefono} />}

@@ -935,7 +935,9 @@ export const AdminRecibosEmitidos: React.FC = () => {
         referencia: esHistoricoRecibo ? 'REGISTRO HISTÓRICO' : undefined,
         banco: esHistoricoRecibo ? 'Administración Anterior' : undefined,
         banco_origen: esHistoricoRecibo ? 'Administración Anterior' : undefined,
-      } : undefined
+      } : undefined,
+      undefined,
+      r.data_json?.donaciones_espacios_comunes
     )
 
     doc.save(`Recibo_Apto${r.apartamento?.numero}_${mesLabel}${anio}.pdf`)

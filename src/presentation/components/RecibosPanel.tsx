@@ -367,7 +367,8 @@ export function RecibosPanel({ onClose }: Props) {
         anio,
         recibo.data_json?.notas_residentes,
         pagoInfo,
-        docTitulo
+        docTitulo,
+        recibo.data_json?.donaciones_espacios_comunes
       )
 
       const nombreArchivo = esDeudaAtrasada
@@ -1035,6 +1036,32 @@ export function RecibosPanel({ onClose }: Props) {
                     </div>
                   </div>
 
+                  {/* Descuento por Donación de Espacios Comunes */}
+                  {Number(recibo.data_json?.ahorro_donaciones_usd || 0) > 0 && (
+                    <div style={{
+                      backgroundColor: 'rgba(34, 197, 94, 0.08)',
+                      border: '1px solid rgba(34, 197, 94, 0.3)',
+                      borderRadius: '10px',
+                      padding: '8px 12px',
+                      marginBottom: '14px',
+                      fontSize: '12px',
+                      color: '#86efac',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      flexWrap: 'wrap',
+                      gap: '8px'
+                    }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span>🎁</span>
+                        <strong>Ahorro por uso de espacios comunes:</strong> Descuento aplicado directamente a tu cuota.
+                      </span>
+                      <span style={{ color: '#4ade80', fontWeight: 800 }}>
+                        -${fmtUsd(recibo.data_json.ahorro_donaciones_usd)} USD (-Bs. {fmtBs(recibo.data_json.ahorro_donaciones_bs || 0)})
+                      </span>
+                    </div>
+                  )}
+
                   {/* Abonos parciales recibidos en este recibo */}
                   {!estaPagado && Boolean(recibo.data_json?.abonos?.length) && (
                     <div style={{
@@ -1283,6 +1310,39 @@ export function RecibosPanel({ onClose }: Props) {
                               </div>
                             </div>
                           ))}
+                        </div>
+                      )}
+
+                      {Boolean(recibo.data_json?.donaciones_espacios_comunes?.length) && (
+                        <div style={{ marginTop: '12px', backgroundColor: 'rgba(34, 197, 94, 0.05)', border: '1px solid rgba(34, 197, 94, 0.2)', borderRadius: '8px', padding: '10px 12px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                            <span style={{ color: '#4ade80', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <span>🎁</span> Donaciones Espacios Comunes (Descontadas de Gastos)
+                            </span>
+                            <span style={{ color: '#86efac', fontSize: '11px', fontWeight: 800 }}>
+                              Total Edificio: -${fmtUsd(recibo.data_json.total_donaciones_usd || 0)} USD
+                            </span>
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            {recibo.data_json.donaciones_espacios_comunes.map((d: any, idx: number) => (
+                              <div
+                                key={idx}
+                                style={{
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  alignItems: 'center',
+                                  fontSize: '11.5px',
+                                  color: '#cbd5e1'
+                                }}
+                              >
+                                <span>📍 {d.nombreEspacio}: {d.concepto}</span>
+                                <div style={{ display: 'flex', gap: '10px', color: '#4ade80', fontWeight: 700 }}>
+                                  <span>-Bs. {fmtBs(d.monto_bs)}</span>
+                                  <span>-${fmtUsd(d.monto_usd)}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       )}
 

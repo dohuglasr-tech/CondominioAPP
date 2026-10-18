@@ -806,7 +806,6 @@ export async function guardarMontoReciboPersonalizado(params: EditarMontoCuotaPa
     const montoUsd = moneda === 'USD' ? montoNum : Number((montoNum / tasaBcvAplicada).toFixed(2))
     const montoBs  = moneda === 'BS'  ? montoNum : Number((montoNum * tasaBcvAplicada).toFixed(2))
     const fechaEfectiva = fechaPago || new Date().toISOString().slice(0, 10)
-    const refLimpia = referencia?.trim() || (estado === 'pagado' ? `CONCIL-${Date.now().toString().slice(-6)}` : '')
 
     // 1. Localizar recibo existente por ID o por (apartamento_id, mes_facturado)
     let targetReciboId = (reciboId && !reciboId.startsWith('temp-')) ? reciboId : null
@@ -834,6 +833,14 @@ export async function guardarMontoReciboPersonalizado(params: EditarMontoCuotaPa
 
     const prevJson = (reciboExistente?.data_json && typeof reciboExistente.data_json === 'object') ? reciboExistente.data_json : {}
 
+    // Preservar y priorizar la referencia bancaria:
+    // 1. Si el usuario ingresó una referencia explícita, se usa
+    // 2. Si no la ingresó en este envío, pero ya existía una registrada en el recibo, se preserva
+    // 3. Fallback solo si es pagado y no existía ninguna referencia previa
+    const refIngresada = (referencia !== undefined && referencia !== null) ? String(referencia).trim() : ''
+    const refPrevia = prevJson?.pago_info?.referencia || prevJson?.referencia || prevJson?.ultima_referencia || ''
+    const refFinal = refIngresada || refPrevia || (estado === 'pagado' ? `CONCIL-${Date.now().toString().slice(-6)}` : '')
+
     const dataJsonMerged = {
       ...prevJson,
       editado_manualmente: true,
@@ -842,11 +849,13 @@ export async function guardarMontoReciboPersonalizado(params: EditarMontoCuotaPa
       es_indexado: !isBs,
       editado_por: autorNombre || 'Administrador',
       editado_at: new Date().toISOString(),
+      ultima_referencia: refFinal || refPrevia || null,
+      pago_historico: estado === 'pagado' ? null : (prevJson?.pago_info || prevJson?.pago_historico || null),
       pago_info: estado === 'pagado' ? {
-        referencia: refLimpia,
-        metodo: metodo || 'Conciliación Manual Admin',
+        referencia: refFinal,
+        metodo: metodo || prevJson?.pago_info?.metodo || 'Conciliación Manual Admin',
         fecha_pago: fechaEfectiva,
-        nota: nota || null
+        nota: nota !== undefined && nota !== null ? nota : (prevJson?.pago_info?.nota || null)
       } : null
     }
 
@@ -908,7 +917,7 @@ export async function guardarMontoReciboPersonalizado(params: EditarMontoCuotaPa
             .from('pagos_reportados')
             .select('id')
             .eq('apartamento_id', apartamentoId)
-            .eq('referencia', refLimpia || 'DIRECTO')
+            .eq('referencia', refFinal || 'DIRECTO')
             .maybeSingle()
 
           if (!yaExistePago?.id) {
@@ -921,7 +930,7 @@ export async function guardarMontoReciboPersonalizado(params: EditarMontoCuotaPa
                 monto_usd: montoUsd > 0 ? montoUsd : null,
                 monto_bs: montoBs,
                 metodo: metodoDb,
-                referencia: refLimpia || 'DIRECTO',
+                referencia: refFinal || 'DIRECTO',
                 fecha_pago: fechaEfectiva,
                 fecha_revision: new Date().toISOString(),
                 estado: 'aprobado',
@@ -975,6 +984,7 @@ export async function guardarMontoReciboPersonalizado(params: EditarMontoCuotaPa
 
     // 5. Invalida todas las etiquetas de caché para sincronización total inmediata
     appCache.invalidateTags(['recibos', 'saldos', 'mora', 'apartamentos', 'calendario_config', 'pagos'])
+    appCache.invalidatePattern(/^calendario_matriz/)
 
     return { success: true, error: null }
   } catch (err: any) {

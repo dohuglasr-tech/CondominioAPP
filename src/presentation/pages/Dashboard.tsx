@@ -41,6 +41,7 @@ export function Dashboard() {
   const residenteNombre = p?.nombre_completo || 'Propietario'
 
   const [modalOpen, setModalOpen] = useState(false)
+  const [modalTipoPago, setModalTipoPago] = useState<'todos' | 'gas' | 'condominio'>('todos')
   const [ocultarSaldos, setOcultarSaldos] = useState(false)
   const [alicuota, setAlicuota] = useState<number>(1.59)
   const [esPenthouse, setEsPenthouse] = useState(false)
@@ -99,6 +100,19 @@ export function Dashboard() {
     recibosPendientesList.length <= 1
   ) || tieneAbonoParcial
   const fmtBs = (m: number) => (Number(m) || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+  // ── Sincronización de Deuda Total: Condominio + Servicio de Gas ──
+  const deudaCondominioBs = deudaBs
+  const deudaCondominioUsd = deudaUsd
+  const tieneDeudaCondominio = tieneDeudaReal
+
+  const deudaGasBs = deudaGas?.tieneDeuda ? Number(deudaGas.montoBs || 0) : 0
+  const deudaGasUsd = deudaGas?.tieneDeuda ? Number(deudaGas.montoUsd || 0) : 0
+  const tieneDeudaGas = Boolean(deudaGas?.tieneDeuda && (deudaGasBs > 0.05 || deudaGasUsd > 0.05))
+
+  const deudaTotalConsolidadaBs = deudaCondominioBs + deudaGasBs
+  const deudaTotalConsolidadaUsd = deudaCondominioUsd + deudaGasUsd
+  const tieneDeudaTotal = tieneDeudaCondominio || tieneDeudaGas
 
 
   // Cargar datos del apartamento y alícuota real impuesta por el administrador
@@ -226,9 +240,29 @@ export function Dashboard() {
     cargarApartamentoInfo(true)
     cargarDatosResidente(true)
 
-    if (!apartamentoId) return
+    // Escuchar eventos broadcast de actualización de gas comunal
+    const onGasUpdated = () => {
+      appCache.invalidateTags(['gas', 'saldos', 'recibos', 'mora'])
+      cargarDatosResidente(true)
+    }
+    window.addEventListener('condominio_gas_updated', onGasUpdated)
 
-    // Suscripción Realtime para actualizar pagos o recibos inmediatamente
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'gas_servicio_cache' || e.key === 'condominio_gas_cache_v2') {
+        appCache.invalidateTags(['gas'])
+        cargarDatosResidente(true)
+      }
+    }
+    window.addEventListener('storage', onStorage)
+
+    if (!apartamentoId) {
+      return () => {
+        window.removeEventListener('condominio_gas_updated', onGasUpdated)
+        window.removeEventListener('storage', onStorage)
+      }
+    }
+
+    // Suscripción Realtime para actualizar pagos, recibos o gas inmediatamente
     const channelId = `dashboard_resident_${apartamentoId}_${Math.random().toString(36).slice(2, 7)}`
     const channel = supabase
       .channel(channelId)
@@ -248,9 +282,21 @@ export function Dashboard() {
           cargarDatosResidente(true)
         }
       )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'casos_comunidad' },
+        (payload: any) => {
+          if (payload?.new?.tipo === 'config_gas_servicio' || payload?.old?.tipo === 'config_gas_servicio') {
+            appCache.invalidateTags(['gas', 'saldos'])
+            cargarDatosResidente(true)
+          }
+        }
+      )
       .subscribe()
 
     return () => {
+      window.removeEventListener('condominio_gas_updated', onGasUpdated)
+      window.removeEventListener('storage', onStorage)
       supabase.removeChannel(channel)
     }
   }, [apartamentoId, cargarApartamentoInfo, cargarDatosResidente])
@@ -272,10 +318,12 @@ export function Dashboard() {
       {modalOpen && (
         <ReportarPagoModal
           apartamentoId={apartamentoId}
+          aptoNumero={aptoNumero}
+          initialTipo={modalTipoPago}
           onClose={() => setModalOpen(false)}
           onSuccess={() => {
             setModalOpen(false)
-            cargarDatosResidente()
+            cargarDatosResidente(true)
           }}
         />
       )}
@@ -434,12 +482,12 @@ export function Dashboard() {
               </button>
             </div>
 
-            {/* Gran cifra en Bolívares */}
+            {/* Gran cifra en Bolívares (Consolidada: Condominio + Gas) */}
             <div style={{ color: '#fff', fontSize: '34px', fontWeight: 900, letterSpacing: '-0.5px', lineHeight: 1.1 }}>
-              {ocultarSaldos ? 'Bs. ••••••' : `Bs. ${(deudaBs > 0 ? deudaBs : 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+              {ocultarSaldos ? 'Bs. ••••••' : `Bs. ${(deudaTotalConsolidadaBs > 0 ? deudaTotalConsolidadaBs : 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
             </div>
 
-            {/* Píldora de Estatus y Equivalente en USD */}
+            {/* Píldora de Estatus y Equivalente en USD Consolidado */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '10px', marginBottom: '18px', flexWrap: 'wrap' }}>
               {ultimoPago?.estado === 'pendiente' ? (
                 <span style={{
@@ -456,11 +504,11 @@ export function Dashboard() {
                 }}>
                   ⏳ Pago en Verificación
                 </span>
-              ) : (moraRecord && tieneDeudaReal) ? (
+              ) : tieneDeudaTotal ? (
                 <span style={{
-                  backgroundColor: soloDebeDiferenciaUltimoRecibo ? 'rgba(56, 189, 248, 0.15)' : (moraRecord.tasa_riesgo === 'azul' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(239, 68, 68, 0.15)'),
-                  color: soloDebeDiferenciaUltimoRecibo ? '#38bdf8' : (moraRecord.tasa_riesgo === 'azul' ? '#60a5fa' : '#ef4444'),
-                  border: `1px solid ${soloDebeDiferenciaUltimoRecibo ? 'rgba(56, 189, 248, 0.3)' : (moraRecord.tasa_riesgo === 'azul' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(239, 68, 68, 0.3)')}`,
+                  backgroundColor: tieneDeudaGas && !tieneDeudaCondominio ? 'rgba(249, 115, 22, 0.15)' : (soloDebeDiferenciaUltimoRecibo ? 'rgba(56, 189, 248, 0.15)' : 'rgba(239, 68, 68, 0.15)'),
+                  color: tieneDeudaGas && !tieneDeudaCondominio ? '#fb923c' : (soloDebeDiferenciaUltimoRecibo ? '#38bdf8' : '#ef4444'),
+                  border: `1px solid ${tieneDeudaGas && !tieneDeudaCondominio ? 'rgba(249, 115, 22, 0.35)' : 'rgba(239, 68, 68, 0.3)'}`,
                   borderRadius: '999px',
                   padding: '3px 10px',
                   fontSize: '11px',
@@ -469,22 +517,7 @@ export function Dashboard() {
                   alignItems: 'center',
                   gap: '5px'
                 }}>
-                  {soloDebeDiferenciaUltimoRecibo ? '🔵 Diferencia Pendiente' : (moraRecord.tasa_riesgo === 'azul' ? '🔵 Recibo al Cobro (<1m)' : `⚠️ En Lista de Mora (${moraRecord.meses_deuda} meses)`)}
-                </span>
-              ) : deudaUsd > 0 ? (
-                <span style={{
-                  backgroundColor: 'rgba(239, 68, 68, 0.14)',
-                  color: '#ef4444',
-                  border: '1px solid rgba(239, 68, 68, 0.28)',
-                  borderRadius: '999px',
-                  padding: '3px 10px',
-                  fontSize: '11px',
-                  fontWeight: 800,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '5px'
-                }}>
-                  🔴 Recibo Pendiente
+                  {tieneDeudaGas && !tieneDeudaCondominio ? '⛽ Solo Cuota de Gas Pendiente' : (tieneDeudaCondominio && tieneDeudaGas ? '⚠️ Condominio y Gas Pendientes' : (soloDebeDiferenciaUltimoRecibo ? '🔵 Diferencia Pendiente' : '🔴 Pago Pendiente'))}
                 </span>
               ) : (
                 <span style={{
@@ -499,13 +532,136 @@ export function Dashboard() {
                   alignItems: 'center',
                   gap: '5px'
                 }}>
-                  ● Al día · Solvente
+                  ● Al día · Solvente (Total)
                 </span>
               )}
 
               <span style={{ color: '#8e8e93', fontSize: '12px', fontWeight: 600 }}>
-                {ocultarSaldos ? '••••' : `≈ $${deudaUsd.toFixed(2)} USD`}
+                {ocultarSaldos ? '••••' : `≈ $${deudaTotalConsolidadaUsd.toFixed(2)} USD`}
               </span>
+            </div>
+
+            {/* ── DESGLOSE SINCRONIZADO: CONDOMINIO VS GAS COMUNAL (MÓVIL) ── */}
+            <div style={{
+              backgroundColor: 'rgba(255, 255, 255, 0.04)',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              borderRadius: '16px',
+              padding: '12px 14px',
+              marginBottom: '16px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ color: '#94a3b8', fontSize: '10.5px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Desglose Sincronizado de Deuda:
+                </span>
+                <span style={{ fontSize: '10px', color: '#38bdf8', fontWeight: 700 }}>
+                  Tiempo Real
+                </span>
+              </div>
+
+              {/* Fila Condominio */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ color: '#cbd5e1', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span>🏢</span> Condominio Ordinario:
+                </span>
+                <div style={{ textAlign: 'right' }}>
+                  <span style={{ color: tieneDeudaCondominio ? '#fff' : '#22c55e', fontWeight: 800, fontSize: '12.5px' }}>
+                    {ocultarSaldos ? '••••' : (tieneDeudaCondominio ? `Bs. ${fmtBs(deudaCondominioBs)}` : 'Solvente ✅')}
+                  </span>
+                  {tieneDeudaCondominio && (
+                    <span style={{ color: '#8e8e93', fontSize: '10px', display: 'block' }}>
+                      {ocultarSaldos ? '••••' : `≈ $${deudaCondominioUsd.toFixed(2)} USD`}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Fila Gas */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '8px', borderTop: '1px dashed rgba(255, 255, 255, 0.08)' }}>
+                <span style={{ color: '#cbd5e1', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span>⛽</span> Servicio Gas Comunal:
+                </span>
+                <div style={{ textAlign: 'right' }}>
+                  <span style={{ color: tieneDeudaGas ? '#fb923c' : '#22c55e', fontWeight: 800, fontSize: '12.5px' }}>
+                    {ocultarSaldos ? '••••' : (tieneDeudaGas ? `Bs. ${fmtBs(deudaGasBs)}` : 'Solvente ✅')}
+                  </span>
+                  {tieneDeudaGas && (
+                    <span style={{ color: 'var(--color-accent, #f97316)', fontSize: '10px', display: 'block', fontWeight: 700 }}>
+                      {ocultarSaldos ? '••••' : `≈ $${deudaGasUsd.toFixed(2)} USD`}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Botones de Pago Específicos para el Residente */}
+              {tieneDeudaTotal && (
+                <div style={{ display: 'flex', gap: '6px', marginTop: '4px', paddingTop: '8px', borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                  {tieneDeudaGas && (
+                    <button
+                      onClick={() => {
+                        setModalTipoPago('gas')
+                        setModalOpen(true)
+                      }}
+                      style={{
+                        flex: 1,
+                        backgroundColor: 'rgba(249, 115, 22, 0.16)',
+                        color: 'var(--color-accent, #f97316)',
+                        border: '1px solid rgba(249, 115, 22, 0.35)',
+                        borderRadius: '8px',
+                        padding: '7px 6px',
+                        fontSize: '11px',
+                        fontWeight: 800,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Pagar Gas ⛽
+                    </button>
+                  )}
+                  {tieneDeudaCondominio && (
+                    <button
+                      onClick={() => {
+                        setModalTipoPago('condominio')
+                        setModalOpen(true)
+                      }}
+                      style={{
+                        flex: 1,
+                        backgroundColor: 'rgba(59, 130, 246, 0.16)',
+                        color: '#60a5fa',
+                        border: '1px solid rgba(59, 130, 246, 0.35)',
+                        borderRadius: '8px',
+                        padding: '7px 6px',
+                        fontSize: '11px',
+                        fontWeight: 800,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Pagar Cond. 🏢
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      setModalTipoPago('todos')
+                      setModalOpen(true)
+                    }}
+                    style={{
+                      flex: 1,
+                      backgroundColor: 'var(--color-accent, #f97316)',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: '8px',
+                      padding: '7px 6px',
+                      fontSize: '11px',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      boxShadow: 'var(--color-brand-shadow, 0 2px 8px rgba(249, 115, 22, 0.4))'
+                    }}
+                  >
+                    Pagar Todo 💳
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Desglose de Deudas por Modalidad (Bolívar Fijo vs Dólar BCV) - Solo si tiene deuda en Bolívares */}
@@ -974,6 +1130,21 @@ export function Dashboard() {
                 </div>
                 <span className="quick-action-label">Normas</span>
               </button>
+
+              {/* 8. Gas Comunal */}
+              <button
+                className="quick-action-btn"
+                onClick={() => navigate('/gas')}
+              >
+                <div className="quick-action-circle" style={{
+                  backgroundColor: 'rgba(249, 115, 22, 0.15)',
+                  border: '1px solid rgba(249, 115, 22, 0.4)',
+                  color: '#f97316'
+                }}>
+                  <span style={{ fontSize: '22px' }}>⛽</span>
+                </div>
+                <span className="quick-action-label" style={{ color: '#fed7aa' }}>Gas</span>
+              </button>
             </div>
           </div>
 
@@ -1334,7 +1505,7 @@ export function Dashboard() {
 
                 <div style={{ display: 'flex', gap: '10px' }}>
                   <button
-                    onClick={() => navigate('/gas')}
+                    onClick={() => navigate('/gas?tab=calendario')}
                     style={{
                       background: 'rgba(255, 255, 255, 0.08)',
                       border: '1px solid rgba(255, 255, 255, 0.16)',
@@ -1343,13 +1514,20 @@ export function Dashboard() {
                       borderRadius: '12px',
                       fontSize: '13px',
                       fontWeight: 700,
-                      cursor: 'pointer'
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px'
                     }}
                   >
-                    Ver Datos Bancarios
+                    <span>📅</span>
+                    <span>Calendario Gas</span>
                   </button>
                   <button
-                    onClick={() => navigate('/gas?reportar=1')}
+                    onClick={() => {
+                      setModalTipoPago('gas')
+                      setModalOpen(true)
+                    }}
                     style={{
                       background: 'var(--color-brand-gradient, linear-gradient(135deg, #fb923c 0%, #f97316 100%))',
                       border: 'none',
@@ -1366,7 +1544,7 @@ export function Dashboard() {
                     }}
                   >
                     <span>💳</span>
-                    <span>Reportar Pago</span>
+                    <span>Pagar Cuota de Gas</span>
                   </button>
                 </div>
               </div>
@@ -1420,17 +1598,17 @@ export function Dashboard() {
                       }}>
                         ⏳ Pago en Verificación
                       </span>
-                    ) : deudaUsd > 0 ? (
+                    ) : tieneDeudaTotal ? (
                       <span style={{
-                        backgroundColor: 'rgba(239, 68, 68, 0.15)',
-                        color: '#ef4444',
-                        border: '1px solid rgba(239, 68, 68, 0.3)',
+                        backgroundColor: tieneDeudaGas && !tieneDeudaCondominio ? 'rgba(249, 115, 22, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                        color: tieneDeudaGas && !tieneDeudaCondominio ? '#fb923c' : '#ef4444',
+                        border: `1px solid ${tieneDeudaGas && !tieneDeudaCondominio ? 'rgba(249, 115, 22, 0.35)' : 'rgba(239, 68, 68, 0.3)'}`,
                         padding: '5px 12px',
                         borderRadius: '999px',
                         fontSize: '12px',
                         fontWeight: 700
                       }}>
-                        🔴 Pago Pendiente
+                        {tieneDeudaGas && !tieneDeudaCondominio ? '⛽ Solo Cuota de Gas Pendiente' : (tieneDeudaCondominio && tieneDeudaGas ? '⚠️ Deuda Condominio + Gas Pendiente' : '🔴 Pago Pendiente')}
                       </span>
                     ) : (
                       <span style={{
@@ -1448,16 +1626,168 @@ export function Dashboard() {
                   </div>
                 </div>
 
-                {/* Gran Monto */}
+                {/* Gran Monto Consolidado (Condominio + Gas) */}
                 <div style={{ color: '#fff', fontSize: '42px', fontWeight: 900, letterSpacing: '-1.5px', lineHeight: 1 }}>
-                  {ocultarSaldos ? 'Bs. ••••••' : `Bs. ${(deudaBs > 0 ? deudaBs : 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                  {ocultarSaldos ? 'Bs. ••••••' : `Bs. ${(deudaTotalConsolidadaBs > 0 ? deudaTotalConsolidadaBs : 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px', color: 'var(--color-accent, #f97316)', fontSize: '16px', fontWeight: 700 }}>
-                  <span>{ocultarSaldos ? '•••• USD' : `≈ $${deudaUsd.toFixed(2)} USD`}</span>
+                  <span>{ocultarSaldos ? '•••• USD' : `≈ $${deudaTotalConsolidadaUsd.toFixed(2)} USD`}</span>
                   <span style={{ color: '#64748b', fontSize: '13px', fontWeight: 500 }}>
-                    · {mesFacturadoTexto}
+                    · Total consolidado en tiempo real
                   </span>
+                </div>
+
+                {/* ── DESGLOSE SINCRONIZADO: CONDOMINIO VS GAS (DESKTOP) ── */}
+                <div style={{
+                  backgroundColor: 'rgba(255, 255, 255, 0.04)',
+                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                  borderRadius: '16px',
+                  padding: '16px 18px',
+                  marginTop: '18px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '12px'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.6px' }}>
+                      Estado Sincronizado por Servicio:
+                    </div>
+                    <span style={{ color: '#38bdf8', fontSize: '11px', fontWeight: 700 }}>
+                      Sincronizado con Administración ⚡
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+                    {/* Tarjeta Condominio */}
+                    <div style={{
+                      backgroundColor: 'rgba(255, 255, 255, 0.03)',
+                      border: '1px solid rgba(255, 255, 255, 0.06)',
+                      borderRadius: '12px',
+                      padding: '12px 14px'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                        <span style={{ color: '#93c5fd', fontSize: '12px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span>🏢</span> Condominio Ordinario
+                        </span>
+                        <span style={{ fontSize: '10px', color: tieneDeudaCondominio ? '#f87171' : '#22c55e', fontWeight: 800 }}>
+                          {tieneDeudaCondominio ? 'PENDIENTE' : 'SOLVENTE'}
+                        </span>
+                      </div>
+                      <div style={{ color: '#fff', fontSize: '17px', fontWeight: 900 }}>
+                        {ocultarSaldos ? '••••' : `Bs. ${fmtBs(deudaCondominioBs)}`}
+                      </div>
+                      <div style={{ color: '#94a3b8', fontSize: '11px' }}>
+                        {ocultarSaldos ? '••••' : `≈ $${deudaCondominioUsd.toFixed(2)} USD`}
+                      </div>
+                    </div>
+
+                    {/* Tarjeta Gas */}
+                    <div style={{
+                      backgroundColor: 'rgba(249, 115, 22, 0.05)',
+                      border: '1px solid rgba(249, 115, 22, 0.2)',
+                      borderRadius: '12px',
+                      padding: '12px 14px'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                        <span style={{ color: '#fed7aa', fontSize: '12px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span>⛽</span> Gas Comunal ({deudaGas?.campanaTitulo || 'Cuota'})
+                        </span>
+                        <span style={{ fontSize: '10px', color: tieneDeudaGas ? '#fb923c' : '#22c55e', fontWeight: 800 }}>
+                          {tieneDeudaGas ? 'PENDIENTE' : 'SOLVENTE'}
+                        </span>
+                      </div>
+                      <div style={{ color: '#fb923c', fontSize: '17px', fontWeight: 900 }}>
+                        {ocultarSaldos ? '••••' : `Bs. ${fmtBs(deudaGasBs)}`}
+                      </div>
+                      <div style={{ color: 'var(--color-accent, #f97316)', fontSize: '11px', fontWeight: 700 }}>
+                        {ocultarSaldos ? '••••' : `≈ $${deudaGasUsd.toFixed(2)} USD`}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Acciones de Pago Rápidas Desktop */}
+                  {tieneDeudaTotal && (
+                    <div style={{ display: 'flex', gap: '10px', paddingTop: '10px', borderTop: '1px dashed rgba(255, 255, 255, 0.08)' }}>
+                      {tieneDeudaGas && (
+                        <button
+                          onClick={() => {
+                            setModalTipoPago('gas')
+                            setModalOpen(true)
+                          }}
+                          style={{
+                            flex: 1,
+                            backgroundColor: 'rgba(249, 115, 22, 0.16)',
+                            color: 'var(--color-accent, #f97316)',
+                            border: '1px solid rgba(249, 115, 22, 0.35)',
+                            borderRadius: '10px',
+                            padding: '9px 12px',
+                            fontSize: '12px',
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '6px'
+                          }}
+                        >
+                          <span>⛽</span>
+                          <span>Pagar Gas</span>
+                        </button>
+                      )}
+                      {tieneDeudaCondominio && (
+                        <button
+                          onClick={() => {
+                            setModalTipoPago('condominio')
+                            setModalOpen(true)
+                          }}
+                          style={{
+                            flex: 1,
+                            backgroundColor: 'rgba(59, 130, 246, 0.16)',
+                            color: '#60a5fa',
+                            border: '1px solid rgba(59, 130, 246, 0.35)',
+                            borderRadius: '10px',
+                            padding: '9px 12px',
+                            fontSize: '12px',
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '6px'
+                          }}
+                        >
+                          <span>🏢</span>
+                          <span>Pagar Condominio</span>
+                        </button>
+                      )}
+                      <button
+                        onClick={() => {
+                          setModalTipoPago('todos')
+                          setModalOpen(true)
+                        }}
+                        style={{
+                          flex: 1.2,
+                          backgroundColor: 'var(--color-accent, #f97316)',
+                          color: '#fff',
+                          border: 'none',
+                          borderRadius: '10px',
+                          padding: '9px 14px',
+                          fontSize: '12px',
+                          fontWeight: 800,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '6px',
+                          boxShadow: 'var(--color-brand-shadow, 0 3px 12px rgba(249, 115, 22, 0.4))'
+                        }}
+                      >
+                        <span>💳</span>
+                        <span>Pagar Total Consolidado</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Desglose de Deudas por Modalidad (Desktop) - Solo si tiene deuda fija en Bolívares */}

@@ -16,6 +16,14 @@ export interface ReciboGastoData {
   categoria?: string
 }
 
+export interface ReciboDonacionData {
+  id?: string
+  nombreEspacio: string
+  concepto: string
+  monto_usd: number
+  monto_bs: number
+}
+
 export interface ReciboCargoData {
   id?: string
   apartamento_id?: string
@@ -77,22 +85,29 @@ export function generarPDFRecibo(
   notasResidentes?: string,
   pagoInfo?: ReciboPagoInfo,
   tituloDoc?: string,
+  donaciones?: ReciboDonacionData[]
 ): jsPDF {
   const doc = new jsPDF({ format: 'a4', unit: 'mm' })
   const cDark:   [number,number,number] = [15, 23, 42]     // Slate 900
   const cAccent: [number,number,number] = [249, 115, 22]   // Brand Orange
 
   const alicuota = getAlicuotaDecimal(apto.alicuota)
-  const totalGastosUsd = gastos.reduce((s, g) => s + (g.monto_usd || 0), 0)
-  const totalGastosBs  = gastos.reduce((s, g) => s + (g.monto_bs || 0), 0)
-  
-  const fondoEdificioUsd = totalGastosUsd * (fondoReservaPct / 100)
-  const fondoEdificioBs  = totalGastosBs  * (fondoReservaPct / 100)
-  const totalEdificioUsd = totalGastosUsd + fondoEdificioUsd
-  const totalEdificioBs  = totalGastosBs  + fondoEdificioBs
+  const totalGastosBrutosUsd = gastos.reduce((s, g) => s + (g.monto_usd || 0), 0)
+  const totalGastosBrutosBs  = gastos.reduce((s, g) => s + (g.monto_bs || 0), 0)
 
-  const subtotalUsd  = totalGastosUsd * alicuota
-  const subtotalBs   = totalGastosBs  * alicuota
+  const totalDonacionesUsd = (donaciones || []).reduce((s, d) => s + (Number(d.monto_usd) || 0), 0)
+  const totalDonacionesBs  = (donaciones || []).reduce((s, d) => s + (Number(d.monto_bs) || 0), 0)
+
+  const totalGastosNetosUsd = Math.max(0, totalGastosBrutosUsd - totalDonacionesUsd)
+  const totalGastosNetosBs  = Math.max(0, totalGastosBrutosBs - totalDonacionesBs)
+
+  const fondoEdificioUsd = totalGastosNetosUsd * (fondoReservaPct / 100)
+  const fondoEdificioBs  = totalGastosNetosBs  * (fondoReservaPct / 100)
+  const totalEdificioUsd = totalGastosNetosUsd + fondoEdificioUsd
+  const totalEdificioBs  = totalGastosNetosBs  + fondoEdificioBs
+
+  const subtotalUsd  = totalGastosNetosUsd * alicuota
+  const subtotalBs   = totalGastosNetosBs  * alicuota
   const fondoUsd     = subtotalUsd * (fondoReservaPct / 100)
   const fondoBs      = subtotalBs  * (fondoReservaPct / 100)
   const cargosApto   = apto.id ? cargos.filter(c => c.apartamento_id === apto.id) : cargos
@@ -219,11 +234,32 @@ export function generarPDFRecibo(
   })
 
   // ── 4. SUB TOTALES Y TOTAL EDIFICIO (Formato Excel Imagen 2) ──
-  const subTotalesBody: any[] = [
-    ['SUB TOTAL', `${fmtBs(totalGastosBs)} Bs`, `$ ${fmtUsd(totalGastosUsd)}`],
+  const subTotalesBody: any[] = []
+
+  if (donaciones && donaciones.length > 0) {
+    subTotalesBody.push(
+      ['SUB TOTAL GASTOS COMUNES (BRUTO)', `${fmtBs(totalGastosBrutosBs)} Bs`, `$ ${fmtUsd(totalGastosBrutosUsd)}`]
+    )
+    donaciones.forEach(d => {
+      subTotalesBody.push([
+        `(-) DONACIÓN ESPACIO COMÚN: ${(d.nombreEspacio || 'ÁREA').toUpperCase()} — ${d.concepto || 'Aporte'}`,
+        `-${fmtBs(d.monto_bs || 0)} Bs`,
+        `-$ ${fmtUsd(d.monto_usd || 0)}`
+      ])
+    })
+    subTotalesBody.push(
+      ['(=) TOTAL GASTOS COMUNES NETOS A DISTRIBUIR', `${fmtBs(totalGastosNetosBs)} Bs`, `$ ${fmtUsd(totalGastosNetosUsd)}`]
+    )
+  } else {
+    subTotalesBody.push(
+      ['SUB TOTAL', `${fmtBs(totalGastosNetosBs)} Bs`, `$ ${fmtUsd(totalGastosNetosUsd)}`]
+    )
+  }
+
+  subTotalesBody.push(
     [`FONDO DE RESERVA (${fondoReservaPct}%)`, `${fmtBs(fondoEdificioBs)} Bs`, `$ ${fmtUsd(fondoEdificioUsd)}`],
     ['TOTAL GASTOS CONDOMINIO', `${fmtBs(totalEdificioBs)} Bs`, `$ ${fmtUsd(totalEdificioUsd)}`]
-  ]
+  )
 
   if (cargosApto.length > 0) {
     cargosApto.forEach(c => {

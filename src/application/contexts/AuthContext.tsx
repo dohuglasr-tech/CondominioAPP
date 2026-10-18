@@ -242,7 +242,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     )
 
-    // ── Sincronización en tiempo real del tema y configuración del edificio ──
+    // ── Sincronización en tiempo real del tema y recarga automática global ──
     const configRealtimeChannel = supabase
       .channel('realtime_edificio_theme_sync')
       .on(
@@ -255,7 +255,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               applyTheme(newConfig.color_primario)
             }
             setConfig(prev => (prev ? { ...prev, ...newConfig } : newConfig))
+
+            // Detección de nueva versión o recarga remota automática
+            const ultimaSync = newConfig.updated_at
+            const storedSync = localStorage.getItem('domus_remote_version_sync')
+            if (storedSync && ultimaSync && storedSync !== ultimaSync) {
+              localStorage.setItem('domus_remote_version_sync', ultimaSync)
+              console.log('[Sistema] Nueva versión detectada en servidor. Reiniciando app automáticamente...')
+              sessionStorage.clear()
+              if ('caches' in window) {
+                caches.keys().then(keys => keys.forEach(k => caches.delete(k))).catch(() => {})
+              }
+              setTimeout(() => {
+                window.location.reload()
+              }, 800)
+            } else if (ultimaSync) {
+              localStorage.setItem('domus_remote_version_sync', ultimaSync)
+            }
           }
+        }
+      )
+      .on(
+        'broadcast',
+        { event: 'force_app_reload' },
+        (payload) => {
+          console.log('[Sistema] Señal de reinicio forzado recibida en este dispositivo:', payload)
+          sessionStorage.clear()
+          if ('caches' in window) {
+            caches.keys().then(keys => keys.forEach(k => caches.delete(k))).catch(() => {})
+          }
+          setTimeout(() => {
+            window.location.reload()
+          }, 500)
         }
       )
       .subscribe()

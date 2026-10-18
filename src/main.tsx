@@ -6,7 +6,7 @@ import { appCache } from './data/cacheService'
 import './index.css'
 
 // ── Control de versión y purga automática de caché de clientes ──
-const APP_BUILD_VERSION = '1.0.1'
+const APP_BUILD_VERSION = '1.0.2'
 
 try {
   const currentStoredVersion = localStorage.getItem('domus_app_version')

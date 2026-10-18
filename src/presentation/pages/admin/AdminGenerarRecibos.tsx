@@ -20,6 +20,13 @@ interface CargoEspecial {
   tipo: 'multa' | 'deuda_atrasada' | 'cuota_extraordinaria' | 'acuerdo_pago'
   descripcion: string; monto_usd: number; monto_bs?: number
 }
+export interface DonacionEspacioComun {
+  id: string
+  nombreEspacio: string
+  concepto: string
+  monto_usd: number
+  monto_bs: number
+}
 interface ConfigEdificio {
   nombre_edificio: string; rif: string | null; direccion: string | null
   email_contacto: string | null; dominio_email?: string | null; banco: string | null
@@ -72,6 +79,18 @@ export const AdminGenerarRecibos: React.FC = () => {
   const [fondoReservaPct, setFondoReservaPct] = useState(10)
   const [fondoReservaPhPct, setFondoReservaPhPct] = useState(10)
   const [gastos, setGastos]         = useState<GastoComun[]>([])
+  const [donaciones, setDonaciones] = useState<DonacionEspacioComun[]>([])
+  const [donacionForm, setDonacionForm] = useState<{
+    nombreEspacio: string
+    concepto: string
+    monto_usd: string
+    monto_bs: string
+  }>({
+    nombreEspacio: '',
+    concepto: '',
+    monto_usd: '',
+    monto_bs: '',
+  })
   const [config, setConfig]         = useState<ConfigEdificio | null>(null)
   const [loading, setLoading]       = useState(true)
 
@@ -100,14 +119,101 @@ export const AdminGenerarRecibos: React.FC = () => {
   const esHistorico = mesStr.slice(0, 7) < fechaEntradaActual
   const mesLabel = MESES[mes]
 
-  const totalGastosUsd = gastos.reduce((s, g) => s + g.monto_usd, 0)
-  const totalGastosBs  = gastos.reduce((s, g) => s + g.monto_bs,  0)
+  const totalGastosBrutosUsd = gastos.reduce((s, g) => s + (g.monto_usd || 0), 0)
+  const totalGastosBrutosBs  = gastos.reduce((s, g) => s + (g.monto_bs  || 0), 0)
+
+  const totalDonacionesUsd   = donaciones.reduce((s, d) => s + (Number(d.monto_usd) || 0), 0)
+  const totalDonacionesBs    = donaciones.reduce((s, d) => s + (Number(d.monto_bs)  || 0), 0)
+
+  const totalGastosNetosUsd  = Math.max(0, totalGastosBrutosUsd - totalDonacionesUsd)
+  const totalGastosNetosBs   = Math.max(0, totalGastosBrutosBs - totalDonacionesBs)
+
+  // Compatibilidad con referencias existentes:
+  const totalGastosUsd = totalGastosNetosUsd
+  const totalGastosBs  = totalGastosNetosBs
+
+  // ── Guardar y gestionar donaciones ────────────────────────────────────
+  const guardarDonaciones = (items: DonacionEspacioComun[]) => {
+    setDonaciones(items)
+    try {
+      localStorage.setItem(`donaciones_espacios_${mesStr}`, JSON.stringify(items))
+    } catch (e) {
+      console.warn('[AdminGenerarRecibos] Error guardando donaciones en localStorage', e)
+    }
+  }
+
+  const handleMontoUsdChange = (val: string) => {
+    const tasa = config?.tasa_bcv_actual || 0
+    const musd = parseFloat(val.replace(',', '.'))
+    if (!isNaN(musd) && tasa > 0) {
+      setDonacionForm(prev => ({
+        ...prev,
+        monto_usd: val,
+        monto_bs: (musd * tasa).toFixed(2)
+      }))
+    } else {
+      setDonacionForm(prev => ({ ...prev, monto_usd: val }))
+    }
+  }
+
+  const handleMontoBsChange = (val: string) => {
+    const tasa = config?.tasa_bcv_actual || 0
+    const mbs = parseFloat(val.replace(',', '.'))
+    if (!isNaN(mbs) && tasa > 0) {
+      setDonacionForm(prev => ({
+        ...prev,
+        monto_bs: val,
+        monto_usd: (mbs / tasa).toFixed(2)
+      }))
+    } else {
+      setDonacionForm(prev => ({ ...prev, monto_bs: val }))
+    }
+  }
+
+  const handleAgregarDonacion = () => {
+    const espacio = donacionForm.nombreEspacio.trim()
+    const concepto = donacionForm.concepto.trim()
+    const musd = parseFloat(donacionForm.monto_usd.replace(',', '.')) || 0
+    const mbs  = parseFloat(donacionForm.monto_bs.replace(',', '.')) || 0
+
+    if (!espacio) {
+      showToast('⚠️ Ingresa o selecciona el nombre del espacio común')
+      return
+    }
+    if (!concepto) {
+      showToast('⚠️ Ingresa el concepto de la donación')
+      return
+    }
+    if (musd <= 0 && mbs <= 0) {
+      showToast('⚠️ Ingresa el monto en USD o en Bolívares')
+      return
+    }
+
+    const nueva: DonacionEspacioComun = {
+      id: `don_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      nombreEspacio: espacio,
+      concepto,
+      monto_usd: musd,
+      monto_bs: mbs
+    }
+
+    const actualizadas = [...donaciones, nueva]
+    guardarDonaciones(actualizadas)
+    setDonacionForm({ nombreEspacio: '', concepto: '', monto_usd: '', monto_bs: '' })
+    showToast(`✅ Donación agregada: ${espacio} (-$${fmtUsd(musd)})`)
+  }
+
+  const handleEliminarDonacion = (id: string) => {
+    const actualizadas = donaciones.filter(d => d.id !== id)
+    guardarDonaciones(actualizadas)
+    showToast('🗑️ Donación eliminada')
+  }
 
   // ── Cargar datos ─────────────────────────────────────────────────────
   const cargarDatos = useCallback(async () => {
     setLoading(true)
     try {
-      const [configRes, gastosRes, aptosRes, perfilesRes] = await Promise.all([
+      const [configRes, gastosRes, aptosRes, perfilesRes, reciboExistRes] = await Promise.all([
         supabase.from('configuracion_edificio').select('*').limit(1).maybeSingle(),
         supabase.from('gastos_comunes').select('*')
           .gte('mes_aplicacion', mesStr).lte('mes_aplicacion', mesStr)
@@ -116,9 +222,26 @@ export const AdminGenerarRecibos: React.FC = () => {
           .select('id, numero, piso, alicuota, propietario_nombre, metros_cuadrados'),
         supabase.from('perfiles')
           .select('id, apartamento_id, nombre_completo, condicion_habitacional, propietario_nombre, propietario_email'),
+        supabase.from('recibos_generados').select('data_json')
+          .eq('mes_facturado', mesStr).limit(1).maybeSingle(),
       ])
       if (configRes.data) setConfig(configRes.data)
       if (gastosRes.data) setGastos(gastosRes.data)
+
+      // Cargar donaciones del mes: primero borrador en localStorage, luego recibo previo si existe
+      try {
+        const savedDraft = localStorage.getItem(`donaciones_espacios_${mesStr}`)
+        if (savedDraft) {
+          setDonaciones(JSON.parse(savedDraft))
+        } else if (reciboExistRes.data?.data_json?.donaciones_espacios_comunes) {
+          setDonaciones(reciboExistRes.data.data_json.donaciones_espacios_comunes)
+        } else {
+          setDonaciones([])
+        }
+      } catch {
+        setDonaciones([])
+      }
+
       if (aptosRes.data) {
         const perfilesMap = new Map<string, any>()
         perfilesRes.data?.forEach(p => {
@@ -160,11 +283,16 @@ export const AdminGenerarRecibos: React.FC = () => {
       .then(({ data }) => { if (data) setCargos(data) })
   }, [apartamentos, mesStr])
 
-  // ── Cálculo por apto ─────────────────────────────────────────────────
+  // ── Cálculo por apto (Deduciendo donaciones de espacios comunes) ─────
   const calcularApto = (apto: Apartamento) => {
     const a = getAlicuotaDecimal(apto.alicuota)
-    const subtotalUsd = totalGastosUsd * a
-    const subtotalBs  = totalGastosBs  * a
+    const subtotalBrutoUsd = totalGastosBrutosUsd * a
+    const subtotalBrutoBs  = totalGastosBrutosBs  * a
+    const ahorroUsd        = totalDonacionesUsd * a
+    const ahorroBs         = totalDonacionesBs  * a
+
+    const subtotalUsd = totalGastosNetosUsd * a
+    const subtotalBs  = totalGastosNetosBs  * a
     const esPH = apto.numero.toUpperCase().includes('PH') || apto.piso === 11
     const pctApto = esPH ? fondoReservaPhPct : fondoReservaPct
     const fondoUsd    = subtotalUsd * (pctApto / 100)
@@ -174,7 +302,15 @@ export const AdminGenerarRecibos: React.FC = () => {
     const cargosBs    = caps.reduce((s, c) => s + (c.monto_bs || 0), 0)
     const totalUsd    = subtotalUsd + fondoUsd + cargosUsd
     const totalBs     = subtotalBs  + fondoBs  + cargosBs
-    return { subtotalUsd, subtotalBs, fondoUsd, fondoBs, cargosUsd, cargosBs, totalUsd, totalBs, esPH, pctApto }
+    return {
+      subtotalBrutoUsd, subtotalBrutoBs,
+      ahorroUsd, ahorroBs,
+      subtotalUsd, subtotalBs,
+      fondoUsd, fondoBs,
+      cargosUsd, cargosBs,
+      totalUsd, totalBs,
+      esPH, pctApto
+    }
   }
 
   // ── Cargo especial ───────────────────────────────────────────────────
@@ -198,12 +334,12 @@ export const AdminGenerarRecibos: React.FC = () => {
     setCargos(prev => prev.filter(c => c.id !== id))
   }
 
-  // ── Descargar PDF ────────────────────────────────────────────────────
+  // ── Descargar PDF (Con desglose de donaciones) ────────────────────────
   const descargarPDF = (apto: Apartamento) => {
     if (!config) return
     const esPH = apto.numero.toUpperCase().includes('PH') || apto.piso === 11
     const pct = esPH ? fondoReservaPhPct : fondoReservaPct
-    const doc = generarPDF(apto, gastos, cargos, config, pct, mesLabel, anio, notasResidentes)
+    const doc = generarPDF(apto, gastos, cargos, config, pct, mesLabel, anio, notasResidentes, undefined, undefined, donaciones)
     doc.save(`Recibo_Apto${apto.numero}_${mesLabel}${anio}.pdf`)
   }
 
@@ -222,16 +358,16 @@ export const AdminGenerarRecibos: React.FC = () => {
       console.warn('[Emisión] Advertencia al limpiar mes anterior:', delErr.message)
     }
 
-    // 2. Preparar los payloads de los 62 apartamentos
+    // 2. Preparar los payloads de los apartamentos con gastos netos y deducciones
     const payloads = apartamentos.map(apto => {
       const calc = calcularApto(apto)
       return {
         apartamento_id:    apto.id,
         mes_facturado:     mesStr,
         tasa_bcv:          esHistorico
-          ? (totalGastosUsd > 0 && totalGastosBs > 0 ? parseFloat((totalGastosBs / totalGastosUsd).toFixed(4)) : 0)
-          : (config.tasa_bcv_actual && config.tasa_bcv_actual > 1 ? config.tasa_bcv_actual : (totalGastosUsd > 0 ? parseFloat((totalGastosBs / totalGastosUsd).toFixed(4)) : 859.06)),
-        total_gastos_usd:  totalGastosUsd,
+          ? (totalGastosBrutosUsd > 0 && totalGastosBrutosBs > 0 ? parseFloat((totalGastosBrutosBs / totalGastosBrutosUsd).toFixed(4)) : 0)
+          : (config.tasa_bcv_actual && config.tasa_bcv_actual > 1 ? config.tasa_bcv_actual : (totalGastosBrutosUsd > 0 ? parseFloat((totalGastosBrutosBs / totalGastosBrutosUsd).toFixed(4)) : 859.06)),
+        total_gastos_usd:  totalGastosNetosUsd,
         alicuota:          getAlicuotaDecimal(apto.alicuota),
         subtotal_usd:      calc.subtotalUsd,
         fondo_reserva_pct: calc.pctApto,
@@ -242,8 +378,17 @@ export const AdminGenerarRecibos: React.FC = () => {
         estado:            'pendiente',
         es_indexado:       esIndexado,
         data_json: {
-          gastos: gastos.map(g => ({ descripcion: g.descripcion, monto_usd: g.monto_usd, monto_bs: g.monto_bs })),
+          gastos: gastos.map(g => ({ descripcion: g.descripcion, monto_usd: g.monto_usd, monto_bs: g.monto_bs, categoria: g.categoria })),
           cargos_especiales: cargos.filter(c => c.apartamento_id === apto.id),
+          donaciones_espacios_comunes: donaciones,
+          total_gastos_brutos_usd: totalGastosBrutosUsd,
+          total_gastos_brutos_bs: totalGastosBrutosBs,
+          total_donaciones_usd: totalDonacionesUsd,
+          total_donaciones_bs: totalDonacionesBs,
+          total_gastos_netos_usd: totalGastosNetosUsd,
+          total_gastos_netos_bs: totalGastosNetosBs,
+          ahorro_donaciones_usd: calc.ahorroUsd,
+          ahorro_donaciones_bs: calc.ahorroBs,
           fondo_reserva_pct: calc.pctApto,
           notas_residentes: notasResidentes,
           es_indexado: esIndexado,
@@ -470,19 +615,22 @@ export const AdminGenerarRecibos: React.FC = () => {
             </div>
           </div>
 
-          {/* Resumen Gastos */}
+          {/* Resumen Gastos Brutos */}
           <div style={S.card}>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'16px', flexWrap:'wrap', gap:'12px' }}>
-              <h3 style={{ color:'#fff', margin:0, fontSize:'15px', fontWeight:700 }}>💸 Gastos Comunes — {mesLabel} {anio}</h3>
+              <div>
+                <h3 style={{ color:'#fff', margin:0, fontSize:'15px', fontWeight:700 }}>💸 Gastos Comunes (Bruto) — {mesLabel} {anio}</h3>
+                <span style={{ color:'#888', fontSize:'12px' }}>Total de facturas y egresos registrados para este mes</span>
+              </div>
               <div style={{ display:'flex', gap:'20px', alignItems:'center' }}>
                 <div style={{ textAlign:'right' }}>
-                  <div style={{ color:'#555', fontSize:'11px', fontWeight:600, textTransform:'uppercase' }}>Total USD</div>
-                  <div style={{ color:'var(--color-accent, #f97316)', fontWeight:800, fontSize:'18px' }}>$ {fmtUsd(totalGastosUsd)}</div>
+                  <div style={{ color:'#555', fontSize:'11px', fontWeight:600, textTransform:'uppercase' }}>Total Gastos Bruto $</div>
+                  <div style={{ color:'var(--color-accent, #f97316)', fontWeight:800, fontSize:'18px' }}>$ {fmtUsd(totalGastosBrutosUsd)}</div>
                 </div>
                 <div style={{ width:'1px', height:'36px', backgroundColor:'#2a2a2a' }} />
                 <div style={{ textAlign:'right' }}>
-                  <div style={{ color:'#555', fontSize:'11px', fontWeight:600, textTransform:'uppercase' }}>Total Bs</div>
-                  <div style={{ color:'#10b981', fontWeight:800, fontSize:'18px' }}>Bs. {fmtBs(totalGastosBs)}</div>
+                  <div style={{ color:'#555', fontSize:'11px', fontWeight:600, textTransform:'uppercase' }}>Total Gastos Bruto Bs</div>
+                  <div style={{ color:'#10b981', fontWeight:800, fontSize:'18px' }}>Bs. {fmtBs(totalGastosBrutosBs)}</div>
                 </div>
               </div>
             </div>
@@ -515,25 +663,309 @@ export const AdminGenerarRecibos: React.FC = () => {
                     ))}
                   </tbody>
                 </table>
-                {/* Banner totales */}
+                {/* Banner totales brutos */}
                 <div style={{ backgroundColor:'#0f0f0f', border:'1px solid #1e1e1e', borderRadius:'8px', padding:'10px 14px', display:'flex', gap:'24px', justifyContent:'flex-end' }}>
-                  <span style={{ color:'#555', fontSize:'12px' }}>SUBTOTAL: <strong style={{ color:'#10b981' }}>Bs. {fmtBs(totalGastosBs)}</strong></span>
-                  <span style={{ color:'#555', fontSize:'12px' }}>SUBTOTAL: <strong style={{ color:'var(--color-accent, #f97316)' }}>$ {fmtUsd(totalGastosUsd)}</strong></span>
+                  <span style={{ color:'#555', fontSize:'12px' }}>SUBTOTAL GASTOS BRUTO: <strong style={{ color:'#10b981' }}>Bs. {fmtBs(totalGastosBrutosBs)}</strong></span>
+                  <span style={{ color:'#555', fontSize:'12px' }}>SUBTOTAL GASTOS BRUTO: <strong style={{ color:'var(--color-accent, #f97316)' }}>$ {fmtUsd(totalGastosBrutosUsd)}</strong></span>
                 </div>
               </>
             )}
           </div>
 
+          {/* ══════════════════════════════════════════════════════════════════
+              NUEVO APARTADO: DONACIÓN POR USO DE ESPACIOS COMUNES
+             ══════════════════════════════════════════════════════════════════ */}
+          <div style={{
+            ...S.card,
+            border: donaciones.length > 0 ? '1px solid rgba(34, 197, 94, 0.4)' : '1px solid #1e1e1e',
+            backgroundColor: donaciones.length > 0 ? 'rgba(34, 197, 94, 0.03)' : '#141414',
+          }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:'16px', flexWrap:'wrap', gap:'12px' }}>
+              <div>
+                <div style={{ display:'flex', alignItems:'center', gap:'8px', marginBottom:'4px' }}>
+                  <span style={{ fontSize:'20px' }}>🎁</span>
+                  <h3 style={{ color:'#fff', margin:0, fontSize:'16px', fontWeight:800 }}>
+                    Donación por Uso de Espacios Comunes
+                  </h3>
+                  <span style={{
+                    backgroundColor: 'rgba(34, 197, 94, 0.15)',
+                    color: '#4ade80',
+                    border: '1px solid rgba(34, 197, 94, 0.3)',
+                    padding: '2px 8px',
+                    borderRadius: '6px',
+                    fontSize: '11px',
+                    fontWeight: 700
+                  }}>
+                    Deducción Directa de Gastos
+                  </span>
+                </div>
+                <p style={{ color:'#94a3b8', fontSize:'12.5px', margin:0, maxWidth:'720px', lineHeight:'1.4' }}>
+                  Coloca el nombre del espacio común, el concepto y el valor en <strong>USD ($)</strong> y en <strong>Bolívares (Bs)</strong>.
+                  La sumatoria total de estas donaciones <strong>se restará de los gastos comunes</strong> del mes antes de calcular la alícuota, por lo que el recibo de todos los residentes saldrá más económico.
+                </p>
+              </div>
+
+              {donaciones.length > 0 && (
+                <div style={{ textAlign:'right', backgroundColor:'rgba(34, 197, 94, 0.1)', padding:'8px 14px', borderRadius:'10px', border:'1px solid rgba(34, 197, 94, 0.25)' }}>
+                  <div style={{ color:'#86efac', fontSize:'11px', fontWeight:700, textTransform:'uppercase' }}>Total Donaciones a Deducir</div>
+                  <div style={{ color:'#4ade80', fontWeight:900, fontSize:'18px' }}>-$ {fmtUsd(totalDonacionesUsd)} USD</div>
+                  <div style={{ color:'#86efac', fontWeight:700, fontSize:'12px' }}>-Bs. {fmtBs(totalDonacionesBs)}</div>
+                </div>
+              )}
+            </div>
+
+            {/* Accesos rápidos para el nombre del espacio */}
+            <div style={{ marginBottom:'14px' }}>
+              <span style={{ color:'#888', fontSize:'11px', fontWeight:600, textTransform:'uppercase', display:'block', marginBottom:'6px' }}>
+                Espacios comunes sugeridos (Haz clic para autocompletar):
+              </span>
+              <div style={{ display:'flex', gap:'8px', flexWrap:'wrap' }}>
+                {[
+                  { label: '🎉 Salón de Fiesta', val: 'Salón de Fiesta' },
+                  { label: '🍖 Parrillera', val: 'Parrillera' },
+                  { label: '⚽ Cancha Deportiva', val: 'Cancha Deportiva' },
+                  { label: '🏊 Piscina', val: 'Piscina' },
+                  { label: '🌇 Terraza / Azotea', val: 'Terraza / Azotea' },
+                  { label: '🎪 Área Social Común', val: 'Área Social Común' },
+                ].map(chip => (
+                  <button
+                    key={chip.val}
+                    type="button"
+                    onClick={() => setDonacionForm(prev => ({ ...prev, nombreEspacio: chip.val }))}
+                    style={{
+                      backgroundColor: donacionForm.nombreEspacio === chip.val ? 'rgba(249, 115, 22, 0.2)' : '#1e1e1e',
+                      color: donacionForm.nombreEspacio === chip.val ? 'var(--color-accent, #f97316)' : '#ccc',
+                      border: donacionForm.nombreEspacio === chip.val ? '1px solid var(--color-accent, #f97316)' : '1px solid #2a2a2a',
+                      padding: '5px 11px',
+                      borderRadius: '8px',
+                      fontSize: '11.5px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    {chip.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Formulario de Registro de Donación */}
+            <div style={{
+              backgroundColor: '#0c0f15',
+              border: '1px solid #222e3f',
+              borderRadius: '12px',
+              padding: '16px',
+              marginBottom: '16px',
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr)) auto',
+              gap: '12px',
+              alignItems: 'end'
+            }}>
+              <div>
+                <label style={S.label}>Nombre del Espacio *</label>
+                <input
+                  style={S.input}
+                  placeholder="Ej: Salón de Fiesta"
+                  value={donacionForm.nombreEspacio}
+                  onChange={e => setDonacionForm({ ...donacionForm, nombreEspacio: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <label style={S.label}>Concepto del Aporte *</label>
+                <input
+                  style={S.input}
+                  placeholder="Ej: Cumpleaños infantil Apto 4-B"
+                  value={donacionForm.concepto}
+                  onChange={e => setDonacionForm({ ...donacionForm, concepto: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <label style={{ ...S.label, color: 'var(--color-accent, #f97316)' }}>Valor en Dólares ($) *</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  style={{ ...S.input, borderColor: 'var(--color-accent, #f97316)', color: 'var(--color-accent, #f97316)', fontWeight: 700 }}
+                  placeholder="0.00"
+                  value={donacionForm.monto_usd}
+                  onChange={e => handleMontoUsdChange(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label style={{ ...S.label, color: '#10b981' }}>Valor en Bolívares (Bs) *</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  style={{ ...S.input, borderColor: '#10b981', color: '#10b981', fontWeight: 700 }}
+                  placeholder="0.00"
+                  value={donacionForm.monto_bs}
+                  onChange={e => handleMontoBsChange(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <button
+                  type="button"
+                  onClick={handleAgregarDonacion}
+                  style={{
+                    ...S.btnPrimary,
+                    backgroundColor: '#16a34a',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    whiteSpace: 'nowrap',
+                    padding: '10px 18px'
+                  }}
+                >
+                  <span>+</span>
+                  <span>Agregar Donación</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Listado de Donaciones Registradas */}
+            {donaciones.length === 0 ? (
+              <div style={{ backgroundColor:'#0a0a0a', border:'1px dashed #2a2a2a', borderRadius:'8px', padding:'16px', textAlign:'center' }}>
+                <p style={{ color:'#666', fontSize:'13px', margin:0 }}>
+                  Aún no se han agregado donaciones por uso de espacios comunes para este mes.
+                </p>
+                <p style={{ color:'#444', fontSize:'11.5px', marginTop:'4px', margin:0 }}>
+                  Si hubo ingresos por alquiler de áreas sociales, regístralas arriba para descontarlas del total a pagar.
+                </p>
+              </div>
+            ) : (
+              <div style={{ overflowX:'auto' }}>
+                <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'12px', marginBottom:'12px' }}>
+                  <thead>
+                    <tr style={{ borderBottom:'1px solid #2a2a2a' }}>
+                      {['Espacio Común', 'Concepto', 'Monto en Bs', 'Monto en USD ($)', 'Acción'].map(h => (
+                        <th key={h} style={{
+                          color: '#888',
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          padding: '8px 10px',
+                          textAlign: h.includes('Monto') ? 'right' : h === 'Acción' ? 'center' : 'left',
+                          textTransform: 'uppercase'
+                        }}>
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {donaciones.map(d => (
+                      <tr key={d.id} style={{ borderBottom:'1px solid #1a1a1a', backgroundColor:'rgba(0,0,0,0.2)' }}>
+                        <td style={{ color:'#fff', padding:'8px 10px', fontWeight:700 }}>
+                          <span style={{ marginRight:'6px' }}>📍</span>
+                          {d.nombreEspacio}
+                        </td>
+                        <td style={{ color:'#ccc', padding:'8px 10px' }}>
+                          {d.concepto}
+                        </td>
+                        <td style={{ color:'#34d399', padding:'8px 10px', textAlign:'right', fontWeight:700 }}>
+                          -Bs. {fmtBs(d.monto_bs)}
+                        </td>
+                        <td style={{ color:'var(--color-accent, #f97316)', padding:'8px 10px', textAlign:'right', fontWeight:800 }}>
+                          -$ {fmtUsd(d.monto_usd)}
+                        </td>
+                        <td style={{ padding:'8px 10px', textAlign:'center' }}>
+                          <button
+                            type="button"
+                            onClick={() => handleEliminarDonacion(d.id)}
+                            style={{ ...S.btnDanger, padding:'4px 10px' }}
+                            title="Eliminar esta donación"
+                          >
+                            ✕ Eliminar
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Banner de Balance Contable y Deducción de Gastos */}
+            <div style={{
+              backgroundColor: '#0a0a0a',
+              border: '1px solid #222',
+              borderRadius: '10px',
+              padding: '14px 18px',
+              marginTop: '12px',
+              display: 'flex',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '16px'
+            }}>
+              <div style={{ display:'flex', gap:'20px', alignItems:'center', flexWrap:'wrap' }}>
+                <div>
+                  <span style={{ color:'#666', fontSize:'11px', textTransform:'uppercase', fontWeight:700 }}>Gastos Brutos:</span>
+                  <div style={{ color:'#ccc', fontSize:'13px', fontWeight:700 }}>
+                    ${fmtUsd(totalGastosBrutosUsd)} <span style={{ color:'#666', fontSize:'11px' }}>(Bs. {fmtBs(totalGastosBrutosBs)})</span>
+                  </div>
+                </div>
+                <div style={{ color:'#888', fontSize:'16px' }}>—</div>
+                <div>
+                  <span style={{ color:'#4ade80', fontSize:'11px', textTransform:'uppercase', fontWeight:700 }}>Donaciones Espacios:</span>
+                  <div style={{ color:'#4ade80', fontSize:'13px', fontWeight:800 }}>
+                    -${fmtUsd(totalDonacionesUsd)} <span style={{ color:'#86efac', fontSize:'11px' }}>(-Bs. {fmtBs(totalDonacionesBs)})</span>
+                  </div>
+                </div>
+                <div style={{ color:'#888', fontSize:'16px' }}>=</div>
+                <div>
+                  <span style={{ color:'var(--color-accent, #f97316)', fontSize:'11px', textTransform:'uppercase', fontWeight:800 }}>Gastos Netos a Distribuir:</span>
+                  <div style={{ color:'#fff', fontSize:'15px', fontWeight:900 }}>
+                    ${fmtUsd(totalGastosNetosUsd)} USD <span style={{ color:'#10b981', fontSize:'12px', fontWeight:800 }}>(Bs. {fmtBs(totalGastosNetosBs)})</span>
+                  </div>
+                </div>
+              </div>
+
+              {totalDonacionesUsd > 0 && (
+                <div style={{
+                  backgroundColor: 'rgba(34, 197, 94, 0.15)',
+                  border: '1px solid rgba(34, 197, 94, 0.35)',
+                  borderRadius: '8px',
+                  padding: '6px 12px',
+                  fontSize: '11.5px',
+                  color: '#86efac',
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}>
+                  <span>✨</span>
+                  <span>¡Ahorro aplicado! Los residentes pagarán menos este mes gracias a los ingresos por espacios comunes.</span>
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* Tabla resumen por apartamento */}
           {apartamentos.length > 0 && (
             <div style={S.card}>
-              <h3 style={{ color:'#fff', margin:'0 0 14px', fontSize:'15px', fontWeight:700 }}>🏠 Resumen por Apartamento ({apartamentos.length} Inmuebles)</h3>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'14px', flexWrap:'wrap', gap:'10px' }}>
+                <div>
+                  <h3 style={{ color:'#fff', margin:0, fontSize:'15px', fontWeight:700 }}>🏠 Resumen por Apartamento ({apartamentos.length} Inmuebles)</h3>
+                  <span style={{ color:'#888', fontSize:'12px' }}>Distribución de alícuotas basada en gastos comunes netos</span>
+                </div>
+                {totalDonacionesUsd > 0 && (
+                  <span style={{ backgroundColor:'rgba(34, 197, 94, 0.15)', color:'#4ade80', border:'1px solid rgba(34, 197, 94, 0.3)', padding:'3px 10px', borderRadius:'6px', fontSize:'11.5px', fontWeight:700 }}>
+                    🎉 Ahorro total edificio: ${fmtUsd(totalDonacionesUsd)} USD (Bs. {fmtBs(totalDonacionesBs)})
+                  </span>
+                )}
+              </div>
               <div style={{ overflowX:'auto' }}>
                 <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'12px' }}>
                   <thead>
                     <tr style={{ borderBottom:'1px solid #2a2a2a' }}>
-                      {['Apto','Propietario','Alíc.','Subtotal Bs','Subtotal $','Fondo %','Fondo Bs','Fondo $','Extras','TOTAL Bs','TOTAL $'].map(h => (
-                        <th key={h} style={{ color:'#555', fontSize:'10px', fontWeight:700, padding:'6px 8px', textAlign:'right', textTransform:'uppercase' }}>{h}</th>
+                      {['Apto','Propietario','Alíc.', totalDonacionesUsd > 0 ? 'Ahorro Donación' : null, 'Subtotal Bs','Subtotal $','Fondo %','Fondo Bs','Fondo $','Extras','TOTAL Bs','TOTAL $'].filter(Boolean).map(h => (
+                        <th key={h as string} style={{ color:'#555', fontSize:'10px', fontWeight:700, padding:'6px 8px', textAlign:'right', textTransform:'uppercase' }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -553,6 +985,11 @@ export const AdminGenerarRecibos: React.FC = () => {
                           </td>
                           <td style={{ color:'#666', padding:'7px 8px', maxWidth:'100px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{a.propietario_nombre || '—'}</td>
                           <td style={{ color: esPH ? 'var(--color-accent, #f97316)' : '#888', padding:'7px 8px', textAlign:'right', fontWeight: esPH ? 700 : 400 }}>{formatAlicuotaPct(a.alicuota)}</td>
+                          {totalDonacionesUsd > 0 && (
+                            <td style={{ color:'#4ade80', padding:'7px 8px', textAlign:'right', fontWeight:700, fontSize:'11px' }}>
+                              -${fmtUsd(c.ahorroUsd)}
+                            </td>
+                          )}
                           <td style={{ color:'#10b981', padding:'7px 8px', textAlign:'right' }}>{fmtBs(c.subtotalBs)}</td>
                           <td style={{ color:'var(--color-accent, #f97316)', padding:'7px 8px', textAlign:'right' }}>{fmtUsd(c.subtotalUsd)}</td>
                           <td style={{ color: esPH ? '#f59e0b' : '#888', padding:'7px 8px', textAlign:'right', fontWeight: esPH ? 700 : 400 }}>
@@ -851,11 +1288,39 @@ export const AdminGenerarRecibos: React.FC = () => {
                     {/* Subtotales y Total Edificio */}
                     <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'10px', border:'1px solid #cbd5e1', borderTop:'none' }}>
                       <tbody>
-                        <tr style={{ backgroundColor:'#ffffff', fontWeight:700 }}>
-                          <td style={{ padding:'4px 8px', textAlign:'right', border:'1px solid #e2e8f0' }}>SUB TOTAL</td>
-                          <td style={{ padding:'4px 8px', textAlign:'right', minWidth:'100px', border:'1px solid #e2e8f0', fontVariantNumeric:'tabular-nums' }}>{fmtBs(totalGastosBs)} Bs</td>
-                          <td style={{ padding:'4px 8px', textAlign:'right', minWidth:'80px', border:'1px solid #e2e8f0', fontVariantNumeric:'tabular-nums' }}>$ {fmtUsd(totalGastosUsd)}</td>
-                        </tr>
+                        {donaciones.length > 0 ? (
+                          <>
+                            <tr style={{ backgroundColor:'#ffffff', fontWeight:700 }}>
+                              <td style={{ padding:'4px 8px', textAlign:'right', border:'1px solid #e2e8f0' }}>SUB TOTAL GASTOS COMUNES (BRUTO)</td>
+                              <td style={{ padding:'4px 8px', textAlign:'right', minWidth:'100px', border:'1px solid #e2e8f0', fontVariantNumeric:'tabular-nums' }}>{fmtBs(totalGastosBrutosBs)} Bs</td>
+                              <td style={{ padding:'4px 8px', textAlign:'right', minWidth:'80px', border:'1px solid #e2e8f0', fontVariantNumeric:'tabular-nums' }}>$ {fmtUsd(totalGastosBrutosUsd)}</td>
+                            </tr>
+                            {donaciones.map(d => (
+                              <tr key={d.id} style={{ backgroundColor:'#f0fdf4', color:'#166534', fontWeight:700 }}>
+                                <td style={{ padding:'4px 8px', textAlign:'right', border:'1px solid #bbf7d0' }}>
+                                  (-) DONACIÓN ESPACIO COMÚN: {d.nombreEspacio.toUpperCase()} — {d.concepto}
+                                </td>
+                                <td style={{ padding:'4px 8px', textAlign:'right', minWidth:'100px', border:'1px solid #bbf7d0', fontVariantNumeric:'tabular-nums', color:'#15803d' }}>
+                                  -{fmtBs(d.monto_bs)} Bs
+                                </td>
+                                <td style={{ padding:'4px 8px', textAlign:'right', minWidth:'80px', border:'1px solid #bbf7d0', fontVariantNumeric:'tabular-nums', color:'#15803d' }}>
+                                  -$ {fmtUsd(d.monto_usd)}
+                                </td>
+                              </tr>
+                            ))}
+                            <tr style={{ backgroundColor:'#e2e8f0', fontWeight:800 }}>
+                              <td style={{ padding:'4px 8px', textAlign:'right', border:'1px solid #cbd5e1' }}>(=) TOTAL GASTOS COMUNES NETOS A DISTRIBUIR</td>
+                              <td style={{ padding:'4px 8px', textAlign:'right', minWidth:'100px', border:'1px solid #cbd5e1', fontVariantNumeric:'tabular-nums' }}>{fmtBs(totalGastosNetosBs)} Bs</td>
+                              <td style={{ padding:'4px 8px', textAlign:'right', minWidth:'80px', border:'1px solid #cbd5e1', fontVariantNumeric:'tabular-nums' }}>$ {fmtUsd(totalGastosNetosUsd)}</td>
+                            </tr>
+                          </>
+                        ) : (
+                          <tr style={{ backgroundColor:'#ffffff', fontWeight:700 }}>
+                            <td style={{ padding:'4px 8px', textAlign:'right', border:'1px solid #e2e8f0' }}>SUB TOTAL</td>
+                            <td style={{ padding:'4px 8px', textAlign:'right', minWidth:'100px', border:'1px solid #e2e8f0', fontVariantNumeric:'tabular-nums' }}>{fmtBs(totalGastosBs)} Bs</td>
+                            <td style={{ padding:'4px 8px', textAlign:'right', minWidth:'80px', border:'1px solid #e2e8f0', fontVariantNumeric:'tabular-nums' }}>$ {fmtUsd(totalGastosUsd)}</td>
+                          </tr>
+                        )}
                         <tr style={{ backgroundColor:'#ffffff', fontWeight:700 }}>
                           <td style={{ padding:'4px 8px', textAlign:'right', border:'1px solid #e2e8f0' }}>FONDO DE RESERVA ({pctApto}%{esPH ? ' - PENTHOUSE' : ''})</td>
                           <td style={{ padding:'4px 8px', textAlign:'right', border:'1px solid #e2e8f0', fontVariantNumeric:'tabular-nums' }}>{fmtBs(fondoEdificioBs)} Bs</td>
@@ -894,6 +1359,30 @@ export const AdminGenerarRecibos: React.FC = () => {
                         </tr>
                       </tbody>
                     </table>
+
+                    {/* Banner de Ahorro por Donaciones (Si existen donaciones) */}
+                    {calc.ahorroUsd > 0 && (
+                      <div style={{
+                        backgroundColor:'#f0fdf4',
+                        border:'1.5px solid #22c55e',
+                        borderRadius:'6px',
+                        padding:'8px 12px',
+                        margin:'10px 0 6px',
+                        textAlign:'center',
+                        fontSize:'10.5px',
+                        fontWeight:800,
+                        color:'#15803d',
+                        display:'flex',
+                        alignItems:'center',
+                        justifyContent:'center',
+                        gap:'8px'
+                      }}>
+                        <span>🎁</span>
+                        <span>
+                          ¡DESCUENTO APLICADO POR ESPACIOS COMUNES! Este apartamento ahorra ${fmtUsd(calc.ahorroUsd)} USD (Bs. {fmtBs(calc.ahorroBs)}) en este recibo gracias a los ingresos por uso de áreas sociales.
+                        </span>
+                      </div>
+                    )}
 
                     {/* Banner de Advertencia (Formato Excel Imagen 2) */}
                     <div style={{
@@ -987,8 +1476,10 @@ export const AdminGenerarRecibos: React.FC = () => {
                   <div><span style={{ color:'#555' }}>F. Reserva Regular:</span> <span style={{ color:'#fff', fontWeight:700 }}>{fondoReservaPct}%</span></div>
                   <div><span style={{ color:'#555' }}>F. Reserva PH:</span> <span style={{ color:'#f59e0b', fontWeight:700 }}>{fondoReservaPhPct}% 👑</span></div>
                   <div><span style={{ color:'#555' }}>Apartamentos:</span> <span style={{ color:'#fff', fontWeight:700 }}>{apartamentos.length}</span></div>
-                  <div><span style={{ color:'#555' }}>Total gastos $:</span> <span style={{ color:'var(--color-accent, #f97316)', fontWeight:800 }}>$ {fmtUsd(totalGastosUsd)}</span></div>
-                  <div><span style={{ color:'#555' }}>Total gastos Bs:</span> <span style={{ color:'#10b981', fontWeight:800 }}>Bs. {fmtBs(totalGastosBs)}</span></div>
+                  <div><span style={{ color:'#555' }}>Gastos Bruto $:</span> <span style={{ color:'#aaa', fontWeight:700 }}>$ {fmtUsd(totalGastosBrutosUsd)}</span></div>
+                  <div><span style={{ color:'#555' }}>Donaciones Espacios:</span> <span style={{ color: totalDonacionesUsd>0?'#4ade80':'#555', fontWeight:800 }}>-${fmtUsd(totalDonacionesUsd)} ({donaciones.length})</span></div>
+                  <div><span style={{ color:'#555' }}>Total neto facturado $:</span> <span style={{ color:'var(--color-accent, #f97316)', fontWeight:800 }}>$ {fmtUsd(totalGastosNetosUsd)}</span></div>
+                  <div><span style={{ color:'#555' }}>Total neto facturado Bs:</span> <span style={{ color:'#10b981', fontWeight:800 }}>Bs. {fmtBs(totalGastosNetosBs)}</span></div>
                   <div><span style={{ color:'#555' }}>Cargos especiales:</span> <span style={{ color: cargos.length>0?'#f59e0b':'#555', fontWeight:700 }}>{cargos.length}</span></div>
                   <div style={{ gridColumn: 'span 2', borderTop: '1px solid #222', paddingTop: '8px', marginTop: '4px' }}>
                     <span style={{ color:'#888' }}>Modalidad de cobro:</span>{' '}
