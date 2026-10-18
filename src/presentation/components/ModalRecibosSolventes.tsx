@@ -1,5 +1,4 @@
 import React, { useState, useMemo } from 'react'
-import { compararApartamentos } from '../../utils/alicuota'
 
 export interface ReciboSolventeItem {
   id: string
@@ -33,7 +32,7 @@ export const ModalRecibosSolventes: React.FC<ModalRecibosSolventesProps> = ({
   isOpen,
   onClose,
   items,
-  tasaBcv
+  tasaBcv: _tasaBcv
 }) => {
   const [busqueda, setBusqueda] = useState('')
   const [filtroPeriodo, setFiltroPeriodo] = useState('todos')

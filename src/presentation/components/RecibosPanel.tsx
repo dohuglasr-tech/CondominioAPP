@@ -1057,7 +1057,7 @@ export function RecibosPanel({ onClose }: Props) {
                         <strong>Ahorro por uso de espacios comunes:</strong> Descuento aplicado directamente a tu cuota.
                       </span>
                       <span style={{ color: '#4ade80', fontWeight: 800 }}>
-                        -${fmtUsd(recibo.data_json.ahorro_donaciones_usd)} USD (-Bs. {fmtBs(recibo.data_json.ahorro_donaciones_bs || 0)})
+                        -${fmtUsd(recibo.data_json?.ahorro_donaciones_usd || 0)} USD (-Bs. {fmtBs(recibo.data_json?.ahorro_donaciones_bs || 0)})
                       </span>
                     </div>
                   )}
@@ -1320,11 +1320,11 @@ export function RecibosPanel({ onClose }: Props) {
                               <span>🎁</span> Donaciones Espacios Comunes (Descontadas de Gastos)
                             </span>
                             <span style={{ color: '#86efac', fontSize: '11px', fontWeight: 800 }}>
-                              Total Edificio: -${fmtUsd(recibo.data_json.total_donaciones_usd || 0)} USD
+                              Total Edificio: -${fmtUsd(recibo.data_json?.total_donaciones_usd || 0)} USD
                             </span>
                           </div>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                            {recibo.data_json.donaciones_espacios_comunes.map((d: any, idx: number) => (
+                            {recibo.data_json?.donaciones_espacios_comunes?.map((d: any, idx: number) => (
                               <div
                                 key={idx}
                                 style={{

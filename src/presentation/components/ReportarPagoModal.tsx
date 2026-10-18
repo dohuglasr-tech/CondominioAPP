@@ -10,8 +10,7 @@ import {
   obtenerGasServicioData,
   obtenerTodasLasDeudasGasApartamento,
   reportarPagoGasResidente,
-  DatosPagoGas,
-  GasServicioData
+  DatosPagoGas
 } from '../../data/gasService'
 import { appCache } from '../../data/cacheService'
 
@@ -167,7 +166,6 @@ export function ReportarPagoModal({
   const [loadingDeudas, setLoadingDeudas] = useState(true)
   const [deudas, setDeudas] = useState<DeudaSeleccionable[]>([])
   const [saldoAFavor, setSaldoAFavor] = useState(0)
-  const [gasData, setGasData] = useState<GasServicioData | null>(null)
   const [gasBancarios, setGasBancarios] = useState<DatosPagoGas | null>(null)
   const [cuentaActivaTab, setCuentaActivaTab] = useState<'gas' | 'condominio'>('condominio')
 
@@ -264,7 +262,6 @@ export function ReportarPagoModal({
         // Cargar cuotas de gas pendientes
         const itemsGas: DeudaSeleccionable[] = []
         if (gasRes?.data) {
-          setGasData(gasRes.data)
           setGasBancarios(gasRes.data.config.datosPago)
           const infoGas = obtenerTodasLasDeudasGasApartamento(gasRes.data, apartamentoId, aptoNumero)
           if (infoGas.tieneDeuda && infoGas.cuotasPendientes.length > 0) {

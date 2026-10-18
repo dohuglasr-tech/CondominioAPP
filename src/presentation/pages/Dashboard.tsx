@@ -301,18 +301,6 @@ export function Dashboard() {
     }
   }, [apartamentoId, cargarApartamentoInfo, cargarDatosResidente])
 
-  const mesFacturadoTexto = reciboPendiente?.mes_facturado
-    ? (() => {
-        const parts = reciboPendiente.mes_facturado.substring(0, 7).split('-')
-        if (parts.length === 2) {
-          const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
-          const m = parseInt(parts[1], 10) - 1
-          if (m >= 0 && m < 12) return `${MESES[m]} ${parts[0]}`
-        }
-        return reciboPendiente.mes_facturado
-      })()
-    : 'Mes en curso'
-
   return (
     <>
       {modalOpen && (

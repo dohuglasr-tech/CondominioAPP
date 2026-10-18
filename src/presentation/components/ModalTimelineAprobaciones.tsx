@@ -672,6 +672,23 @@ export const ModalTimelineAprobaciones: React.FC<ModalTimelineAprobacionesProps>
                               </div>
 
                               <div style={{ display: 'flex', gap: '8px' }}>
+                                {onNavigateToRecibos && (
+                                  <button
+                                    type="button"
+                                    onClick={onNavigateToRecibos}
+                                    style={{
+                                      background: 'none',
+                                      border: 'none',
+                                      color: '#38bdf8',
+                                      cursor: 'pointer',
+                                      fontSize: '11px',
+                                      fontWeight: 700,
+                                      padding: 0
+                                    }}
+                                  >
+                                    Ver Recibos →
+                                  </button>
+                                )}
                                 {onNavigateToCalendario && (
                                   <button
                                     type="button"

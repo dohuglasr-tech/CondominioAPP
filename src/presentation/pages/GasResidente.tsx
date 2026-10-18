@@ -11,9 +11,7 @@ import {
   obtenerDeudaGasApartamento,
   obtenerHistorialCuotasGasApartamento,
   obtenerTodasLasDeudasGasApartamento,
-  GasServicioData,
-  HistorialCuotaGasApartamento,
-  EventoDiarioGas
+  GasServicioData
 } from '../../data/gasService'
 
 const MESES_NOMBRES = [

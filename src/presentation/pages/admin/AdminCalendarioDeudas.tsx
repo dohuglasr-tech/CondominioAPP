@@ -241,12 +241,16 @@ export const AdminCalendarioDeudas: React.FC = () => {
         .not('propietario_email', 'is', null)
         .limit(1)
         .maybeSingle()
-        .then(({ data }) => {
-          if (data?.propietario_email) {
-            setModalDestinatarioEmail(data.propietario_email.trim())
+        .then(
+          ({ data }: any) => {
+            if (data?.propietario_email) {
+              setModalDestinatarioEmail(data.propietario_email.trim())
+            }
+          },
+          (err: any) => {
+            console.debug('[Calendario] Error buscando email en perfiles:', err)
           }
-        })
-        .catch(err => console.debug('[Calendario] Error buscando email en perfiles:', err))
+        )
     }
 
     setModalPagoOpen(true)

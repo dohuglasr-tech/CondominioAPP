@@ -27,7 +27,7 @@ export interface DesgloseReciboItem {
 export interface DesgloseConceptoItem {
   id: string
   label: string
-  categoria: 'deuda_2025' | 'cuota_especial' | 'recibo_mes'
+  categoria: 'deuda_2025' | 'cuota_especial' | 'recibo_mes' | 'gas'
   monto: number
   moneda: 'BS' | 'USD'
   estado: 'pendiente' | 'pagado'

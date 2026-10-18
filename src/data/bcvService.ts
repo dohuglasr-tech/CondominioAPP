@@ -80,6 +80,10 @@ export async function guardarTasaBcvEnDb(
     }
 
     const tasaAnterior = config.tasa_bcv_actual || null
+    // Si la tasa no ha variado significativamente, omitir actualización para no saturar Realtime
+    if (tasaAnterior && Math.abs(Number(tasaAnterior) - nuevaTasa) < 0.001) {
+      return { ok: true }
+    }
     const fecha = fechaActualizacion || new Date().toISOString()
 
     const { error: updateError } = await supabase
