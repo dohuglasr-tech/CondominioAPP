@@ -35,12 +35,24 @@ export const InstallAppPrompt: React.FC = () => {
     }
 
     // 3. Capturar el evento nativo de instalación en Android / Chrome
+    if ((window as any).__domus_deferred_prompt) {
+      setDeferredPrompt((window as any).__domus_deferred_prompt)
+    }
+
     const handleBeforeInstall = (e: Event) => {
       e.preventDefault()
+      ;(window as any).__domus_deferred_prompt = e
       setDeferredPrompt(e)
     }
 
+    const handlePwaReady = () => {
+      if ((window as any).__domus_deferred_prompt) {
+        setDeferredPrompt((window as any).__domus_deferred_prompt)
+      }
+    }
+
     window.addEventListener('beforeinstallprompt', handleBeforeInstall)
+    window.addEventListener('domus_pwa_ready', handlePwaReady)
 
     // Mostrar el modal siempre con animación tras 1.2 segundos en iPhone o Android
     const timer = setTimeout(() => {
@@ -49,6 +61,7 @@ export const InstallAppPrompt: React.FC = () => {
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstall)
+      window.removeEventListener('domus_pwa_ready', handlePwaReady)
       clearTimeout(timer)
     }
   }, [])

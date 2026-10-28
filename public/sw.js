@@ -2,11 +2,24 @@
 // Archivo: public/sw.js
 // Se registra automáticamente desde el hook useNotifications
 
-const CACHE_NAME = 'condominio-app-v9'
+const CACHE_NAME = 'condominio-app-v10'
+
+const PRECACHE_ASSETS = [
+  '/',
+  '/index.html',
+  '/manifest.json',
+  '/icon-192.png',
+  '/icon-512.png',
+  '/favicon.png'
+]
 
 // ── Instalación del Service Worker ─────────────────────────────────────────
 self.addEventListener('install', (event) => {
-  self.skipWaiting()
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => {
+      return cache.addAll(PRECACHE_ASSETS).catch(() => {})
+    }).then(() => self.skipWaiting())
+  )
 })
 
 self.addEventListener('activate', (event) => {

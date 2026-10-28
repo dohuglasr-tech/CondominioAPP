@@ -14,11 +14,14 @@ import { descargarExpedienteLegalApto, ExpedienteLegalAptoData } from '../../../
 import { obtenerJunta } from '../../../data/juntaService'
 import { sendResidentPasswordReset } from '../../../data/passwordRecoveryService'
 import { EnviarExpedienteEmailModal } from '../../components/EnviarExpedienteEmailModal'
+import { EnviarSolvenciaEmailModal } from '../../components/EnviarSolvenciaEmailModal'
+import { DatosCartaSolvencia, normalizarCedula, obtenerMesActualEs } from '../../../utils/solvenciaPdfGenerator'
 
 interface PersonaContacto {
   nombre: string
   telefono: string
   email: string
+  cedula?: string
 }
 
 interface PagoHistorial {
@@ -107,6 +110,10 @@ export const AdminResidentes: React.FC = () => {
   const [modalEmailExpedienteOpen, setModalEmailExpedienteOpen] = useState(false)
   const [expedienteParaEmail, setExpedienteParaEmail] = useState<ExpedienteLegalAptoData | null>(null)
   const [cargandoExpedienteEmail, setCargandoExpedienteEmail] = useState(false)
+  const [modalEmailSolvenciaOpen, setModalEmailSolvenciaOpen] = useState(false)
+  const [solvenciaParaEmail, setSolvenciaParaEmail] = useState<DatosCartaSolvencia | null>(null)
+  const [cargandoSolvenciaEmail, setCargandoSolvenciaEmail] = useState(false)
+  const [residenteParaSolvencia, setResidenteParaSolvencia] = useState<Residente | null>(null)
   const [busqueda, setBusqueda] = useState('')
   const [filtroTipo, setFiltroTipo] = useState<'todos' | 'con_deuda' | 'solventes' | 'con_usuario' | 'ph'>('todos')
   const [tabActiva, setTabActiva] = useState<'deudas' | 'recibos' | 'pagos' | 'datos'>('deudas')
@@ -252,6 +259,7 @@ export const AdminResidentes: React.FC = () => {
             nombre: propNombre,
             telefono: propTel,
             email: propEmail,
+            cedula: perfil?.cedula || a.propietario_cedula || moraItem?.propietario_cedula || '',
           },
           inquilino: esAlquilado ? {
             nombre: perfil?.nombre_completo || 'Inquilino sin nombre',
@@ -679,6 +687,118 @@ export const AdminResidentes: React.FC = () => {
     }
   }
 
+  // ── Construir estructura completa de datos de la Carta de Solvencia ─────────
+  const construirDatosCartaSolvenciaParaResidente = async (residente: Residente): Promise<DatosCartaSolvencia> => {
+    let presiNombre = ''
+    let presiCargo = 'Presidente'
+    let presiCedula = ''
+    let adminNombre = ''
+    let adminCargo = 'Administrador General'
+
+    try {
+      const juntaRes = await obtenerJunta()
+      const junta = juntaRes.data || []
+      const presi = junta.find((m: any) => /presidente/i.test(m.cargo))
+      const admin = junta.find((m: any) => /administra/i.test(m.cargo))
+      if (presi) {
+        presiNombre = presi.nombre
+        presiCargo = presi.cargo
+        presiCedula = (presi as any).cedula || ''
+      }
+      if (admin) {
+        adminNombre = admin.nombre
+        adminCargo = admin.cargo
+      }
+    } catch (e) {
+      console.warn('[AdminResidentes] Error consultando junta para solvencia:', e)
+    }
+
+    if (!presiNombre) {
+      presiNombre = 'Presidente de la Junta'
+    }
+    if (!adminNombre) {
+      adminNombre = perfil?.nombre_completo || config?.titular_cuenta || 'Administrador General'
+    }
+
+    // Buscar datos adicionales del apartamento y último pago aprobado
+    const [aptoDbRes, pagosDbRes] = await Promise.all([
+      supabase
+        .from('apartamentos')
+        .select('metros_cuadrados, propietario_cedula, piso')
+        .eq('id', residente.id)
+        .maybeSingle(),
+      supabase
+        .from('pagos_reportados')
+        .select('id, fecha_pago, created_at, referencia, monto_bs, monto_usd, estado')
+        .eq('apartamento_id', residente.id)
+        .eq('estado', 'aprobado')
+        .order('fecha_pago', { ascending: false })
+        .limit(1)
+    ])
+
+    const aptoDb = aptoDbRes.data
+    const ultimoPago = (pagosDbRes.data && pagosDbRes.data[0]) || residente.historial_pagos.find(p => p.estado === 'aprobado')
+
+    const hoy = new Date()
+    const mesActual = obtenerMesActualEs()
+
+    const cedulaLimpia = normalizarCedula(
+      residente.propietario.cedula || aptoDb?.propietario_cedula || residente.mora_item?.propietario_cedula || ''
+    )
+
+    return {
+      nombreEdificio: config?.nombre_edificio || 'Junta de Condominio',
+      rif: config?.rif || '',
+      direccion: config?.direccion || '',
+      ciudad: config?.ciudad || 'Ocumare del Tuy',
+      logoUrl: config?.logo_url || null,
+      telefono: config?.telefono || null,
+      email: config?.email_contacto || null,
+
+      presidenteNombre: presiNombre,
+      presidenteCargo: presiCargo,
+      presidenteCedula: presiCedula,
+
+      administradorNombre: adminNombre,
+      administradorCargo: adminCargo,
+
+      residenteNombre: residente.propietario.nombre || 'Propietario',
+      residenteCedula: cedulaLimpia,
+      residenteApto: String(residente.apartamento || 'N/D'),
+      residentePiso: residente.piso != null ? String(residente.piso) : (aptoDb?.piso != null ? String(aptoDb.piso) : ''),
+      alicuotaPct: formatAlicuotaPct(residente.alicuota),
+
+      ultimoPagoFecha: (ultimoPago as any)?.fecha_pago || (ultimoPago as any)?.fecha || (ultimoPago as any)?.created_at || null,
+      ultimoPagoReferencia: ultimoPago?.referencia || null,
+      ultimoPagoMonto: ultimoPago ? Number((ultimoPago as any).monto_bs) || null : null,
+
+      mesSolvente: mesActual,
+      anioSolvente: hoy.getFullYear(),
+      diaEmision: hoy.getDate(),
+      mesEmision: mesActual,
+      anioEmision: hoy.getFullYear(),
+    }
+  }
+
+  // ── Abrir Modal para Enviar Carta de Solvencia por Correo Electrónico ──
+  const handleAbrirModalEnviarSolvencia = async (residente: Residente) => {
+    try {
+      setCargandoSolvenciaEmail(true)
+      const payloadSolvencia = await construirDatosCartaSolvenciaParaResidente(residente)
+      setSolvenciaParaEmail(payloadSolvencia)
+      setResidenteParaSolvencia(residente)
+      setModalEmailSolvenciaOpen(true)
+    } catch (err: any) {
+      console.error('[AdminResidentes] Error preparando solvencia para email:', err)
+      setDeleteMessage({
+        type: 'error',
+        text: `Error al preparar carta de solvencia: ${err.message || 'Intente nuevamente'}`
+      })
+    } finally {
+      setCargandoSolvenciaEmail(false)
+    }
+  }
+
   // ── Enviar restablecimiento de contraseña al residente ─────────────
   const handleEnviarResetPassword = async (residente: Residente) => {
     const emailDestino = (residente.propietario.email || residente.inquilino?.email || '').trim()
@@ -1059,6 +1179,30 @@ export const AdminResidentes: React.FC = () => {
                     >
                       ✉️
                     </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleAbrirModalEnviarSolvencia(r)
+                      }}
+                      title="Enviar Carta de Solvencia oficial por Correo Electrónico"
+                      style={{
+                        backgroundColor: '#112217',
+                        color: '#4ade80',
+                        border: '1px solid rgba(74, 222, 128, 0.4)',
+                        borderRadius: '6px',
+                        padding: '4px 7px',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        cursor: cargandoSolvenciaEmail ? 'wait' : 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '3px',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      📜 Solvencia
+                    </button>
                   <span style={{ color: 'var(--color-accent, #f97316)', fontSize: '13px', fontWeight: 800 }}>
                     →
                   </span>
@@ -1372,6 +1516,31 @@ export const AdminResidentes: React.FC = () => {
             >
               <span>✉️</span>
               <span>{cargandoExpedienteEmail ? 'Preparando...' : 'Enviar por Email'}</span>
+            </button>
+
+            <button
+              onClick={() => handleAbrirModalEnviarSolvencia(selected)}
+              disabled={cargandoSolvenciaEmail}
+              style={{
+                backgroundColor: 'rgba(34, 197, 94, 0.14)',
+                color: '#4ade80',
+                border: '1px solid rgba(34, 197, 94, 0.45)',
+                padding: '8px 14px',
+                borderRadius: '8px',
+                cursor: cargandoSolvenciaEmail ? 'wait' : 'pointer',
+                fontSize: '12.5px',
+                fontWeight: 700,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                flex: isMobile ? 1 : 'none',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                transition: 'all 0.15s ease'
+              }}
+              title="Ver y enviar Carta de Solvencia oficial por correo electrónico al propietario"
+            >
+              <span>📜</span>
+              <span>{cargandoSolvenciaEmail ? 'Preparando...' : 'Carta de Solvencia (Email)'}</span>
             </button>
 
             <button
@@ -1879,6 +2048,30 @@ export const AdminResidentes: React.FC = () => {
                     >
                       <span>✉️</span>
                       <span>{cargandoExpedienteEmail ? 'Preparando...' : 'Enviar por Email'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleAbrirModalEnviarSolvencia(selected)}
+                      disabled={cargandoSolvenciaEmail}
+                      style={{
+                        backgroundColor: 'rgba(34, 197, 94, 0.14)',
+                        color: '#4ade80',
+                        border: '1px solid rgba(34, 197, 94, 0.45)',
+                        padding: '8px 14px',
+                        borderRadius: '8px',
+                        fontSize: '12px',
+                        fontWeight: 800,
+                        cursor: cargandoSolvenciaEmail ? 'wait' : 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                      }}
+                      title="Enviar Carta de Solvencia oficial por correo electrónico al propietario"
+                    >
+                      <span>📜</span>
+                      <span>{cargandoSolvenciaEmail ? 'Preparando...' : 'Solvencia por Email'}</span>
                     </button>
 
                     {cleanPhone && (
@@ -2738,6 +2931,37 @@ export const AdminResidentes: React.FC = () => {
           })
         }}
         datosExpediente={expedienteParaEmail}
+      />
+
+      {/* Modal para Enviar Carta de Solvencia Oficial por Correo Electrónico */}
+      <EnviarSolvenciaEmailModal
+        isOpen={modalEmailSolvenciaOpen}
+        onClose={() => {
+          setModalEmailSolvenciaOpen(false)
+          setSolvenciaParaEmail(null)
+          setResidenteParaSolvencia(null)
+        }}
+        onSuccess={(destinatario) => {
+          setDeleteMessage({
+            type: 'success',
+            text: `✓ Carta de Solvencia del Apto ${residenteParaSolvencia?.apartamento} enviada exitosamente a ${destinatario}.`
+          })
+        }}
+        datosSolvencia={solvenciaParaEmail}
+        esSolvente={
+          residenteParaSolvencia
+            ? (residenteParaSolvencia.deuda_usd <= 0.01 &&
+               residenteParaSolvencia.deuda_bs <= 0.01 &&
+               residenteParaSolvencia.meses_deuda === 0)
+            : true
+        }
+        deudaUsd={residenteParaSolvencia?.deuda_usd || 0}
+        deudaBs={residenteParaSolvencia?.deuda_bs || 0}
+        emailRegistrado={
+          residenteParaSolvencia?.propietario.email ||
+          residenteParaSolvencia?.inquilino?.email ||
+          null
+        }
       />
     </div>
   )

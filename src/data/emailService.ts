@@ -1,5 +1,7 @@
 import { supabase } from './supabase'
 import type { ExpedienteLegalAptoData } from '../utils/expedienteLegalPdfGenerator'
+import type { DatosCartaSolvencia } from '../utils/solvenciaPdfGenerator'
+import { generarCodigoSolvencia, formatearFechaIso } from '../utils/solvenciaPdfGenerator'
 import { formatAlicuotaPct } from '../utils/alicuota'
 
 /**
@@ -1372,5 +1374,216 @@ export async function despacharEmailExpedienteLegal(params: {
     attachments: attachments.length > 0 ? attachments : undefined
   })
 }
+
+// ── 7. PLANTILLA Y DESPACHO: CARTA DE SOLVENCIA OFICIAL ──────────────────────
+export function generarHtmlCartaSolvencia(
+  datos: DatosCartaSolvencia,
+  notaAdicional?: string | null
+): { subject: string; html: string } {
+  const edificio = datos.nombreEdificio || DEFAULT_EDIFICIO
+  const rif = datos.rif ? `RIF ${datos.rif}` : ''
+  const apto = datos.residenteApto || 'N/D'
+  const titular = datos.residenteNombre || 'Propietario'
+  const cedula = datos.residenteCedula || 'No registrada'
+  const mes = datos.mesSolvente || 'Actual'
+  const anio = datos.anioSolvente || new Date().getFullYear()
+  const codigo = datos.codigoVerificacion || generarCodigoSolvencia(datos)
+  const portal = getBasePortalUrl()
+
+  const fechaPagoTxt = formatearFechaIso(datos.ultimoPagoFecha)
+  const ultimoPagoDetalle = fechaPagoTxt
+    ? `${fechaPagoTxt}${datos.ultimoPagoReferencia ? ` · Ref: ${datos.ultimoPagoReferencia}` : ''}${datos.ultimoPagoMonto ? ` · Bs. ${Number(datos.ultimoPagoMonto).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : ''}`
+    : null
+
+  const subject = `📜 Carta de Solvencia Oficial — Apto. ${apto} | ${edificio}`
+
+  const html = `
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#070b14;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#e2e8f0;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#070b14;padding:32px 16px;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background-color:#0f172a;border-radius:18px;border:1px solid #1e293b;overflow:hidden;box-shadow:0 24px 48px rgba(0,0,0,0.65);">
+          
+          <!-- HEADER INSTITUCIONAL -->
+          <tr>
+            <td style="background:linear-gradient(135deg, #064e3b 0%, #0f172a 60%, #1e293b 100%);padding:32px 26px;text-align:center;border-bottom:2px solid #10b981;">
+              <div style="font-size:42px;margin-bottom:8px;filter:drop-shadow(0 4px 12px rgba(16,185,129,0.3));">📜</div>
+              <h1 style="margin:0;color:#ffffff;font-size:21px;font-weight:900;letter-spacing:-0.5px;">${edificio.toUpperCase()}</h1>
+              ${rif ? `<div style="font-size:12px;font-weight:800;color:#f97316;letter-spacing:1px;margin-top:3px;">${rif}</div>` : ''}
+              <div style="display:inline-block;background:rgba(16,185,129,0.18);border:1px solid rgba(16,185,129,0.45);color:#34d399;font-size:11.5px;font-weight:800;padding:4px 14px;border-radius:999px;margin-top:12px;letter-spacing:1px;text-transform:uppercase;">
+                CONSTANCIA OFICIAL DE SOLVENCIA DE CONDOMINIO
+              </div>
+              <div style="margin-top:10px;font-size:11px;color:#94a3b8;font-family:monospace;letter-spacing:0.5px;">
+                Constancia N°: <strong style="color:#ffffff;">${codigo}</strong>
+              </div>
+            </td>
+          </tr>
+
+          <!-- CUERPO PRINCIPAL -->
+          <tr>
+            <td style="padding:32px 28px;">
+              <p style="margin:0 0 16px;font-size:15.5px;color:#f8fafc;line-height:1.5;">
+                Estimado(a) <strong>${titular}</strong>,
+              </p>
+
+              <p style="margin:0 0 22px;font-size:14px;color:#cbd5e1;line-height:1.65;">
+                Por medio de la presente, la <strong>Junta de Condominio</strong> y la <strong>Administración</strong> hacen constar formalmente que el inmueble identificado como <strong>Apartamento N° ${apto}</strong> se encuentra <strong>COMPLETAMENTE SOLVENTE</strong> en el pago del servicio de condominio y del servicio de gas comunal, sin mantener deudas, mora ni cuotas pendientes con la comunidad, hasta el período de <strong>${mes.toUpperCase()} ${anio}</strong>.
+              </p>
+
+              <!-- TARJETA RESUMEN DE SOLVENCIA -->
+              <div style="background:#090d18;border:1px solid rgba(16,185,129,0.35);border-radius:14px;padding:22px;margin-bottom:24px;box-shadow:0 8px 24px rgba(0,0,0,0.3);">
+                <div style="font-size:11px;font-weight:800;color:#10b981;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;border-bottom:1px solid #1e293b;padding-bottom:8px;">
+                  📋 Datos Certificados del Inmueble y Solvencia
+                </div>
+
+                <table width="100%" cellpadding="0" cellspacing="0" style="font-size:13px;line-height:1.8;">
+                  <tr>
+                    <td style="color:#64748b;width:150px;">Inmueble:</td>
+                    <td><strong style="color:#ffffff;">Apto. ${apto}</strong> ${datos.residentePiso ? `<span style="color:#94a3b8;">(Piso ${datos.residentePiso})</span>` : ''} ${datos.alicuotaPct ? `<span style="color:#64748b;">· Alícuota ${datos.alicuotaPct}</span>` : ''}</td>
+                  </tr>
+                  <tr>
+                    <td style="color:#64748b;">Titular Registrado:</td>
+                    <td><strong style="color:#ffffff;">${titular}</strong></td>
+                  </tr>
+                  <tr>
+                    <td style="color:#64748b;">Cédula de Identidad:</td>
+                    <td><strong style="color:#cbd5e1;">${cedula}</strong></td>
+                  </tr>
+                  <tr>
+                    <td style="color:#64748b;">Estatus de Pago:</td>
+                    <td>
+                      <span style="display:inline-block;background:rgba(16,185,129,0.2);color:#34d399;font-weight:800;font-size:11px;padding:2px 10px;border-radius:6px;border:1px solid rgba(16,185,129,0.4);">
+                        ✓ SOLVENTE AL DÍA
+                      </span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="color:#64748b;">Solvente Hasta:</td>
+                    <td><strong style="color:#34d399;">${mes.toUpperCase()} ${anio}</strong></td>
+                  </tr>
+                  ${ultimoPagoDetalle ? `
+                  <tr>
+                    <td style="color:#64748b;">Último Pago Aprobado:</td>
+                    <td style="color:#94a3b8;font-size:12px;">${ultimoPagoDetalle}</td>
+                  </tr>` : ''}
+                  <tr>
+                    <td style="color:#64748b;">Vigencia:</td>
+                    <td style="color:#cbd5e1;font-size:12px;">Treinta (30) días continuos desde su emisión</td>
+                  </tr>
+                </table>
+              </div>
+
+              ${notaAdicional ? `
+              <!-- MENSAJE DE LA ADMINISTRACIÓN -->
+              <div style="background:#090d18;border-left:3px solid #f97316;border-radius:8px;padding:14px 16px;margin-bottom:24px;">
+                <div style="font-size:11px;font-weight:800;color:#f97316;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:4px;">
+                  💬 Mensaje de la Administración:
+                </div>
+                <div style="font-size:13px;color:#cbd5e1;line-height:1.5;">
+                  ${notaAdicional}
+                </div>
+              </div>` : ''}
+
+              <!-- AVISO DE ARCHIVO PDF ADJUNTO -->
+              <div style="background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.25);border-radius:12px;padding:16px;margin-bottom:26px;">
+                <div style="display:flex;align-items:center;gap:10px;">
+                  <span style="font-size:22px;">📎</span>
+                  <div style="font-size:12.5px;color:#cbd5e1;line-height:1.5;">
+                    <strong style="color:#34d399;">Documento Oficial en PDF Adjunto:</strong><br/>
+                    Se ha generado y adjuntado a este correo su <strong>Carta de Solvencia oficial en PDF</strong>, con diseño institucional tamaño carta, firmas autorizadas y código de verificación para cualquier trámite legal o inmobiliario.
+                  </div>
+                </div>
+              </div>
+
+              <!-- BOTÓN CTA PORTAL -->
+              <div style="text-align:center;margin-bottom:24px;">
+                <a href="${portal}" target="_blank" style="display:inline-block;background:linear-gradient(135deg, #16a34a 0%, #15803d 100%);color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:12px;font-size:14px;font-weight:800;letter-spacing:0.3px;box-shadow:0 6px 20px rgba(22,163,74,0.35);">
+                  🌐 Abrir Portal del Condominio →
+                </a>
+              </div>
+
+              <!-- FIRMAS INSTITUCIONALES -->
+              <div style="margin-top:28px;padding-top:20px;border-top:1px solid #1e293b;text-align:center;">
+                <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;font-weight:700;">
+                  Por la Junta de Condominio
+                </div>
+                <table width="100%" cellpadding="0" cellspacing="0" style="text-align:center;font-size:12px;">
+                  <tr>
+                    <td width="50%" style="padding:0 8px;">
+                      <div style="border-top:1px solid #334155;padding-top:6px;color:#ffffff;font-weight:800;">
+                        ${datos.presidenteNombre}
+                      </div>
+                      <div style="color:#94a3b8;font-size:11px;">${datos.presidenteCargo || 'Presidente de la Junta'}</div>
+                    </td>
+                    <td width="50%" style="padding:0 8px;">
+                      <div style="border-top:1px solid #334155;padding-top:6px;color:#ffffff;font-weight:800;">
+                        ${datos.administradorNombre}
+                      </div>
+                      <div style="color:#94a3b8;font-size:11px;">${datos.administradorCargo || 'Administrador General'}</div>
+                    </td>
+                  </tr>
+                </table>
+              </div>
+
+            </td>
+          </tr>
+
+          <!-- FOOTER -->
+          <tr>
+            <td style="background-color:#070b14;padding:18px 24px;text-align:center;border-top:1px solid #1e293b;font-size:11px;color:#475569;line-height:1.5;">
+              © ${new Date().getFullYear()} ${edificio} · Sistema Integral de Gestión de Condominio DOMUS<br>
+              Constancia emitida electrónicamente a solicitud de la parte interesada.
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`
+
+  return { subject, html }
+}
+
+/**
+ * Dispara el email de Carta de Solvencia oficial con el PDF adjunto
+ */
+export async function despacharEmailCartaSolvencia(params: {
+  destinatarioEmail: string
+  datosSolvencia: DatosCartaSolvencia
+  notaAdicional?: string | null
+  pdfBase64?: string
+  pdfFilename?: string
+}): Promise<{ ok: boolean; error?: string }> {
+  const { destinatarioEmail, datosSolvencia, notaAdicional, pdfBase64, pdfFilename } = params
+  const { subject, html } = generarHtmlCartaSolvencia(datosSolvencia, notaAdicional)
+
+  const attachments: EmailAttachment[] = []
+  if (pdfBase64) {
+    const cleanApto = (datosSolvencia.residenteApto || 'Apto').replace(/[^a-zA-Z0-9_-]/g, '_')
+    const mes = (datosSolvencia.mesSolvente || 'Solvencia').toLowerCase()
+    const filename = pdfFilename || `Carta_Solvencia_${cleanApto}_${mes}_${datosSolvencia.anioSolvente}.pdf`
+    attachments.push({
+      filename,
+      content: pdfBase64
+    })
+  }
+
+  return enviarEmail({
+    to: destinatarioEmail,
+    subject,
+    html,
+    attachments: attachments.length > 0 ? attachments : undefined
+  })
+}
+
 
 

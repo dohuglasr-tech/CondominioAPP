@@ -46,12 +46,18 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
 
 // Registrar Service Worker para soporte PWA e instalación en dispositivos móviles
 if ('serviceWorker' in navigator && !import.meta.env.DEV) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').then((reg) => {
+  const registerSW = () => {
+    navigator.serviceWorker.register('/sw.js', { scope: '/' }).then((reg) => {
       // Forzar verificación de nueva versión en cada carga
       reg.update().catch(() => {})
     }).catch(err => {
       console.warn('[PWA] Fallo al registrar Service Worker:', err)
     })
-  })
+  }
+
+  if (document.readyState === 'complete') {
+    registerSW()
+  } else {
+    window.addEventListener('load', registerSW)
+  }
 }

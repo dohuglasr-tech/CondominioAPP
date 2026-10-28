@@ -11,6 +11,9 @@ import { AvisoBanner } from '../components/AvisoBanner'
 import { obtenerSaldoAFavorApartamento } from '../../data/saldoFavorService'
 import { esReciboIndexado } from '../../utils/indexacionHelper'
 import { obtenerGasServicioData, obtenerDeudaGasApartamento, DeudaApartamentoGas } from '../../data/gasService'
+import { obtenerJunta, MiembroJunta } from '../../data/juntaService'
+import { ModalCartaSolvencia } from '../components/ModalCartaSolvencia'
+import { DatosCartaSolvencia, obtenerMesActualEs, descargarSolvenciaPDF } from '../../utils/solvenciaPdfGenerator'
 
 interface PagoItem {
   id: string
@@ -54,6 +57,9 @@ export function Dashboard() {
   const [saldoAFavor, setSaldoAFavor] = useState<number>(0)
   const [saldoAFavorBs, setSaldoAFavorBs] = useState<number>(0)
   const [deudaGas, setDeudaGas] = useState<DeudaApartamentoGas | null>(null)
+  const [modalSolvenciaOpen, setModalSolvenciaOpen] = useState(false)
+  const [juntaMiembros, setJuntaMiembros] = useState<MiembroJunta[]>([])
+  const [aptDetalle, setAptDetalle] = useState<{ numero?: string; piso?: number | null; propietario_nombre?: string | null } | null>(null)
 
   const { rate, loading: loadingRate } = useBcvRate()
   const tasaValida = rate && rate > 1 ? rate : (config?.tasa_bcv_actual && config.tasa_bcv_actual > 1 ? config.tasa_bcv_actual : 859.06)
@@ -114,6 +120,70 @@ export function Dashboard() {
   const deudaTotalConsolidadaUsd = deudaCondominioUsd + deudaGasUsd
   const tieneDeudaTotal = tieneDeudaCondominio || tieneDeudaGas
 
+  // ── Verificación estricta de solvencia para Carta de Solvencia ──
+  // El residente SOLO puede ver y descargar su carta si está 100% SOLVENTE:
+  // - No mantiene ninguna deuda o mora de cualquier categoría (condominio, recargos, gas comunal).
+  // - No tiene recibos pendientes de pago.
+  // - No tiene pagos reportados bajo verificación pendiente.
+  // - No tiene deuda activa registrada en el sistema de mora.
+  const tieneDeudaMoraActiva = Boolean(
+    moraRecord &&
+    moraRecord.estado !== 'solventado' &&
+    (
+      (moraRecord.meses_deuda && moraRecord.meses_deuda > 0) ||
+      (moraRecord.monto_bs && moraRecord.monto_bs > 0.05) ||
+      (moraRecord.monto_usd && moraRecord.monto_usd > 0.05)
+    )
+  )
+
+  const estaSolvente = Boolean(
+    !tieneDeudaTotal &&
+    !tieneDeudaCondominio &&
+    !tieneDeudaGas &&
+    !tieneDeudaMoraActiva &&
+    recibosPendientesList.length === 0 &&
+    deudaTotalConsolidadaBs <= 0.05 &&
+    deudaTotalConsolidadaUsd <= 0.05 &&
+    ultimoPago?.estado !== 'pendiente'
+  )
+
+  const adminMiembro = juntaMiembros.find(m => m.categoria === 'administracion' || m.cargo.toLowerCase().includes('administrad'))
+  const presidenteMiembro = juntaMiembros.find(m => m.cargo.toLowerCase().includes('presidente'))
+  const ultimoPagoAprobado = pagosRecientes.find(pg => pg.estado === 'aprobado')
+
+  const datosCartaSolvencia: DatosCartaSolvencia = {
+    nombreEdificio: config?.nombre_edificio || 'Junta de Condominio',
+    rif: config?.rif || '',
+    direccion: config?.direccion || '',
+    ciudad: config?.ciudad || 'Ocumare del Tuy',
+    logoUrl: config?.logo_url || null,
+    telefono: config?.telefono || adminMiembro?.telefono || null,
+    email: config?.email_contacto || null,
+
+    presidenteNombre: presidenteMiembro?.nombre || 'Presidente de la Junta',
+    presidenteCargo: presidenteMiembro?.cargo || 'Presidente',
+    presidenteCedula: (presidenteMiembro as any)?.cedula || '',
+
+    administradorNombre: adminMiembro?.nombre || config?.titular_cuenta || 'Douglas Guevara',
+    administradorCargo: adminMiembro?.cargo || 'Administrador',
+
+    residenteNombre: p?.nombre_completo || aptDetalle?.propietario_nombre || residenteNombre || 'Propietario',
+    residenteCedula: p?.cedula || moraRecord?.propietario_cedula || '',
+    residenteApto: String(aptDetalle?.numero || aptoNumero || 'N/D'),
+    residentePiso: aptDetalle?.piso != null ? String(aptDetalle.piso) : (moraRecord?.piso != null ? String(moraRecord.piso) : ''),
+    alicuotaPct: formatAlicuotaPct(alicuota),
+
+    ultimoPagoFecha: ultimoPagoAprobado?.fecha_pago || ultimoPagoAprobado?.created_at || null,
+    ultimoPagoReferencia: ultimoPagoAprobado?.referencia || null,
+    ultimoPagoMonto: ultimoPagoAprobado ? Number(ultimoPagoAprobado.monto_bs) || null : null,
+
+    mesSolvente: obtenerMesActualEs(),
+    anioSolvente: new Date().getFullYear(),
+    diaEmision: new Date().getDate(),
+    mesEmision: obtenerMesActualEs(),
+    anioEmision: new Date().getFullYear()
+  }
+
 
   // Cargar datos del apartamento y alícuota real impuesta por el administrador
   const cargarApartamentoInfo = useCallback(async (forceRefresh = false) => {
@@ -125,7 +195,7 @@ export function Dashboard() {
           if (apartamentoId) {
             const { data } = await supabase
               .from('apartamentos')
-              .select('id, numero, alicuota, piso')
+              .select('id, numero, alicuota, piso, propietario_nombre')
               .eq('id', apartamentoId)
               .maybeSingle()
             if (data) return data
@@ -134,7 +204,7 @@ export function Dashboard() {
           if (aptoNumero) {
             const { data } = await supabase
               .from('apartamentos')
-              .select('id, numero, alicuota, piso')
+              .select('id, numero, alicuota, piso, propietario_nombre')
               .eq('numero', aptoNumero)
               .maybeSingle()
             return data
@@ -145,6 +215,7 @@ export function Dashboard() {
       )
 
       if (aptData) {
+        setAptDetalle(aptData)
         const numStr = String(aptData.numero || '').toUpperCase()
         const pisoNum = Number(aptData.piso || 0)
         const pct = getAlicuotaPctNumber(aptData.alicuota)
@@ -231,6 +302,14 @@ export function Dashboard() {
       } catch (errGas) {
         console.warn('[Dashboard] Error cargando cuota de gas:', errGas)
       }
+
+      // Consultar miembros de la junta directiva y administración sincronizada
+      try {
+        const resJ = await obtenerJunta()
+        if (resJ?.data) setJuntaMiembros(resJ.data)
+      } catch (errJ) {
+        console.warn('[Dashboard] Error cargando junta:', errJ)
+      }
     } catch (err) {
       console.warn('[Dashboard] Error cargando datos del residente:', err)
     }
@@ -312,6 +391,21 @@ export function Dashboard() {
           onSuccess={() => {
             setModalOpen(false)
             cargarDatosResidente(true)
+          }}
+        />
+      )}
+
+      {/* Modal interactivo de Carta de Solvencia */}
+      {modalSolvenciaOpen && (
+        <ModalCartaSolvencia
+          isOpen={modalSolvenciaOpen}
+          onClose={() => setModalSolvenciaOpen(false)}
+          datos={datosCartaSolvencia}
+          perfilId={perfil?.id}
+          onCedulaUpdated={(newCedula) => {
+            if (perfil) {
+              (perfil as any).cedula = newCedula
+            }
           }}
         />
       )}
@@ -978,6 +1072,131 @@ export function Dashboard() {
             )
           })()}
 
+          {/* ── SECCIÓN: CARTA DE SOLVENCIA (MÓVIL) - SOLO VISIBLE SI ESTÁ 100% SOLVENTE ── */}
+          {estaSolvente && (
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(22, 163, 74, 0.16) 0%, rgba(15, 23, 42, 0.92) 50%, rgba(34, 197, 94, 0.12) 100%)',
+              border: '1.5px solid rgba(34, 197, 94, 0.42)',
+              borderRadius: '24px',
+              padding: '20px 20px 18px',
+              boxShadow: '0 12px 36px rgba(0, 0, 0, 0.5), 0 0 24px rgba(34, 197, 94, 0.15)',
+              position: 'relative',
+              overflow: 'hidden'
+            }}>
+              <div style={{
+                position: 'absolute',
+                top: '-30px',
+                right: '-30px',
+                width: '100px',
+                height: '100px',
+                borderRadius: '50%',
+                backgroundColor: 'rgba(34, 197, 94, 0.2)',
+                filter: 'blur(25px)',
+                pointerEvents: 'none'
+              }} />
+
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px', marginBottom: '14px' }}>
+                <div style={{
+                  width: '46px',
+                  height: '46px',
+                  borderRadius: '14px',
+                  backgroundColor: 'rgba(34, 197, 94, 0.2)',
+                  border: '1.5px solid rgba(34, 197, 94, 0.45)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '24px',
+                  flexShrink: 0,
+                  boxShadow: '0 4px 14px rgba(34, 197, 94, 0.25)'
+                }}>
+                  📜
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <h3 style={{ margin: 0, color: '#fff', fontSize: '16.5px', fontWeight: 800 }}>
+                      Carta de Solvencia
+                    </h3>
+                    <span style={{
+                      backgroundColor: 'rgba(34, 197, 94, 0.25)',
+                      color: '#4ade80',
+                      border: '1px solid rgba(34, 197, 94, 0.45)',
+                      borderRadius: '999px',
+                      padding: '2px 8px',
+                      fontSize: '10.5px',
+                      fontWeight: 800
+                    }}>
+                      ✓ 100% Solvente
+                    </span>
+                  </div>
+                  <p style={{ margin: '4px 0 0', color: '#cbd5e1', fontSize: '12px', lineHeight: 1.4 }}>
+                    ¡Felicidades! Tu apartamento no registra ninguna deuda de condominio ni gas. Tu constancia oficial se encuentra lista.
+                  </p>
+                </div>
+              </div>
+
+              {/* Botones de acción móvil */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.3fr', gap: '10px' }}>
+                <button
+                  onClick={() => setModalSolvenciaOpen(true)}
+                  style={{
+                    backgroundColor: 'rgba(255, 255, 255, 0.07)',
+                    border: '1px solid rgba(255, 255, 255, 0.14)',
+                    color: '#fff',
+                    borderRadius: '12px',
+                    padding: '10px 8px',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '5px'
+                  }}
+                >
+                  <span>👁️</span>
+                  <span>Ver Carta</span>
+                </button>
+
+                <button
+                  onClick={() => descargarSolvenciaPDF(datosCartaSolvencia)}
+                  style={{
+                    background: 'linear-gradient(135deg, #16a34a 0%, #22c55e 100%)',
+                    border: 'none',
+                    color: '#fff',
+                    borderRadius: '12px',
+                    padding: '10px 10px',
+                    fontSize: '12px',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '5px',
+                    boxShadow: '0 4px 14px rgba(34, 197, 94, 0.35)'
+                  }}
+                >
+                  <span>📥</span>
+                  <span>Descargar PDF</span>
+                </button>
+              </div>
+
+              {/* Barra inferior sincronizada */}
+              <div style={{
+                marginTop: '12px',
+                paddingTop: '10px',
+                borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                fontSize: '11px',
+                color: '#94a3b8'
+              }}>
+                <span>Apto: <strong style={{ color: '#fff' }}>{datosCartaSolvencia.residenteApto}</strong></span>
+                <span>Hasta: <strong style={{ color: '#4ade80' }}>{datosCartaSolvencia.mesSolvente} {datosCartaSolvencia.anioSolvente}</strong></span>
+              </div>
+            </div>
+          )}
+
           {/* ── 2. SECCIÓN: ACCIONES RÁPIDAS DE RESIDENTE (BOTONES CIRCULARES) ── */}
           <div>
             <h2 style={{ color: '#fff', fontSize: '18px', fontWeight: 800, margin: '0 0 16px', letterSpacing: '-0.3px' }}>
@@ -1133,6 +1352,27 @@ export function Dashboard() {
                 </div>
                 <span className="quick-action-label" style={{ color: '#fed7aa' }}>Gas</span>
               </button>
+
+              {/* 9. Carta de Solvencia (Solo si está 100% Solvente) */}
+              {estaSolvente && (
+                <button
+                  className="quick-action-btn"
+                  onClick={() => setModalSolvenciaOpen(true)}
+                  title="Consultar y descargar Carta de Solvencia Oficial"
+                >
+                  <div className="quick-action-circle" style={{
+                    backgroundColor: 'rgba(22, 163, 74, 0.2)',
+                    border: '1.5px solid rgba(34, 197, 94, 0.5)',
+                    color: '#4ade80',
+                    boxShadow: '0 4px 18px rgba(34, 197, 94, 0.3)'
+                  }}>
+                    <span style={{ fontSize: '22px' }}>📜</span>
+                  </div>
+                  <span className="quick-action-label" style={{ color: '#4ade80', fontWeight: 800 }}>
+                    Solvencia
+                  </span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -1535,6 +1775,113 @@ export function Dashboard() {
                     <span>Pagar Cuota de Gas</span>
                   </button>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── CARTA DE SOLVENCIA DESKTOP (SOLO SI ESTÁ 100% SOLVENTE) ── */}
+          {estaSolvente && (
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(22, 163, 74, 0.18) 0%, rgba(15, 23, 42, 0.95) 50%, rgba(34, 197, 94, 0.14) 100%)',
+              border: '2px solid rgba(34, 197, 94, 0.45)',
+              borderRadius: '24px',
+              padding: '22px 28px',
+              marginBottom: '24px',
+              boxShadow: '0 12px 36px rgba(0, 0, 0, 0.5), 0 0 28px rgba(34, 197, 94, 0.18)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '24px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '18px' }}>
+                <div style={{
+                  width: '56px',
+                  height: '56px',
+                  borderRadius: '18px',
+                  backgroundColor: 'rgba(34, 197, 94, 0.22)',
+                  border: '1.5px solid rgba(34, 197, 94, 0.5)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '28px',
+                  boxShadow: '0 6px 20px rgba(34, 197, 94, 0.3)',
+                  flexShrink: 0
+                }}>
+                  📜
+                </div>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <h3 style={{ margin: 0, color: '#fff', fontSize: '18px', fontWeight: 900 }}>
+                      Carta de Solvencia de Condominio
+                    </h3>
+                    <span style={{
+                      backgroundColor: 'rgba(34, 197, 94, 0.25)',
+                      color: '#4ade80',
+                      border: '1px solid rgba(34, 197, 94, 0.45)',
+                      borderRadius: '999px',
+                      padding: '3px 12px',
+                      fontSize: '11px',
+                      fontWeight: 800
+                    }}>
+                      ✓ 100% Solvente al Día
+                    </span>
+                  </div>
+                  <p style={{ margin: '6px 0 0', color: '#cbd5e1', fontSize: '13px', lineHeight: 1.4, maxWidth: '640px' }}>
+                    Tu apartamento se encuentra completamente solvente (Condominio al día y Gas Comunal solventado). Puedes descargar o imprimir tu constancia oficial expedida por la Junta de Condominio.
+                  </p>
+                  <div style={{ marginTop: '8px', display: 'flex', gap: '16px', fontSize: '11.5px', color: '#94a3b8' }}>
+                    <span>Apto: <strong style={{ color: '#fff' }}>{datosCartaSolvencia.residenteApto}</strong></span>
+                    <span>·</span>
+                    <span>Titular: <strong style={{ color: '#fff' }}>{datosCartaSolvencia.residenteNombre}</strong></span>
+                    <span>·</span>
+                    <span>Solvente hasta: <strong style={{ color: '#4ade80' }}>{datosCartaSolvencia.mesSolvente} {datosCartaSolvencia.anioSolvente}</strong></span>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', flexShrink: 0 }}>
+                <button
+                  onClick={() => setModalSolvenciaOpen(true)}
+                  style={{
+                    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                    border: '1px solid rgba(255, 255, 255, 0.16)',
+                    color: '#fff',
+                    borderRadius: '12px',
+                    padding: '12px 18px',
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <span>👁️</span>
+                  <span>Ver Carta</span>
+                </button>
+
+                <button
+                  onClick={() => descargarSolvenciaPDF(datosCartaSolvencia)}
+                  style={{
+                    background: 'linear-gradient(135deg, #16a34a 0%, #22c55e 100%)',
+                    border: 'none',
+                    color: '#fff',
+                    borderRadius: '12px',
+                    padding: '12px 22px',
+                    fontSize: '13px',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    boxShadow: '0 4px 18px rgba(34, 197, 94, 0.35)',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <span>📥</span>
+                  <span>Descargar Carta (PDF)</span>
+                </button>
               </div>
             </div>
           )}
@@ -1996,6 +2343,52 @@ export function Dashboard() {
 
             {/* COLUMNA LATERAL (ACCESOS RÁPIDOS Y COMUNIDAD) */}
             <div className="bento-col-side">
+
+              {/* 0. Tarjeta Carta de Solvencia Desktop (Solo si está 100% Solvente) */}
+              {estaSolvente && (
+                <div
+                  className="desktop-card"
+                  style={{
+                    cursor: 'pointer',
+                    background: 'linear-gradient(135deg, rgba(22, 163, 74, 0.18) 0%, rgba(15, 23, 42, 0.9) 100%)',
+                    border: '1.5px solid rgba(34, 197, 94, 0.45)',
+                    boxShadow: '0 8px 24px rgba(34, 197, 94, 0.15)'
+                  }}
+                  onClick={() => setModalSolvenciaOpen(true)}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                    <div style={{
+                      width: '48px', height: '48px', borderRadius: '14px',
+                      backgroundColor: 'rgba(34, 197, 94, 0.2)',
+                      border: '1px solid rgba(34, 197, 94, 0.4)',
+                      color: '#4ade80',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: '24px'
+                    }}>
+                      📜
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ color: '#fff', fontSize: '16px', fontWeight: 800 }}>
+                          Carta de Solvencia
+                        </span>
+                        <span style={{
+                          fontSize: '10.5px', fontWeight: 800,
+                          backgroundColor: 'rgba(34, 197, 94, 0.25)', color: '#4ade80',
+                          border: '1px solid rgba(34, 197, 94, 0.4)',
+                          padding: '1px 8px', borderRadius: '999px'
+                        }}>
+                          ✓ 100% Solvente
+                        </span>
+                      </div>
+                      <div style={{ color: '#94a3b8', fontSize: '12px', marginTop: '2px' }}>
+                        Constancia oficial de condominio y gas · Clic para ver y descargar
+                      </div>
+                    </div>
+                    <span style={{ color: '#4ade80', fontSize: '18px', fontWeight: 800 }}>📥</span>
+                  </div>
+                </div>
+              )}
 
               {/* 1. Tarjeta Normas de Convivencia */}
               <div
