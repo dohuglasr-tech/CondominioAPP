@@ -124,6 +124,18 @@ const ADMIN_ICONS: Record<string, React.ReactNode> = {
       <path d="M3 22h12"/>
     </svg>
   ),
+  locales: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 21h18"/>
+      <path d="M3 7v14"/>
+      <path d="M21 7v14"/>
+      <path d="M6 21V11"/>
+      <path d="M10 21V11"/>
+      <path d="M14 21V11"/>
+      <path d="M18 21V11"/>
+      <path d="M3 7l9-4 9 4"/>
+    </svg>
+  ),
 }
 
 const adminNav = [
@@ -135,7 +147,8 @@ const adminNav = [
   { key: 'recibosEmitidos', label: 'Recibos Emitidos', path: '/admin/recibos-emitidos', desc: 'Historial y recibos emitidos' },
   { key: 'calendario', label: 'Calendario de Deudas', path: '/admin/calendario-deudas', desc: 'Matriz mensual de impago y mora' },
   { key: 'gas', label: 'Gas', path: '/admin/gas', desc: 'Llenados, recaudación y morosidad' },
-  { key: 'casos', label: 'Casos', path: '/admin/casos', desc: 'Multas, acuerdos y locales' },
+  { key: 'locales', label: 'Locales', path: '/admin/locales', desc: 'Espacios exclusivos y arriendos' },
+  { key: 'casos', label: 'Casos', path: '/admin/casos', desc: 'Multas, acuerdos e incidencias' },
   { key: 'mora', label: 'Mora y Deudores', path: '/admin/mora', desc: 'Deudas > 3 meses y riesgo legal' },
   { key: 'residentes', label: 'Residentes', path: '/admin/residentes', desc: 'Gestión de apartamentos' },
   { key: 'propuestas', label: 'Propuestas', path: '/admin/propuestas', desc: 'Crear votaciones' },

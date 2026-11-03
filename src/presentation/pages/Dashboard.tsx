@@ -11,6 +11,7 @@ import { AvisoBanner } from '../components/AvisoBanner'
 import { obtenerSaldoAFavorApartamento } from '../../data/saldoFavorService'
 import { esReciboIndexado } from '../../utils/indexacionHelper'
 import { obtenerGasServicioData, obtenerDeudaGasApartamento, DeudaApartamentoGas } from '../../data/gasService'
+import { obtenerLocalesPorApartamento, LocalComercial } from '../../data/localesService'
 import { obtenerJunta, MiembroJunta } from '../../data/juntaService'
 import { ModalCartaSolvencia } from '../components/ModalCartaSolvencia'
 import { DatosCartaSolvencia, obtenerMesActualEs, descargarSolvenciaPDF } from '../../utils/solvenciaPdfGenerator'
@@ -57,6 +58,7 @@ export function Dashboard() {
   const [saldoAFavor, setSaldoAFavor] = useState<number>(0)
   const [saldoAFavorBs, setSaldoAFavorBs] = useState<number>(0)
   const [deudaGas, setDeudaGas] = useState<DeudaApartamentoGas | null>(null)
+  const [localesAsignados, setLocalesAsignados] = useState<LocalComercial[]>([])
   const [modalSolvenciaOpen, setModalSolvenciaOpen] = useState(false)
   const [juntaMiembros, setJuntaMiembros] = useState<MiembroJunta[]>([])
   const [aptDetalle, setAptDetalle] = useState<{ numero?: string; piso?: number | null; propietario_nombre?: string | null } | null>(null)
@@ -116,9 +118,13 @@ export function Dashboard() {
   const deudaGasUsd = deudaGas?.tieneDeuda ? Number(deudaGas.montoUsd || 0) : 0
   const tieneDeudaGas = Boolean(deudaGas?.tieneDeuda && (deudaGasBs > 0.05 || deudaGasUsd > 0.05))
 
-  const deudaTotalConsolidadaBs = deudaCondominioBs + deudaGasBs
-  const deudaTotalConsolidadaUsd = deudaCondominioUsd + deudaGasUsd
-  const tieneDeudaTotal = tieneDeudaCondominio || tieneDeudaGas
+  const deudaLocalesUsd = localesAsignados.reduce((acc, l) => acc + (Number(l.deuda_actual_usd) || 0), 0)
+  const deudaLocalesBs = localesAsignados.reduce((acc, l) => acc + (Number(l.deuda_actual_bs) || 0), 0)
+  const tieneDeudaLocales = deudaLocalesUsd > 0.05
+
+  const deudaTotalConsolidadaBs = deudaCondominioBs + deudaGasBs + deudaLocalesBs
+  const deudaTotalConsolidadaUsd = deudaCondominioUsd + deudaGasUsd + deudaLocalesUsd
+  const tieneDeudaTotal = tieneDeudaCondominio || tieneDeudaGas || tieneDeudaLocales
 
   // ── Verificación estricta de solvencia para Carta de Solvencia ──
   // El residente SOLO puede ver y descargar su carta si está 100% SOLVENTE:
@@ -301,6 +307,14 @@ export function Dashboard() {
         }
       } catch (errGas) {
         console.warn('[Dashboard] Error cargando cuota de gas:', errGas)
+      }
+
+      // Consultar locales o espacios exclusivos asignados al apartamento
+      try {
+        const locs = await obtenerLocalesPorApartamento(apartamentoId, aptoNumero)
+        setLocalesAsignados(locs)
+      } catch (errLoc) {
+        console.warn('[Dashboard] Error cargando locales asignados:', errLoc)
       }
 
       // Consultar miembros de la junta directiva y administración sincronizada
@@ -676,6 +690,28 @@ export function Dashboard() {
                   )}
                 </div>
               </div>
+
+              {/* Fila Locales Asignados (si aplica) */}
+              {localesAsignados.length > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '8px', borderTop: '1px dashed rgba(255, 255, 255, 0.08)' }}>
+                  <span
+                    onClick={() => navigate('/locales')}
+                    style={{ color: '#38bdf8', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
+                  >
+                    <span>🏬</span> {localesAsignados[0].nombre}:
+                  </span>
+                  <div style={{ textAlign: 'right' }}>
+                    <span style={{ color: tieneDeudaLocales ? '#ef4444' : '#22c55e', fontWeight: 800, fontSize: '12.5px' }}>
+                      {ocultarSaldos ? '••••' : (tieneDeudaLocales ? `Bs. ${fmtBs(deudaLocalesBs || (deudaLocalesUsd * tasaValida))}` : 'Solvente ✅')}
+                    </span>
+                    {tieneDeudaLocales && (
+                      <span style={{ color: '#f87171', fontSize: '10px', display: 'block', fontWeight: 700 }}>
+                        {ocultarSaldos ? '••••' : `≈ $${deudaLocalesUsd.toFixed(2)} USD`}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Botones de Pago Específicos para el Residente */}
               {tieneDeudaTotal && (
@@ -1993,7 +2029,7 @@ export function Dashboard() {
                     </span>
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: localesAsignados.length > 0 ? 'repeat(auto-fit, minmax(180px, 1fr))' : '1fr 1fr', gap: '14px' }}>
                     {/* Tarjeta Condominio */}
                     <div style={{
                       backgroundColor: 'rgba(255, 255, 255, 0.03)',
@@ -2039,6 +2075,37 @@ export function Dashboard() {
                         {ocultarSaldos ? '••••' : `≈ $${deudaGasUsd.toFixed(2)} USD`}
                       </div>
                     </div>
+
+                    {/* Tarjeta Locales Asignados (si tiene asignado) */}
+                    {localesAsignados.length > 0 && (
+                      <div
+                        onClick={() => navigate('/locales')}
+                        style={{
+                          backgroundColor: 'rgba(56, 189, 248, 0.05)',
+                          border: '1px solid rgba(56, 189, 248, 0.25)',
+                          borderRadius: '12px',
+                          padding: '12px 14px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                          <span style={{ color: '#7dd3fc', fontSize: '12px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span>🏬</span> Espacio Asignado
+                          </span>
+                          <span style={{ fontSize: '10px', color: tieneDeudaLocales ? '#ef4444' : '#22c55e', fontWeight: 800 }}>
+                            {tieneDeudaLocales ? 'DEUDA PENDIENTE' : 'SOLVENTE'}
+                          </span>
+                        </div>
+                        <div style={{ color: '#fff', fontSize: '14px', fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {localesAsignados[0].nombre}
+                        </div>
+                        <div style={{ color: tieneDeudaLocales ? '#f87171' : '#38bdf8', fontSize: '11px', fontWeight: 700, marginTop: '2px' }}>
+                          {tieneDeudaLocales
+                            ? `Deuda: $${deudaLocalesUsd.toFixed(2)} USD`
+                            : `Cuota: $${localesAsignados[0].monto_usd} USD / mes`}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Acciones de Pago Rápidas Desktop */}

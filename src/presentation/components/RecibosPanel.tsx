@@ -1317,7 +1317,7 @@ export function RecibosPanel({ onClose }: Props) {
                         <div style={{ marginTop: '12px', backgroundColor: 'rgba(34, 197, 94, 0.05)', border: '1px solid rgba(34, 197, 94, 0.2)', borderRadius: '8px', padding: '10px 12px' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                             <span style={{ color: '#4ade80', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                              <span>🎁</span> Donaciones Espacios Comunes (Descontadas de Gastos)
+                              <span>🏢</span> Donación por uso de espacios exclusivos (Descontadas de Gastos)
                             </span>
                             <span style={{ color: '#86efac', fontSize: '11px', fontWeight: 800 }}>
                               Total Edificio: -${fmtUsd(recibo.data_json?.total_donaciones_usd || 0)} USD
@@ -1346,29 +1346,50 @@ export function RecibosPanel({ onClose }: Props) {
                         </div>
                       )}
 
+                      {recibo.data_json?.destino_fondos_locales === 'fondo_reserva' && Number(recibo.data_json?.total_locales_usd) > 0 && (
+                        <div style={{ marginTop: '12px', backgroundColor: 'rgba(249, 115, 22, 0.05)', border: '1px solid rgba(249, 115, 22, 0.2)', borderRadius: '8px', padding: '10px 12px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ color: 'var(--color-accent, #f97316)', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <span>🏦</span> Donación por uso de espacios exclusivos (Destinado al Fondo de Reserva)
+                            </span>
+                            <span style={{ color: '#fdba74', fontSize: '11px', fontWeight: 800 }}>
+                              Total Recaudado: +${fmtUsd(recibo.data_json?.total_locales_usd || 0)} USD
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
                       {cargos.length > 0 && (
                         <div style={{ marginTop: '12px' }}>
                           <span style={{ color: '#ef4444', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase' }}>
                             Cargos Especiales de tu Apartamento
                           </span>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '6px' }}>
-                            {cargos.map((c, idx) => (
-                              <div
-                                key={idx}
-                                style={{
-                                  display: 'flex',
-                                  justifyContent: 'space-between',
-                                  alignItems: 'center',
-                                  padding: '6px 10px',
-                                  background: 'rgba(239, 68, 68, 0.05)',
-                                  borderRadius: '6px',
-                                  fontSize: '12px'
-                                }}
-                              >
-                                <span style={{ color: '#fca5a5' }}>{c.descripcion} ({c.tipo})</span>
-                                <span style={{ color: '#ef4444', fontWeight: 700 }}>${fmtUsd(c.monto_usd)}</span>
-                              </div>
-                            ))}
+                            {cargos.map((c, idx) => {
+                              const esEspacioExclusivo = c.tipo === 'donacion_espacio_exclusivo' || c.tipo === 'espacio_exclusivo'
+                              return (
+                                <div
+                                  key={idx}
+                                  style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    padding: '6px 10px',
+                                    background: esEspacioExclusivo ? 'rgba(56, 189, 248, 0.08)' : 'rgba(239, 68, 68, 0.05)',
+                                    border: `1px solid ${esEspacioExclusivo ? 'rgba(56, 189, 248, 0.25)' : 'rgba(239, 68, 68, 0.2)'}`,
+                                    borderRadius: '6px',
+                                    fontSize: '12px'
+                                  }}
+                                >
+                                  <span style={{ color: esEspacioExclusivo ? '#38bdf8' : '#fca5a5', fontWeight: esEspacioExclusivo ? 700 : 500 }}>
+                                    {esEspacioExclusivo ? '🏢 Donación por uso de espacios exclusivos: ' : ''}{c.descripcion} {!esEspacioExclusivo && `(${c.tipo})`}
+                                  </span>
+                                  <span style={{ color: esEspacioExclusivo ? '#38bdf8' : '#ef4444', fontWeight: 700 }}>
+                                    ${fmtUsd(c.monto_usd)}
+                                  </span>
+                                </div>
+                              )
+                            })}
                           </div>
                         </div>
                       )}

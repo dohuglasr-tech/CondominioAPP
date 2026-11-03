@@ -96,6 +96,18 @@ const SVG = {
       <line x1="8" y1="14" x2="12" y2="14"/>
     </svg>
   ),
+  locales: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 21h18"/>
+      <path d="M3 7v14"/>
+      <path d="M21 7v14"/>
+      <path d="M6 21V11"/>
+      <path d="M10 21V11"/>
+      <path d="M14 21V11"/>
+      <path d="M18 21V11"/>
+      <path d="M3 7l9-4 9 4"/>
+    </svg>
+  ),
 }
 
 export const Layout: React.FC = () => {
@@ -132,6 +144,7 @@ export const Layout: React.FC = () => {
     { label: 'Inicio',               desc: 'Estado de cuenta y resumen', path: '/',           icon: 'inicio' },
     { label: 'Mis Recibos',          desc: 'Historial y recibos emitidos', path: '/recibos',  icon: 'recibos' },
     { label: 'Normas',               desc: 'Reglamento y convivencia',    path: '/normas',   icon: 'normas' },
+    { label: 'Locales y Espacios',   desc: 'Espacios y donaciones exclusivas', path: '/locales', icon: 'locales' },
     { label: 'Servicio de Gas',      desc: 'Tanque y cuota independiente', path: '/gas',      icon: 'gas' },
     { label: 'Junta de Condominio',  desc: 'Organigrama y directiva',    path: '/junta',    icon: 'junta' },
     { label: 'Lista de Mora',        desc: 'Transparencia comunitaria',  path: '/mora',     icon: 'mora' },

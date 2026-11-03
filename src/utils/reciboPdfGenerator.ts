@@ -60,6 +60,8 @@ const TIPO_CARGO_LABELS: Record<string, string> = {
   deuda_atrasada: '🔴 Deuda Atrasada',
   cuota_extraordinaria: '🔷 Cuota Extraordinaria',
   acuerdo_pago: '🤝 Acuerdo de Pago',
+  donacion_espacio_exclusivo: '🏢 Donación por uso de espacios exclusivos',
+  espacio_exclusivo: '🏢 Donación por uso de espacios exclusivos',
 }
 
 const fmtBs  = (n: number) => (n || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -242,7 +244,7 @@ export function generarPDFRecibo(
     )
     donaciones.forEach(d => {
       subTotalesBody.push([
-        `(-) DONACIÓN ESPACIO COMÚN: ${(d.nombreEspacio || 'ÁREA').toUpperCase()} — ${d.concepto || 'Aporte'}`,
+        `(-) DONACIÓN POR USO DE ESPACIOS: ${(d.nombreEspacio || 'ESPACIO EXCLUSIVO').toUpperCase()} — ${d.concepto || 'Aporte'}`,
         `-${fmtBs(d.monto_bs || 0)} Bs`,
         `-$ ${fmtUsd(d.monto_usd || 0)}`
       ])

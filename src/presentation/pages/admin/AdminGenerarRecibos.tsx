@@ -5,6 +5,7 @@ import { notificarApartamento } from '../../../data/notificacionesService'
 import { despacharEmailRecibo } from '../../../data/emailService'
 import { getAlicuotaDecimal, formatAlicuotaPct, compararApartamentos } from '../../../utils/alicuota'
 import { generarPDFRecibo } from '../../../utils/reciboPdfGenerator'
+import { obtenerLocales, LocalComercial } from '../../../data/localesService'
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 interface Apartamento {
@@ -17,7 +18,7 @@ interface GastoComun {
 }
 interface CargoEspecial {
   id: string; apartamento_id: string
-  tipo: 'multa' | 'deuda_atrasada' | 'cuota_extraordinaria' | 'acuerdo_pago'
+  tipo: 'multa' | 'deuda_atrasada' | 'cuota_extraordinaria' | 'acuerdo_pago' | 'donacion_espacio_exclusivo'
   descripcion: string; monto_usd: number; monto_bs?: number
 }
 export interface DonacionEspacioComun {
@@ -43,6 +44,7 @@ interface ConfigEdificio {
 const TIPO_CARGO_LABELS: Record<string, string> = {
   multa: '⚠️ Multa', deuda_atrasada: '🔴 Deuda Atrasada',
   cuota_extraordinaria: '🔷 Cuota Extraordinaria', acuerdo_pago: '🤝 Acuerdo de Pago',
+  donacion_espacio_exclusivo: '🏢 Donación por uso de espacios exclusivos',
 }
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
 
@@ -79,18 +81,8 @@ export const AdminGenerarRecibos: React.FC = () => {
   const [fondoReservaPct, setFondoReservaPct] = useState(10)
   const [fondoReservaPhPct, setFondoReservaPhPct] = useState(10)
   const [gastos, setGastos]         = useState<GastoComun[]>([])
-  const [donaciones, setDonaciones] = useState<DonacionEspacioComun[]>([])
-  const [donacionForm, setDonacionForm] = useState<{
-    nombreEspacio: string
-    concepto: string
-    monto_usd: string
-    monto_bs: string
-  }>({
-    nombreEspacio: '',
-    concepto: '',
-    monto_usd: '',
-    monto_bs: '',
-  })
+  const [locales, setLocales]       = useState<LocalComercial[]>([])
+  const [destinoLocales, setDestinoLocales] = useState<'deducir' | 'fondo_reserva'>('deducir')
   const [config, setConfig]         = useState<ConfigEdificio | null>(null)
   const [loading, setLoading]       = useState(true)
 
@@ -122,6 +114,23 @@ export const AdminGenerarRecibos: React.FC = () => {
   const totalGastosBrutosUsd = gastos.reduce((s, g) => s + (g.monto_usd || 0), 0)
   const totalGastosBrutosBs  = gastos.reduce((s, g) => s + (g.monto_bs  || 0), 0)
 
+  // Locales activos del mes
+  const localesActivos = locales.filter(l => l.estado === 'activo' && Number(l.monto_usd) > 0)
+  const totalLocalesUsd = localesActivos.reduce((s, l) => s + (Number(l.monto_usd) || 0), 0)
+  const totalLocalesBs  = localesActivos.reduce((s, l) => s + (Number(l.monto_bs) || (Number(l.monto_usd) * (config?.tasa_bcv_actual || 859.06))), 0)
+
+  // Deducción según decisión del admin: si elige 'deducir', se descuenta de los gastos comunes brutos.
+  // Si elige 'fondo_reserva', el dinero va íntegro al fondo y NO se descuenta de los gastos comunes.
+  const donaciones: DonacionEspacioComun[] = destinoLocales === 'deducir'
+    ? localesActivos.map(l => ({
+        id: l.id,
+        nombreEspacio: l.nombre,
+        concepto: `Donación por uso de espacios exclusivos (${l.arrendatario_nombre}${l.apartamento_numero ? ` - Apto ${l.apartamento_numero}` : ''})`,
+        monto_usd: Number(l.monto_usd),
+        monto_bs: Number(l.monto_bs) || (config?.tasa_bcv_actual ? Number(l.monto_usd) * config.tasa_bcv_actual : 0)
+      }))
+    : []
+
   const totalDonacionesUsd   = donaciones.reduce((s, d) => s + (Number(d.monto_usd) || 0), 0)
   const totalDonacionesBs    = donaciones.reduce((s, d) => s + (Number(d.monto_bs)  || 0), 0)
 
@@ -132,88 +141,11 @@ export const AdminGenerarRecibos: React.FC = () => {
   const totalGastosUsd = totalGastosNetosUsd
   const totalGastosBs  = totalGastosNetosBs
 
-  // ── Guardar y gestionar donaciones ────────────────────────────────────
-  const guardarDonaciones = (items: DonacionEspacioComun[]) => {
-    setDonaciones(items)
-    try {
-      localStorage.setItem(`donaciones_espacios_${mesStr}`, JSON.stringify(items))
-    } catch (e) {
-      console.warn('[AdminGenerarRecibos] Error guardando donaciones en localStorage', e)
-    }
-  }
-
-  const handleMontoUsdChange = (val: string) => {
-    const tasa = config?.tasa_bcv_actual || 0
-    const musd = parseFloat(val.replace(',', '.'))
-    if (!isNaN(musd) && tasa > 0) {
-      setDonacionForm(prev => ({
-        ...prev,
-        monto_usd: val,
-        monto_bs: (musd * tasa).toFixed(2)
-      }))
-    } else {
-      setDonacionForm(prev => ({ ...prev, monto_usd: val }))
-    }
-  }
-
-  const handleMontoBsChange = (val: string) => {
-    const tasa = config?.tasa_bcv_actual || 0
-    const mbs = parseFloat(val.replace(',', '.'))
-    if (!isNaN(mbs) && tasa > 0) {
-      setDonacionForm(prev => ({
-        ...prev,
-        monto_bs: val,
-        monto_usd: (mbs / tasa).toFixed(2)
-      }))
-    } else {
-      setDonacionForm(prev => ({ ...prev, monto_bs: val }))
-    }
-  }
-
-  const handleAgregarDonacion = () => {
-    const espacio = donacionForm.nombreEspacio.trim()
-    const concepto = donacionForm.concepto.trim()
-    const musd = parseFloat(donacionForm.monto_usd.replace(',', '.')) || 0
-    const mbs  = parseFloat(donacionForm.monto_bs.replace(',', '.')) || 0
-
-    if (!espacio) {
-      showToast('⚠️ Ingresa o selecciona el nombre del espacio común')
-      return
-    }
-    if (!concepto) {
-      showToast('⚠️ Ingresa el concepto de la donación')
-      return
-    }
-    if (musd <= 0 && mbs <= 0) {
-      showToast('⚠️ Ingresa el monto en USD o en Bolívares')
-      return
-    }
-
-    const nueva: DonacionEspacioComun = {
-      id: `don_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-      nombreEspacio: espacio,
-      concepto,
-      monto_usd: musd,
-      monto_bs: mbs
-    }
-
-    const actualizadas = [...donaciones, nueva]
-    guardarDonaciones(actualizadas)
-    setDonacionForm({ nombreEspacio: '', concepto: '', monto_usd: '', monto_bs: '' })
-    showToast(`✅ Donación agregada: ${espacio} (-$${fmtUsd(musd)})`)
-  }
-
-  const handleEliminarDonacion = (id: string) => {
-    const actualizadas = donaciones.filter(d => d.id !== id)
-    guardarDonaciones(actualizadas)
-    showToast('🗑️ Donación eliminada')
-  }
-
   // ── Cargar datos ─────────────────────────────────────────────────────
   const cargarDatos = useCallback(async () => {
     setLoading(true)
     try {
-      const [configRes, gastosRes, aptosRes, perfilesRes, reciboExistRes] = await Promise.all([
+      const [configRes, gastosRes, aptosRes, perfilesRes, reciboExistRes, localesData] = await Promise.all([
         supabase.from('configuracion_edificio').select('*').limit(1).maybeSingle(),
         supabase.from('gastos_comunes').select('*')
           .gte('mes_aplicacion', mesStr).lte('mes_aplicacion', mesStr)
@@ -224,22 +156,14 @@ export const AdminGenerarRecibos: React.FC = () => {
           .select('id, apartamento_id, nombre_completo, condicion_habitacional, propietario_nombre, propietario_email'),
         supabase.from('recibos_generados').select('data_json')
           .eq('mes_facturado', mesStr).limit(1).maybeSingle(),
+        obtenerLocales()
       ])
       if (configRes.data) setConfig(configRes.data)
       if (gastosRes.data) setGastos(gastosRes.data)
+      if (localesData) setLocales(localesData)
 
-      // Cargar donaciones del mes: primero borrador en localStorage, luego recibo previo si existe
-      try {
-        const savedDraft = localStorage.getItem(`donaciones_espacios_${mesStr}`)
-        if (savedDraft) {
-          setDonaciones(JSON.parse(savedDraft))
-        } else if (reciboExistRes.data?.data_json?.donaciones_espacios_comunes) {
-          setDonaciones(reciboExistRes.data.data_json.donaciones_espacios_comunes)
-        } else {
-          setDonaciones([])
-        }
-      } catch {
-        setDonaciones([])
+      if (reciboExistRes.data?.data_json?.destino_fondos_locales) {
+        setDestinoLocales(reciboExistRes.data.data_json.destino_fondos_locales)
       }
 
       if (aptosRes.data) {
@@ -275,13 +199,32 @@ export const AdminGenerarRecibos: React.FC = () => {
   useEffect(() => { cargarDatos() }, [mes, anio])
   useEffect(() => { setEsIndexado(!esHistorico) }, [esHistorico])
 
-  // Cargar cargos especiales del mes
+  // Cargar cargos especiales del mes y añadir automáticamente cargos de locales asignados
   useEffect(() => {
     if (apartamentos.length === 0) return
     supabase.from('cargos_especiales').select('*')
       .gte('mes_aplicacion', mesStr).lte('mes_aplicacion', mesStr)
-      .then(({ data }) => { if (data) setCargos(data) })
-  }, [apartamentos, mesStr])
+      .then(({ data }) => {
+        const base: CargoEspecial[] = data || []
+        
+        // Locales activos que tienen apartamento asignado
+        const localesConApto = locales.filter(l => l.estado === 'activo' && l.apartamento_id && Number(l.monto_usd) > 0)
+        const cargosDeLocales: CargoEspecial[] = localesConApto.map(l => ({
+          id: `cargo_local_${l.id}`,
+          apartamento_id: l.apartamento_id!,
+          tipo: 'donacion_espacio_exclusivo',
+          descripcion: `${l.nombre} (${l.arrendatario_nombre})`,
+          monto_usd: Number(l.monto_usd),
+          monto_bs: Number(l.monto_bs) || (config?.tasa_bcv_actual ? Number(l.monto_usd) * config.tasa_bcv_actual : undefined)
+        }))
+
+        // Evitar duplicados
+        const claveExistente = new Set(base.map(c => `${c.apartamento_id}_${c.tipo}_${c.descripcion}`))
+        const nuevos = cargosDeLocales.filter(cl => !claveExistente.has(`${cl.apartamento_id}_${cl.tipo}_${cl.descripcion}`))
+
+        setCargos([...base, ...nuevos])
+      })
+  }, [apartamentos, locales, mesStr, config?.tasa_bcv_actual])
 
   // ── Cálculo por apto (Deduciendo donaciones de espacios comunes) ─────
   const calcularApto = (apto: Apartamento) => {
@@ -381,6 +324,10 @@ export const AdminGenerarRecibos: React.FC = () => {
           gastos: gastos.map(g => ({ descripcion: g.descripcion, monto_usd: g.monto_usd, monto_bs: g.monto_bs, categoria: g.categoria })),
           cargos_especiales: cargos.filter(c => c.apartamento_id === apto.id),
           donaciones_espacios_comunes: donaciones,
+          destino_fondos_locales: destinoLocales,
+          locales_aplicados: localesActivos,
+          total_locales_usd: totalLocalesUsd,
+          total_locales_bs: totalLocalesBs,
           total_gastos_brutos_usd: totalGastosBrutosUsd,
           total_gastos_brutos_bs: totalGastosBrutosBs,
           total_donaciones_usd: totalDonacionesUsd,
@@ -673,169 +620,144 @@ export const AdminGenerarRecibos: React.FC = () => {
           </div>
 
           {/* ══════════════════════════════════════════════════════════════════
-              NUEVO APARTADO: DONACIÓN POR USO DE ESPACIOS COMUNES
+              APARTADO: LOCALES Y DONACIÓN POR USO DE ESPACIOS EXCLUSIVOS
              ══════════════════════════════════════════════════════════════════ */}
           <div style={{
             ...S.card,
-            border: donaciones.length > 0 ? '1px solid rgba(34, 197, 94, 0.4)' : '1px solid #1e1e1e',
-            backgroundColor: donaciones.length > 0 ? 'rgba(34, 197, 94, 0.03)' : '#141414',
+            border: localesActivos.length > 0 ? '1px solid rgba(56, 189, 248, 0.35)' : '1px solid #1e1e1e',
+            backgroundColor: localesActivos.length > 0 ? 'rgba(56, 189, 248, 0.03)' : '#141414',
           }}>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:'16px', flexWrap:'wrap', gap:'12px' }}>
               <div>
                 <div style={{ display:'flex', alignItems:'center', gap:'8px', marginBottom:'4px' }}>
-                  <span style={{ fontSize:'20px' }}>🎁</span>
+                  <span style={{ fontSize:'20px' }}>🏢</span>
                   <h3 style={{ color:'#fff', margin:0, fontSize:'16px', fontWeight:800 }}>
-                    Donación por Uso de Espacios Comunes
+                    Locales y Donación por Uso de Espacios Exclusivos
                   </h3>
                   <span style={{
-                    backgroundColor: 'rgba(34, 197, 94, 0.15)',
-                    color: '#4ade80',
-                    border: '1px solid rgba(34, 197, 94, 0.3)',
+                    backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                    color: '#38bdf8',
+                    border: '1px solid rgba(56, 189, 248, 0.3)',
                     padding: '2px 8px',
                     borderRadius: '6px',
                     fontSize: '11px',
                     fontWeight: 700
                   }}>
-                    Deducción Directa de Gastos
+                    {localesActivos.length} Locales Activos
                   </span>
                 </div>
                 <p style={{ color:'#94a3b8', fontSize:'12.5px', margin:0, maxWidth:'720px', lineHeight:'1.4' }}>
-                  Coloca el nombre del espacio común, el concepto y el valor en <strong>USD ($)</strong> y en <strong>Bolívares (Bs)</strong>.
-                  La sumatoria total de estas donaciones <strong>se restará de los gastos comunes</strong> del mes antes de calcular la alícuota, por lo que el recibo de todos los residentes saldrá más económico.
+                  Los locales y espacios exclusivos registrados en el panel generan ingresos para el condominio. La deuda de cada local pertenece a su apartamento asignado. Como administrador, decide qué hacer con estos ingresos en la emisión de este mes:
                 </p>
               </div>
 
-              {donaciones.length > 0 && (
-                <div style={{ textAlign:'right', backgroundColor:'rgba(34, 197, 94, 0.1)', padding:'8px 14px', borderRadius:'10px', border:'1px solid rgba(34, 197, 94, 0.25)' }}>
-                  <div style={{ color:'#86efac', fontSize:'11px', fontWeight:700, textTransform:'uppercase' }}>Total Donaciones a Deducir</div>
-                  <div style={{ color:'#4ade80', fontWeight:900, fontSize:'18px' }}>-$ {fmtUsd(totalDonacionesUsd)} USD</div>
-                  <div style={{ color:'#86efac', fontWeight:700, fontSize:'12px' }}>-Bs. {fmtBs(totalDonacionesBs)}</div>
-                </div>
-              )}
-            </div>
-
-            {/* Accesos rápidos para el nombre del espacio */}
-            <div style={{ marginBottom:'14px' }}>
-              <span style={{ color:'#888', fontSize:'11px', fontWeight:600, textTransform:'uppercase', display:'block', marginBottom:'6px' }}>
-                Espacios comunes sugeridos (Haz clic para autocompletar):
-              </span>
-              <div style={{ display:'flex', gap:'8px', flexWrap:'wrap' }}>
-                {[
-                  { label: '🎉 Salón de Fiesta', val: 'Salón de Fiesta' },
-                  { label: '🍖 Parrillera', val: 'Parrillera' },
-                  { label: '⚽ Cancha Deportiva', val: 'Cancha Deportiva' },
-                  { label: '🏊 Piscina', val: 'Piscina' },
-                  { label: '🌇 Terraza / Azotea', val: 'Terraza / Azotea' },
-                  { label: '🎪 Área Social Común', val: 'Área Social Común' },
-                ].map(chip => (
-                  <button
-                    key={chip.val}
-                    type="button"
-                    onClick={() => setDonacionForm(prev => ({ ...prev, nombreEspacio: chip.val }))}
-                    style={{
-                      backgroundColor: donacionForm.nombreEspacio === chip.val ? 'rgba(249, 115, 22, 0.2)' : '#1e1e1e',
-                      color: donacionForm.nombreEspacio === chip.val ? 'var(--color-accent, #f97316)' : '#ccc',
-                      border: donacionForm.nombreEspacio === chip.val ? '1px solid var(--color-accent, #f97316)' : '1px solid #2a2a2a',
-                      padding: '5px 11px',
-                      borderRadius: '8px',
-                      fontSize: '11.5px',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      transition: 'all 0.15s ease'
-                    }}
-                  >
-                    {chip.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Formulario de Registro de Donación */}
-            <div style={{
-              backgroundColor: '#0c0f15',
-              border: '1px solid #222e3f',
-              borderRadius: '12px',
-              padding: '16px',
-              marginBottom: '16px',
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr)) auto',
-              gap: '12px',
-              alignItems: 'end'
-            }}>
-              <div>
-                <label style={S.label}>Nombre del Espacio *</label>
-                <input
-                  style={S.input}
-                  placeholder="Ej: Salón de Fiesta"
-                  value={donacionForm.nombreEspacio}
-                  onChange={e => setDonacionForm({ ...donacionForm, nombreEspacio: e.target.value })}
-                />
-              </div>
-
-              <div>
-                <label style={S.label}>Concepto del Aporte *</label>
-                <input
-                  style={S.input}
-                  placeholder="Ej: Cumpleaños infantil Apto 4-B"
-                  value={donacionForm.concepto}
-                  onChange={e => setDonacionForm({ ...donacionForm, concepto: e.target.value })}
-                />
-              </div>
-
-              <div>
-                <label style={{ ...S.label, color: 'var(--color-accent, #f97316)' }}>Valor en Dólares ($) *</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  style={{ ...S.input, borderColor: 'var(--color-accent, #f97316)', color: 'var(--color-accent, #f97316)', fontWeight: 700 }}
-                  placeholder="0.00"
-                  value={donacionForm.monto_usd}
-                  onChange={e => handleMontoUsdChange(e.target.value)}
-                />
-              </div>
-
-              <div>
-                <label style={{ ...S.label, color: '#10b981' }}>Valor en Bolívares (Bs) *</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  style={{ ...S.input, borderColor: '#10b981', color: '#10b981', fontWeight: 700 }}
-                  placeholder="0.00"
-                  value={donacionForm.monto_bs}
-                  onChange={e => handleMontoBsChange(e.target.value)}
-                />
-              </div>
-
-              <div>
+              <div style={{ display:'flex', gap:'10px', alignItems:'center' }}>
                 <button
                   type="button"
-                  onClick={handleAgregarDonacion}
+                  onClick={() => navigate('/admin/locales')}
                   style={{
-                    ...S.btnPrimary,
-                    backgroundColor: '#16a34a',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    whiteSpace: 'nowrap',
-                    padding: '10px 18px'
+                    backgroundColor: '#1e293b',
+                    color: '#38bdf8',
+                    border: '1px solid #334155',
+                    padding: '6px 12px',
+                    borderRadius: '8px',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    cursor: 'pointer'
                   }}
                 >
-                  <span>+</span>
-                  <span>Agregar Donación</span>
+                  ⚙️ Gestionar Locales ↗
                 </button>
+
+                {totalLocalesUsd > 0 && (
+                  <div style={{ textAlign:'right', backgroundColor:'rgba(56, 189, 248, 0.1)', padding:'8px 14px', borderRadius:'10px', border:'1px solid rgba(56, 189, 248, 0.25)' }}>
+                    <div style={{ color:'#7dd3fc', fontSize:'11px', fontWeight:700, textTransform:'uppercase' }}>Total Pagos Locales</div>
+                    <div style={{ color:'#38bdf8', fontWeight:900, fontSize:'17px' }}>${fmtUsd(totalLocalesUsd)} USD</div>
+                    <div style={{ color:'#94a3b8', fontWeight:700, fontSize:'11.5px' }}>Bs. {fmtBs(totalLocalesBs)}</div>
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Listado de Donaciones Registradas */}
-            {donaciones.length === 0 ? (
+            {/* Selector de Destino de los Fondos (Decisión del Admin) */}
+            <div style={{
+              backgroundColor: '#0c1017',
+              border: '1px solid #1e293b',
+              borderRadius: '12px',
+              padding: '16px',
+              marginBottom: '16px'
+            }}>
+              <span style={{ color:'#e2e8f0', fontSize:'12px', fontWeight:800, textTransform:'uppercase', display:'block', marginBottom:'10px' }}>
+                📌 ¿Qué destino tendrán los pagos de locales en este recibo?
+              </span>
+
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(260px, 1fr))', gap:'12px' }}>
+                {/* Opción 1: Deducir de la factura */}
+                <div
+                  onClick={() => setDestinoLocales('deducir')}
+                  style={{
+                    backgroundColor: destinoLocales === 'deducir' ? 'rgba(34, 197, 94, 0.12)' : '#131b2c',
+                    border: `1.5px solid ${destinoLocales === 'deducir' ? '#22c55e' : '#1e293b'}`,
+                    borderRadius: '10px',
+                    padding: '12px 14px',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <div style={{ display:'flex', alignItems:'center', gap:'8px', marginBottom:'4px' }}>
+                    <input
+                      type="radio"
+                      checked={destinoLocales === 'deducir'}
+                      onChange={() => setDestinoLocales('deducir')}
+                      style={{ accentColor: '#22c55e', cursor:'pointer' }}
+                    />
+                    <span style={{ color: destinoLocales === 'deducir' ? '#4ade80' : '#fff', fontWeight: 800, fontSize: '13.5px' }}>
+                      📉 Deducir de la Factura (Gastos Comunes)
+                    </span>
+                  </div>
+                  <p style={{ color: '#94a3b8', fontSize: '12px', margin: '4px 0 0 24px', lineHeight: 1.35 }}>
+                    Se resta el valor de los locales (-${fmtUsd(totalLocalesUsd)} USD) del total de gastos brutos. El recibo saldrá más económico para todos los residentes por alícuota.
+                  </p>
+                </div>
+
+                {/* Opción 2: Destinar al Fondo de Reserva */}
+                <div
+                  onClick={() => setDestinoLocales('fondo_reserva')}
+                  style={{
+                    backgroundColor: destinoLocales === 'fondo_reserva' ? 'rgba(249, 115, 22, 0.12)' : '#131b2c',
+                    border: `1.5px solid ${destinoLocales === 'fondo_reserva' ? 'var(--color-accent, #f97316)' : '#1e293b'}`,
+                    borderRadius: '10px',
+                    padding: '12px 14px',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <div style={{ display:'flex', alignItems:'center', gap:'8px', marginBottom:'4px' }}>
+                    <input
+                      type="radio"
+                      checked={destinoLocales === 'fondo_reserva'}
+                      onChange={() => setDestinoLocales('fondo_reserva')}
+                      style={{ accentColor: 'var(--color-accent, #f97316)', cursor:'pointer' }}
+                    />
+                    <span style={{ color: destinoLocales === 'fondo_reserva' ? 'var(--color-accent, #f97316)' : '#fff', fontWeight: 800, fontSize: '13.5px' }}>
+                      🏦 Destinar al Fondo de Reserva
+                    </span>
+                  </div>
+                  <p style={{ color: '#94a3b8', fontSize: '12px', margin: '4px 0 0 24px', lineHeight: 1.35 }}>
+                    El dinero recaudado de los locales ingresa íntegro al Fondo de Reserva del edificio. No se descuenta de los gastos comunes ordinarios del mes.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Listado de Locales Activos Considerados */}
+            {localesActivos.length === 0 ? (
               <div style={{ backgroundColor:'#0a0a0a', border:'1px dashed #2a2a2a', borderRadius:'8px', padding:'16px', textAlign:'center' }}>
                 <p style={{ color:'#666', fontSize:'13px', margin:0 }}>
-                  Aún no se han agregado donaciones por uso de espacios comunes para este mes.
+                  No hay locales comerciales activos registrados en el sistema.
                 </p>
                 <p style={{ color:'#444', fontSize:'11.5px', marginTop:'4px', margin:0 }}>
-                  Si hubo ingresos por alquiler de áreas sociales, regístralas arriba para descontarlas del total a pagar.
+                  Puedes dar de alta locales o espacios exclusivos desde el nuevo apartado <strong>Locales</strong> en el menú lateral.
                 </p>
               </div>
             ) : (
@@ -843,13 +765,13 @@ export const AdminGenerarRecibos: React.FC = () => {
                 <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'12px', marginBottom:'12px' }}>
                   <thead>
                     <tr style={{ borderBottom:'1px solid #2a2a2a' }}>
-                      {['Espacio Común', 'Concepto', 'Monto en Bs', 'Monto en USD ($)', 'Acción'].map(h => (
+                      {['Local / Espacio Exclusivo', 'Arrendatario', 'Apartamento Asignado', 'Canon Mensual (Bs)', 'Canon Mensual ($ USD)'].map(h => (
                         <th key={h} style={{
                           color: '#888',
                           fontSize: '11px',
                           fontWeight: 700,
                           padding: '8px 10px',
-                          textAlign: h.includes('Monto') ? 'right' : h === 'Acción' ? 'center' : 'left',
+                          textAlign: h.includes('Canon') ? 'right' : h.includes('Asignado') ? 'center' : 'left',
                           textTransform: 'uppercase'
                         }}>
                           {h}
@@ -858,30 +780,24 @@ export const AdminGenerarRecibos: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {donaciones.map(d => (
-                      <tr key={d.id} style={{ borderBottom:'1px solid #1a1a1a', backgroundColor:'rgba(0,0,0,0.2)' }}>
+                    {localesActivos.map(l => (
+                      <tr key={l.id} style={{ borderBottom:'1px solid #1a1a1a', backgroundColor:'rgba(0,0,0,0.2)' }}>
                         <td style={{ color:'#fff', padding:'8px 10px', fontWeight:700 }}>
-                          <span style={{ marginRight:'6px' }}>📍</span>
-                          {d.nombreEspacio}
+                          <span style={{ marginRight:'6px' }}>🏬</span>
+                          {l.nombre}
+                          {l.codigo && <span style={{ marginLeft:'6px', color:'#64748b', fontSize:'11px' }}>({l.codigo})</span>}
                         </td>
                         <td style={{ color:'#ccc', padding:'8px 10px' }}>
-                          {d.concepto}
+                          {l.arrendatario_nombre}
+                        </td>
+                        <td style={{ color:'var(--color-accent, #f97316)', padding:'8px 10px', textAlign:'center', fontWeight:700 }}>
+                          {l.apartamento_numero ? `Apto #${l.apartamento_numero}` : '— Sin Apto —'}
                         </td>
                         <td style={{ color:'#34d399', padding:'8px 10px', textAlign:'right', fontWeight:700 }}>
-                          -Bs. {fmtBs(d.monto_bs)}
+                          Bs. {fmtBs(l.monto_bs || (l.monto_usd * (config?.tasa_bcv_actual || 859.06)))}
                         </td>
-                        <td style={{ color:'var(--color-accent, #f97316)', padding:'8px 10px', textAlign:'right', fontWeight:800 }}>
-                          -$ {fmtUsd(d.monto_usd)}
-                        </td>
-                        <td style={{ padding:'8px 10px', textAlign:'center' }}>
-                          <button
-                            type="button"
-                            onClick={() => handleEliminarDonacion(d.id)}
-                            style={{ ...S.btnDanger, padding:'4px 10px' }}
-                            title="Eliminar esta donación"
-                          >
-                            ✕ Eliminar
-                          </button>
+                        <td style={{ color:'#38bdf8', padding:'8px 10px', textAlign:'right', fontWeight:800 }}>
+                          $ {fmtUsd(l.monto_usd)}
                         </td>
                       </tr>
                     ))}
@@ -890,7 +806,7 @@ export const AdminGenerarRecibos: React.FC = () => {
               </div>
             )}
 
-            {/* Banner de Balance Contable y Deducción de Gastos */}
+            {/* Banner de Balance Contable según decisión */}
             <div style={{
               backgroundColor: '#0a0a0a',
               border: '1px solid #222',
@@ -910,11 +826,14 @@ export const AdminGenerarRecibos: React.FC = () => {
                     ${fmtUsd(totalGastosBrutosUsd)} <span style={{ color:'#666', fontSize:'11px' }}>(Bs. {fmtBs(totalGastosBrutosBs)})</span>
                   </div>
                 </div>
-                <div style={{ color:'#888', fontSize:'16px' }}>—</div>
+                <div style={{ color:'#888', fontSize:'16px' }}>{destinoLocales === 'deducir' ? '—' : '+'}</div>
                 <div>
-                  <span style={{ color:'#4ade80', fontSize:'11px', textTransform:'uppercase', fontWeight:700 }}>Donaciones Espacios:</span>
-                  <div style={{ color:'#4ade80', fontSize:'13px', fontWeight:800 }}>
-                    -${fmtUsd(totalDonacionesUsd)} <span style={{ color:'#86efac', fontSize:'11px' }}>(-Bs. {fmtBs(totalDonacionesBs)})</span>
+                  <span style={{ color: destinoLocales === 'deducir' ? '#4ade80' : 'var(--color-accent, #f97316)', fontSize:'11px', textTransform:'uppercase', fontWeight:700 }}>
+                    {destinoLocales === 'deducir' ? 'Deducción Locales:' : 'Aporte a Fondo de Reserva:'}
+                  </span>
+                  <div style={{ color: destinoLocales === 'deducir' ? '#4ade80' : 'var(--color-accent, #f97316)', fontSize:'13px', fontWeight:800 }}>
+                    {destinoLocales === 'deducir' ? `-$${fmtUsd(totalLocalesUsd)}` : `+$${fmtUsd(totalLocalesUsd)}`}
+                    <span style={{ color:'#86efac', fontSize:'11px' }}> ({destinoLocales === 'deducir' ? '-' : '+'}Bs. {fmtBs(totalLocalesBs)})</span>
                   </div>
                 </div>
                 <div style={{ color:'#888', fontSize:'16px' }}>=</div>
@@ -926,23 +845,25 @@ export const AdminGenerarRecibos: React.FC = () => {
                 </div>
               </div>
 
-              {totalDonacionesUsd > 0 && (
-                <div style={{
-                  backgroundColor: 'rgba(34, 197, 94, 0.15)',
-                  border: '1px solid rgba(34, 197, 94, 0.35)',
-                  borderRadius: '8px',
-                  padding: '6px 12px',
-                  fontSize: '11.5px',
-                  color: '#86efac',
-                  fontWeight: 700,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px'
-                }}>
-                  <span>✨</span>
-                  <span>¡Ahorro aplicado! Los residentes pagarán menos este mes gracias a los ingresos por espacios comunes.</span>
-                </div>
-              )}
+              <div style={{
+                backgroundColor: destinoLocales === 'deducir' ? 'rgba(34, 197, 94, 0.15)' : 'rgba(249, 115, 22, 0.15)',
+                border: `1px solid ${destinoLocales === 'deducir' ? 'rgba(34, 197, 94, 0.35)' : 'rgba(249, 115, 22, 0.35)'}`,
+                borderRadius: '8px',
+                padding: '6px 12px',
+                fontSize: '11.5px',
+                color: destinoLocales === 'deducir' ? '#86efac' : '#fdba74',
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}>
+                <span>{destinoLocales === 'deducir' ? '✨' : '🏦'}</span>
+                <span>
+                  {destinoLocales === 'deducir'
+                    ? (totalLocalesUsd > 0 ? '¡Deducción activada! Los vecinos pagarán menos este mes gracias a los ingresos de locales.' : 'Deducción activada (sin locales con monto mayor a cero).')
+                    : 'Ingreso directo al Fondo de Reserva del edificio sin deducción de cuotas.'}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -1049,7 +970,7 @@ export const AdminGenerarRecibos: React.FC = () => {
                   {caps.map(c => (
                     <div key={c.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'6px 10px', backgroundColor:'#0a0a0a', borderRadius:'6px', marginBottom:'4px', border:'1px solid #1e1e1e' }}>
                       <div style={{ display:'flex', gap:'8px', alignItems:'center' }}>
-                        <span style={S.badge(c.tipo==='multa'?'#ef4444':c.tipo==='deuda_atrasada'?'#f59e0b':'#3b82f6')}>{TIPO_CARGO_LABELS[c.tipo]}</span>
+                        <span style={S.badge(c.tipo==='multa'?'#ef4444':c.tipo==='deuda_atrasada'?'#f59e0b':c.tipo==='donacion_espacio_exclusivo'?'#10b981':'#3b82f6')}>{TIPO_CARGO_LABELS[c.tipo] || c.tipo}</span>
                         <span style={{ color:'#ccc', fontSize:'12px' }}>{c.descripcion}</span>
                       </div>
                       <div style={{ display:'flex', gap:'12px', alignItems:'center' }}>

@@ -26,3 +26,5 @@ node_modules
 *.xlsx
 scratch/
 supabase/.temp/
+*.zip
+1x/

@@ -35,9 +35,11 @@ import { AdminMora } from './presentation/pages/admin/AdminMora'
 import { AdminCalendarioDeudas } from './presentation/pages/admin/AdminCalendarioDeudas'
 import { AdminHistorial } from './presentation/pages/admin/AdminHistorial'
 import { AdminGas } from './presentation/pages/admin/AdminGas'
+import { AdminLocales } from './presentation/pages/admin/AdminLocales'
 import { ListaMoraResidente } from './presentation/pages/ListaMoraResidente'
 import { JuntaCondominioResidente } from './presentation/pages/JuntaCondominioResidente'
 import { GasResidente } from './presentation/pages/GasResidente'
+import { LocalesResidente } from './presentation/pages/LocalesResidente'
 import { NormasResidente } from './presentation/pages/NormasResidente'
 import { Register } from './presentation/pages/Register'
 import { InactivityManager } from './presentation/components/InactivityManager'
@@ -334,6 +336,7 @@ function AppShell() {
           <Route path="mora"       element={<AdminMora />} />
           <Route path="calendario-deudas" element={<AdminCalendarioDeudas />} />
           <Route path="gas"        element={<AdminGas />} />
+          <Route path="locales"    element={<AdminLocales />} />
           <Route path="historial"  element={<AdminHistorial />} />
         </Route>
 
@@ -349,6 +352,7 @@ function AppShell() {
           <Route path="gastos"     element={<GastosPanel onClose={() => navigate('/')} />} />
           <Route path="recibos"    element={<RecibosPanel onClose={() => navigate('/')} />} />
           <Route path="normas"     element={<NormasResidente />} />
+          <Route path="locales"    element={<LocalesResidente />} />
           <Route path="gas"        element={<GasResidente />} />
           <Route path="junta"      element={<JuntaCondominioResidente />} />
           <Route path="mora"       element={<ListaMoraResidente />} />
