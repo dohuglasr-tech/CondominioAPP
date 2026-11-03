@@ -482,6 +482,20 @@ export const Layout: React.FC = () => {
                 </div>
                 <span className={`drawer-label ${pathname.startsWith('/gas') ? 'active' : ''}`}>Gas</span>
               </button>
+
+              {/* 6. Locales y Espacios */}
+              <button
+                className="drawer-item-btn"
+                onClick={() => {
+                  setDrawerOpen(false)
+                  navigate('/locales')
+                }}
+              >
+                <div className={`drawer-circle-icon ${pathname.startsWith('/locales') ? 'active' : ''}`}>
+                  {SVG.locales}
+                </div>
+                <span className={`drawer-label ${pathname.startsWith('/locales') ? 'active' : ''}`}>Locales</span>
+              </button>
             </div>
           </div>
 

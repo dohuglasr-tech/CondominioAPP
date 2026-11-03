@@ -1389,6 +1389,22 @@ export function Dashboard() {
                 <span className="quick-action-label" style={{ color: '#fed7aa' }}>Gas</span>
               </button>
 
+              {/* 9. Locales y Espacios */}
+              <button
+                className="quick-action-btn"
+                onClick={() => navigate('/locales')}
+                title="Consultar locales comerciales y donaciones de espacios"
+              >
+                <div className="quick-action-circle" style={{
+                  backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                  border: '1px solid rgba(56, 189, 248, 0.4)',
+                  color: '#38bdf8'
+                }}>
+                  <span style={{ fontSize: '22px' }}>🏢</span>
+                </div>
+                <span className="quick-action-label" style={{ color: '#bae6fd' }}>Locales</span>
+              </button>
+
               {/* 9. Carta de Solvencia (Solo si está 100% Solvente) */}
               {estaSolvente && (
                 <button
@@ -2608,6 +2624,35 @@ export function Dashboard() {
                     </div>
                   </div>
                   <span style={{ color: '#fbbf24', fontSize: '18px' }}>→</span>
+                </div>
+              </div>
+
+              {/* 5. Tarjeta Locales y Espacios Comerciales (Transparencia) */}
+              <div
+                className="desktop-card"
+                style={{ cursor: 'pointer', border: '1px solid rgba(56, 189, 248, 0.25)' }}
+                onClick={() => navigate('/locales')}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                  <div style={{
+                    width: '48px', height: '48px', borderRadius: '14px',
+                    backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                    border: '1px solid rgba(56, 189, 248, 0.35)',
+                    color: '#38bdf8',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '22px'
+                  }}>
+                    🏢
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ color: '#fff', fontSize: '16px', fontWeight: 800 }}>
+                      Locales y Espacios
+                    </div>
+                    <div style={{ color: '#7e8b9b', fontSize: '12px', marginTop: '2px' }}>
+                      Locales en uso, cuotas mensuales y solvencia comunitaria
+                    </div>
+                  </div>
+                  <span style={{ color: '#38bdf8', fontSize: '18px' }}>→</span>
                 </div>
               </div>
 
