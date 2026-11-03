@@ -1233,7 +1233,8 @@ export const AdminCalendarioDeudas: React.FC = () => {
           }
 
           .calendario-actions-bar button,
-          .calendario-actions-bar select {
+          .calendario-actions-bar select,
+          .calendario-actions-bar > div {
             width: 100% !important;
             justify-content: center !important;
             padding: 9px 8px !important;
@@ -1241,6 +1242,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
             white-space: nowrap !important;
             text-align: center !important;
             border-radius: 8px !important;
+            box-sizing: border-box !important;
           }
 
           .calendario-kpi-grid {
@@ -1250,12 +1252,12 @@ export const AdminCalendarioDeudas: React.FC = () => {
           }
 
           .calendario-kpi-card {
-            padding: 10px 12px !important;
+            padding: 10px 10px !important;
             border-radius: 10px !important;
           }
 
           .calendario-kpi-card .kpi-num {
-            font-size: 18px !important;
+            font-size: 17px !important;
             margin-top: 4px !important;
           }
 
@@ -1331,12 +1333,13 @@ export const AdminCalendarioDeudas: React.FC = () => {
 
           .calendario-mobile-scroll-hint {
             display: flex !important;
+            flex-direction: column !important;
             align-items: center !important;
             justify-content: center !important;
             gap: 6px !important;
             background: linear-gradient(90deg, rgba(59, 130, 246, 0.08) 0%, rgba(249, 115, 22, 0.08) 100%) !important;
             border: 1px dashed rgba(59, 130, 246, 0.35) !important;
-            border-radius: 8px !important;
+            border-radius: 10px !important;
             padding: 8px 10px !important;
             font-size: 11px !important;
             color: #93c5fd !important;
@@ -1346,10 +1349,15 @@ export const AdminCalendarioDeudas: React.FC = () => {
           }
 
           .calendario-table-wrapper {
-            max-height: 68vh !important;
-            border-radius: 10px !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            max-height: 72vh !important;
+            border-radius: 12px !important;
+            overflow-x: auto !important;
+            overflow-y: auto !important;
             -webkit-overflow-scrolling: touch !important;
             overscroll-behavior-x: contain !important;
+            touch-action: pan-x pan-y !important;
           }
 
           .calendario-main-table th,
@@ -1872,10 +1880,67 @@ export const AdminCalendarioDeudas: React.FC = () => {
         </div>
       </div>
 
-      {/* Indicador de Desplazamiento Móvil */}
+      {/* Indicador de Desplazamiento y Selector Rápido Móvil */}
       <div className="calendario-mobile-scroll-hint">
-        <span style={{ fontSize: '13px' }}>👆</span>
-        <span>Desliza horizontalmente para ver todos los meses y columnas ↔️</span>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', width: '100%' }}>
+          <span style={{ fontSize: '14px' }}>👆</span>
+          <span>Desliza horizontalmente ↔️ o filtra por vista:</span>
+        </div>
+        <div style={{ display: 'flex', gap: '6px', width: '100%', justifyContent: 'center', marginTop: '6px', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={() => setVistaModo('solo_2026')}
+            style={{
+              flex: '1 1 auto',
+              backgroundColor: vistaModo === 'solo_2026' ? '#2563eb' : 'rgba(37, 99, 235, 0.25)',
+              color: '#fff',
+              border: '1px solid rgba(37, 99, 235, 0.5)',
+              borderRadius: '7px',
+              padding: '6px 10px',
+              fontSize: '11px',
+              fontWeight: 700,
+              cursor: 'pointer'
+            }}
+          >
+            📅 Meses {anioSeleccionado}
+          </button>
+          <button
+            type="button"
+            onClick={() => setVistaModo('completo')}
+            style={{
+              flex: '1 1 auto',
+              backgroundColor: vistaModo === 'completo' ? 'var(--color-accent, #f97316)' : 'rgba(249, 115, 22, 0.25)',
+              color: '#fff',
+              border: '1px solid rgba(249, 115, 22, 0.5)',
+              borderRadius: '7px',
+              padding: '6px 10px',
+              fontSize: '11px',
+              fontWeight: 700,
+              cursor: 'pointer'
+            }}
+          >
+            📊 Matriz Completa
+          </button>
+          {columnasNaranja.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setVistaModo('historico_2025')}
+              style={{
+                flex: '1 1 auto',
+                backgroundColor: vistaModo === 'historico_2025' ? '#d97706' : 'rgba(217, 119, 6, 0.25)',
+                color: '#fff',
+                border: '1px solid rgba(217, 119, 6, 0.5)',
+                borderRadius: '7px',
+                padding: '6px 10px',
+                fontSize: '11px',
+                fontWeight: 700,
+                cursor: 'pointer'
+              }}
+            >
+              🏛️ 2025 / Extras
+            </button>
+          )}
+        </div>
       </div>
 
       {/* TABLA PRINCIPAL DE LA MATRIZ */}

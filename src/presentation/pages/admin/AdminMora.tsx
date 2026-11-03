@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../../data/supabase'
 import { useBcvRate } from '../../../data/useBcvRate'
 import { useAuth } from '../../../application/contexts/AuthContext'
@@ -26,6 +27,7 @@ import { despacharEmailRecordatorioMora, esElegibleRecordatorio3Dias } from '../
 import { compararApartamentos } from '../../../utils/alicuota'
 
 export const AdminMora: React.FC = () => {
+  const navigate = useNavigate()
   const { perfil, config } = useAuth()
   const { rate } = useBcvRate()
   const [deudas, setDeudas] = useState<DeudaMoraItem[]>([])
@@ -665,8 +667,9 @@ export const AdminMora: React.FC = () => {
             <span>Montar Deuda Anterior de Apartamento</span>
           </button>
 
-          <a
-            href="/admin/calendario-deudas"
+          <button
+            type="button"
+            onClick={() => navigate('/admin/calendario-deudas')}
             style={{
               background: 'rgba(59, 130, 246, 0.15)',
               color: '#60a5fa',
@@ -675,7 +678,7 @@ export const AdminMora: React.FC = () => {
               padding: '12px 20px',
               fontSize: '13px',
               fontWeight: 700,
-              textDecoration: 'none',
+              cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               gap: '8px',
@@ -684,7 +687,7 @@ export const AdminMora: React.FC = () => {
           >
             <span>📅</span>
             <span>Ver Calendario de Deudas</span>
-          </a>
+          </button>
         </div>
       </div>
 

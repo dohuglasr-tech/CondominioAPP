@@ -730,11 +730,11 @@ export const AdminLayout: React.FC = () => {
                 <span className={`offcanvas-label ${pathname === '/admin' ? 'active' : ''}`}>Resumen</span>
               </button>
 
-              <button className="offcanvas-item-btn" onClick={() => navigate('/admin/gastos')}>
-                <div className={`offcanvas-circle-icon ${pathname.startsWith('/admin/gastos') ? 'active' : ''}`}>
-                  {ADMIN_ICONS.gastos}
+              <button className="offcanvas-item-btn" onClick={() => navigate('/admin/calendario-deudas')}>
+                <div className={`offcanvas-circle-icon ${pathname.startsWith('/admin/calendario-deudas') ? 'active' : ''}`}>
+                  {ADMIN_ICONS.calendario}
                 </div>
-                <span className={`offcanvas-label ${pathname.startsWith('/admin/gastos') ? 'active' : ''}`}>Gastos</span>
+                <span className={`offcanvas-label ${pathname.startsWith('/admin/calendario-deudas') ? 'active' : ''}`}>Calendario</span>
               </button>
 
               <button className="offcanvas-item-btn" onClick={() => navigate('/admin/recibos')}>
@@ -778,11 +778,25 @@ export const AdminLayout: React.FC = () => {
                 <span className={`offcanvas-label ${pathname.startsWith('/admin/recibos-emitidos') ? 'active' : ''}`}>Emitidos</span>
               </button>
 
+              <button className="offcanvas-item-btn" onClick={() => navigate('/admin/gastos')}>
+                <div className={`offcanvas-circle-icon ${pathname.startsWith('/admin/gastos') ? 'active' : ''}`}>
+                  {ADMIN_ICONS.gastos}
+                </div>
+                <span className={`offcanvas-label ${pathname.startsWith('/admin/gastos') ? 'active' : ''}`}>Gastos</span>
+              </button>
+
               <button className="offcanvas-item-btn" onClick={() => navigate('/admin/mora')}>
                 <div className={`offcanvas-circle-icon ${pathname.startsWith('/admin/mora') ? 'active' : ''}`}>
                   {ADMIN_ICONS.mora}
                 </div>
                 <span className={`offcanvas-label ${pathname.startsWith('/admin/mora') ? 'active' : ''}`}>Mora</span>
+              </button>
+
+              <button className="offcanvas-item-btn" onClick={() => navigate('/admin/locales')}>
+                <div className={`offcanvas-circle-icon ${pathname.startsWith('/admin/locales') ? 'active' : ''}`}>
+                  {ADMIN_ICONS.locales}
+                </div>
+                <span className={`offcanvas-label ${pathname.startsWith('/admin/locales') ? 'active' : ''}`}>Locales</span>
               </button>
 
               <button className="offcanvas-item-btn" onClick={() => navigate('/admin/casos')}>
@@ -982,19 +996,17 @@ export const AdminLayout: React.FC = () => {
             <span style={{ fontSize: '10px', fontWeight: 600 }}>Inicio</span>
           </button>
 
-          {/* 2. Gastos */}
+          {/* 2. Calendario de Deudas (Directo en Mobile) */}
           <button
-            className={`admin-bottom-btn ${pathname.startsWith('/admin/gastos') ? 'active' : ''}`}
-            onClick={() => navigate('/admin/gastos')}
+            className={`admin-bottom-btn ${pathname.startsWith('/admin/calendario-deudas') ? 'active' : ''}`}
+            onClick={() => navigate('/admin/calendario-deudas')}
+            title="Calendario de Deudas e Impago"
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="12" y1="1" x2="12" y2="23"/>
-              <path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>
-            </svg>
-            <span style={{ fontSize: '10px', fontWeight: 600 }}>Gastos</span>
+            {ADMIN_ICONS.calendario}
+            <span style={{ fontSize: '10px', fontWeight: 600 }}>Calendario</span>
           </button>
 
-          {/* 3. BOTÓN CENTRAL ELEVADO EN NARANJA: RECIBOS (Con Ícono de Recibo) */}
+          {/* 3. BOTÓN CENTRAL ELEVADO EN NARANJA: RECIBOS (Con Ícono de Recibo y Badge de Pendientes) */}
           <button
             className="admin-bottom-center-btn"
             onClick={() => navigate('/admin/recibos')}
@@ -1006,31 +1018,54 @@ export const AdminLayout: React.FC = () => {
               <line x1="9" y1="13" x2="15" y2="13"/>
               <line x1="9" y1="17" x2="13" y2="17"/>
             </svg>
+            {pendingCount > 0 && (
+              <span style={{
+                position: 'absolute',
+                top: '-3px',
+                right: '-3px',
+                backgroundColor: '#ef4444',
+                color: '#fff',
+                fontSize: '10px',
+                fontWeight: 900,
+                minWidth: '18px',
+                height: '18px',
+                padding: '0 4px',
+                borderRadius: '999px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                border: '2px solid #090a0d',
+                boxShadow: '0 2px 6px rgba(239, 68, 68, 0.6)'
+              }}>
+                {pendingCount}
+              </span>
+            )}
           </button>
 
-          {/* 4. Residentes / Apartamentos */}
+          {/* 4. Gastos */}
           <button
-            className={`admin-bottom-btn ${pathname.startsWith('/admin/residentes') ? 'active' : ''}`}
-            onClick={() => navigate('/admin/residentes')}
+            className={`admin-bottom-btn ${pathname.startsWith('/admin/gastos') ? 'active' : ''}`}
+            onClick={() => navigate('/admin/gastos')}
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-              <circle cx="9" cy="7" r="4"/>
-              <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-              <path d="M16 3.13a4 4 0 010 7.75"/>
+              <line x1="12" y1="1" x2="12" y2="23"/>
+              <path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>
             </svg>
-            <span style={{ fontSize: '10px', fontWeight: 600 }}>Residentes</span>
+            <span style={{ fontSize: '10px', fontWeight: 600 }}>Gastos</span>
           </button>
 
-          {/* 5. Chat Comunitario */}
+          {/* 5. Menú Completo (Abre el Drawer con Residentes, Locales, Gas, Mora, Chat, etc.) */}
           <button
-            className={`admin-bottom-btn ${pathname.startsWith('/admin/chat') ? 'active' : ''}`}
-            onClick={() => navigate('/admin/chat')}
+            className={`admin-bottom-btn ${drawerOpen ? 'active' : ''}`}
+            onClick={() => setDrawerOpen(true)}
+            title="Abrir menú completo de administración"
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="3" y1="12" x2="21" y2="12"/>
+              <line x1="3" y1="6" x2="21" y2="6"/>
+              <line x1="3" y1="18" x2="21" y2="18"/>
             </svg>
-            <span style={{ fontSize: '10px', fontWeight: 600 }}>Chat</span>
+            <span style={{ fontSize: '10px', fontWeight: 600 }}>Menú</span>
           </button>
         </div>
       </div>
