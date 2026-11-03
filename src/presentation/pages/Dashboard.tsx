@@ -19,6 +19,7 @@ import { DatosCartaSolvencia, obtenerMesActualEs, descargarSolvenciaPDF } from '
 interface PagoItem {
   id: string
   monto_bs: number
+  monto_usd?: number
   referencia: string
   estado: string
   created_at: string
@@ -102,14 +103,9 @@ export function Dashboard() {
   const deudaUsd = (deudaFijaBs > 0 && tasaValida > 0 ? deudaFijaBs / tasaValida : 0) + deudaIndexadaUsd
   const tieneDeudaFijaBs = deudaFijaBs > 0.05
   const tieneDeudaReal = deudaBs > 0.05 || (recibosPendientesList.length > 0)
-  const tieneAbonoParcial = recibosPendientesList.some(r => Boolean(r.data_json?.abonos?.length))
-  const soloDebeDiferenciaUltimoRecibo = (
-    !tieneDeudaFijaBs &&
-    recibosPendientesList.length <= 1
-  ) || tieneAbonoParcial
   const fmtBs = (m: number) => (Number(m) || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-  // ── Sincronización de Deuda Total: Condominio + Servicio de Gas ──
+  // ── Sincronización de Deuda Total: Condominio + Servicio de Gas + Locales ──
   const deudaCondominioBs = deudaBs
   const deudaCondominioUsd = deudaUsd
   const tieneDeudaCondominio = tieneDeudaReal
@@ -125,6 +121,42 @@ export function Dashboard() {
   const deudaTotalConsolidadaBs = deudaCondominioBs + deudaGasBs + deudaLocalesBs
   const deudaTotalConsolidadaUsd = deudaCondominioUsd + deudaGasUsd + deudaLocalesUsd
   const tieneDeudaTotal = tieneDeudaCondominio || tieneDeudaGas || tieneDeudaLocales
+
+  // ── Lógica estricta de "Diferencia de pago" vs "No está al día / Deuda pendiente" ──
+  // La diferencia SOLO aplica cuando:
+  // 1. El residente tiene saldo a favor (> 0.05), O
+  // 2. Su último pago fue menor a la cuota seleccionada a pagar por el residente (abono parcial o pago inferior a la cuota).
+  // Si no cumple esto, NO es diferencia; es deuda pendiente / no está al día.
+  const tieneSaldoAFavor = (saldoAFavor > 0.05 || saldoAFavorBs > 0.05)
+  const tieneAbonoEnRecibos = recibosPendientesList.some(r =>
+    Boolean(
+      (r.data_json?.abonos && r.data_json.abonos.length > 0) ||
+      Number(r.data_json?.monto_pagado_parcial || 0) > 0 ||
+      (r.data_json?.monto_original_usd && Number(r.data_json.monto_original_usd) > Number(r.total_usd || 0) + 0.05) ||
+      (r.data_json?.monto_original_bs && Number(r.data_json.monto_original_bs) > Number(r.total_bs || 0) + 1)
+    )
+  )
+
+  const ultimoPagoComparado = pagosRecientes.find(p => p.estado === 'aprobado' || p.estado === 'completado') || ultimoPago
+  const cuotaReciboUsd = reciboPendiente
+    ? Number(reciboPendiente.total_usd || (reciboPendiente.total_bs && tasaValida > 0 ? reciboPendiente.total_bs / tasaValida : 0))
+    : 0
+  const cuotaReciboBs = reciboPendiente
+    ? Number(reciboPendiente.total_bs || (reciboPendiente.total_usd && tasaValida > 0 ? reciboPendiente.total_usd * tasaValida : 0))
+    : 0
+
+  const ultimoPagoMenorQueCuota = Boolean(
+    tieneAbonoEnRecibos ||
+    (ultimoPagoComparado && reciboPendiente && (() => {
+      const pagoUsd = Number(ultimoPagoComparado.monto_usd || (ultimoPagoComparado.monto_bs && tasaValida > 0 ? ultimoPagoComparado.monto_bs / tasaValida : 0))
+      const pagoBs = Number(ultimoPagoComparado.monto_bs || (ultimoPagoComparado.monto_usd && tasaValida > 0 ? ultimoPagoComparado.monto_usd * tasaValida : 0))
+      const esMenorUsd = pagoUsd > 0.05 && cuotaReciboUsd > 0.05 && pagoUsd < (cuotaReciboUsd - 0.05)
+      const esMenorBs = pagoBs > 0.05 && cuotaReciboBs > 0.05 && pagoBs < (cuotaReciboBs - 1)
+      return esMenorUsd || esMenorBs
+    })())
+  )
+
+  const aplicaDiferencia = tieneDeudaTotal && (tieneSaldoAFavor || ultimoPagoMenorQueCuota)
 
   // ── Verificación estricta de solvencia para Carta de Solvencia ──
   // El residente SOLO puede ver y descargar su carta si está 100% SOLVENTE:
@@ -602,9 +634,23 @@ export function Dashboard() {
                 </span>
               ) : tieneDeudaTotal ? (
                 <span style={{
-                  backgroundColor: tieneDeudaGas && !tieneDeudaCondominio ? 'rgba(249, 115, 22, 0.15)' : (soloDebeDiferenciaUltimoRecibo ? 'rgba(56, 189, 248, 0.15)' : 'rgba(239, 68, 68, 0.15)'),
-                  color: tieneDeudaGas && !tieneDeudaCondominio ? '#fb923c' : (soloDebeDiferenciaUltimoRecibo ? '#38bdf8' : '#ef4444'),
-                  border: `1px solid ${tieneDeudaGas && !tieneDeudaCondominio ? 'rgba(249, 115, 22, 0.35)' : 'rgba(239, 68, 68, 0.3)'}`,
+                  backgroundColor: tieneDeudaGas && !tieneDeudaCondominio && !tieneDeudaLocales
+                    ? 'rgba(249, 115, 22, 0.15)'
+                    : (tieneDeudaLocales && !tieneDeudaCondominio && !tieneDeudaGas
+                      ? 'rgba(236, 72, 153, 0.15)'
+                      : (aplicaDiferencia ? 'rgba(56, 189, 248, 0.15)' : 'rgba(239, 68, 68, 0.15)')),
+                  color: tieneDeudaGas && !tieneDeudaCondominio && !tieneDeudaLocales
+                    ? '#fb923c'
+                    : (tieneDeudaLocales && !tieneDeudaCondominio && !tieneDeudaGas
+                      ? '#f472b6'
+                      : (aplicaDiferencia ? '#38bdf8' : '#ef4444')),
+                  border: `1px solid ${
+                    tieneDeudaGas && !tieneDeudaCondominio && !tieneDeudaLocales
+                      ? 'rgba(249, 115, 22, 0.35)'
+                      : (tieneDeudaLocales && !tieneDeudaCondominio && !tieneDeudaGas
+                        ? 'rgba(236, 72, 153, 0.35)'
+                        : (aplicaDiferencia ? 'rgba(56, 189, 248, 0.35)' : 'rgba(239, 68, 68, 0.3)'))
+                  }`,
                   borderRadius: '999px',
                   padding: '3px 10px',
                   fontSize: '11px',
@@ -613,7 +659,15 @@ export function Dashboard() {
                   alignItems: 'center',
                   gap: '5px'
                 }}>
-                  {tieneDeudaGas && !tieneDeudaCondominio ? '⛽ Solo Cuota de Gas Pendiente' : (tieneDeudaCondominio && tieneDeudaGas ? '⚠️ Condominio y Gas Pendientes' : (soloDebeDiferenciaUltimoRecibo ? '🔵 Diferencia Pendiente' : '🔴 Pago Pendiente'))}
+                  {aplicaDiferencia
+                    ? '🔵 Diferencia Pendiente'
+                    : tieneDeudaGas && !tieneDeudaCondominio && !tieneDeudaLocales
+                    ? '⛽ Solo Cuota de Gas Pendiente'
+                    : tieneDeudaLocales && !tieneDeudaCondominio && !tieneDeudaGas
+                    ? '🏬 Solo Deuda de Local Pendiente'
+                    : (tieneDeudaCondominio && tieneDeudaGas) || (tieneDeudaCondominio && tieneDeudaLocales) || (tieneDeudaGas && tieneDeudaLocales)
+                    ? '🔴 No está al día · Deudas Pendientes'
+                    : '🔴 No está al día · Deuda Pendiente'}
                 </span>
               ) : (
                 <span style={{
@@ -1022,49 +1076,55 @@ export function Dashboard() {
           {/* ── ALERTA DE RECIBO / MORA (Si el apartamento figura en la lista y tiene deuda real) ── */}
           {moraRecord && tieneDeudaReal && (() => {
             const tasaCfg = getTasaConfig(moraRecord.tasa_riesgo)
-            const esDiferencia = soloDebeDiferenciaUltimoRecibo || tieneAbonoParcial
+            const esDiferencia = aplicaDiferencia
             return (
             <div style={{
-              background: esDiferencia || moraRecord.tasa_riesgo === 'azul'
+              background: esDiferencia
                 ? 'linear-gradient(135deg, rgba(14, 165, 233, 0.16) 0%, rgba(3, 105, 161, 0.16) 100%)'
-                : 'linear-gradient(135deg, rgba(168, 85, 247, 0.16) 0%, rgba(239, 68, 68, 0.16) 100%)',
-              border: `2px solid ${esDiferencia ? '#38bdf8' : tasaCfg.color}`,
+                : 'linear-gradient(135deg, rgba(239, 68, 68, 0.12) 0%, rgba(185, 28, 28, 0.12) 100%)',
+              border: `2px solid ${esDiferencia ? '#38bdf8' : (moraRecord.tasa_riesgo === 'azul' ? '#ef4444' : tasaCfg.color)}`,
               borderRadius: '20px',
               padding: '16px',
-              boxShadow: `0 8px 24px rgba(0, 0, 0, 0.5), 0 0 16px ${esDiferencia ? 'rgba(56, 189, 248, 0.25)' : `${tasaCfg.color}25`}`
+              boxShadow: `0 8px 24px rgba(0, 0, 0, 0.5), 0 0 16px ${esDiferencia ? 'rgba(56, 189, 248, 0.25)' : (moraRecord.tasa_riesgo === 'azul' ? 'rgba(239, 68, 68, 0.25)' : `${tasaCfg.color}25`)}`
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
-                <span style={{ fontSize: '20px' }}>{esDiferencia ? '💳' : (moraRecord.tasa_riesgo === 'azul' ? '🔵' : '⚠️')}</span>
+                <span style={{ fontSize: '20px' }}>{esDiferencia ? '💳' : (moraRecord.tasa_riesgo === 'azul' ? '🔴' : '⚠️')}</span>
                 <span style={{ fontWeight: 800, fontSize: '13px', color: '#fff' }}>
                   {esDiferencia
                     ? `Apto ${moraRecord.apartamento_numero} · Saldo Pendiente de tu Último Recibo`
                     : moraRecord.tasa_riesgo === 'azul'
-                    ? `Apto ${moraRecord.apartamento_numero} · Recibo del Mes al Cobro`
-                    : `Apto ${moraRecord.apartamento_numero} en Lista de Mora`}
+                    ? `Apto ${moraRecord.apartamento_numero} · No está al día · Recibo al Cobro`
+                    : `Apto ${moraRecord.apartamento_numero} · No está al día · En Lista de Mora`}
                 </span>
                 <span style={{
                   fontSize: '10px', fontWeight: 800,
-                  color: esDiferencia ? '#38bdf8' : tasaCfg.color,
-                  background: esDiferencia ? 'rgba(56, 189, 248, 0.15)' : tasaCfg.bg,
-                  border: `1px solid ${esDiferencia ? 'rgba(56, 189, 248, 0.35)' : tasaCfg.border}`,
+                  color: esDiferencia ? '#38bdf8' : (moraRecord.tasa_riesgo === 'azul' ? '#ef4444' : tasaCfg.color),
+                  background: esDiferencia ? 'rgba(56, 189, 248, 0.15)' : (moraRecord.tasa_riesgo === 'azul' ? 'rgba(239, 68, 68, 0.15)' : tasaCfg.bg),
+                  border: `1px solid ${esDiferencia ? 'rgba(56, 189, 248, 0.35)' : (moraRecord.tasa_riesgo === 'azul' ? 'rgba(239, 68, 68, 0.35)' : tasaCfg.border)}`,
                   padding: '2px 6px', borderRadius: '999px', marginLeft: 'auto'
                 }}>
-                  {esDiferencia ? '🔵 Diferencia Pendiente' : tasaCfg.badgeText}
+                  {esDiferencia ? '🔵 Diferencia Pendiente' : (moraRecord.tasa_riesgo === 'azul' ? '🔴 No está al día' : tasaCfg.badgeText)}
                 </span>
               </div>
               <p style={{ margin: '0 0 12px 0', fontSize: '11px', color: '#cbd5e1', lineHeight: 1.3 }}>
                 {esDiferencia ? (
-                  <>
-                    Le queda por pagar la diferencia de su último recibo: <strong style={{ color: '#38bdf8' }}>${deudaUsd.toFixed(2)} USD (Bs. {fmtBs(deudaBs)})</strong>. Reporta tu pago para quedar completamente al día.
-                  </>
+                  tieneSaldoAFavor ? (
+                    <>
+                      Tienes saldo a favor aplicado. Te queda por pagar una diferencia de: <strong style={{ color: '#38bdf8' }}>${deudaUsd.toFixed(2)} USD (Bs. {fmtBs(deudaBs)})</strong>. Reporta tu pago para quedar completamente al día.
+                    </>
+                  ) : (
+                    <>
+                      Le queda por pagar la diferencia de su último recibo: <strong style={{ color: '#38bdf8' }}>${deudaUsd.toFixed(2)} USD (Bs. {fmtBs(deudaBs)})</strong>. Reporta tu pago para quedar completamente al día.
+                    </>
+                  )
                 ) : moraRecord.tasa_riesgo === 'azul' ? (
                   <>
-                    Tienes el recibo del mes emitido (&lt;1 mes) con un monto de{' '}
-                    <strong style={{ color: '#60a5fa' }}>${moraRecord.monto_usd.toFixed(2)} USD</strong>. Reporta tu pago para estar al día.
+                    Tu apartamento no está al día. Tienes el recibo del mes emitido (&lt;1 mes) con un monto de{' '}
+                    <strong style={{ color: '#f87171' }}>${moraRecord.monto_usd.toFixed(2)} USD</strong>. Reporta tu pago para regularizar tu solvencia.
                   </>
                 ) : (
                   <>
-                    Tienes <strong>{moraRecord.meses_deuda} meses de atraso</strong> con una deuda acumulada de{' '}
+                    Tu apartamento no está al día. Tienes <strong>{moraRecord.meses_deuda} meses de atraso</strong> con una deuda acumulada de{' '}
                     <strong style={{ color: 'var(--color-accent, #f97316)' }}>${moraRecord.monto_usd.toFixed(2)} USD</strong>.
                   </>
                 )}
@@ -1618,55 +1678,61 @@ export function Dashboard() {
           {/* ALERTA DE MORA / RECIBO DESKTOP (Si aplica y tiene deuda real) */}
           {moraRecord && tieneDeudaReal && (() => {
             const tasaCfg = getTasaConfig(moraRecord.tasa_riesgo)
-            const esDiferencia = soloDebeDiferenciaUltimoRecibo || tieneAbonoParcial
+            const esDiferencia = aplicaDiferencia
             return (
             <div style={{
-              background: esDiferencia || moraRecord.tasa_riesgo === 'azul'
+              background: esDiferencia
                 ? 'linear-gradient(135deg, rgba(14, 165, 233, 0.16) 0%, rgba(3, 105, 161, 0.16) 100%)'
-                : 'linear-gradient(135deg, rgba(168, 85, 247, 0.16) 0%, rgba(239, 68, 68, 0.16) 100%)',
-              border: `2px solid ${esDiferencia ? '#38bdf8' : tasaCfg.color}`,
+                : 'linear-gradient(135deg, rgba(239, 68, 68, 0.12) 0%, rgba(185, 28, 28, 0.12) 100%)',
+              border: `2px solid ${esDiferencia ? '#38bdf8' : (moraRecord.tasa_riesgo === 'azul' ? '#ef4444' : tasaCfg.color)}`,
               borderRadius: '20px',
               padding: '18px 24px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
               marginBottom: '24px',
-              boxShadow: `0 8px 30px rgba(0, 0, 0, 0.5), 0 0 16px ${esDiferencia ? 'rgba(56, 189, 248, 0.25)' : `${tasaCfg.color}25`}`
+              boxShadow: `0 8px 30px rgba(0, 0, 0, 0.5), 0 0 16px ${esDiferencia ? 'rgba(56, 189, 248, 0.25)' : (moraRecord.tasa_riesgo === 'azul' ? 'rgba(239, 68, 68, 0.25)' : `${tasaCfg.color}25`)}`
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                <span style={{ fontSize: '32px' }}>{esDiferencia ? '💳' : (moraRecord.tasa_riesgo === 'azul' ? '🔵' : '⚠️')}</span>
+                <span style={{ fontSize: '32px' }}>{esDiferencia ? '💳' : (moraRecord.tasa_riesgo === 'azul' ? '🔴' : '⚠️')}</span>
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span style={{ fontWeight: 800, fontSize: '16px', color: '#fff' }}>
                       {esDiferencia
                         ? `Tu Apartamento (${moraRecord.apartamento_numero}) tiene un saldo pendiente en su último recibo`
                         : moraRecord.tasa_riesgo === 'azul'
-                        ? `Tu Apartamento (${moraRecord.apartamento_numero}) tiene el Recibo del Mes al Cobro`
-                        : `Tu Apartamento (${moraRecord.apartamento_numero}) figura en la Lista de Mora Comunitaria`}
+                        ? `Tu Apartamento (${moraRecord.apartamento_numero}) no está al día · Recibo del Mes al Cobro`
+                        : `Tu Apartamento (${moraRecord.apartamento_numero}) no está al día · En Lista de Mora`}
                     </span>
                     <span style={{
                       fontSize: '11px', fontWeight: 800,
-                      color: esDiferencia ? '#38bdf8' : tasaCfg.color,
-                      background: esDiferencia ? 'rgba(56, 189, 248, 0.15)' : tasaCfg.bg,
-                      border: `1px solid ${esDiferencia ? 'rgba(56, 189, 248, 0.35)' : tasaCfg.border}`,
+                      color: esDiferencia ? '#38bdf8' : (moraRecord.tasa_riesgo === 'azul' ? '#ef4444' : tasaCfg.color),
+                      background: esDiferencia ? 'rgba(56, 189, 248, 0.15)' : (moraRecord.tasa_riesgo === 'azul' ? 'rgba(239, 68, 68, 0.15)' : tasaCfg.bg),
+                      border: `1px solid ${esDiferencia ? 'rgba(56, 189, 248, 0.35)' : (moraRecord.tasa_riesgo === 'azul' ? 'rgba(239, 68, 68, 0.35)' : tasaCfg.border)}`,
                       padding: '2px 8px', borderRadius: '999px'
                     }}>
-                      {esDiferencia ? '🔵 Diferencia Pendiente' : tasaCfg.badgeText}
+                      {esDiferencia ? '🔵 Diferencia Pendiente' : (moraRecord.tasa_riesgo === 'azul' ? '🔴 No está al día' : tasaCfg.badgeText)}
                     </span>
                   </div>
                   <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#cbd5e1' }}>
                     {esDiferencia ? (
-                      <>
-                        Le queda por pagar la diferencia de su último recibo: <strong style={{ color: '#38bdf8' }}>${deudaUsd.toFixed(2)} USD (Bs. {fmtBs(deudaBs)})</strong>. Reporta tu pago para mantener tu solvencia al 100%.
-                      </>
+                      tieneSaldoAFavor ? (
+                        <>
+                          Tienes saldo a favor aplicado. Te queda por pagar una diferencia de: <strong style={{ color: '#38bdf8' }}>${deudaUsd.toFixed(2)} USD (Bs. {fmtBs(deudaBs)})</strong>. Reporta tu pago para mantener tu solvencia al 100%.
+                        </>
+                      ) : (
+                        <>
+                          Le queda por pagar la diferencia de su último recibo: <strong style={{ color: '#38bdf8' }}>${deudaUsd.toFixed(2)} USD (Bs. {fmtBs(deudaBs)})</strong>. Reporta tu pago para mantener tu solvencia al 100%.
+                        </>
+                      )
                     ) : moraRecord.tasa_riesgo === 'azul' ? (
                       <>
-                        Tienes el recibo del mes emitido (&lt;1 mes) con un monto de{' '}
-                        <strong style={{ color: '#60a5fa' }}>${moraRecord.monto_usd.toFixed(2)} USD</strong>. Cancela dentro del plazo para mantener tu solvencia comunitaria.
+                        Tu apartamento no está al día. Tienes el recibo del mes emitido (&lt;1 mes) con un monto de{' '}
+                        <strong style={{ color: '#f87171' }}>${moraRecord.monto_usd.toFixed(2)} USD</strong>. Cancela dentro del plazo para regularizar tu solvencia comunitaria.
                       </>
                     ) : (
                       <>
-                        Presentas <strong>{moraRecord.meses_deuda} meses de atraso</strong> con una deuda anterior acumulada de{' '}
+                        Tu apartamento no está al día. Presentas <strong>{moraRecord.meses_deuda} meses de atraso</strong> con una deuda anterior acumulada de{' '}
                         <strong style={{ color: 'var(--color-accent, #f97316)' }}>${moraRecord.monto_usd.toFixed(2)} USD</strong>. Regulariza tu saldo para evitar recargos legales.
                       </>
                     )}
@@ -1987,15 +2053,37 @@ export function Dashboard() {
                       </span>
                     ) : tieneDeudaTotal ? (
                       <span style={{
-                        backgroundColor: tieneDeudaGas && !tieneDeudaCondominio ? 'rgba(249, 115, 22, 0.15)' : 'rgba(239, 68, 68, 0.15)',
-                        color: tieneDeudaGas && !tieneDeudaCondominio ? '#fb923c' : '#ef4444',
-                        border: `1px solid ${tieneDeudaGas && !tieneDeudaCondominio ? 'rgba(249, 115, 22, 0.35)' : 'rgba(239, 68, 68, 0.3)'}`,
+                        backgroundColor: tieneDeudaGas && !tieneDeudaCondominio && !tieneDeudaLocales
+                          ? 'rgba(249, 115, 22, 0.15)'
+                          : (tieneDeudaLocales && !tieneDeudaCondominio && !tieneDeudaGas
+                            ? 'rgba(236, 72, 153, 0.15)'
+                            : (aplicaDiferencia ? 'rgba(56, 189, 248, 0.15)' : 'rgba(239, 68, 68, 0.15)')),
+                        color: tieneDeudaGas && !tieneDeudaCondominio && !tieneDeudaLocales
+                          ? '#fb923c'
+                          : (tieneDeudaLocales && !tieneDeudaCondominio && !tieneDeudaGas
+                            ? '#f472b6'
+                            : (aplicaDiferencia ? '#38bdf8' : '#ef4444')),
+                        border: `1px solid ${
+                          tieneDeudaGas && !tieneDeudaCondominio && !tieneDeudaLocales
+                            ? 'rgba(249, 115, 22, 0.35)'
+                            : (tieneDeudaLocales && !tieneDeudaCondominio && !tieneDeudaGas
+                              ? 'rgba(236, 72, 153, 0.35)'
+                              : (aplicaDiferencia ? 'rgba(56, 189, 248, 0.35)' : 'rgba(239, 68, 68, 0.3)'))
+                        }`,
                         padding: '5px 12px',
                         borderRadius: '999px',
                         fontSize: '12px',
                         fontWeight: 700
                       }}>
-                        {tieneDeudaGas && !tieneDeudaCondominio ? '⛽ Solo Cuota de Gas Pendiente' : (tieneDeudaCondominio && tieneDeudaGas ? '⚠️ Deuda Condominio + Gas Pendiente' : '🔴 Pago Pendiente')}
+                        {aplicaDiferencia
+                          ? '🔵 Diferencia Pendiente'
+                          : tieneDeudaGas && !tieneDeudaCondominio && !tieneDeudaLocales
+                          ? '⛽ Solo Cuota de Gas Pendiente'
+                          : tieneDeudaLocales && !tieneDeudaCondominio && !tieneDeudaGas
+                          ? '🏬 Solo Deuda de Local Pendiente'
+                          : (tieneDeudaCondominio && tieneDeudaGas) || (tieneDeudaCondominio && tieneDeudaLocales) || (tieneDeudaGas && tieneDeudaLocales)
+                          ? '🔴 No está al día · Deudas Pendientes'
+                          : '🔴 No está al día · Deuda Pendiente'}
                       </span>
                     ) : (
                       <span style={{
