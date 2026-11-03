@@ -55,6 +55,21 @@ export interface ReciboPagoInfo {
   metodo_pago?: string | null
 }
 
+export interface ReciboTotalesFondosData {
+  fondoReservaGeneralPositivoUsd?: number
+  fondoReservaGeneralPositivoBs?: number
+  fondoReservaLocalesPositivoUsd?: number
+  fondoReservaLocalesPositivoBs?: number
+  totalRecaudadoPositivoUsd?: number
+  totalRecaudadoPositivoBs?: number
+  localAsignadoInfo?: {
+    nombre: string
+    estadoPago: 'solvente' | 'no_solvente'
+    monto_usd: number
+    monto_bs: number
+  } | null
+}
+
 const TIPO_CARGO_LABELS: Record<string, string> = {
   multa: '⚠️ Multa',
   deuda_atrasada: '🔴 Deuda Atrasada',
@@ -87,7 +102,8 @@ export function generarPDFRecibo(
   notasResidentes?: string,
   pagoInfo?: ReciboPagoInfo,
   tituloDoc?: string,
-  donaciones?: ReciboDonacionData[]
+  donaciones?: ReciboDonacionData[],
+  totalesFondos?: ReciboTotalesFondosData
 ): jsPDF {
   const doc = new jsPDF({ format: 'a4', unit: 'mm' })
   const cDark:   [number,number,number] = [15, 23, 42]     // Slate 900
@@ -265,12 +281,58 @@ export function generarPDFRecibo(
 
   if (cargosApto.length > 0) {
     cargosApto.forEach(c => {
+      const esNoSolvente = c.descripcion?.toUpperCase().includes('NO SOLVENTE') || c.tipo === 'donacion_espacio_exclusivo'
       subTotalesBody.push([
-        `CARGO: ${TIPO_CARGO_LABELS[c.tipo] || c.tipo} — ${c.descripcion}`,
+        esNoSolvente ? `🔴 DEUDA LOCAL: ${c.descripcion}` : `CARGO: ${TIPO_CARGO_LABELS[c.tipo] || c.tipo} — ${c.descripcion}`,
         `${fmtBs(c.monto_bs || 0)} Bs`,
         `$ ${fmtUsd(c.monto_usd)}`
       ])
     })
+  }
+
+  // Fondos en Positivo del Edificio (General, Aporte de Locales y Total Recaudado)
+  if (totalesFondos) {
+    const hayLocalesPos = totalesFondos.fondoReservaLocalesPositivoUsd !== undefined
+    const hayGeneralPos = totalesFondos.fondoReservaGeneralPositivoUsd !== undefined
+    const hayTotalPos   = totalesFondos.totalRecaudadoPositivoUsd !== undefined
+
+    if (hayLocalesPos) {
+      subTotalesBody.push([
+        'FONDO DE RESERVA POR APORTE DE LOCALES (EN POSITIVO)',
+        `${fmtBs(totalesFondos.fondoReservaLocalesPositivoBs || 0)} Bs`,
+        `$ ${fmtUsd(totalesFondos.fondoReservaLocalesPositivoUsd || 0)}`
+      ])
+    }
+    if (hayGeneralPos) {
+      subTotalesBody.push([
+        'FONDO DE RESERVA GENERAL DEL EDIFICIO (EN POSITIVO)',
+        `${fmtBs(totalesFondos.fondoReservaGeneralPositivoBs || 0)} Bs`,
+        `$ ${fmtUsd(totalesFondos.fondoReservaGeneralPositivoUsd || 0)}`
+      ])
+    }
+    if (hayTotalPos) {
+      subTotalesBody.push([
+        'TOTAL RECAUDADO EN POSITIVO (FONDOS DEL EDIFICIO)',
+        `${fmtBs(totalesFondos.totalRecaudadoPositivoBs || 0)} Bs`,
+        `$ ${fmtUsd(totalesFondos.totalRecaudadoPositivoUsd || 0)}`
+      ])
+    }
+    if (totalesFondos.localAsignadoInfo) {
+      const loc = totalesFondos.localAsignadoInfo
+      if (loc.estadoPago === 'solvente') {
+        subTotalesBody.push([
+          `🟢 APORTE LOCAL: ${loc.nombre.toUpperCase()} — SOLVENTE (AL DÍA)`,
+          '0.00 Bs',
+          '$ 0.00'
+        ])
+      } else {
+        subTotalesBody.push([
+          `🔴 APORTE LOCAL: ${loc.nombre.toUpperCase()} — NO SOLVENTE (DEUDA PENDIENTE)`,
+          `${fmtBs(loc.monto_bs)} Bs`,
+          `$ ${fmtUsd(loc.monto_usd)}`
+        ])
+      }
+    }
   }
 
   autoTable(doc, {
@@ -283,6 +345,19 @@ export function generarPDFRecibo(
       0: { cellWidth: 116, halign: 'right', fontStyle: 'bold' },
       1: { halign: 'right', cellWidth: 42, fontStyle: 'bold' },
       2: { halign: 'right', cellWidth: 28, fontStyle: 'bold' }
+    },
+    didParseCell: (data) => {
+      const rowContent = String((data.row.raw as any)?.[0] || '')
+      if (rowContent.includes('TOTAL RECAUDADO EN POSITIVO') || rowContent.includes('FONDO DE RESERVA POR APORTE DE LOCALES')) {
+        data.cell.styles.fillColor = [240, 253, 244]
+        data.cell.styles.textColor = [22, 101, 52]
+      } else if (rowContent.includes('NO SOLVENTE')) {
+        data.cell.styles.fillColor = [254, 242, 242]
+        data.cell.styles.textColor = [153, 27, 27]
+      } else if (rowContent.includes('SOLVENTE (AL DÍA)')) {
+        data.cell.styles.fillColor = [240, 253, 244]
+        data.cell.styles.textColor = [22, 101, 52]
+      }
     },
     body: subTotalesBody
   })

@@ -81,6 +81,20 @@ export const DescargarReciboPublico: React.FC = () => {
 
       const esHistorico = !esReciboIndexado(r, cfg?.fecha_inicio_gestion)
 
+      const totalesFondos = r.data_json?.totales_fondos || (
+        (r.data_json?.fondo_reserva_general_positivo_usd !== undefined || r.data_json?.fondo_reserva_locales_positivo_usd !== undefined)
+          ? {
+              fondoReservaGeneralPositivoUsd: r.data_json.fondo_reserva_general_positivo_usd,
+              fondoReservaGeneralPositivoBs: r.data_json.fondo_reserva_general_positivo_bs,
+              fondoReservaLocalesPositivoUsd: r.data_json.fondo_reserva_locales_positivo_usd,
+              fondoReservaLocalesPositivoBs: r.data_json.fondo_reserva_locales_positivo_bs,
+              totalRecaudadoPositivoUsd: r.data_json.total_recaudado_positivo_usd,
+              totalRecaudadoPositivoBs: r.data_json.total_recaudado_positivo_bs,
+              localAsignadoInfo: r.data_json.local_asignado_info
+            }
+          : undefined
+      )
+
       const doc = generarPDFRecibo(
         aptoData,
         gastos,
@@ -97,7 +111,8 @@ export const DescargarReciboPublico: React.FC = () => {
           referencia: esHistorico ? 'REGISTRO HISTÓRICO' : undefined
         } : undefined,
         undefined,
-        r.data_json?.donaciones_espacios_comunes
+        r.data_json?.donaciones_espacios_comunes,
+        totalesFondos
       )
 
       const nombreArchivo = `Recibo_Apto${r.apartamento?.numero || ''}_${mesLabel}${anio}.pdf`

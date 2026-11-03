@@ -4,8 +4,8 @@ import { supabase } from '../../../data/supabase'
 import { notificarApartamento } from '../../../data/notificacionesService'
 import { despacharEmailRecibo } from '../../../data/emailService'
 import { getAlicuotaDecimal, formatAlicuotaPct, compararApartamentos } from '../../../utils/alicuota'
-import { generarPDFRecibo } from '../../../utils/reciboPdfGenerator'
-import { obtenerLocales, LocalComercial } from '../../../data/localesService'
+import { generarPDFRecibo, ReciboTotalesFondosData } from '../../../utils/reciboPdfGenerator'
+import { obtenerLocales, actualizarLocal, LocalComercial } from '../../../data/localesService'
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 interface Apartamento {
@@ -86,6 +86,18 @@ export const AdminGenerarRecibos: React.FC = () => {
   const [config, setConfig]         = useState<ConfigEdificio | null>(null)
   const [loading, setLoading]       = useState(true)
 
+  // Fondos de reserva en positivo (saldos reales cargados por el admin para el recibo)
+  const [fondoReservaGeneralPositivoUsd, setFondoReservaGeneralPositivoUsd] = useState<number | ''>(() => {
+    const s = localStorage.getItem('condominio_fondo_reserva_general_pos')
+    return s !== null && s !== '' && !isNaN(Number(s)) ? Number(s) : 0
+  })
+  const [fondoReservaLocalesPositivoUsd, setFondoReservaLocalesPositivoUsd] = useState<number | ''>(() => {
+    const s = localStorage.getItem('condominio_fondo_reserva_locales_pos')
+    return s !== null && s !== '' && !isNaN(Number(s)) ? Number(s) : 0
+  })
+  // Control de estado de pago del aporte mensual de cada local: 'solvente' | 'no_solvente'
+  const [localesEstados, setLocalesEstados] = useState<Record<string, 'solvente' | 'no_solvente'>>({})
+
   // Paso 2
   const [apartamentos, setApartamentos] = useState<Apartamento[]>([])
   const [cargos, setCargos]             = useState<CargoEspecial[]>([])
@@ -113,23 +125,42 @@ export const AdminGenerarRecibos: React.FC = () => {
   const esHistorico = mesStr.slice(0, 7) < fechaEntradaActual
   const mesLabel = MESES[mes]
 
+  const tasaBcvCalculo = (config?.tasa_bcv_actual && config.tasa_bcv_actual > 1) ? config.tasa_bcv_actual : 859.06
+
+  const fondoGeneralPosUsd = typeof fondoReservaGeneralPositivoUsd === 'number' ? fondoReservaGeneralPositivoUsd : 0
+  const fondoGeneralPosBs  = fondoGeneralPosUsd * tasaBcvCalculo
+
+  const fondoLocalesPosUsd = typeof fondoReservaLocalesPositivoUsd === 'number' ? fondoReservaLocalesPositivoUsd : 0
+  const fondoLocalesPosBs  = fondoLocalesPosUsd * tasaBcvCalculo
+
+  const totalRecaudadoPosUsd = fondoGeneralPosUsd + fondoLocalesPosUsd
+  const totalRecaudadoPosBs  = fondoGeneralPosBs + fondoLocalesPosBs
+
   const totalGastosBrutosUsd = gastos.reduce((s, g) => s + (g.monto_usd || 0), 0)
   const totalGastosBrutosBs  = gastos.reduce((s, g) => s + (g.monto_bs  || 0), 0)
 
   // Locales activos del mes
   const localesActivos = locales.filter(l => l.estado === 'activo' && Number(l.monto_usd) > 0)
-  const totalLocalesUsd = localesActivos.reduce((s, l) => s + (Number(l.monto_usd) || 0), 0)
-  const totalLocalesBs  = localesActivos.reduce((s, l) => s + (Number(l.monto_bs) || (Number(l.monto_usd) * (config?.tasa_bcv_actual || 859.06))), 0)
+  const localesSolventes = localesActivos.filter(l => (localesEstados[l.id] ?? (Number(l.deuda_actual_usd) > 0 ? 'no_solvente' : 'solvente')) === 'solvente')
+  const localesNoSolventes = localesActivos.filter(l => (localesEstados[l.id] ?? (Number(l.deuda_actual_usd) > 0 ? 'no_solvente' : 'solvente')) === 'no_solvente')
 
-  // Deducción según decisión del admin: si elige 'deducir', se descuenta de los gastos comunes brutos.
-  // Si elige 'fondo_reserva', el dinero va íntegro al fondo y NO se descuenta de los gastos comunes.
+  const totalLocalesUsd = localesActivos.reduce((s, l) => s + (Number(l.monto_usd) || 0), 0)
+  const totalLocalesBs  = localesActivos.reduce((s, l) => s + (Number(l.monto_bs) || (Number(l.monto_usd) * tasaBcvCalculo)), 0)
+
+  const totalLocalesSolventesUsd = localesSolventes.reduce((s, l) => s + (Number(l.monto_usd) || 0), 0)
+  const totalLocalesSolventesBs  = localesSolventes.reduce((s, l) => s + (Number(l.monto_bs) || (Number(l.monto_usd) * tasaBcvCalculo)), 0)
+
+  const totalLocalesNoSolventesUsd = localesNoSolventes.reduce((s, l) => s + (Number(l.monto_usd) || 0), 0)
+  const totalLocalesNoSolventesBs  = localesNoSolventes.reduce((s, l) => s + (Number(l.monto_bs) || (Number(l.monto_usd) * tasaBcvCalculo)), 0)
+
+  // Deducción según decisión del admin: si elige 'deducir', se descuenta el aporte de los locales solventes
   const donaciones: DonacionEspacioComun[] = destinoLocales === 'deducir'
-    ? localesActivos.map(l => ({
+    ? localesSolventes.map(l => ({
         id: l.id,
         nombreEspacio: l.nombre,
         concepto: `Donación por uso de espacios exclusivos (${l.arrendatario_nombre}${l.apartamento_numero ? ` - Apto ${l.apartamento_numero}` : ''})`,
         monto_usd: Number(l.monto_usd),
-        monto_bs: Number(l.monto_bs) || (config?.tasa_bcv_actual ? Number(l.monto_usd) * config.tasa_bcv_actual : 0)
+        monto_bs: Number(l.monto_bs) || (tasaBcvCalculo ? Number(l.monto_usd) * tasaBcvCalculo : 0)
       }))
     : []
 
@@ -162,10 +193,31 @@ export const AdminGenerarRecibos: React.FC = () => {
       ])
       if (configRes.data) setConfig(configRes.data)
       if (gastosRes.data) setGastos(gastosRes.data)
-      if (localesData) setLocales(localesData)
+      if (localesData) {
+        setLocales(localesData)
+        if (reciboExistRes.data?.data_json?.locales_estados) {
+          setLocalesEstados(reciboExistRes.data.data_json.locales_estados)
+        } else {
+          setLocalesEstados(prev => {
+            const init: Record<string, 'solvente' | 'no_solvente'> = { ...prev }
+            localesData.forEach(l => {
+              if (!init[l.id]) {
+                init[l.id] = (Number(l.deuda_actual_usd) > 0) ? 'no_solvente' : 'solvente'
+              }
+            })
+            return init
+          })
+        }
+      }
 
       if (reciboExistRes.data?.data_json?.destino_fondos_locales) {
         setDestinoLocales(reciboExistRes.data.data_json.destino_fondos_locales)
+      }
+      if (reciboExistRes.data?.data_json?.fondo_reserva_general_positivo_usd !== undefined) {
+        setFondoReservaGeneralPositivoUsd(reciboExistRes.data.data_json.fondo_reserva_general_positivo_usd)
+      }
+      if (reciboExistRes.data?.data_json?.fondo_reserva_locales_positivo_usd !== undefined) {
+        setFondoReservaLocalesPositivoUsd(reciboExistRes.data.data_json.fondo_reserva_locales_positivo_usd)
       }
 
       if (aptosRes.data) {
@@ -201,32 +253,67 @@ export const AdminGenerarRecibos: React.FC = () => {
   useEffect(() => { cargarDatos() }, [mes, anio])
   useEffect(() => { setEsIndexado(!esHistorico) }, [esHistorico])
 
-  // Cargar cargos especiales del mes y añadir automáticamente cargos de locales asignados
+  // Cargar cargos especiales del mes y añadir automáticamente cargos de locales asignados NO SOLVENTES
   useEffect(() => {
     if (apartamentos.length === 0) return
     supabase.from('cargos_especiales').select('*')
       .gte('mes_aplicacion', mesStr).lte('mes_aplicacion', mesStr)
       .then(({ data }) => {
-        const base: CargoEspecial[] = data || []
+        const base: CargoEspecial[] = (data || []).filter(c => !c.id?.startsWith('cargo_local_'))
         
-        // Locales activos que tienen apartamento asignado
-        const localesConApto = locales.filter(l => l.estado === 'activo' && l.apartamento_id && Number(l.monto_usd) > 0)
-        const cargosDeLocales: CargoEspecial[] = localesConApto.map(l => ({
+        // Locales activos que tienen apartamento asignado y están marcados como NO SOLVENTE
+        const localesNoSolventesConApto = locales.filter(l => {
+          if (l.estado !== 'activo' || !l.apartamento_id || Number(l.monto_usd) <= 0) return false
+          const est = localesEstados[l.id] ?? (Number(l.deuda_actual_usd) > 0 ? 'no_solvente' : 'solvente')
+          return est === 'no_solvente'
+        })
+
+        const tasaBcvReal = (config?.tasa_bcv_actual && config.tasa_bcv_actual > 1) ? config.tasa_bcv_actual : 859.06
+
+        const cargosDeLocales: CargoEspecial[] = localesNoSolventesConApto.map(l => ({
           id: `cargo_local_${l.id}`,
           apartamento_id: l.apartamento_id!,
           tipo: 'donacion_espacio_exclusivo',
-          descripcion: `${l.nombre} (${l.arrendatario_nombre})`,
+          descripcion: `🔴 NO SOLVENTE: Deuda Aporte ${l.nombre} (${l.arrendatario_nombre})`,
           monto_usd: Number(l.monto_usd),
-          monto_bs: Number(l.monto_bs) || (config?.tasa_bcv_actual ? Number(l.monto_usd) * config.tasa_bcv_actual : undefined)
+          monto_bs: Number(l.monto_bs) || (Number(l.monto_usd) * tasaBcvReal)
         }))
 
-        // Evitar duplicados
-        const claveExistente = new Set(base.map(c => `${c.apartamento_id}_${c.tipo}_${c.descripcion}`))
-        const nuevos = cargosDeLocales.filter(cl => !claveExistente.has(`${cl.apartamento_id}_${cl.tipo}_${cl.descripcion}`))
-
-        setCargos([...base, ...nuevos])
+        setCargos([...base, ...cargosDeLocales])
       })
-  }, [apartamentos, locales, mesStr, config?.tasa_bcv_actual])
+  }, [apartamentos, locales, localesEstados, mesStr, config?.tasa_bcv_actual])
+
+  // ── Funciones de ayuda para locales y fondos de reserva en el recibo ──
+  const getLocalAsignadoApto = (aptoId: string, aptoNumero?: string) => {
+    return localesActivos.find(l => {
+      if (l.apartamento_id && l.apartamento_id === aptoId) return true
+      if (aptoNumero && l.apartamento_numero && String(l.apartamento_numero).trim().toUpperCase() === String(aptoNumero).trim().toUpperCase()) return true
+      return false
+    })
+  }
+
+  const getTotalesFondosApto = (apto: Apartamento): ReciboTotalesFondosData => {
+    const loc = getLocalAsignadoApto(apto.id, apto.numero)
+    let localInfo: ReciboTotalesFondosData['localAsignadoInfo'] = null
+    if (loc) {
+      const est = localesEstados[loc.id] ?? (Number(loc.deuda_actual_usd) > 0 ? 'no_solvente' : 'solvente')
+      localInfo = {
+        nombre: loc.nombre,
+        estadoPago: est,
+        monto_usd: Number(loc.monto_usd),
+        monto_bs: Number(loc.monto_bs) || (Number(loc.monto_usd) * tasaBcvCalculo)
+      }
+    }
+    return {
+      fondoReservaGeneralPositivoUsd: fondoGeneralPosUsd,
+      fondoReservaGeneralPositivoBs: fondoGeneralPosBs,
+      fondoReservaLocalesPositivoUsd: fondoLocalesPosUsd,
+      fondoReservaLocalesPositivoBs: fondoLocalesPosBs,
+      totalRecaudadoPositivoUsd: totalRecaudadoPosUsd,
+      totalRecaudadoPositivoBs: totalRecaudadoPosBs,
+      localAsignadoInfo: localInfo
+    }
+  }
 
   // ── Cálculo por apto (Deduciendo donaciones de espacios comunes) ─────
   const calcularApto = (apto: Apartamento) => {
@@ -284,7 +371,8 @@ export const AdminGenerarRecibos: React.FC = () => {
     if (!config) return null
     const esPH = apto.numero.toUpperCase().includes('PH') || apto.piso === 11
     const pct = esPH ? fondoReservaPhPct : fondoReservaPct
-    return generarPDF(apto, gastos, cargos, config, pct, mesLabel, anio, notasResidentes, undefined, undefined, donaciones)
+    const totalesFondos = getTotalesFondosApto(apto)
+    return generarPDF(apto, gastos, cargos, config, pct, mesLabel, anio, notasResidentes, undefined, undefined, donaciones, totalesFondos)
   }
 
   const descargarPDF = (apto: Apartamento) => {
@@ -338,6 +426,7 @@ export const AdminGenerarRecibos: React.FC = () => {
     // 2. Preparar los payloads de los apartamentos con gastos netos y deducciones
     const payloads = apartamentos.map(apto => {
       const calc = calcularApto(apto)
+      const totalesFondos = getTotalesFondosApto(apto)
       return {
         apartamento_id:    apto.id,
         mes_facturado:     mesStr,
@@ -360,6 +449,15 @@ export const AdminGenerarRecibos: React.FC = () => {
           donaciones_espacios_comunes: donaciones,
           destino_fondos_locales: destinoLocales,
           locales_aplicados: localesActivos,
+          locales_estados: localesEstados,
+          fondo_reserva_general_positivo_usd: fondoGeneralPosUsd,
+          fondo_reserva_general_positivo_bs:  fondoGeneralPosBs,
+          fondo_reserva_locales_positivo_usd: fondoLocalesPosUsd,
+          fondo_reserva_locales_positivo_bs:  fondoLocalesPosBs,
+          total_recaudado_positivo_usd:       totalRecaudadoPosUsd,
+          total_recaudado_positivo_bs:        totalRecaudadoPosBs,
+          local_asignado_info: totalesFondos.localAsignadoInfo,
+          totales_fondos: totalesFondos,
           total_locales_usd: totalLocalesUsd,
           total_locales_bs: totalLocalesBs,
           total_gastos_brutos_usd: totalGastosBrutosUsd,
@@ -395,6 +493,25 @@ export const AdminGenerarRecibos: React.FC = () => {
     if (cargos.length > 0) {
       await supabase.from('cargos_especiales').update({ aplicado: true }).in('id', cargos.map(c => c.id))
     }
+
+    // 3.1 Sincronizar deudas de los locales en el sistema y portal de residentes
+    for (const l of localesActivos) {
+      const estado = localesEstados[l.id] ?? ((Number(l.deuda_actual_usd) > 0) ? 'no_solvente' : 'solvente')
+      const nuevaDeudaUsd = estado === 'no_solvente' ? Number(l.monto_usd) : 0
+      const nuevaDeudaBs  = nuevaDeudaUsd * tasaBcvCalculo
+      try {
+        await actualizarLocal(l.id, {
+          deuda_actual_usd: nuevaDeudaUsd,
+          deuda_actual_bs: nuevaDeudaBs
+        })
+      } catch (err) {
+        console.warn(`[Emisión] Advertencia al actualizar estado de local ${l.nombre}:`, err)
+      }
+    }
+
+    // Guardar fondos de reserva positivos en almacenamiento local
+    localStorage.setItem('condominio_fondo_reserva_general_pos', String(fondoGeneralPosUsd))
+    localStorage.setItem('condominio_fondo_reserva_locales_pos', String(fondoLocalesPosUsd))
 
     // 4. Notificar a cada apartamento que tiene un nuevo recibo emitido (in-app y email automático)
     // NOTA: Para meses históricos (< '2026-09-01', carga de administración anterior),
@@ -705,7 +822,7 @@ export const AdminGenerarRecibos: React.FC = () => {
 
                 {totalLocalesUsd > 0 && (
                   <div style={{ textAlign:'right', backgroundColor:'rgba(56, 189, 248, 0.1)', padding:'8px 14px', borderRadius:'10px', border:'1px solid rgba(56, 189, 248, 0.25)' }}>
-                    <div style={{ color:'#7dd3fc', fontSize:'11px', fontWeight:700, textTransform:'uppercase' }}>Total Pagos Locales</div>
+                    <div style={{ color:'#7dd3fc', fontSize:'11px', fontWeight:700, textTransform:'uppercase' }}>Total Locales ({localesSolventes.length} Solv. / {localesNoSolventes.length} No Solv.)</div>
                     <div style={{ color:'#38bdf8', fontWeight:900, fontSize:'17px' }}>${fmtUsd(totalLocalesUsd)} USD</div>
                     <div style={{ color:'#94a3b8', fontWeight:700, fontSize:'11.5px' }}>Bs. {fmtBs(totalLocalesBs)}</div>
                   </div>
@@ -750,7 +867,7 @@ export const AdminGenerarRecibos: React.FC = () => {
                     </span>
                   </div>
                   <p style={{ color: '#94a3b8', fontSize: '12px', margin: '4px 0 0 24px', lineHeight: 1.35 }}>
-                    Se resta el valor de los locales (-${fmtUsd(totalLocalesUsd)} USD) del total de gastos brutos. El recibo saldrá más económico para todos los residentes por alícuota.
+                    Se resta el valor de los locales solventes (-${fmtUsd(totalLocalesSolventesUsd)} USD) del total de gastos brutos. El recibo saldrá más económico para todos los residentes por alícuota.
                   </p>
                 </div>
 
@@ -799,13 +916,13 @@ export const AdminGenerarRecibos: React.FC = () => {
                 <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'12px', marginBottom:'12px' }}>
                   <thead>
                     <tr style={{ borderBottom:'1px solid #2a2a2a' }}>
-                      {['Local / Espacio Exclusivo', 'Arrendatario', 'Apartamento Asignado', 'Canon Mensual (Bs)', 'Canon Mensual ($ USD)'].map(h => (
+                      {['Local / Espacio Exclusivo', 'Arrendatario', 'Apartamento Asignado', 'Canon ($ / Bs)', 'Estado Aporte Mes (Solvencia)'].map(h => (
                         <th key={h} style={{
                           color: '#888',
                           fontSize: '11px',
                           fontWeight: 700,
                           padding: '8px 10px',
-                          textAlign: h.includes('Canon') ? 'right' : h.includes('Asignado') ? 'center' : 'left',
+                          textAlign: h.includes('Canon') ? 'right' : h.includes('Asignado') || h.includes('Solvencia') ? 'center' : 'left',
                           textTransform: 'uppercase'
                         }}>
                           {h}
@@ -814,31 +931,220 @@ export const AdminGenerarRecibos: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {localesActivos.map(l => (
-                      <tr key={l.id} style={{ borderBottom:'1px solid #1a1a1a', backgroundColor:'rgba(0,0,0,0.2)' }}>
-                        <td style={{ color:'#fff', padding:'8px 10px', fontWeight:700 }}>
-                          <span style={{ marginRight:'6px' }}>🏬</span>
-                          {l.nombre}
-                          {l.codigo && <span style={{ marginLeft:'6px', color:'#64748b', fontSize:'11px' }}>({l.codigo})</span>}
-                        </td>
-                        <td style={{ color:'#ccc', padding:'8px 10px' }}>
-                          {l.arrendatario_nombre}
-                        </td>
-                        <td style={{ color:'var(--color-accent, #f97316)', padding:'8px 10px', textAlign:'center', fontWeight:700 }}>
-                          {l.apartamento_numero ? `Apto #${l.apartamento_numero}` : '— Sin Apto —'}
-                        </td>
-                        <td style={{ color:'#34d399', padding:'8px 10px', textAlign:'right', fontWeight:700 }}>
-                          Bs. {fmtBs(l.monto_bs || (l.monto_usd * (config?.tasa_bcv_actual || 859.06)))}
-                        </td>
-                        <td style={{ color:'#38bdf8', padding:'8px 10px', textAlign:'right', fontWeight:800 }}>
-                          $ {fmtUsd(l.monto_usd)}
-                        </td>
-                      </tr>
-                    ))}
+                    {localesActivos.map(l => {
+                      const est = localesEstados[l.id] ?? (Number(l.deuda_actual_usd) > 0 ? 'no_solvente' : 'solvente')
+                      const esSolv = est === 'solvente'
+                      return (
+                        <tr key={l.id} style={{ borderBottom:'1px solid #1a1a1a', backgroundColor: esSolv ? 'rgba(0,0,0,0.2)' : 'rgba(239,68,68,0.06)' }}>
+                          <td style={{ color:'#fff', padding:'10px', fontWeight:700 }}>
+                            <div style={{ display:'flex', alignItems:'center', gap:'6px' }}>
+                              <span>🏬</span>
+                              <span>{l.nombre}</span>
+                              {l.codigo && <span style={{ color:'#64748b', fontSize:'11px' }}>({l.codigo})</span>}
+                            </div>
+                          </td>
+                          <td style={{ color:'#ccc', padding:'10px' }}>
+                            {l.arrendatario_nombre}
+                          </td>
+                          <td style={{ color:'var(--color-accent, #f97316)', padding:'10px', textAlign:'center', fontWeight:700 }}>
+                            {l.apartamento_numero ? `Apto #${l.apartamento_numero}` : '— Sin Apto —'}
+                          </td>
+                          <td style={{ padding:'10px', textAlign:'right' }}>
+                            <div style={{ color:'#38bdf8', fontWeight:800, fontSize:'13px' }}>$ {fmtUsd(l.monto_usd)}</div>
+                            <div style={{ color:'#34d399', fontSize:'11px', fontWeight:600 }}>Bs. {fmtBs(l.monto_bs || (Number(l.monto_usd) * tasaBcvCalculo))}</div>
+                          </td>
+                          <td style={{ padding:'10px', textAlign:'center' }}>
+                            <div style={{ display:'inline-flex', flexDirection:'column', alignItems:'center', gap:'4px' }}>
+                              <div style={{ display:'flex', borderRadius:'8px', overflow:'hidden', border:'1px solid #334155' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => setLocalesEstados(prev => ({ ...prev, [l.id]: 'solvente' }))}
+                                  style={{
+                                    backgroundColor: esSolv ? '#15803d' : '#1e293b',
+                                    color: esSolv ? '#fff' : '#94a3b8',
+                                    border: 'none',
+                                    padding: '5px 10px',
+                                    fontSize: '11px',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease'
+                                  }}
+                                >
+                                  🟢 Solvente
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setLocalesEstados(prev => ({ ...prev, [l.id]: 'no_solvente' }))}
+                                  style={{
+                                    backgroundColor: !esSolv ? '#b91c1c' : '#1e293b',
+                                    color: !esSolv ? '#fff' : '#94a3b8',
+                                    border: 'none',
+                                    padding: '5px 10px',
+                                    fontSize: '11px',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease'
+                                  }}
+                                >
+                                  🔴 No Solvente
+                                </button>
+                              </div>
+                              <span style={{ fontSize:'10px', fontWeight:700, color: esSolv ? '#4ade80' : '#f87171' }}>
+                                {esSolv ? '✓ Aporte al día' : (l.apartamento_numero ? `⚠️ Deuda imputada al Apto #${l.apartamento_numero}` : '⚠️ En mora')}
+                              </span>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
             )}
+
+            {/* ════════ FONDOS DE RESERVA EN POSITIVO (CONFIGURACIÓN DEL ADMIN) ════════ */}
+            <div style={{
+              backgroundColor: '#0c121e',
+              border: '1px solid #1e293b',
+              borderRadius: '12px',
+              padding: '16px',
+              marginTop: '16px',
+              marginBottom: '16px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '20px' }}>🏦</span>
+                  <div>
+                    <h4 style={{ color: '#fff', margin: 0, fontSize: '14.5px', fontWeight: 800 }}>
+                      Fondos de Reserva en Positivo del Edificio (Aparecerán en el Recibo)
+                    </h4>
+                    <span style={{ color: '#94a3b8', fontSize: '12px' }}>
+                      Indica cuánto hay disponible en positivo para que figure de forma clara y transparente en los recibos emitidos y en el PDF oficial.
+                    </span>
+                  </div>
+                </div>
+
+                <div style={{
+                  backgroundColor: 'rgba(34, 197, 94, 0.12)',
+                  border: '1px solid rgba(34, 197, 94, 0.35)',
+                  padding: '8px 16px',
+                  borderRadius: '10px',
+                  textAlign: 'right'
+                }}>
+                  <div style={{ color: '#86efac', fontSize: '10.5px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                    Total Recaudado en Positivo (Fondos)
+                  </div>
+                  <div style={{ color: '#4ade80', fontSize: '17px', fontWeight: 900 }}>
+                    ${fmtUsd(totalRecaudadoPosUsd)} USD
+                  </div>
+                  <div style={{ color: '#a7f3d0', fontSize: '11.5px', fontWeight: 700 }}>
+                    Bs. {fmtBs(totalRecaudadoPosBs)}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px' }}>
+                {/* 1. Fondo de Reserva General del Edificio en Positivo */}
+                <div style={{ backgroundColor: '#131b2c', border: '1px solid #1e293b', borderRadius: '10px', padding: '14px' }}>
+                  <label style={{ display: 'block', color: '#e2e8f0', fontSize: '12.5px', fontWeight: 800, marginBottom: '6px' }}>
+                    🏛️ Fondo de Reserva General del Edificio (en positivo)
+                  </label>
+                  <div style={{ position: 'relative' }}>
+                    <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', fontWeight: 800, fontSize: '14px' }}>$</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={fondoReservaGeneralPositivoUsd === '' ? '' : fondoReservaGeneralPositivoUsd}
+                      onChange={e => {
+                        const val = e.target.value === '' ? '' : Math.max(0, parseFloat(e.target.value) || 0)
+                        setFondoReservaGeneralPositivoUsd(val)
+                        localStorage.setItem('condominio_fondo_reserva_general_pos', String(val))
+                      }}
+                      placeholder="0.00"
+                      style={{
+                        width: '100%',
+                        backgroundColor: '#0a0f1d',
+                        border: '1px solid #334155',
+                        borderRadius: '8px',
+                        padding: '9px 12px 9px 28px',
+                        color: '#fff',
+                        fontSize: '14px',
+                        fontWeight: 800,
+                        outline: 'none',
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                  </div>
+                  <div style={{ marginTop: '6px', fontSize: '11.5px', color: '#38bdf8', fontWeight: 600, display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Conversión BCV:</span>
+                    <span style={{ color: '#10b981', fontWeight: 800 }}>Bs. {fmtBs(fondoGeneralPosBs)}</span>
+                  </div>
+                </div>
+
+                {/* 2. Fondo de Reserva por Aporte de Locales en Positivo */}
+                <div style={{ backgroundColor: '#131b2c', border: '1px solid #1e293b', borderRadius: '10px', padding: '14px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                    <label style={{ color: '#e2e8f0', fontSize: '12.5px', fontWeight: 800 }}>
+                      🏢 Fondo de Reserva por Aporte de Locales (en positivo)
+                    </label>
+                    {totalLocalesSolventesUsd > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFondoReservaLocalesPositivoUsd(totalLocalesSolventesUsd)
+                          localStorage.setItem('condominio_fondo_reserva_locales_pos', String(totalLocalesSolventesUsd))
+                        }}
+                        style={{
+                          backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                          color: '#38bdf8',
+                          border: '1px solid rgba(56, 189, 248, 0.3)',
+                          padding: '2px 8px',
+                          borderRadius: '6px',
+                          fontSize: '10px',
+                          fontWeight: 700,
+                          cursor: 'pointer'
+                        }}
+                        title="Fijar con los aportes de locales solventes recaudados este mes"
+                      >
+                        ⚡ Aportes Solventes (${fmtUsd(totalLocalesSolventesUsd)})
+                      </button>
+                    )}
+                  </div>
+                  <div style={{ position: 'relative' }}>
+                    <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', fontWeight: 800, fontSize: '14px' }}>$</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={fondoReservaLocalesPositivoUsd === '' ? '' : fondoReservaLocalesPositivoUsd}
+                      onChange={e => {
+                        const val = e.target.value === '' ? '' : Math.max(0, parseFloat(e.target.value) || 0)
+                        setFondoReservaLocalesPositivoUsd(val)
+                        localStorage.setItem('condominio_fondo_reserva_locales_pos', String(val))
+                      }}
+                      placeholder="0.00"
+                      style={{
+                        width: '100%',
+                        backgroundColor: '#0a0f1d',
+                        border: '1px solid #334155',
+                        borderRadius: '8px',
+                        padding: '9px 12px 9px 28px',
+                        color: '#fff',
+                        fontSize: '14px',
+                        fontWeight: 800,
+                        outline: 'none',
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                  </div>
+                  <div style={{ marginTop: '6px', fontSize: '11.5px', color: '#38bdf8', fontWeight: 600, display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Conversión BCV:</span>
+                    <span style={{ color: '#10b981', fontWeight: 800 }}>Bs. {fmtBs(fondoLocalesPosBs)}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
 
             {/* Banner de Balance Contable según decisión */}
             <div style={{
@@ -863,11 +1169,11 @@ export const AdminGenerarRecibos: React.FC = () => {
                 <div style={{ color:'#888', fontSize:'16px' }}>{destinoLocales === 'deducir' ? '—' : '+'}</div>
                 <div>
                   <span style={{ color: destinoLocales === 'deducir' ? '#4ade80' : 'var(--color-accent, #f97316)', fontSize:'11px', textTransform:'uppercase', fontWeight:700 }}>
-                    {destinoLocales === 'deducir' ? 'Deducción Locales:' : 'Aporte a Fondo de Reserva:'}
+                    {destinoLocales === 'deducir' ? 'Deducción Locales Solventes:' : 'Aporte a Fondo de Reserva:'}
                   </span>
                   <div style={{ color: destinoLocales === 'deducir' ? '#4ade80' : 'var(--color-accent, #f97316)', fontSize:'13px', fontWeight:800 }}>
-                    {destinoLocales === 'deducir' ? `-$${fmtUsd(totalLocalesUsd)}` : `+$${fmtUsd(totalLocalesUsd)}`}
-                    <span style={{ color:'#86efac', fontSize:'11px' }}> ({destinoLocales === 'deducir' ? '-' : '+'}Bs. {fmtBs(totalLocalesBs)})</span>
+                    {destinoLocales === 'deducir' ? `-$${fmtUsd(totalLocalesSolventesUsd)}` : `+$${fmtUsd(totalLocalesSolventesUsd)}`}
+                    <span style={{ color:'#86efac', fontSize:'11px' }}> ({destinoLocales === 'deducir' ? '-' : '+'}Bs. {fmtBs(totalLocalesSolventesBs)})</span>
                   </div>
                 </div>
                 <div style={{ color:'#888', fontSize:'16px' }}>=</div>
@@ -877,6 +1183,14 @@ export const AdminGenerarRecibos: React.FC = () => {
                     ${fmtUsd(totalGastosNetosUsd)} USD <span style={{ color:'#10b981', fontSize:'12px', fontWeight:800 }}>(Bs. {fmtBs(totalGastosNetosBs)})</span>
                   </div>
                 </div>
+                {totalLocalesNoSolventesUsd > 0 && (
+                  <div>
+                    <span style={{ color:'#ef4444', fontSize:'11px', textTransform:'uppercase', fontWeight:700 }}>Locales No Solventes (Deuda):</span>
+                    <div style={{ color:'#ef4444', fontSize:'13px', fontWeight:800 }}>
+                      +${fmtUsd(totalLocalesNoSolventesUsd)} USD <span style={{ color:'#fca5a5', fontSize:'11px' }}>(Bs. {fmtBs(totalLocalesNoSolventesBs)})</span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div style={{
@@ -1305,15 +1619,76 @@ export const AdminGenerarRecibos: React.FC = () => {
                           <td style={{ padding:'5px 8px', textAlign:'right', border:'1px solid #e2e8f0', fontVariantNumeric:'tabular-nums' }}>{fmtBs(totalEdificioBs)} Bs</td>
                           <td style={{ padding:'5px 8px', textAlign:'right', border:'1px solid #e2e8f0', fontVariantNumeric:'tabular-nums' }}>$ {fmtUsd(totalEdificioUsd)}</td>
                         </tr>
-                        {caps.map(c => (
-                          <tr key={c.id} style={{ backgroundColor:'#fffbeb', color:'#92400e', fontWeight:700 }}>
-                            <td style={{ padding:'4px 8px', textAlign:'right', border:'1px solid #e2e8f0' }}>
-                              CARGO: {TIPO_CARGO_LABELS[c.tipo] || c.tipo} — {c.descripcion}
-                            </td>
-                            <td style={{ padding:'4px 8px', textAlign:'right', border:'1px solid #e2e8f0' }}>{fmtBs(c.monto_bs || 0)} Bs</td>
-                            <td style={{ padding:'4px 8px', textAlign:'right', border:'1px solid #e2e8f0' }}>$ {fmtUsd(c.monto_usd)}</td>
-                          </tr>
-                        ))}
+                        {caps.map(c => {
+                          const esNoSolvente = c.descripcion?.toUpperCase().includes('NO SOLVENTE') || c.tipo === 'donacion_espacio_exclusivo'
+                          return (
+                            <tr key={c.id} style={{ backgroundColor: esNoSolvente ? '#fef2f2' : '#fffbeb', color: esNoSolvente ? '#991b1b' : '#92400e', fontWeight:700 }}>
+                              <td style={{ padding:'4px 8px', textAlign:'right', border:'1px solid #e2e8f0' }}>
+                                {esNoSolvente ? `🔴 DEUDA LOCAL: ${c.descripcion}` : `CARGO: ${TIPO_CARGO_LABELS[c.tipo] || c.tipo} — ${c.descripcion}`}
+                              </td>
+                              <td style={{ padding:'4px 8px', textAlign:'right', border:'1px solid #e2e8f0' }}>{fmtBs(c.monto_bs || 0)} Bs</td>
+                              <td style={{ padding:'4px 8px', textAlign:'right', border:'1px solid #e2e8f0' }}>$ {fmtUsd(c.monto_usd)}</td>
+                            </tr>
+                          )
+                        })}
+
+                        {/* Fondos en Positivo del Edificio */}
+                        <tr style={{ backgroundColor:'#f0fdf4', color:'#166534', fontWeight:700 }}>
+                          <td style={{ padding:'4px 8px', textAlign:'right', border:'1px solid #bbf7d0' }}>
+                            FONDO DE RESERVA POR APORTE DE LOCALES (EN POSITIVO)
+                          </td>
+                          <td style={{ padding:'4px 8px', textAlign:'right', border:'1px solid #bbf7d0', fontVariantNumeric:'tabular-nums' }}>
+                            {fmtBs(fondoLocalesPosBs)} Bs
+                          </td>
+                          <td style={{ padding:'4px 8px', textAlign:'right', border:'1px solid #bbf7d0', fontVariantNumeric:'tabular-nums' }}>
+                            $ {fmtUsd(fondoLocalesPosUsd)}
+                          </td>
+                        </tr>
+
+                        <tr style={{ backgroundColor:'#f0fdf4', color:'#166534', fontWeight:700 }}>
+                          <td style={{ padding:'4px 8px', textAlign:'right', border:'1px solid #bbf7d0' }}>
+                            FONDO DE RESERVA GENERAL DEL EDIFICIO (EN POSITIVO)
+                          </td>
+                          <td style={{ padding:'4px 8px', textAlign:'right', border:'1px solid #bbf7d0', fontVariantNumeric:'tabular-nums' }}>
+                            {fmtBs(fondoGeneralPosBs)} Bs
+                          </td>
+                          <td style={{ padding:'4px 8px', textAlign:'right', border:'1px solid #bbf7d0', fontVariantNumeric:'tabular-nums' }}>
+                            $ {fmtUsd(fondoGeneralPosUsd)}
+                          </td>
+                        </tr>
+
+                        <tr style={{ backgroundColor:'#dcfce7', color:'#14532d', fontWeight:800 }}>
+                          <td style={{ padding:'5px 8px', textAlign:'right', border:'1px solid #86efac' }}>
+                            TOTAL RECAUDADO EN POSITIVO (FONDOS DEL EDIFICIO)
+                          </td>
+                          <td style={{ padding:'5px 8px', textAlign:'right', border:'1px solid #86efac', fontVariantNumeric:'tabular-nums' }}>
+                            {fmtBs(totalRecaudadoPosBs)} Bs
+                          </td>
+                          <td style={{ padding:'5px 8px', textAlign:'right', border:'1px solid #86efac', fontVariantNumeric:'tabular-nums' }}>
+                            $ {fmtUsd(totalRecaudadoPosUsd)}
+                          </td>
+                        </tr>
+
+                        {/* Estado del Local Asignado al Apartamento */}
+                        {(() => {
+                          const loc = getLocalAsignadoApto(apto.id, apto.numero)
+                          if (!loc) return null
+                          const est = localesEstados[loc.id] ?? (Number(loc.deuda_actual_usd) > 0 ? 'no_solvente' : 'solvente')
+                          const esSolv = est === 'solvente'
+                          return (
+                            <tr style={{ backgroundColor: esSolv ? '#f0fdf4' : '#fef2f2', color: esSolv ? '#166534' : '#991b1b', fontWeight: 700 }}>
+                              <td style={{ padding:'4px 8px', textAlign:'right', border:`1px solid ${esSolv ? '#bbf7d0' : '#fecaca'}` }}>
+                                {esSolv ? `🟢 APORTE LOCAL: ${loc.nombre.toUpperCase()} — SOLVENTE (AL DÍA)` : `🔴 APORTE LOCAL: ${loc.nombre.toUpperCase()} — NO SOLVENTE (DEUDA PENDIENTE)`}
+                              </td>
+                              <td style={{ padding:'4px 8px', textAlign:'right', border:`1px solid ${esSolv ? '#bbf7d0' : '#fecaca'}` }}>
+                                {esSolv ? '0.00 Bs' : `${fmtBs(loc.monto_bs || (Number(loc.monto_usd) * tasaBcvCalculo))} Bs`}
+                              </td>
+                              <td style={{ padding:'4px 8px', textAlign:'right', border:`1px solid ${esSolv ? '#bbf7d0' : '#fecaca'}` }}>
+                                {esSolv ? '$ 0.00' : `$ ${fmtUsd(loc.monto_usd)}`}
+                              </td>
+                            </tr>
+                          )
+                        })()}
                       </tbody>
                     </table>
 
