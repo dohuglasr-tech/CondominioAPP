@@ -103,6 +103,8 @@ export const AdminGenerarRecibos: React.FC = () => {
   const [toast, setToast]         = useState<string | null>(null)
 
   const [esIndexado, setEsIndexado] = useState(true)
+  const [pdfModalOpen, setPdfModalOpen] = useState(false)
+  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null)
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 4000) }
 
@@ -277,13 +279,45 @@ export const AdminGenerarRecibos: React.FC = () => {
     setCargos(prev => prev.filter(c => c.id !== id))
   }
 
-  // ── Descargar PDF (Con desglose de donaciones) ────────────────────────
-  const descargarPDF = (apto: Apartamento) => {
-    if (!config) return
+  // ── Generar y Descargar PDF (Con visor y descarga directa) ───────────
+  const generarDocPDF = (apto: Apartamento) => {
+    if (!config) return null
     const esPH = apto.numero.toUpperCase().includes('PH') || apto.piso === 11
     const pct = esPH ? fondoReservaPhPct : fondoReservaPct
-    const doc = generarPDF(apto, gastos, cargos, config, pct, mesLabel, anio, notasResidentes, undefined, undefined, donaciones)
+    return generarPDF(apto, gastos, cargos, config, pct, mesLabel, anio, notasResidentes, undefined, undefined, donaciones)
+  }
+
+  const descargarPDF = (apto: Apartamento) => {
+    const doc = generarDocPDF(apto)
+    if (!doc) return
     doc.save(`Recibo_Apto${apto.numero}_${mesLabel}${anio}.pdf`)
+  }
+
+  const handleAbrirPrevisualizacionPdf = (idx?: number) => {
+    const targetIdx = idx !== undefined ? idx : previewAptoIdx
+    const apto = apartamentos[targetIdx]
+    if (!apto) return
+    setPreviewAptoIdx(targetIdx)
+    const doc = generarDocPDF(apto)
+    if (!doc) return
+    if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl)
+    const blob = doc.output('blob')
+    const url = URL.createObjectURL(blob)
+    setPdfBlobUrl(url)
+    setPdfModalOpen(true)
+  }
+
+  const handleCambiarAptoPdf = (idx: number) => {
+    setPreviewAptoIdx(idx)
+    const apto = apartamentos[idx]
+    if (apto) {
+      const doc = generarDocPDF(apto)
+      if (!doc) return
+      if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl)
+      const blob = doc.output('blob')
+      const url = URL.createObjectURL(blob)
+      setPdfBlobUrl(url)
+    }
   }
 
   // ── Emisión masiva ───────────────────────────────────────────────────
@@ -1099,9 +1133,28 @@ export const AdminGenerarRecibos: React.FC = () => {
                       Siguiente →
                     </button>
                   </div>
-                  <button onClick={() => descargarPDF(apto)} style={{ ...S.btnPrimary, display:'flex', alignItems:'center', gap:'8px', padding:'8px 18px', fontSize:'13px' }}>
-                    <span>📥</span> Descargar PDF
-                  </button>
+                  <div style={{ display:'flex', gap:'8px' }}>
+                    <button
+                      type="button"
+                      onClick={() => handleAbrirPrevisualizacionPdf(previewAptoIdx)}
+                      style={{
+                        ...S.btnSecondary,
+                        color: '#38bdf8',
+                        borderColor: '#38bdf8',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '8px 14px',
+                        fontSize: '13px',
+                        fontWeight: 700
+                      }}
+                    >
+                      <span>👁️</span> Previsualizar PDF
+                    </button>
+                    <button onClick={() => descargarPDF(apto)} style={{ ...S.btnPrimary, display:'flex', alignItems:'center', gap:'8px', padding:'8px 18px', fontSize:'13px' }}>
+                      <span>📥</span> Descargar PDF
+                    </button>
+                  </div>
                 </div>
 
                 {/* Recibo Preview — 1:1 con PDF y Excel (Estilo moderno pizarra y naranja) */}
@@ -1417,7 +1470,92 @@ export const AdminGenerarRecibos: React.FC = () => {
                 </div>
               )}
 
-              <div style={{ display:'flex', gap:'12px', justifyContent:'center' }}>
+              {/* Banner y Botón de Previsualizar PDF en el Paso 4 (Luego de todo) */}
+              <div style={{
+                backgroundColor: '#0c121e',
+                border: '1px solid #1e293b',
+                borderRadius: '12px',
+                padding: '16px',
+                marginBottom: '20px',
+                textAlign: 'left'
+              }}>
+                <div style={{ marginBottom: '10px' }}>
+                  <div style={{ color: '#fff', fontSize: '14px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span>👁️</span> Previsualizar y Descargar PDF Oficial antes de Emitir
+                  </div>
+                  <p style={{ color: '#94a3b8', fontSize: '12px', margin: '4px 0 0' }}>
+                    Revisa el recibo en su formato PDF real para verificar o descargar el documento antes de publicarlo. Si notas algún error, puedes volver atrás y corregirlo.
+                  </p>
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <select
+                    value={previewAptoIdx}
+                    onChange={e => setPreviewAptoIdx(Number(e.target.value))}
+                    style={{
+                      flex: '1 1 200px',
+                      backgroundColor: '#141c2c',
+                      border: '1px solid #27354f',
+                      color: 'var(--color-accent, #f97316)',
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      fontSize: '12.5px',
+                      fontWeight: 700
+                    }}
+                  >
+                    {apartamentos.map((a, idx) => (
+                      <option key={a.id} value={idx}>
+                        Apto #{a.numero} - {a.propietario_nombre || 'Sin residente'}
+                      </option>
+                    ))}
+                  </select>
+
+                  <button
+                    type="button"
+                    onClick={() => handleAbrirPrevisualizacionPdf(previewAptoIdx)}
+                    style={{
+                      backgroundColor: '#1e293b',
+                      color: '#38bdf8',
+                      border: '1px solid #334155',
+                      borderRadius: '8px',
+                      padding: '8px 16px',
+                      fontSize: '13px',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}
+                  >
+                    <span>👁️</span> Previsualizar PDF
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => descargarPDF(apartamentos[previewAptoIdx])}
+                    style={{
+                      backgroundColor: '#16a34a',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: '8px',
+                      padding: '8px 16px',
+                      fontSize: '13px',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}
+                  >
+                    <span>📥</span> Descargar PDF
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ display:'flex', gap:'12px', justifyContent:'center', flexWrap:'wrap' }}>
+                <button onClick={() => setPaso(1)} style={{ ...S.btnSecondary, borderColor: 'rgba(239, 68, 68, 0.35)', color: '#f87171' }}>
+                  ✏️ Volver a Corregir Gastos
+                </button>
                 <button onClick={() => setPaso(3)} style={S.btnSecondary}>← Volver a Previsualizar</button>
                 <button onClick={emitirRecibos} disabled={emitiendo}
                   style={{ ...S.btnPrimary, opacity: emitiendo?0.7:1, padding:'12px 28px', fontSize:'15px' }}>
@@ -1462,6 +1600,259 @@ export const AdminGenerarRecibos: React.FC = () => {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ═══ MODAL PREVISUALIZADOR PDF ═══ */}
+      {pdfModalOpen && pdfBlobUrl && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 9999,
+            backgroundColor: 'rgba(3, 7, 18, 0.85)',
+            backdropFilter: 'blur(6px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px'
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setPdfModalOpen(false)
+            }
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: '#0f172a',
+              border: '1px solid #334155',
+              borderRadius: '16px',
+              width: '100%',
+              maxWidth: '1100px',
+              height: '92vh',
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.8)',
+              overflow: 'hidden'
+            }}
+          >
+            {/* Modal Header */}
+            <div
+              style={{
+                padding: '14px 20px',
+                borderBottom: '1px solid #1e293b',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '12px',
+                backgroundColor: '#0b1120'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '20px' }}>👁️</span>
+                <div>
+                  <h3 style={{ margin: 0, color: '#f8fafc', fontSize: '15px', fontWeight: 800 }}>
+                    Previsualización del PDF Oficial — {mesLabel} {anio}
+                  </h3>
+                  <p style={{ margin: '2px 0 0', color: '#94a3b8', fontSize: '11.5px' }}>
+                    Documento final idéntico al que se descargará y enviará a los residentes
+                  </p>
+                </div>
+              </div>
+
+              {/* Controles en Header */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                {/* Selector de apartamento dentro del modal */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ color: '#94a3b8', fontSize: '12px', fontWeight: 600 }}>Apto:</span>
+                  <select
+                    value={previewAptoIdx}
+                    onChange={(e) => handleCambiarAptoPdf(Number(e.target.value))}
+                    style={{
+                      backgroundColor: '#1e293b',
+                      border: '1px solid #334155',
+                      color: 'var(--color-accent, #f97316)',
+                      padding: '6px 10px',
+                      borderRadius: '6px',
+                      fontSize: '12px',
+                      fontWeight: 700
+                    }}
+                  >
+                    {apartamentos.map((a, idx) => (
+                      <option key={a.id} value={idx}>
+                        Apto #{a.numero} - {a.propietario_nombre || 'Sin residente'}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Botón Descargar este PDF */}
+                <button
+                  type="button"
+                  onClick={() => descargarPDF(apartamentos[previewAptoIdx])}
+                  style={{
+                    backgroundColor: '#16a34a',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '6px',
+                    padding: '7px 14px',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                  title="Descargar archivo PDF"
+                >
+                  <span>📥</span> Descargar PDF
+                </button>
+
+                {/* Botón Abrir en nueva pestaña */}
+                <button
+                  type="button"
+                  onClick={() => window.open(pdfBlobUrl, '_blank')}
+                  style={{
+                    backgroundColor: '#334155',
+                    color: '#e2e8f0',
+                    border: 'none',
+                    borderRadius: '6px',
+                    padding: '7px 12px',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                  title="Abrir PDF en pestaña nueva para imprimir o ampliar"
+                >
+                  <span>↗</span> Pestaña nueva
+                </button>
+
+                {/* Botón Cerrar */}
+                <button
+                  type="button"
+                  onClick={() => setPdfModalOpen(false)}
+                  style={{
+                    backgroundColor: '#1e293b',
+                    color: '#94a3b8',
+                    border: '1px solid #334155',
+                    borderRadius: '6px',
+                    width: '32px',
+                    height: '32px',
+                    fontSize: '16px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                  title="Cerrar previsualizador"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body: iframe con el PDF renderizado */}
+            <div style={{ flex: 1, backgroundColor: '#334155', position: 'relative', overflow: 'hidden' }}>
+              <iframe
+                src={pdfBlobUrl}
+                title={`Recibo PDF Apto ${apartamentos[previewAptoIdx]?.numero}`}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  border: 'none',
+                  display: 'block'
+                }}
+              />
+            </div>
+
+            {/* Modal Footer: Acciones de corrección */}
+            <div
+              style={{
+                padding: '12px 20px',
+                borderTop: '1px solid #1e293b',
+                backgroundColor: '#0b1120',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '12px'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#94a3b8', fontSize: '12px' }}>
+                <span style={{ color: '#f59e0b' }}>⚠️</span>
+                <span>¿Detectaste algún error o diferencia en los montos, alícuotas o gastos?</span>
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPdfModalOpen(false)
+                    setPaso(1)
+                  }}
+                  style={{
+                    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                    color: '#f87171',
+                    border: '1px solid rgba(239, 68, 68, 0.4)',
+                    borderRadius: '6px',
+                    padding: '8px 14px',
+                    fontSize: '12.5px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  ✏️ Corregir Gastos (Paso 1)
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPdfModalOpen(false)
+                    setPaso(2)
+                  }}
+                  style={{
+                    backgroundColor: '#1e293b',
+                    color: '#cbd5e1',
+                    border: '1px solid #334155',
+                    borderRadius: '6px',
+                    padding: '8px 14px',
+                    fontSize: '12.5px',
+                    fontWeight: 600,
+                    cursor: 'pointer'
+                  }}
+                >
+                  🏪 Corregir Locales (Paso 2)
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setPdfModalOpen(false)}
+                  style={{
+                    backgroundColor: '#3b82f6',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '6px',
+                    padding: '8px 18px',
+                    fontSize: '12.5px',
+                    fontWeight: 700,
+                    cursor: 'pointer'
+                  }}
+                >
+                  ✓ Todo Correcto
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
