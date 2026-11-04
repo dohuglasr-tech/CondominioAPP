@@ -1636,6 +1636,135 @@ export async function guardarDeudaMesGas(params: {
 }
 
 /**
+ * Asigna o modifica la cuota/deuda de gas de un mes específico para TODO EL EDIFICIO
+ */
+export async function guardarCuotaMesEdificioGas(params: {
+  mesKey: string // YYYY-MM
+  mesLabel?: string
+  monto: number
+  moneda: 'BS' | 'USD'
+  estado?: 'pendiente' | 'pagado'
+  tasaBcv?: number
+  titulo?: string
+}): Promise<{ success: boolean; data?: GasServicioData; error?: string | null }> {
+  try {
+    const { data: actual } = await obtenerGasServicioData(true)
+    const tasa = params.tasaBcv || actual.config.tasaBcv || 859.06
+    const moneda = params.moneda || 'BS'
+    const monto = params.monto || 0
+    const montoBs = moneda === 'BS' ? monto : Number((monto * tasa).toFixed(2))
+    const montoUsd = moneda === 'USD' ? monto : (tasa > 0 ? Number((monto / tasa).toFixed(2)) : 0)
+    const estado = params.estado || 'pendiente'
+    const titulo = params.titulo || params.mesLabel || `Cuota Gas ${params.mesKey}`
+
+    // 1. Buscar o crear la jornada correspondiente
+    let jornada = actual.jornadas.find(j => j.mes === params.mesKey)
+    let jornadaId: string
+
+    if (!jornada) {
+      jornadaId = generarUUID()
+    } else {
+      jornadaId = jornada.id
+    }
+
+    const jornadaData = {
+      id: jornadaId,
+      titulo,
+      mes: params.mesKey,
+      fechaInicio: `${params.mesKey}-01`,
+      monedaPrincipal: moneda,
+      costoPorAptoBs: montoBs,
+      costoPorAptoUsd: montoUsd,
+      metaTotalBs: Number((montoBs * 62).toFixed(2)),
+      metaTotalUsd: Number((montoUsd * 62).toFixed(2)),
+      estado: 'activa',
+      activa: true
+    }
+
+    await supabase.from('casos_comunidad').upsert({
+      id: jornadaId,
+      tipo: TIPO_GAS_JORNADA,
+      titulo,
+      descripcion: JSON.stringify(jornadaData),
+      monto_usd: montoUsd,
+      monto_bs: montoBs,
+      moneda,
+      estado: 'activa',
+      fecha: `${params.mesKey}-01`,
+      updated_at: new Date().toISOString()
+    })
+
+    // 2. Si el estado es 'pagado', marcar a todos como pagado
+    if (estado === 'pagado') {
+      const { data: aptosDb } = await supabase.from('apartamentos').select('id, numero, propietario_nombre')
+      const aptos = aptosDb || []
+      for (const a of aptos) {
+        const cleanNum = String(a.numero).trim().replace(/^APTO\.?\s*/i, '')
+        const pagoDetalle: DetallePagoAptoGas & { jornadaId: string } = {
+          jornadaId,
+          apartamentoId: a.id,
+          apartamentoNumero: cleanNum,
+          propietario: a.propietario_nombre || undefined,
+          estado: 'pagado',
+          fechaPago: new Date().toISOString().split('T')[0],
+          moneda,
+          montoBs,
+          montoUsd,
+          metodoPago: 'otro',
+          referencia: 'EDIFICIO_PAGADO',
+          observaciones: 'Cuota de gas pagada a nivel de edificio'
+        }
+
+        const { data: existingPagos } = await supabase
+          .from('casos_comunidad')
+          .select('id')
+          .eq('tipo', TIPO_GAS_PAGO)
+          .ilike('titulo', `%${cleanNum}%`)
+          .ilike('titulo', `%${jornadaId}%`)
+          .limit(1)
+
+        const pagoRowId = existingPagos && existingPagos.length > 0 ? existingPagos[0].id : generarUUID()
+
+        await supabase.from('casos_comunidad').upsert({
+          id: pagoRowId,
+          tipo: TIPO_GAS_PAGO,
+          apartamento_id: esUUIDValido(a.id) ? a.id : null,
+          titulo: `Pago Gas Apto ${cleanNum} - ${jornadaId}`,
+          descripcion: JSON.stringify(pagoDetalle),
+          monto_usd: montoUsd,
+          monto_bs: montoBs,
+          moneda,
+          estado: 'pagado',
+          fecha: pagoDetalle.fechaPago,
+          updated_at: new Date().toISOString()
+        })
+      }
+    } else {
+      // Si el estado es 'pendiente', eliminar cualquier pago condonado a 0
+      await supabase
+        .from('casos_comunidad')
+        .delete()
+        .eq('tipo', TIPO_GAS_PAGO)
+        .ilike('titulo', `%${jornadaId}%`)
+        .ilike('descripcion', '%CONDONADA%')
+    }
+
+    appCache.invalidate('gas_servicio_data_global')
+    appCache.invalidateTags(['gas', 'deudas_gas', 'saldos', 'recibos', 'mora'])
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('condominio_gas_updated'))
+    }
+
+    const { data: frescos } = await obtenerGasServicioData(true)
+    return { success: true, data: frescos, error: null }
+  } catch (err: any) {
+    console.error('[gasService] Error en guardarCuotaMesEdificioGas:', err)
+    return { success: false, error: err.message }
+  }
+}
+
+/**
  * Elimina la deuda de un mes específico para un apartamento (dejándolo en saldo 0 y solvente)
  */
 export async function eliminarDeudaMesGas(

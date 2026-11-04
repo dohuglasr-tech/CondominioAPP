@@ -15,6 +15,7 @@ import {
   eliminarDeudaAnteriorGas,
   eliminarDeudaAnteriorEdificioGas,
   guardarDeudaMesGas,
+  guardarCuotaMesEdificioGas,
   eliminarDeudaMesGas,
   eliminarDeudaMesEdificioGas,
   eliminarTodasLasDeudasGasApartamento,
@@ -88,6 +89,28 @@ export const AdminGas: React.FC = () => {
   const [celdaMetodo, setCeldaMetodo] = useState<string>('pago_movil')
   const [celdaFechaPago, setCeldaFechaPago] = useState<string>(new Date().toISOString().slice(0, 10))
   const [celdaNota, setCeldaNota] = useState<string>('')
+  const [celdaAplicarATodos, setCeldaAplicarATodos] = useState<boolean>(false)
+
+  // Modal al hacer clic en un Mes (para gestionar residente o edificio completo)
+  const [modalGestionMesOpen, setModalGestionMesOpen] = useState(false)
+  const [guardandoGestionMes, setGuardandoGestionMes] = useState(false)
+  const [gestionMesData, setGestionMesData] = useState({
+    mesKey: '',
+    mesLabel: '',
+    accion: 'agregar' as 'agregar' | 'quitar',
+    alcance: 'edificio' as 'edificio' | 'residente',
+    apartamentoNumero: '',
+    apartamentoId: '',
+    monto: '',
+    moneda: 'BS' as 'BS' | 'USD',
+    estado: 'pendiente' as 'pendiente' | 'pagado',
+    metodoPago: 'pago_movil',
+    referencia: '',
+    fechaPago: new Date().toISOString().slice(0, 10),
+    nota: '',
+    checkConfirmacion: false,
+    palabraConfirmacion: ''
+  })
 
   // Modales
   const [modalNivelTanqueOpen, setModalNivelTanqueOpen] = useState(false)
@@ -482,6 +505,7 @@ export const AdminGas: React.FC = () => {
     setCeldaTipo(tipo)
     setCeldaMesKey(mesKey || '')
     setCeldaMesLabel(mesLabel || '')
+    setCeldaAplicarATodos(false)
 
     if (tipo === 'anterior') {
       const da = apto.deuda_anterior
@@ -530,26 +554,48 @@ export const AdminGas: React.FC = () => {
           showToast(res.error || 'Error guardando deuda anterior')
         }
       } else {
-        const res = await guardarDeudaMesGas({
-          mesKey: celdaMesKey,
-          mesLabel: celdaMesLabel,
-          apartamentoId: celdaApto.id,
-          apartamentoNumero: celdaApto.numero,
-          propietario: celdaApto.propietario,
-          monto: numMonto,
-          moneda: celdaMoneda,
-          estado: celdaEstado,
-          referencia: celdaReferencia,
-          metodo: celdaMetodo,
-          fechaPago: celdaFechaPago,
-          nota: celdaNota
-        })
-        if (res.success && res.data) {
-          setData(res.data)
-          showToast(`Cuota de ${celdaMesLabel} para Apto ${celdaApto.numero} actualizada`)
-          setModalCeldaDeudaOpen(false)
+        if (celdaAplicarATodos) {
+          if (!window.confirm(`¿Asignar cuota de ${celdaMoneda === 'BS' ? `Bs. ${numMonto}` : `$${numMonto}`} para ${celdaMesLabel} a TODO EL EDIFICIO (${apartamentosDb.length} apartamentos)?`)) {
+            setGuardandoCelda(false)
+            return
+          }
+          const res = await guardarCuotaMesEdificioGas({
+            mesKey: celdaMesKey,
+            mesLabel: celdaMesLabel,
+            monto: numMonto,
+            moneda: celdaMoneda,
+            estado: celdaEstado,
+            titulo: celdaNota || `Cuota Gas ${celdaMesLabel}`
+          })
+          if (res.success && res.data) {
+            setData(res.data)
+            showToast(`Cuota de ${celdaMesLabel} asignada a todo el edificio con éxito`)
+            setModalCeldaDeudaOpen(false)
+          } else {
+            showToast(res.error || 'Error asignando cuota a todo el edificio')
+          }
         } else {
-          showToast(res.error || 'Error actualizando cuota mensual')
+          const res = await guardarDeudaMesGas({
+            mesKey: celdaMesKey,
+            mesLabel: celdaMesLabel,
+            apartamentoId: celdaApto.id,
+            apartamentoNumero: celdaApto.numero,
+            propietario: celdaApto.propietario,
+            monto: numMonto,
+            moneda: celdaMoneda,
+            estado: celdaEstado,
+            referencia: celdaReferencia,
+            metodo: celdaMetodo,
+            fechaPago: celdaFechaPago,
+            nota: celdaNota
+          })
+          if (res.success && res.data) {
+            setData(res.data)
+            showToast(`Cuota de ${celdaMesLabel} para Apto ${celdaApto.numero} actualizada`)
+            setModalCeldaDeudaOpen(false)
+          } else {
+            showToast(res.error || 'Error actualizando cuota mensual')
+          }
         }
       }
       await cargarDatos()
@@ -563,7 +609,12 @@ export const AdminGas: React.FC = () => {
   const handleEliminarDeudaDesdeCelda = async () => {
     if (!celdaApto) return
     const concepto = celdaTipo === 'anterior' ? 'la deuda anterior' : `la cuota de ${celdaMesLabel}`
-    if (!window.confirm(`¿Estás seguro de eliminar ${concepto} para el Apto ${celdaApto.numero}? El saldo quedará en 0 y solvente.`)) return
+    
+    if (celdaTipo === 'mes' && celdaAplicarATodos) {
+      if (!window.confirm(`🚨 ¿Estás seguro de eliminar ${concepto} para TODO EL EDIFICIO (${apartamentosDb.length} apartamentos)? El saldo quedará en 0 y solvente.`)) return
+    } else {
+      if (!window.confirm(`¿Estás seguro de eliminar ${concepto} para el Apto ${celdaApto.numero}? El saldo quedará en 0 y solvente.`)) return
+    }
 
     setGuardandoCelda(true)
     try {
@@ -577,13 +628,24 @@ export const AdminGas: React.FC = () => {
           showToast(res.error || 'Error eliminando deuda anterior')
         }
       } else {
-        const res = await eliminarDeudaMesGas(celdaMesKey, celdaApto.numero)
-        if (res.success && res.data) {
-          setData(res.data)
-          showToast(`Deuda de ${celdaMesLabel} para Apto ${celdaApto.numero} eliminada`)
-          setModalCeldaDeudaOpen(false)
+        if (celdaAplicarATodos) {
+          const res = await eliminarDeudaMesEdificioGas(celdaMesKey)
+          if (res.success && res.data) {
+            setData(res.data)
+            showToast(`Deuda de ${celdaMesLabel} eliminada para todo el edificio`)
+            setModalCeldaDeudaOpen(false)
+          } else {
+            showToast(res.error || 'Error eliminando deuda del mes para el edificio')
+          }
         } else {
-          showToast(res.error || 'Error eliminando deuda del mes')
+          const res = await eliminarDeudaMesGas(celdaMesKey, celdaApto.numero)
+          if (res.success && res.data) {
+            setData(res.data)
+            showToast(`Deuda de ${celdaMesLabel} para Apto ${celdaApto.numero} eliminada`)
+            setModalCeldaDeudaOpen(false)
+          } else {
+            showToast(res.error || 'Error eliminando deuda del mes')
+          }
         }
       }
       await cargarDatos()
@@ -591,6 +653,163 @@ export const AdminGas: React.FC = () => {
       showToast(err.message || 'Error eliminando deuda')
     } finally {
       setGuardandoCelda(false)
+    }
+  }
+
+  const handleAbrirGestionMes = (mesKey: string, mesLabel: string) => {
+    const jornada = data?.jornadas.find(j => j.mes === mesKey)
+    const defectoMonto = jornada
+      ? (jornada.monedaPrincipal === 'BS' ? jornada.costoPorAptoBs : jornada.costoPorAptoUsd)
+      : (data?.config?.costoPorAptoDefectoBs || '')
+    const defectoMoneda = jornada?.monedaPrincipal || data?.config?.monedaCuota || 'BS'
+
+    setGestionMesData({
+      mesKey,
+      mesLabel,
+      accion: 'agregar',
+      alcance: 'edificio',
+      apartamentoNumero: '',
+      apartamentoId: '',
+      monto: defectoMonto ? defectoMonto.toString() : '',
+      moneda: defectoMoneda,
+      estado: 'pendiente',
+      metodoPago: 'pago_movil',
+      referencia: '',
+      fechaPago: new Date().toISOString().slice(0, 10),
+      nota: `Cuota Gas ${mesLabel} ${calAnio}`,
+      checkConfirmacion: false,
+      palabraConfirmacion: ''
+    })
+    setModalGestionMesOpen(true)
+  }
+
+  const handleGuardarGestionMes = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setGuardandoGestionMes(true)
+    const {
+      mesKey,
+      mesLabel,
+      accion,
+      alcance,
+      apartamentoNumero,
+      apartamentoId,
+      monto,
+      moneda,
+      estado,
+      metodoPago,
+      referencia,
+      fechaPago,
+      nota,
+      checkConfirmacion,
+      palabraConfirmacion
+    } = gestionMesData
+
+    try {
+      const numMonto = parseFloat(monto.replace(',', '.')) || 0
+
+      if (accion === 'agregar') {
+        if (alcance === 'edificio') {
+          if (!window.confirm(`¿Asignar cuota de ${moneda === 'BS' ? `Bs. ${numMonto}` : `$${numMonto}`} para ${mesLabel} ${calAnio} a TODO EL EDIFICIO (${apartamentosDb.length} apartamentos)?`)) {
+            setGuardandoGestionMes(false)
+            return
+          }
+          const res = await guardarCuotaMesEdificioGas({
+            mesKey,
+            mesLabel,
+            monto: numMonto,
+            moneda,
+            estado,
+            titulo: nota || `Cuota Gas ${mesLabel} ${calAnio}`
+          })
+          if (res.success && res.data) {
+            setData(res.data)
+            showToast(`Cuota de ${mesLabel} asignada a todo el edificio con éxito`)
+            setModalGestionMesOpen(false)
+          } else {
+            showToast(res.error || 'Error asignando cuota a todo el edificio')
+          }
+        } else {
+          // Un residente
+          if (!apartamentoNumero) {
+            showToast('Selecciona un apartamento')
+            setGuardandoGestionMes(false)
+            return
+          }
+          const aptoObj = apartamentosDb.find(a => a.numero === apartamentoNumero)
+          const res = await guardarDeudaMesGas({
+            mesKey,
+            mesLabel,
+            apartamentoId: aptoObj?.id || apartamentoId,
+            apartamentoNumero,
+            propietario: aptoObj?.propietario_nombre || undefined,
+            monto: numMonto,
+            moneda,
+            estado,
+            referencia,
+            metodo: metodoPago,
+            fechaPago,
+            nota
+          })
+          if (res.success && res.data) {
+            setData(res.data)
+            showToast(`Cuota de ${mesLabel} asignada al Apto ${apartamentoNumero}`)
+            setModalGestionMesOpen(false)
+          } else {
+            showToast(res.error || 'Error guardando cuota del residente')
+          }
+        }
+      } else {
+        // accion === 'quitar'
+        if (alcance === 'edificio') {
+          if (palabraConfirmacion.trim() !== 'BORRAR') {
+            showToast('Escribe BORRAR para confirmar la eliminación de la deuda de todo el edificio')
+            setGuardandoGestionMes(false)
+            return
+          }
+          if (!window.confirm(`🚨 CONFIRMACIÓN CRÍTICA:\n\n¿Estás 100% seguro de borrar la deuda de gas de ${mesLabel} ${calAnio} para TODO EL EDIFICIO?\n\nTodos los apartamentos quedarán en saldo 0 y solventes para este mes.`)) {
+            setGuardandoGestionMes(false)
+            return
+          }
+          const res = await eliminarDeudaMesEdificioGas(mesKey)
+          if (res.success && res.data) {
+            setData(res.data)
+            showToast(`Deuda de ${mesLabel} eliminada para todo el edificio`)
+            setModalGestionMesOpen(false)
+          } else {
+            showToast(res.error || 'Error eliminando deuda de todo el edificio')
+          }
+        } else {
+          // Un residente
+          if (!apartamentoNumero) {
+            showToast('Selecciona un apartamento')
+            setGuardandoGestionMes(false)
+            return
+          }
+          if (!checkConfirmacion) {
+            showToast('Marca la casilla de confirmación')
+            setGuardandoGestionMes(false)
+            return
+          }
+          if (!window.confirm(`¿Eliminar la deuda de gas de ${mesLabel} para el Apto ${apartamentoNumero}?`)) {
+            setGuardandoGestionMes(false)
+            return
+          }
+          const res = await eliminarDeudaMesGas(mesKey, apartamentoNumero)
+          if (res.success && res.data) {
+            setData(res.data)
+            showToast(`Deuda de ${mesLabel} para el Apto ${apartamentoNumero} eliminada`)
+            setModalGestionMesOpen(false)
+          } else {
+            showToast(res.error || 'Error eliminando deuda del residente')
+          }
+        }
+      }
+
+      await cargarDatos()
+    } catch (err: any) {
+      showToast(err.message || 'Error procesando solicitud del mes')
+    } finally {
+      setGuardandoGestionMes(false)
     }
   }
 
@@ -2080,21 +2299,38 @@ export const AdminGas: React.FC = () => {
                       {MESES_CONFIG.map(m => (
                         <th
                           key={m.mesKey}
+                          onClick={() => handleAbrirGestionMes(m.mesKey, m.nombreCompleto)}
                           style={{
                             position: 'sticky',
                             top: '37px',
                             zIndex: 20,
-                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                            padding: '8px 10px',
+                            backgroundColor: 'rgba(59, 130, 246, 0.12)',
+                            padding: '6px 4px',
                             color: '#93c5fd',
                             fontWeight: 800,
                             fontSize: '11px',
                             textAlign: 'center',
                             borderRight: '1px solid rgba(255, 255, 255, 0.05)',
-                            minWidth: '70px'
+                            minWidth: '72px',
+                            cursor: 'pointer',
+                            userSelect: 'none'
                           }}
+                          title={`Gestionar ${m.nombreCompleto} ${calAnio}: Clic para agregar o quitar deuda a un residente o todo el edificio`}
                         >
-                          {m.label}
+                          <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '4px',
+                            padding: '4px 6px',
+                            borderRadius: '6px',
+                            backgroundColor: 'rgba(59, 130, 246, 0.15)',
+                            border: '1px solid rgba(59, 130, 246, 0.3)',
+                            transition: 'all 0.15s ease'
+                          }}>
+                            <span>{m.label}</span>
+                            <span style={{ fontSize: '9px', opacity: 0.8 }}>⚙️</span>
+                          </div>
                         </th>
                       ))}
 
@@ -4584,6 +4820,35 @@ export const AdminGas: React.FC = () => {
                   }}
                 />
               </div>
+
+              {/* Opción para aplicar a todo el edificio */}
+              {celdaTipo === 'mes' && (
+                <label style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  padding: '10px 14px',
+                  backgroundColor: celdaAplicarATodos ? 'rgba(59, 130, 246, 0.12)' : 'rgba(255, 255, 255, 0.03)',
+                  border: celdaAplicarATodos ? '1px solid #3b82f6' : '1px solid #374151',
+                  borderRadius: '10px',
+                  cursor: 'pointer'
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={celdaAplicarATodos}
+                    onChange={e => setCeldaAplicarATodos(e.target.checked)}
+                    style={{ width: '18px', height: '18px', accentColor: '#3b82f6', cursor: 'pointer' }}
+                  />
+                  <div>
+                    <div style={{ fontSize: '13px', fontWeight: 800, color: '#fff' }}>
+                      Aplicar cambio a TODO EL EDIFICIO ({apartamentosDb.length} apartamentos)
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>
+                      Asigna este mismo monto o acción a todos los inmuebles en {celdaMesLabel}
+                    </div>
+                  </div>
+                </label>
+              )}
             </div>
 
             {/* Footer con botón Eliminar a la izquierda y Guardar a la derecha */}
@@ -4615,7 +4880,7 @@ export const AdminGas: React.FC = () => {
                 }}
               >
                 <span>🗑️</span>
-                <span>Eliminar Deuda</span>
+                <span>{celdaAplicarATodos ? 'Eliminar Deuda de Todo el Edificio' : 'Eliminar Deuda'}</span>
               </button>
 
               <div style={{ display: 'flex', gap: '10px' }}>
@@ -4652,7 +4917,11 @@ export const AdminGas: React.FC = () => {
                     boxShadow: '0 4px 12px rgba(249, 115, 22, 0.35)'
                   }}
                 >
-                  {guardandoCelda ? 'Guardando...' : 'Guardar Cambios'}
+                  {guardandoCelda
+                    ? 'Guardando...'
+                    : celdaAplicarATodos
+                    ? 'Guardar para Todo el Edificio'
+                    : 'Guardar Cambios'}
                 </button>
               </div>
             </div>
@@ -5358,6 +5627,525 @@ export const AdminGas: React.FC = () => {
                     : formEliminarDeuda.aplicarATodoEdificio
                     ? 'Confirmar Eliminación de Todo el Edificio'
                     : 'Confirmar Eliminación'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL 4: GESTIONAR MES (AGREGAR O QUITAR DEUDA PARA RESIDENTE O EDIFICIO) ── */}
+      {modalGestionMesOpen && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.75)',
+          backdropFilter: 'blur(5px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 99999,
+          padding: '16px'
+        }}>
+          <div style={{
+            backgroundColor: '#111827',
+            border: '1px solid #374151',
+            borderRadius: '20px',
+            width: '100%',
+            maxWidth: '520px',
+            maxHeight: '92vh',
+            display: 'flex',
+            flexDirection: 'column',
+            boxShadow: '0 25px 60px rgba(0, 0, 0, 0.8)',
+            overflow: 'hidden'
+          }}>
+            {/* Header */}
+            <div style={{
+              padding: '18px 24px',
+              borderBottom: '1px solid #1f2937',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span>📅</span>
+                  <span>Gestionar {gestionMesData.mesLabel} {calAnio}</span>
+                </h3>
+                <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#94a3b8' }}>
+                  Agregar o quitar deuda de gas para un residente o todo el edificio
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalGestionMesOpen(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#94a3b8',
+                  fontSize: '20px',
+                  cursor: 'pointer',
+                  padding: '4px 8px'
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleGuardarGestionMes} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+              <div style={{ padding: '20px 24px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                
+                {/* 1. ¿Qué acción deseas realizar? */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#cbd5e1', marginBottom: '8px' }}>
+                    Acción a realizar en este mes:
+                  </label>
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: '8px',
+                    backgroundColor: '#030712',
+                    padding: '4px',
+                    borderRadius: '12px',
+                    border: '1px solid #1f2937'
+                  }}>
+                    <button
+                      type="button"
+                      onClick={() => setGestionMesData(prev => ({ ...prev, accion: 'agregar' }))}
+                      style={{
+                        padding: '9px 12px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        backgroundColor: gestionMesData.accion === 'agregar' ? '#2563eb' : 'transparent',
+                        color: '#fff',
+                        fontSize: '12px',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        boxShadow: gestionMesData.accion === 'agregar' ? '0 2px 10px rgba(37, 99, 235, 0.4)' : 'none'
+                      }}
+                    >
+                      <span>➕</span>
+                      <span>Agregar / Fijar Deuda</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setGestionMesData(prev => ({ ...prev, accion: 'quitar' }))}
+                      style={{
+                        padding: '9px 12px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        backgroundColor: gestionMesData.accion === 'quitar' ? '#ef4444' : 'transparent',
+                        color: '#fff',
+                        fontSize: '12px',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        boxShadow: gestionMesData.accion === 'quitar' ? '0 2px 10px rgba(239, 68, 68, 0.4)' : 'none'
+                      }}
+                    >
+                      <span>🗑️</span>
+                      <span>Quitar / Borrar Deuda</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* 2. ¿A quién aplica? Alcance */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#cbd5e1', marginBottom: '8px' }}>
+                    Destinatario / Alcance:
+                  </label>
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: '8px',
+                    backgroundColor: '#030712',
+                    padding: '4px',
+                    borderRadius: '12px',
+                    border: '1px solid #1f2937'
+                  }}>
+                    <button
+                      type="button"
+                      onClick={() => setGestionMesData(prev => ({ ...prev, alcance: 'edificio', palabraConfirmacion: '', checkConfirmacion: false }))}
+                      style={{
+                        padding: '9px 12px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        backgroundColor: gestionMesData.alcance === 'edificio' ? (gestionMesData.accion === 'quitar' ? '#b91c1c' : '#1d4ed8') : 'transparent',
+                        color: '#fff',
+                        fontSize: '12px',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px'
+                      }}
+                    >
+                      <span>🏢</span>
+                      <span>Todo el Edificio</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setGestionMesData(prev => ({ ...prev, alcance: 'residente', palabraConfirmacion: '', checkConfirmacion: false }))}
+                      style={{
+                        padding: '9px 12px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        backgroundColor: gestionMesData.alcance === 'residente' ? '#374151' : 'transparent',
+                        color: gestionMesData.alcance === 'residente' ? '#fff' : '#94a3b8',
+                        fontSize: '12px',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px'
+                      }}
+                    >
+                      <span>🏠</span>
+                      <span>Un Residente</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Si es Un Residente, selector de apartamento */}
+                {gestionMesData.alcance === 'residente' ? (
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#cbd5e1', marginBottom: '6px' }}>
+                      Seleccionar Apartamento:
+                    </label>
+                    <select
+                      value={gestionMesData.apartamentoNumero}
+                      onChange={e => {
+                        const selNum = e.target.value
+                        const aptoObj = apartamentosDb.find(a => a.numero === selNum)
+                        setGestionMesData(prev => ({
+                          ...prev,
+                          apartamentoNumero: selNum,
+                          apartamentoId: aptoObj?.id || selNum
+                        }))
+                      }}
+                      required
+                      style={{
+                        width: '100%',
+                        backgroundColor: '#030712',
+                        border: '1px solid #374151',
+                        borderRadius: '10px',
+                        padding: '10px 14px',
+                        color: '#fff',
+                        fontSize: '13px',
+                        fontWeight: 600
+                      }}
+                    >
+                      <option value="">-- Elige un apartamento --</option>
+                      {apartamentosDb.map(a => (
+                        <option key={a.id || a.numero} value={a.numero}>
+                          Apto {a.numero} {a.propietario_nombre ? `· ${a.propietario_nombre}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  <div style={{
+                    backgroundColor: gestionMesData.accion === 'quitar' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(59, 130, 246, 0.1)',
+                    border: gestionMesData.accion === 'quitar' ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid rgba(59, 130, 246, 0.3)',
+                    borderRadius: '10px',
+                    padding: '10px 14px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px'
+                  }}>
+                    <span style={{ fontSize: '18px' }}>🏢</span>
+                    <div style={{ fontSize: '12px', color: '#cbd5e1' }}>
+                      Afectará a los <strong>{apartamentosDb.length} apartamentos</strong> de la comunidad en <strong>{gestionMesData.mesLabel} {calAnio}</strong>.
+                    </div>
+                  </div>
+                )}
+
+                {/* Si la acción es AGREGAR / FIJAR DEUDA */}
+                {gestionMesData.accion === 'agregar' && (
+                  <>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#cbd5e1', marginBottom: '6px' }}>
+                        Monto de la Cuota / Deuda:
+                      </label>
+                      <div style={{ display: 'flex', gap: '10px' }}>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          required
+                          value={gestionMesData.monto}
+                          onChange={e => setGestionMesData(prev => ({ ...prev, monto: e.target.value }))}
+                          placeholder="Ej: 150.00"
+                          style={{
+                            flex: 1,
+                            backgroundColor: '#030712',
+                            border: '1px solid #374151',
+                            borderRadius: '10px',
+                            padding: '10px 14px',
+                            color: '#fff',
+                            fontSize: '18px',
+                            fontWeight: 800,
+                            outline: 'none'
+                          }}
+                        />
+                        <select
+                          value={gestionMesData.moneda}
+                          onChange={e => setGestionMesData(prev => ({ ...prev, moneda: e.target.value as 'BS' | 'USD' }))}
+                          style={{
+                            backgroundColor: '#030712',
+                            border: '1px solid #374151',
+                            borderRadius: '10px',
+                            padding: '10px 14px',
+                            color: '#fff',
+                            fontSize: '13px',
+                            fontWeight: 700,
+                            cursor: 'pointer'
+                          }}
+                        >
+                          <option value="BS">Bolívares (Bs)</option>
+                          <option value="USD">Dólares (USD)</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div style={{ fontSize: '12px', fontWeight: 700, color: '#cbd5e1', marginBottom: '6px' }}>
+                        Estado Inicial:
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                        <button
+                          type="button"
+                          onClick={() => setGestionMesData(prev => ({ ...prev, estado: 'pendiente' }))}
+                          style={{
+                            padding: '9px 12px',
+                            borderRadius: '10px',
+                            border: gestionMesData.estado === 'pendiente' ? '2px solid #ef4444' : '1px solid #374151',
+                            backgroundColor: gestionMesData.estado === 'pendiente' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(255, 255, 255, 0.03)',
+                            color: gestionMesData.estado === 'pendiente' ? '#fca5a5' : '#94a3b8',
+                            fontWeight: 700,
+                            fontSize: '12px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '6px'
+                          }}
+                        >
+                          <span>🔴</span>
+                          <span>Deuda Pendiente</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setGestionMesData(prev => ({ ...prev, estado: 'pagado' }))}
+                          style={{
+                            padding: '9px 12px',
+                            borderRadius: '10px',
+                            border: gestionMesData.estado === 'pagado' ? '2px solid #10b981' : '1px solid #374151',
+                            backgroundColor: gestionMesData.estado === 'pagado' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(255, 255, 255, 0.03)',
+                            color: gestionMesData.estado === 'pagado' ? '#6ee7b7' : '#94a3b8',
+                            fontWeight: 700,
+                            fontSize: '12px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '6px'
+                          }}
+                        >
+                          <span>🟢</span>
+                          <span>Pagado / Solvente</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', color: '#94a3b8', marginBottom: '4px', fontWeight: 600 }}>
+                        Nota o Concepto:
+                      </label>
+                      <input
+                        type="text"
+                        value={gestionMesData.nota}
+                        onChange={e => setGestionMesData(prev => ({ ...prev, nota: e.target.value }))}
+                        placeholder="Ej: Recarga ordinaria gas mensual"
+                        style={{
+                          width: '100%',
+                          backgroundColor: '#030712',
+                          border: '1px solid #374151',
+                          borderRadius: '8px',
+                          padding: '8px 12px',
+                          color: '#fff',
+                          fontSize: '12px',
+                          boxSizing: 'border-box'
+                        }}
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Si la acción es QUITAR / BORRAR DEUDA */}
+                {gestionMesData.accion === 'quitar' && (
+                  <>
+                    {gestionMesData.alcance === 'edificio' ? (
+                      <div style={{
+                        backgroundColor: 'rgba(239, 68, 68, 0.12)',
+                        border: '1px solid rgba(239, 68, 68, 0.4)',
+                        borderRadius: '12px',
+                        padding: '14px 16px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '10px'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ fontSize: '16px' }}>🔒</span>
+                          <span style={{ fontSize: '12px', fontWeight: 800, color: '#fca5a5', textTransform: 'uppercase' }}>
+                            Confirmación de Seguridad Obligatoria
+                          </span>
+                        </div>
+                        <p style={{ margin: 0, fontSize: '12px', color: '#cbd5e1', lineHeight: 1.4 }}>
+                          Para autorizar el borrado de la deuda de <strong>{gestionMesData.mesLabel} {calAnio}</strong> para <strong>TODO EL EDIFICIO</strong>, escribe la palabra <strong style={{ color: '#ef4444', letterSpacing: '1px' }}>BORRAR</strong> a continuación:
+                        </p>
+                        <input
+                          type="text"
+                          value={gestionMesData.palabraConfirmacion}
+                          onChange={e => setGestionMesData(prev => ({ ...prev, palabraConfirmacion: e.target.value.toUpperCase() }))}
+                          placeholder="Escribe BORRAR aquí"
+                          autoComplete="off"
+                          style={{
+                            width: '100%',
+                            backgroundColor: '#030712',
+                            border: gestionMesData.palabraConfirmacion.trim() === 'BORRAR' ? '2px solid #10b981' : '1px solid #ef4444',
+                            borderRadius: '8px',
+                            padding: '10px 14px',
+                            color: '#fff',
+                            fontSize: '14px',
+                            fontWeight: 800,
+                            letterSpacing: '2px',
+                            textAlign: 'center',
+                            outline: 'none',
+                            boxSizing: 'border-box'
+                          }}
+                        />
+                        <div style={{ fontSize: '11px', textAlign: 'center', fontWeight: 600 }}>
+                          {gestionMesData.palabraConfirmacion.trim() === 'BORRAR' ? (
+                            <span style={{ color: '#34d399' }}>✓ Confirmación aceptada. Botón de eliminación habilitado.</span>
+                          ) : (
+                            <span style={{ color: '#f87171' }}>⚠️ Escribe exactamente "BORRAR" para habilitar la eliminación.</span>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <label style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        backgroundColor: 'rgba(255, 255, 255, 0.03)',
+                        border: gestionMesData.checkConfirmacion ? '1px solid #10b981' : '1px solid #374151',
+                        borderRadius: '10px',
+                        padding: '10px 14px',
+                        cursor: 'pointer'
+                      }}>
+                        <input
+                          type="checkbox"
+                          checked={gestionMesData.checkConfirmacion}
+                          onChange={e => setGestionMesData(prev => ({ ...prev, checkConfirmacion: e.target.checked }))}
+                          style={{ width: '18px', height: '18px', accentColor: '#ef4444', cursor: 'pointer' }}
+                        />
+                        <span style={{ fontSize: '12px', color: '#cbd5e1', fontWeight: 600 }}>
+                          Confirmo que deseo perdonar/eliminar la deuda de este mes para el Apto {gestionMesData.apartamentoNumero || 'seleccionado'}
+                        </span>
+                      </label>
+                    )}
+
+                    <div style={{
+                      backgroundColor: 'rgba(239, 68, 68, 0.08)',
+                      border: '1px solid rgba(239, 68, 68, 0.25)',
+                      borderRadius: '10px',
+                      padding: '12px 14px',
+                      fontSize: '12px',
+                      color: '#fca5a5',
+                      lineHeight: 1.4
+                    }}>
+                      ⚠️ <strong>Atención:</strong> El saldo de este mes quedará en 0 y el residente o edificio figurará como solvente.
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div style={{
+                padding: '16px 24px',
+                backgroundColor: '#030712',
+                borderTop: '1px solid #1f2937',
+                display: 'flex',
+                justifyContent: 'flex-end',
+                gap: '10px'
+              }}>
+                <button
+                  type="button"
+                  onClick={() => setModalGestionMesOpen(false)}
+                  disabled={guardandoGestionMes}
+                  style={{
+                    padding: '9px 16px',
+                    backgroundColor: 'transparent',
+                    color: '#cbd5e1',
+                    border: '1px solid #374151',
+                    borderRadius: '10px',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    cursor: 'pointer'
+                  }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={
+                    guardandoGestionMes ||
+                    (gestionMesData.accion === 'quitar' && gestionMesData.alcance === 'edificio' && gestionMesData.palabraConfirmacion.trim() !== 'BORRAR') ||
+                    (gestionMesData.accion === 'quitar' && gestionMesData.alcance === 'residente' && (!gestionMesData.apartamentoNumero || !gestionMesData.checkConfirmacion)) ||
+                    (gestionMesData.accion === 'agregar' && gestionMesData.alcance === 'residente' && !gestionMesData.apartamentoNumero)
+                  }
+                  style={{
+                    padding: '9px 20px',
+                    backgroundColor: gestionMesData.accion === 'quitar' ? '#ef4444' : '#2563eb',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '10px',
+                    fontSize: '12px',
+                    fontWeight: 800,
+                    cursor:
+                      guardandoGestionMes ||
+                      (gestionMesData.accion === 'quitar' && gestionMesData.alcance === 'edificio' && gestionMesData.palabraConfirmacion.trim() !== 'BORRAR') ||
+                      (gestionMesData.accion === 'quitar' && gestionMesData.alcance === 'residente' && (!gestionMesData.apartamentoNumero || !gestionMesData.checkConfirmacion)) ||
+                      (gestionMesData.accion === 'agregar' && gestionMesData.alcance === 'residente' && !gestionMesData.apartamentoNumero)
+                        ? 'not-allowed'
+                        : 'pointer',
+                    opacity:
+                      guardandoGestionMes ||
+                      (gestionMesData.accion === 'quitar' && gestionMesData.alcance === 'edificio' && gestionMesData.palabraConfirmacion.trim() !== 'BORRAR') ||
+                      (gestionMesData.accion === 'quitar' && gestionMesData.alcance === 'residente' && (!gestionMesData.apartamentoNumero || !gestionMesData.checkConfirmacion)) ||
+                      (gestionMesData.accion === 'agregar' && gestionMesData.alcance === 'residente' && !gestionMesData.apartamentoNumero)
+                        ? 0.5
+                        : 1,
+                    boxShadow: gestionMesData.accion === 'quitar' ? '0 4px 12px rgba(239, 68, 68, 0.4)' : '0 4px 12px rgba(37, 99, 235, 0.4)'
+                  }}
+                >
+                  {guardandoGestionMes
+                    ? 'Procesando...'
+                    : gestionMesData.accion === 'quitar'
+                    ? (gestionMesData.alcance === 'edificio' ? 'Eliminar Deuda de Todo el Edificio' : 'Eliminar Deuda del Residente')
+                    : (gestionMesData.alcance === 'edificio' ? 'Asignar Cuota a Todo el Edificio' : 'Asignar Cuota al Residente')}
                 </button>
               </div>
             </form>
