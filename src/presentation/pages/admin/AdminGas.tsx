@@ -9,8 +9,8 @@ import {
   guardarEventoCalendario,
   eliminarEventoCalendario,
   calcularMetricasGas,
-  limpiarCacheLocalGas,
   crearOActualizarCuotaGas,
+  reiniciarDatosGasAFabrica,
   GasServicioData,
   LlenadoGas,
   DetallePagoAptoGas,
@@ -111,10 +111,15 @@ export const AdminGas: React.FC = () => {
   }
 
   const handleReiniciarLimpio = async () => {
-    if (!window.confirm('¿Deseas vaciar la memoria local y forzar la recarga limpia de gas (0% tanque, 0 llenados y lista de apartamentos en espera)?')) return
-    limpiarCacheLocalGas()
-    await cargarDatos(true)
-    showToast('Base de gas limpia recargada exitosamente')
+    if (!window.confirm('¿Deseas vaciar la memoria y reiniciar el servicio de gas a cero (0% tanque, 0 llenados y lista limpia)?')) return
+    const res = await reiniciarDatosGasAFabrica()
+    if (res.success) {
+      setData(res.data)
+      setNuevoNivelTanque(0)
+      showToast('Base de gas reiniciada exitosamente')
+    } else {
+      showToast('Error al reiniciar base de gas')
+    }
   }
 
   useEffect(() => {

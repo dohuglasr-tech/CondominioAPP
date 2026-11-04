@@ -159,14 +159,6 @@ function getLocalGasCache(): GasServicioData | null {
     if (raw) {
       const parsed = JSON.parse(raw)
       if (parsed && parsed.config && Array.isArray(parsed.llenados)) {
-        const tieneDatosPrueba =
-          parsed.llenados.some((l: any) => l.id?.includes('2026-09-18') || l.id?.includes('2026-08-05') || (l.proveedor && l.proveedor.includes('PDVSA'))) ||
-          parsed.eventosCalendario?.some((e: any) => e.id?.includes('ev-recaudo-01') || e.id?.includes('ev-recaudo-02'))
-
-        if (tieneDatosPrueba) {
-          localStorage.removeItem(STORAGE_GAS_KEY)
-          return null
-        }
         return parsed
       }
     }
@@ -215,7 +207,7 @@ export { matchAptoEnGas }
 /**
  * Obtener todos los datos del servicio de gas sincronizados con Supabase y localStorage
  */
-export async function obtenerGasServicioData(forceClean: boolean = false): Promise<{
+export async function obtenerGasServicioData(forceRefresh: boolean = false): Promise<{
   data: GasServicioData
   error: string | null
   fromDb: boolean
@@ -239,21 +231,17 @@ export async function obtenerGasServicioData(forceClean: boolean = false): Promi
 
         const tasaBcv = Number(configEdificio?.tasa_bcv_actual || 859.06)
 
-        if (forceClean) {
-          limpiarCacheLocalGas()
-        }
-
-        // 3. Consultar registro de gas en casos_comunidad (usando order + limit 1 para evitar errores de duplicados)
+        // 3. Consultar registro de gas en casos_comunidad
         const { data: rows, error } = await supabase
           .from('casos_comunidad')
           .select('id, descripcion, updated_at')
           .eq('tipo', DB_GAS_TIPO)
           .order('updated_at', { ascending: false })
-          .limit(1)
 
         const row = rows && rows.length > 0 ? rows[0] : null
 
-        if (!error && row?.descripcion && !forceClean) {
+        // Si la base de datos tiene datos válidos, SIEMPRE preservarlos y retornarlos
+        if (!error && row?.descripcion) {
           try {
             const parsed = JSON.parse(row.descripcion) as GasServicioData
 
@@ -262,25 +250,29 @@ export async function obtenerGasServicioData(forceClean: boolean = false): Promi
             }
             sincronizarAptosEnJornadas(parsed, aptosDb || [])
             saveLocalGasCache(parsed)
+
+            // Limpiar filas duplicadas en background si existieran más de 1
+            if (rows.length > 1) {
+              const duplicateIds = rows.slice(1).map(r => r.id)
+              supabase.from('casos_comunidad').delete().in('id', duplicateIds).then(() => {})
+            }
+
             return { data: parsed, error: null, fromDb: true }
           } catch (errParse) {
             console.warn('[gasService] Error parseando datos de DB:', errParse)
           }
         }
 
-        // 4. Fallback a caché local si existe y no forzamos limpieza
-        if (!forceClean) {
-          const cached = getLocalGasCache()
-          if (cached) {
-            cached.config.tasaBcv = tasaBcv
-            sincronizarAptosEnJornadas(cached, aptosDb || [])
-            return { data: cached, error: null, fromDb: false }
-          }
+        // 4. Fallback a caché local si la DB falló o no devolvió descripción
+        const cached = getLocalGasCache()
+        if (cached) {
+          cached.config.tasaBcv = tasaBcv
+          sincronizarAptosEnJornadas(cached, aptosDb || [])
+          return { data: cached, error: null, fromDb: false }
         }
 
-        // 5. Generar estructura limpia sin datos de prueba y guardarla en Supabase
+        // 5. SOLO si la base de datos no tiene fila creada (primer inicio del edificio)
         const limpia = generarDatosSemillaGas(aptosDb || [], tasaBcv)
-        limpiarCacheLocalGas()
         saveLocalGasCache(limpia)
 
         try {
@@ -312,11 +304,15 @@ export async function obtenerGasServicioData(forceClean: boolean = false): Promi
         return { data: limpia, error: null, fromDb: true }
       } catch (err: any) {
         console.error('[gasService] Error en obtenerGasServicioData:', err)
+        const cached = getLocalGasCache()
+        if (cached) {
+          return { data: cached, error: null, fromDb: false }
+        }
         const fallback = generarDatosSemillaGas()
         return { data: fallback, error: err?.message || 'Error cargando datos de gas', fromDb: false }
       }
     },
-    { ttlMs: 5 * 60 * 1000, tags: ['gas'], forceRefresh: forceClean }
+    { ttlMs: 3 * 60 * 1000, tags: ['gas'], forceRefresh }
   )
 }
 
@@ -329,13 +325,13 @@ export async function guardarGasServicioData(
   try {
     data.updatedAt = new Date().toISOString()
     saveLocalGasCache(data)
+    appCache.invalidate('gas_servicio_data_global')
 
     const { data: rows } = await supabase
       .from('casos_comunidad')
       .select('id')
       .eq('tipo', DB_GAS_TIPO)
       .order('updated_at', { ascending: false })
-      .limit(1)
 
     const existente = rows && rows.length > 0 ? rows[0] : null
     let resError = null
@@ -349,6 +345,11 @@ export async function guardarGasServicioData(
         })
         .eq('id', existente.id)
       resError = error
+
+      if (rows && rows.length > 1) {
+        const extraIds = rows.slice(1).map(r => r.id)
+        supabase.from('casos_comunidad').delete().in('id', extraIds).then(() => {})
+      }
     } else {
       const { error } = await supabase
         .from('casos_comunidad')
@@ -372,13 +373,75 @@ export async function guardarGasServicioData(
 
     if (resError) {
       console.warn('[gasService] Error persistiendo en Supabase, guardado en local:', resError.message)
-      return { success: true, error: resError.message }
+      return { success: false, error: resError.message }
     }
 
     return { success: true, error: null }
   } catch (err: any) {
     console.error('[gasService] Error guardando datos:', err)
     return { success: false, error: err.message }
+  }
+}
+
+/**
+ * Restablece a valores iniciales de fábrica el servicio de gas (SOLO cuando el admin lo solicita explícitamente)
+ */
+export async function reiniciarDatosGasAFabrica(): Promise<{
+  success: boolean
+  data: GasServicioData
+  error: string | null
+}> {
+  try {
+    limpiarCacheLocalGas()
+
+    const { data: aptosDb } = await supabase
+      .from('apartamentos')
+      .select('id, numero, propietario_nombre')
+      .order('numero')
+
+    const { data: configEdificio } = await supabase
+      .from('configuracion_edificio')
+      .select('tasa_bcv_actual')
+      .limit(1)
+      .maybeSingle()
+
+    const tasaBcv = Number(configEdificio?.tasa_bcv_actual || 859.06)
+    const limpia = generarDatosSemillaGas(aptosDb || [], tasaBcv)
+
+    saveLocalGasCache(limpia)
+    appCache.invalidate('gas_servicio_data_global')
+    appCache.invalidateTags(['gas', 'deudas_gas', 'saldos', 'recibos', 'mora'])
+
+    const { data: rows } = await supabase
+      .from('casos_comunidad')
+      .select('id')
+      .eq('tipo', DB_GAS_TIPO)
+
+    if (rows && rows.length > 0) {
+      await supabase
+        .from('casos_comunidad')
+        .update({
+          descripcion: JSON.stringify(limpia),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', rows[0].id)
+
+      if (rows.length > 1) {
+        await supabase
+          .from('casos_comunidad')
+          .delete()
+          .in('id', rows.slice(1).map(r => r.id))
+      }
+    }
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('condominio_gas_updated', { detail: limpia }))
+    }
+
+    return { success: true, data: limpia, error: null }
+  } catch (err: any) {
+    console.error('[gasService] Error reiniciando gas a fábrica:', err)
+    return { success: false, data: generarDatosSemillaGas(), error: err.message }
   }
 }
 
