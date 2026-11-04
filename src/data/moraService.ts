@@ -377,6 +377,13 @@ export async function obtenerDeudaMoraApartamento(
         if (mGuaya === 'BS') sumBs += guaya; else sumUsd += guaya
         if (mArreglo === 'BS') sumBs += arreglo; else sumUsd += arreglo
 
+        if (!esMoraSolventada && moraRow?.monto_usd && sumUsd === 0 && !conceptosHist.deuda_2025 && !conceptosHist.cable_viajero && !conceptosHist.guaya && !conceptosHist.arreglo) {
+          sumUsd += Number(moraRow.monto_usd)
+        }
+
+        const manualBs = esMoraSolventada ? 0 : sumBs
+        const manualUsd = esMoraSolventada ? 0 : sumUsd
+
         const recibosBsList: DesgloseReciboItem[] = []
         const recibosUsdList: DesgloseReciboItem[] = []
         const itemsList: DesgloseConceptoItem[] = []
@@ -496,8 +503,8 @@ export async function obtenerDeudaMoraApartamento(
           observaciones: moraRow?.observaciones || '',
           fecha_corte: moraRow?.fecha_corte || new Date().toISOString().slice(0, 10),
           origen: moraRow ? 'deuda_manual' : 'recibo_emitido',
-          monto_manual_usd: Number(sumUsd.toFixed(2)),
-          monto_manual_bs: Number(sumBs.toFixed(2)),
+          monto_manual_usd: Number(manualUsd.toFixed(2)),
+          monto_manual_bs: Number(manualBs.toFixed(2)),
           desglose: {
             deuda_base_2025: deudaBase2025 > 0 ? { monto: deudaBase2025, moneda: mDeuda } : undefined,
             cable_viajero: cableViajero > 0 ? { monto: cableViajero, moneda: mCable } : undefined,

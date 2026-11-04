@@ -95,8 +95,26 @@ export function Dashboard() {
 
   // Deuda manual (exclusivamente el componente manual para no duplicar los recibos)
   if (moraRecord && (moraRecord.estado === 'activo' || !moraRecord.estado)) {
-    const manualBs = Number(moraRecord.monto_manual_bs !== undefined ? moraRecord.monto_manual_bs : (moraRecord.origen === 'deuda_manual' ? (moraRecord.moneda_principal === 'USD' ? 0 : moraRecord.monto_bs) : 0))
-    const manualUsd = Number(moraRecord.monto_manual_usd !== undefined ? moraRecord.monto_manual_usd : (moraRecord.origen === 'deuda_manual' ? (moraRecord.moneda_principal === 'BS' ? 0 : moraRecord.monto_usd) : 0))
+    const yaSeContaronRecibos = recibosPendientesList.length > 0 || Boolean(reciboPendiente)
+    let manualBs = 0
+    let manualUsd = 0
+
+    if (yaSeContaronRecibos) {
+      if (moraRecord.desglose?.items && moraRecord.desglose.items.length > 0) {
+        moraRecord.desglose.items.forEach(it => {
+          if (it.estado === 'pendiente') {
+            if (it.moneda === 'BS') manualBs += Number(it.monto || 0)
+            else manualUsd += Number(it.monto || 0)
+          }
+        })
+      } else {
+        manualBs = Number(moraRecord.monto_manual_bs || 0)
+        manualUsd = Number(moraRecord.monto_manual_usd || 0)
+      }
+    } else {
+      manualBs = Number(moraRecord.monto_bs || 0)
+      manualUsd = Number(moraRecord.monto_usd || 0)
+    }
 
     if (manualBs > 0.05) deudaFijaBs += manualBs
     if (manualUsd > 0.05) deudaIndexadaUsd += manualUsd
