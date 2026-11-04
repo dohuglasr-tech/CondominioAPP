@@ -4,6 +4,7 @@ import { useAuth } from '../../application/contexts/AuthContext'
 import { supabase } from '../../data/supabase'
 import { ThemeToggle } from './ThemeToggle'
 import { BotonLimpiarCache } from './BotonLimpiarCache'
+import { sincronizarTasaBcvDiariaAuto } from '../../data/bcvService'
 
 // ── Minimalist SVG Line Icons para Admin ──
 const ADMIN_ICONS: Record<string, React.ReactNode> = {
@@ -217,6 +218,16 @@ export const AdminLayout: React.FC = () => {
   useEffect(() => {
     setDrawerOpen(false)
   }, [pathname])
+
+  // Sincronizar tasa BCV automáticamente una sola vez al día en segundo plano
+  useEffect(() => {
+    const adminNombre = perfil?.nombre_completo ? `Admin (${perfil.nombre_completo})` : 'Sistema Admin'
+    sincronizarTasaBcvDiariaAuto(config?.tasa_bcv_actualizada, adminNombre).then((res) => {
+      if (res.sincronizado) {
+        console.log('[AdminLayout] Tasa oficial BCV sincronizada automáticamente hoy:', res.tasa)
+      }
+    })
+  }, [config?.tasa_bcv_actualizada, perfil?.nombre_completo])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()

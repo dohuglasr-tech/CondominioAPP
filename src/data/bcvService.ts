@@ -196,3 +196,55 @@ export function debeSincronizarTasa(tasaBcvActualizada?: string | null): boolean
   // Si pasaron más de 4 horas, conviene verificar
   return horasTranscurridas >= 4
 }
+
+/**
+ * Sincroniza la tasa oficial del BCV una sola vez al día de forma automática
+ * desde el panel de administración.
+ * - Si la tasa en la base de datos ya fue actualizada en el día en curso (YYYY-MM-DD), NO hace ninguna petición.
+ * - Si es un nuevo día, consulta la API oficial una sola vez, guarda la tasa en Supabase
+ *   y automáticamente Realtime se encarga de propagar la nueva tasa a todos los residentes.
+ */
+export async function sincronizarTasaBcvDiariaAuto(
+  tasaBcvActualizada?: string | null,
+  autorNombre = 'Sistema Automático Admin'
+): Promise<{ sincronizado: boolean; tasa?: number; motivo: string }> {
+  try {
+    // Obtener la fecha local de hoy en Venezuela (YYYY-MM-DD)
+    const hoyStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Caracas' })
+
+    // Validar si en este navegador ya se intentó sincronizar hoy
+    const STORAGE_KEY = 'bcv_last_auto_sync_date'
+    const ultimoIntentoLocal = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null
+    if (ultimoIntentoLocal === hoyStr) {
+      return { sincronizado: false, motivo: 'Ya se verificó la sincronización hoy en este dispositivo.' }
+    }
+
+    // Validar si la base de datos ya tiene fecha de hoy
+    if (tasaBcvActualizada) {
+      const fechaDbStr = new Date(tasaBcvActualizada).toLocaleDateString('en-CA', { timeZone: 'America/Caracas' })
+      if (fechaDbStr === hoyStr) {
+        if (typeof localStorage !== 'undefined') localStorage.setItem(STORAGE_KEY, hoyStr)
+        return { sincronizado: false, motivo: 'La tasa en la base de datos ya está al día para la fecha de hoy.' }
+      }
+    }
+
+    // Marcar para evitar peticiones duplicadas simultáneas
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(STORAGE_KEY, hoyStr)
+    }
+
+    // Realizar la consulta a la API oficial en segundo plano
+    const resultado = await sincronizarTasaBcvConApi(autorNombre, 'Sincronización automática diaria desde panel admin')
+
+    if (resultado.ok && resultado.tasa > 1) {
+      return { sincronizado: true, tasa: resultado.tasa, motivo: 'Tasa actualizada exitosamente para el día de hoy.' }
+    } else {
+      // Si la API falló (ej. sin internet), permitir reintento más tarde retirando la marca local
+      if (typeof localStorage !== 'undefined') localStorage.removeItem(STORAGE_KEY)
+      return { sincronizado: false, motivo: resultado.mensaje || 'Error consultando API oficial.' }
+    }
+  } catch (err: any) {
+    console.warn('[BCV Service] Error en sincronización diaria automática:', err)
+    return { sincronizado: false, motivo: err?.message || 'Excepción no controlada' }
+  }
+}
