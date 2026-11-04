@@ -298,6 +298,231 @@ function saveLocalMoraCache(list: DeudaMoraItem[]) {
 }
 
 /**
+ * Obtiene la información de mora/recibo de un apartamento específico de forma ultra-rápida (sin escaneo global).
+ * Ideal para el Dashboard del residente.
+ */
+export async function obtenerDeudaMoraApartamento(
+  apartamentoId: string,
+  aptoNumero?: string,
+  forceRefresh = false
+): Promise<DeudaMoraItem | null> {
+  if (!apartamentoId && !aptoNumero) return null
+  const cacheKey = `mora_apto_${apartamentoId || aptoNumero}`
+
+  return appCache.fetch(
+    cacheKey,
+    async () => {
+      try {
+        let queryMora = supabase
+          .from('deudas_mora')
+          .select('*, apartamentos(id, numero, piso, propietario_nombre, telefono_contacto)')
+
+        if (apartamentoId) {
+          queryMora = queryMora.eq('apartamento_id', apartamentoId)
+        } else if (aptoNumero) {
+          queryMora = queryMora.eq('apartamento_numero', aptoNumero)
+        }
+
+        let queryRecibos = supabase
+          .from('recibos_generados')
+          .select('id, apartamento_id, mes_facturado, total_usd, total_bs, estado, emitido_at, data_json')
+          .eq('estado', 'pendiente')
+
+        if (apartamentoId) {
+          queryRecibos = queryRecibos.eq('apartamento_id', apartamentoId)
+        }
+
+        const [moraRes, recsRes] = await Promise.all([
+          queryMora.maybeSingle(),
+          queryRecibos.order('mes_facturado', { ascending: true })
+        ])
+
+        const moraRow = moraRes.data
+        const recs = recsRes.data || []
+
+        if (!moraRow && recs.length === 0) {
+          return null
+        }
+
+        const mesesNombres = [
+          'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+          'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+        ]
+
+        let conceptosHist: any = {}
+        if (moraRow?.conceptos_detalle) {
+          try {
+            if (moraRow.conceptos_detalle.startsWith('{')) {
+              conceptosHist = JSON.parse(moraRow.conceptos_detalle)
+            }
+          } catch (e) {}
+        }
+
+        const esMoraSolventada = moraRow?.estado === 'solventado'
+        const deudaBase2025 = esMoraSolventada ? 0 : Number(conceptosHist.deuda_2025 || (moraRow?.monto_bs && !conceptosHist.deuda_2025 ? moraRow.monto_bs : 0))
+        const cableViajero  = esMoraSolventada ? 0 : Number(conceptosHist.cable_viajero || 0)
+        const guaya         = esMoraSolventada ? 0 : Number(conceptosHist.guaya || 0)
+        const arreglo       = esMoraSolventada ? 0 : Number(conceptosHist.arreglo || 0)
+
+        const mDeuda: 'USD' | 'BS' = conceptosHist.deuda_2025_moneda || 'BS'
+        const mCable: 'USD' | 'BS' = conceptosHist.cable_viajero_moneda || 'USD'
+        const mGuaya: 'USD' | 'BS' = conceptosHist.guaya_moneda || 'USD'
+        const mArreglo: 'USD' | 'BS' = conceptosHist.arreglo_moneda || (arreglo > 0 && arreglo < 100 ? 'USD' : 'BS')
+
+        let sumBs = 0
+        let sumUsd = 0
+
+        if (mDeuda === 'BS') sumBs += deudaBase2025; else sumUsd += deudaBase2025
+        if (mCable === 'BS') sumBs += cableViajero; else sumUsd += cableViajero
+        if (mGuaya === 'BS') sumBs += guaya; else sumUsd += guaya
+        if (mArreglo === 'BS') sumBs += arreglo; else sumUsd += arreglo
+
+        const recibosBsList: DesgloseReciboItem[] = []
+        const recibosUsdList: DesgloseReciboItem[] = []
+        const itemsList: DesgloseConceptoItem[] = []
+
+        if (deudaBase2025 > 0.01) {
+          itemsList.push({
+            id: 'deuda_2025',
+            label: 'Deuda Pasada 2025',
+            categoria: 'deuda_2025',
+            monto: Number(deudaBase2025.toFixed(2)),
+            moneda: mDeuda,
+            estado: 'pendiente',
+            icono: '📌'
+          })
+        }
+        if (cableViajero > 0.01) {
+          itemsList.push({
+            id: 'cable_viajero',
+            label: 'Cable Viajero 2025',
+            categoria: 'cuota_especial',
+            monto: Number(cableViajero.toFixed(2)),
+            moneda: mCable,
+            estado: 'pendiente',
+            icono: '🛗'
+          })
+        }
+        if (guaya > 0.01) {
+          itemsList.push({
+            id: 'guaya',
+            label: 'Guayas Ascensor 2025',
+            categoria: 'cuota_especial',
+            monto: Number(guaya.toFixed(2)),
+            moneda: mGuaya,
+            estado: 'pendiente',
+            icono: '⛓️'
+          })
+        }
+        if (arreglo > 0.01) {
+          itemsList.push({
+            id: 'arreglo',
+            label: 'Arreglo Ascensor',
+            categoria: 'cuota_especial',
+            monto: Number(arreglo.toFixed(2)),
+            moneda: mArreglo,
+            estado: 'pendiente',
+            icono: '🔧'
+          })
+        }
+
+        recs.forEach((r: any) => {
+          const parts = (r.mes_facturado || '').split('-')
+          const anio = parts[0]
+          const mesNum = parseInt(parts[1], 10) || 1
+          const label = `${mesesNombres[mesNum - 1] || parts[1]} ${anio}`
+          const esReciboBs = (anio === '2026' && mesNum <= 2) || (Number(r.total_usd || 0) === 0 && Number(r.total_bs || 0) > 0)
+
+          if (esReciboBs) {
+            const mbs = Number(r.total_bs || 0)
+            sumBs += mbs
+            recibosBsList.push({
+              key: r.mes_facturado,
+              label,
+              monto: Number(mbs.toFixed(2)),
+              moneda: 'BS',
+              estado: 'pendiente'
+            })
+          } else {
+            const musd = Number(r.total_usd || 0)
+            sumUsd += musd
+            recibosUsdList.push({
+              key: r.mes_facturado,
+              label,
+              monto: Number(musd.toFixed(2)),
+              moneda: 'USD',
+              estado: 'pendiente'
+            })
+          }
+        })
+
+        const totalMeses = (moraRow?.meses_deuda && !esMoraSolventada ? moraRow.meses_deuda : 0) + recs.length
+
+        let tasaRiesgo: TasaRiesgoMora = 'azul'
+        if (totalMeses === 0 && sumBs <= 0.01 && sumUsd <= 0.01) {
+          tasaRiesgo = 'azul'
+        } else if (recs.length <= 1 && (!moraRow || esMoraSolventada || (deudaBase2025 === 0 && cableViajero === 0 && guaya === 0 && arreglo === 0))) {
+          tasaRiesgo = 'azul'
+        } else if (totalMeses <= 3) {
+          tasaRiesgo = 'amarillo'
+        } else if (totalMeses <= 6) {
+          tasaRiesgo = 'rojo'
+        } else {
+          tasaRiesgo = 'morado'
+        }
+
+        let monedaPrincipal: 'USD' | 'BS' | 'MIXTO' = 'USD'
+        if (sumUsd > 0.01 && sumBs > 0.01) monedaPrincipal = 'MIXTO'
+        else if (sumBs > 0.01) monedaPrincipal = 'BS'
+
+        const aptoObj = moraRow?.apartamentos || {}
+        const aptoNumStr = aptoObj.numero || aptoNumero || moraRow?.apartamento_numero || ''
+
+        const item: DeudaMoraItem = {
+          id: moraRow?.id || `mora_calc_${apartamentoId || aptoNumStr}`,
+          apartamento_id: apartamentoId || moraRow?.apartamento_id || '',
+          apartamento_numero: aptoNumStr,
+          piso: aptoObj.piso != null ? aptoObj.piso : moraRow?.piso,
+          propietario_nombre: aptoObj.propietario_nombre || moraRow?.propietario_nombre || 'Propietario',
+          propietario_telefono: aptoObj.telefono_contacto || moraRow?.propietario_telefono || '',
+          meses_deuda: Math.max(recs.length, totalMeses),
+          monto_usd: Number(sumUsd.toFixed(2)),
+          monto_bs: Number(sumBs.toFixed(2)),
+          moneda_principal: monedaPrincipal,
+          tasa_riesgo: tasaRiesgo,
+          accion_legal: moraRow?.accion_legal || (tasaRiesgo === 'azul' ? 'ninguna' : 'notificacion_preventiva'),
+          estado: esMoraSolventada && recs.length === 0 ? 'solventado' : (moraRow?.estado || 'activo'),
+          conceptos_detalle: moraRow?.conceptos_detalle || '',
+          observaciones: moraRow?.observaciones || '',
+          fecha_corte: moraRow?.fecha_corte || new Date().toISOString().slice(0, 10),
+          origen: moraRow ? 'deuda_manual' : 'recibo_emitido',
+          monto_manual_usd: Number(sumUsd.toFixed(2)),
+          monto_manual_bs: Number(sumBs.toFixed(2)),
+          desglose: {
+            deuda_base_2025: deudaBase2025 > 0 ? { monto: deudaBase2025, moneda: mDeuda } : undefined,
+            cable_viajero: cableViajero > 0 ? { monto: cableViajero, moneda: mCable } : undefined,
+            guaya: guaya > 0 ? { monto: guaya, moneda: mGuaya } : undefined,
+            arreglo: arreglo > 0 ? { monto: arreglo, moneda: mArreglo } : undefined,
+            recibos_bs: recibosBsList,
+            recibos_usd: recibosUsdList,
+            cuotas_especiales: [],
+            items: itemsList,
+            total_bs: Number(sumBs.toFixed(2)),
+            total_usd: Number(sumUsd.toFixed(2))
+          }
+        }
+
+        return item
+      } catch (err) {
+        console.warn('[moraService] Error en obtenerDeudaMoraApartamento:', err)
+        return null
+      }
+    },
+    { ttlMs: 3 * 60 * 1000, tags: ['mora', 'recibos'], forceRefresh }
+  )
+}
+
+/**
  * Obtiene todas las deudas y moras unificadas:
  * 1. Consulta `deudas_mora` (deudas anteriores montadas manualmente / crónicas).
  * 2. Consulta `recibos_generados` donde `estado = 'pendiente'`.

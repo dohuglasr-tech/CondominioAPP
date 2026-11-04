@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import { registrarEventoAuditoria, obtenerHistorialAuditoria } from './auditoriaService'
+import { registrarEventoAuditoria } from './auditoriaService'
 import { appCache } from './cacheService'
 
 export interface SaldoApartamento {
@@ -39,7 +39,7 @@ export async function obtenerSaldoAFavorApartamento(
       try {
         const tasa = tasaBcv && tasaBcv > 1 ? tasaBcv : 859.06
 
-        const [pagosRes, recibosRes, logsAuditoria, moraRes] = await Promise.all([
+        const [pagosRes, recibosRes, retirosRes, moraRes] = await Promise.all([
           supabase
             .from('pagos_reportados')
             .select('monto_usd, monto_bs')
@@ -49,7 +49,11 @@ export async function obtenerSaldoAFavorApartamento(
             .from('recibos_generados')
             .select('total_usd, total_bs, estado, data_json, es_indexado')
             .eq('apartamento_id', apartamento_id),
-          obtenerHistorialAuditoria().catch(() => []),
+          supabase
+            .from('historial_auditoria')
+            .select('monto_usd, monto_bs, tipo_accion, apartamento_id')
+            .eq('tipo_accion', 'RETIRO_SALDO_A_FAVOR')
+            .eq('apartamento_id', apartamento_id),
           supabase
             .from('deudas_mora')
             .select('monto_usd, monto_bs, estado')
@@ -104,12 +108,9 @@ export async function obtenerSaldoAFavorApartamento(
           Boolean(moraRes.data && moraRes.data.estado === 'activo' && ((Number(moraRes.data.monto_bs) || 0) > 0.05 || (Number(moraRes.data.monto_usd) || 0) > 0.05))
 
         // Consultar retiros previos de saldo a favor registrados en auditoría
-        const logs = logsAuditoria || []
-        const retirosApto = logs.filter(
-          (l) => l.tipo_accion === 'RETIRO_SALDO_A_FAVOR' && l.apartamento_id === apartamento_id
-        )
-        const totalRetiradoUsd = retirosApto.reduce((sum, l) => sum + (Number(l.monto_usd) || 0), 0)
-        const totalRetiradoBs = retirosApto.reduce((sum, l) => {
+        const retirosApto = retirosRes.data || []
+        const totalRetiradoUsd = retirosApto.reduce((sum: number, l: any) => sum + (Number(l.monto_usd) || 0), 0)
+        const totalRetiradoBs = retirosApto.reduce((sum: number, l: any) => {
           if (l.monto_bs && Number(l.monto_bs) > 0) return sum + Number(l.monto_bs)
           return sum + (Number(l.monto_usd || 0) * tasa)
         }, 0)
@@ -174,7 +175,7 @@ export async function obtenerTodosLosSaldosAFavor(
       try {
         const tasa = tasaBcv && tasaBcv > 1 ? tasaBcv : 859.06
 
-        const [pagosRes, recibosRes, logsAuditoria, moraRes] = await Promise.all([
+        const [pagosRes, recibosRes, retirosRes, moraRes] = await Promise.all([
           supabase
             .from('pagos_reportados')
             .select('apartamento_id, monto_usd, monto_bs')
@@ -182,7 +183,10 @@ export async function obtenerTodosLosSaldosAFavor(
           supabase
             .from('recibos_generados')
             .select('apartamento_id, total_usd, total_bs, estado, data_json, es_indexado'),
-          obtenerHistorialAuditoria().catch(() => []),
+          supabase
+            .from('historial_auditoria')
+            .select('apartamento_id, monto_usd, monto_bs, tipo_accion')
+            .eq('tipo_accion', 'RETIRO_SALDO_A_FAVOR'),
           supabase
             .from('deudas_mora')
             .select('apartamento_id, monto_usd, monto_bs, estado')
@@ -253,7 +257,7 @@ export async function obtenerTodosLosSaldosAFavor(
 
         const retiradoUsdPorApto = new Map<string, number>()
         const retiradoBsPorApto = new Map<string, number>()
-        ;(logsAuditoria || []).forEach((l) => {
+        ;((retirosRes?.data as any[]) || []).forEach((l) => {
           if (l.tipo_accion === 'RETIRO_SALDO_A_FAVOR' && l.apartamento_id) {
             const mUsd = Number(l.monto_usd) || 0
             const mBs = Number(l.monto_bs) || (mUsd * tasa)

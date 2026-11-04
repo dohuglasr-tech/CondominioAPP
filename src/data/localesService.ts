@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { appCache } from './cacheService'
 
 export type TipoCuotaLocal = 'fija' | 'variable'
 export type EstadoLocal = 'activo' | 'inactivo' | 'en_mantenimiento'
@@ -197,76 +198,79 @@ function mapLocalToCaso(local: LocalComercial) {
  * Obtiene todos los locales registrados, combinando Supabase (casos_comunidad) y caché local
  */
 export async function obtenerLocales(): Promise<LocalComercial[]> {
-  try {
-    // 1. Cargar mapa de apartamentos para tener siempre números y propietarios actualizados
-    const { data: aptos } = await supabase
-      .from('apartamentos')
-      .select('id, numero, propietario_nombre')
-    
-    const aptoMap = new Map<string, { numero: string; propietario: string }>()
-    if (aptos) {
-      aptos.forEach(a => {
-        aptoMap.set(a.id, {
-          numero: a.numero,
-          propietario: a.propietario_nombre || 'Propietario'
-        })
-      })
-    }
-
-    // 2. Intentar consultar casos_comunidad de tipo 'local_comercial'
-    const { data, error } = await supabase
-      .from('casos_comunidad')
-      .select('*')
-      .eq('tipo', 'local_comercial')
-      .order('created_at', { ascending: true })
-
-    if (!error && data && data.length > 0) {
-      const mapeados = data.map(c => mapCasoToLocal(c, aptoMap))
-      saveLocalCache(mapeados)
-      return mapeados
-    }
-
-    // Si aún no hay registros en la base de datos, guardar los semilla
-    if (!error && (!data || data.length === 0)) {
-      const cache = getLocalCache()
-      // Si la BD está vacía pero tenemos semilla o cache, intentamos sembrar en Supabase
-      if (cache.length > 0) {
-        for (const loc of cache) {
-          try {
-            // Asignar apartamento_id si coincide el número
-            let aptoId = loc.apartamento_id
-            if (!aptoId && loc.apartamento_numero && aptos) {
-              const matchedApto = aptos.find(a => a.numero === loc.apartamento_numero)
-              if (matchedApto) aptoId = matchedApto.id
-            }
-
-            const payload = mapLocalToCaso({ ...loc, apartamento_id: aptoId })
-            await supabase.from('casos_comunidad').insert(payload)
-          } catch (e) {
-            console.warn('[localesService] Error sembrando local inicial en DB:', e)
-          }
+  return appCache.fetch(
+    'locales_comerciales_lista',
+    async () => {
+      try {
+        // 1. Cargar mapa de apartamentos para tener siempre números y propietarios actualizados
+        const { data: aptos } = await supabase
+          .from('apartamentos')
+          .select('id, numero, propietario_nombre')
+        
+        const aptoMap = new Map<string, { numero: string; propietario: string }>()
+        if (aptos) {
+          aptos.forEach(a => {
+            aptoMap.set(a.id, {
+              numero: a.numero,
+              propietario: a.propietario_nombre || 'Propietario'
+            })
+          })
         }
 
-        // Re-consultar
-        const { data: recargados } = await supabase
+        // 2. Intentar consultar casos_comunidad de tipo 'local_comercial'
+        const { data, error } = await supabase
           .from('casos_comunidad')
           .select('*')
           .eq('tipo', 'local_comercial')
           .order('created_at', { ascending: true })
 
-        if (recargados && recargados.length > 0) {
-          const res = recargados.map(c => mapCasoToLocal(c, aptoMap))
-          saveLocalCache(res)
-          return res
+        if (!error && data && data.length > 0) {
+          const mapeados = data.map(c => mapCasoToLocal(c, aptoMap))
+          saveLocalCache(mapeados)
+          return mapeados
         }
-      }
-      return cache
-    }
-  } catch (err) {
-    console.warn('[localesService] Error en obtenerLocales, usando fallback local:', err)
-  }
 
-  return getLocalCache()
+        // Si aún no hay registros en la base de datos, guardar los semilla
+        if (!error && (!data || data.length === 0)) {
+          const cache = getLocalCache()
+          if (cache.length > 0) {
+            for (const loc of cache) {
+              try {
+                let aptoId = loc.apartamento_id
+                if (!aptoId && loc.apartamento_numero && aptos) {
+                  const matchedApto = aptos.find(a => a.numero === loc.apartamento_numero)
+                  if (matchedApto) aptoId = matchedApto.id
+                }
+
+                const payload = mapLocalToCaso({ ...loc, apartamento_id: aptoId })
+                await supabase.from('casos_comunidad').insert(payload)
+              } catch (e) {
+                console.warn('[localesService] Error sembrando local inicial en DB:', e)
+              }
+            }
+
+            const { data: recargados } = await supabase
+              .from('casos_comunidad')
+              .select('*')
+              .eq('tipo', 'local_comercial')
+              .order('created_at', { ascending: true })
+
+            if (recargados && recargados.length > 0) {
+              const res = recargados.map(c => mapCasoToLocal(c, aptoMap))
+              saveLocalCache(res)
+              return res
+            }
+          }
+          return cache
+        }
+      } catch (err) {
+        console.warn('[localesService] Error en obtenerLocales, usando fallback local:', err)
+      }
+
+      return getLocalCache()
+    },
+    { ttlMs: 5 * 60 * 1000, tags: ['locales'] }
+  )
 }
 
 /**
@@ -322,6 +326,7 @@ export async function crearLocal(data: Omit<LocalComercial, 'id'>): Promise<Loca
   const actuales = getLocalCache()
   const actualizados = [...actuales, nuevoLocal]
   saveLocalCache(actualizados)
+  appCache.invalidateTags(['locales'])
 
   return nuevoLocal
 }
@@ -384,6 +389,7 @@ export async function actualizarLocal(id: string, patch: Partial<LocalComercial>
   } else {
     saveLocalCache([...actuales, fusionado])
   }
+  appCache.invalidateTags(['locales'])
 
   return fusionado
 }
@@ -404,6 +410,7 @@ export async function eliminarLocal(id: string): Promise<boolean> {
   const actuales = getLocalCache()
   const filtrados = actuales.filter(l => l.id !== id)
   saveLocalCache(filtrados)
+  appCache.invalidateTags(['locales'])
   return true
 }
 

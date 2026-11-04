@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuth } from '../../application/contexts/AuthContext'
 import { useBcvRate } from '../../data/useBcvRate'
 import { ReportarPagoModal } from '../components/ReportarPagoModal'
 import { supabase } from '../../data/supabase'
 import { appCache } from '../../data/cacheService'
 import { useNavigate } from 'react-router-dom'
-import { obtenerDeudasMora, TASA_RIESGO_CONFIG, DeudaMoraItem, TasaRiesgoMora } from '../../data/moraService'
+import { obtenerDeudaMoraApartamento, TASA_RIESGO_CONFIG, DeudaMoraItem, TasaRiesgoMora } from '../../data/moraService'
 import { formatAlicuotaPct, getAlicuotaPctNumber } from '../../utils/alicuota'
 import { AvisoBanner } from '../components/AvisoBanner'
 import { obtenerSaldoAFavorApartamento } from '../../data/saldoFavorService'
@@ -66,6 +66,10 @@ export function Dashboard() {
 
   const { rate, loading: loadingRate } = useBcvRate()
   const tasaValida = rate && rate > 1 ? rate : (config?.tasa_bcv_actual && config.tasa_bcv_actual > 1 ? config.tasa_bcv_actual : 859.06)
+  const tasaValidaRef = useRef(tasaValida)
+  useEffect(() => {
+    tasaValidaRef.current = tasaValida
+  }, [tasaValida])
 
   // ── Cálculo consolidado y desglose de deudas ──────────────────────────────
   // Si el recibo no está indexado (o la deuda es manual en Bs), queda fija en Bolívares.
@@ -310,22 +314,13 @@ export function Dashboard() {
       if (rList.length > 0) setReciboPendiente(rList[0])
       else setReciboPendiente(null)
 
-      // Consultar si está en mora o tiene recibo emitido (<1m Azul o crónico)
-      const resMora = await obtenerDeudasMora(forceRefresh)
-      const listMora = resMora.data || []
-      const cleanApto = String(aptoNumero || '').trim().toUpperCase().replace(/^APTO\.?\s*/i, '')
-      const mora = listMora.find(m => {
-        const mApto = (m.apartamento_numero || '').trim().toUpperCase().replace(/^APTO\.?\s*/i, '')
-        return (
-          (cleanApto && mApto === cleanApto) ||
-          (apartamentoId && m.apartamento_id === apartamentoId)
-        )
-      }) || null
+      // Consultar si está en mora o tiene recibo emitido (<1m Azul o crónico) de forma optimizada
+      const mora = await obtenerDeudaMoraApartamento(apartamentoId, aptoNumero, forceRefresh)
       setMoraRecord(mora)
 
       // Consultar saldo a favor (crédito prepagado del apartamento)
       if (apartamentoId) {
-        const saldoRes = await obtenerSaldoAFavorApartamento(apartamentoId, tasaValida, forceRefresh)
+        const saldoRes = await obtenerSaldoAFavorApartamento(apartamentoId, tasaValidaRef.current, forceRefresh)
         setSaldoAFavor(saldoRes.saldo_a_favor_usd)
         setSaldoAFavorBs(saldoRes.saldo_a_favor_bs)
       }
@@ -351,7 +346,7 @@ export function Dashboard() {
 
       // Consultar miembros de la junta directiva y administración sincronizada
       try {
-        const resJ = await obtenerJunta()
+        const resJ = await obtenerJunta(forceRefresh)
         if (resJ?.data) setJuntaMiembros(resJ.data)
       } catch (errJ) {
         console.warn('[Dashboard] Error cargando junta:', errJ)
@@ -359,11 +354,11 @@ export function Dashboard() {
     } catch (err) {
       console.warn('[Dashboard] Error cargando datos del residente:', err)
     }
-  }, [apartamentoId, aptoNumero, tasaValida])
+  }, [apartamentoId, aptoNumero])
 
   useEffect(() => {
-    cargarApartamentoInfo(true)
-    cargarDatosResidente(true)
+    cargarApartamentoInfo(false)
+    cargarDatosResidente(false)
 
     // Escuchar eventos broadcast de actualización de gas comunal
     const onGasUpdated = () => {

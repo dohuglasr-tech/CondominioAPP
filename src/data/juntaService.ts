@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { appCache } from './cacheService'
 
 export type CategoriaOrganigrama = 'administracion' | 'junta_directiva' | 'comite_vocal' | 'operativo'
 
@@ -200,40 +201,46 @@ export function formatWhatsappUrl(phone?: string): string | null {
   return `https://wa.me/${intl}`
 }
 
-export async function obtenerJunta(): Promise<{ data: MiembroJunta[]; error: string | null; fromDb: boolean }> {
-  try {
-    const { data: dbData, error } = await supabase
-      .from('junta_condominio')
-      .select('*')
-      .order('orden', { ascending: true })
+export async function obtenerJunta(forceRefresh = false): Promise<{ data: MiembroJunta[]; error: string | null; fromDb: boolean }> {
+  return appCache.fetch(
+    'junta_condominio_lista',
+    async () => {
+      try {
+        const { data: dbData, error } = await supabase
+          .from('junta_condominio')
+          .select('*')
+          .order('orden', { ascending: true })
 
-    if (error) {
-      console.info('[juntaService] Usando caché local para junta_condominio:', error.message)
-      return { data: getLocalJuntaCache(), error: null, fromDb: false }
-    }
+        if (error) {
+          console.info('[juntaService] Usando caché local para junta_condominio:', error.message)
+          return { data: getLocalJuntaCache(), error: null, fromDb: false }
+        }
 
-    const mapped: MiembroJunta[] = (dbData || []).map((row: any) => ({
-      id: row.id,
-      nombre: row.nombre,
-      cargo: row.cargo,
-      categoria: row.categoria || 'administracion',
-      telefono: row.telefono || '',
-      email: row.email || '',
-      apartamento: row.apartamento || '',
-      descripcion_rol: row.descripcion_rol || '',
-      horario_atencion: row.horario_atencion || '',
-      orden: Number(row.orden || 1),
-      avatar_url: row.avatar_url || '',
-      created_at: row.created_at,
-      updated_at: row.updated_at
-    }))
+        const mapped: MiembroJunta[] = (dbData || []).map((row: any) => ({
+          id: row.id,
+          nombre: row.nombre,
+          cargo: row.cargo,
+          categoria: row.categoria || 'administracion',
+          telefono: row.telefono || '',
+          email: row.email || '',
+          apartamento: row.apartamento || '',
+          descripcion_rol: row.descripcion_rol || '',
+          horario_atencion: row.horario_atencion || '',
+          orden: Number(row.orden || 1),
+          avatar_url: row.avatar_url || '',
+          created_at: row.created_at,
+          updated_at: row.updated_at
+        }))
 
-    saveLocalJuntaCache(mapped)
-    return { data: mapped, error: null, fromDb: true }
-  } catch (err: any) {
-    console.warn('[juntaService] Excepción obteniendo junta:', err)
-    return { data: getLocalJuntaCache(), error: null, fromDb: false }
-  }
+        saveLocalJuntaCache(mapped)
+        return { data: mapped, error: null, fromDb: true }
+      } catch (err: any) {
+        console.warn('[juntaService] Excepción obteniendo junta:', err)
+        return { data: getLocalJuntaCache(), error: null, fromDb: false }
+      }
+    },
+    { ttlMs: 15 * 60 * 1000, tags: ['junta'], forceRefresh }
+  )
 }
 
 export async function guardarMiembroJunta(item: Partial<MiembroJunta>): Promise<{ data: MiembroJunta | null; error: string | null }> {
@@ -311,6 +318,7 @@ export async function guardarMiembroJunta(item: Partial<MiembroJunta>): Promise<
     }
     cached.sort((a, b) => a.orden - b.orden)
     saveLocalJuntaCache(cached)
+    appCache.invalidateTags(['junta'])
 
     return { data: nuevoMiembro, error: null }
   } catch (err: any) {
@@ -322,6 +330,7 @@ export async function eliminarMiembroJunta(id: string): Promise<{ success: boole
   try {
     const cached = getLocalJuntaCache().filter(m => m.id !== id)
     saveLocalJuntaCache(cached)
+    appCache.invalidateTags(['junta'])
 
     try {
       if (!id.startsWith('junta-')) {

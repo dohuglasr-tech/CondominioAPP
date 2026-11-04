@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from './supabase'
 import { appCache } from './cacheService'
-import { consultarTasaBcvEnVivo, guardarTasaBcvEnDb, sincronizarTasaBcvConApi } from './bcvService'
+import { consultarTasaBcvEnVivo, sincronizarTasaBcvConApi } from './bcvService'
 
 export interface BcvRateState {
   rate: number
@@ -38,34 +38,33 @@ export function useBcvRate(): BcvRateState {
         }
       }
 
-      // Si no es forzado o falló, usar caché o base de datos
+      // Si no es forzado o falló, usar caché o base de datos local
       const rateData = await appCache.fetch(
         'tasa_bcv_oficial',
         async () => {
-          // 1. Consultar API oficial de DolarAPI
-          try {
-            const apiRes = await consultarTasaBcvEnVivo()
-            if (apiRes && apiRes.tasa > 1) {
-              // Guardar en segundo plano en Supabase e invalidar caché
-              guardarTasaBcvEnDb(apiRes.tasa, apiRes.fechaActualizacion, 'Sistema Automático')
-              return {
-                rate: apiRes.tasa,
-                lastUpdate: apiRes.fechaActualizacion
-              }
-            }
-          } catch {}
-
-          // 2. Fallback: Consultar Supabase
+          // 1. Prioridad: Consultar Supabase (la tasa oficial registrada para el condominio)
           try {
             const { data: configData } = await supabase
               .from('configuracion_edificio')
               .select('tasa_bcv_actual, tasa_bcv_actualizada')
+              .limit(1)
               .maybeSingle()
 
             if (configData?.tasa_bcv_actual && Number(configData.tasa_bcv_actual) > 1) {
               return {
                 rate: Number(configData.tasa_bcv_actual),
                 lastUpdate: configData.tasa_bcv_actualizada || new Date().toISOString(),
+              }
+            }
+          } catch {}
+
+          // 2. Fallback de emergencia: Solo si la base de datos no tiene tasa configurada
+          try {
+            const apiRes = await consultarTasaBcvEnVivo()
+            if (apiRes && apiRes.tasa > 1) {
+              return {
+                rate: apiRes.tasa,
+                lastUpdate: apiRes.fechaActualizacion
               }
             }
           } catch {}
