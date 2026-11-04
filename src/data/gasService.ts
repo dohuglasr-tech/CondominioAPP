@@ -98,11 +98,24 @@ export interface EventoDiarioGas {
   apartamentoRef?: string
 }
 
+export interface DeudaAnteriorGas {
+  id: string
+  apartamentoId: string
+  apartamentoNumero: string
+  montoBs: number
+  montoUsd: number
+  moneda: 'BS' | 'USD'
+  estado: 'pendiente' | 'pagado'
+  nota?: string
+  fecha?: string
+}
+
 export interface GasServicioData {
   config: TanqueGasConfig
   llenados: LlenadoGas[]
   jornadas: JornadaRecaudacionGas[]
   eventosCalendario: EventoDiarioGas[]
+  deudasAnteriores: Record<string, DeudaAnteriorGas> // key: apartamentoId o apartamentoNumero
   updatedAt: string
 }
 
@@ -115,6 +128,7 @@ const TIPO_GAS_LLENADO = 'gas_llenado'
 const TIPO_GAS_JORNADA = 'gas_jornada'
 const TIPO_GAS_PAGO = 'gas_pago'
 const TIPO_GAS_EVENTO = 'gas_evento'
+const TIPO_GAS_DEUDA_ANTERIOR = 'gas_deuda_anterior'
 
 export const DEFAULT_GAS_CONFIG: TanqueGasConfig = {
   capacidadLitros: 2500,
@@ -171,6 +185,7 @@ export function generarDatosSemillaGas(
     llenados: [],
     jornadas: [],
     eventosCalendario: [],
+    deudasAnteriores: {},
     updatedAt: new Date().toISOString()
   }
 }
@@ -298,6 +313,7 @@ export async function obtenerGasServicioData(forceRefresh: boolean = false): Pro
             TIPO_GAS_JORNADA,
             TIPO_GAS_PAGO,
             TIPO_GAS_EVENTO,
+            TIPO_GAS_DEUDA_ANTERIOR,
             DB_LEGACY_TIPO
           ])
           .order('created_at', { ascending: false })
@@ -322,6 +338,7 @@ export async function obtenerGasServicioData(forceRefresh: boolean = false): Pro
         const jornadaRows = safeRows.filter(r => r.tipo === TIPO_GAS_JORNADA)
         const pagoRows = safeRows.filter(r => r.tipo === TIPO_GAS_PAGO)
         const eventoRows = safeRows.filter(r => r.tipo === TIPO_GAS_EVENTO)
+        const deudaAnteriorRows = safeRows.filter(r => r.tipo === TIPO_GAS_DEUDA_ANTERIOR)
         const legacyRow = safeRows.find(r => r.tipo === DB_LEGACY_TIPO)
 
         // Soporte de compatibilidad legacy si aún no se han migrado filas individuales
@@ -469,7 +486,7 @@ export async function obtenerGasServicioData(forceRefresh: boolean = false): Pro
         }
 
         // Sincronizar todos los apartamentos del edificio en las jornadas activas
-        sincronizarAptosEnJornadas({ config, llenados, jornadas, eventosCalendario: [], updatedAt: '' }, aptosDb || [])
+        sincronizarAptosEnJornadas({ config, llenados, jornadas, eventosCalendario: [], deudasAnteriores: {}, updatedAt: '' }, aptosDb || [])
 
         // 3.5 Construir Eventos del Calendario
         let eventosCalendario: EventoDiarioGas[] = []
@@ -497,11 +514,39 @@ export async function obtenerGasServicioData(forceRefresh: boolean = false): Pro
 
         eventosCalendario.sort((a, b) => (b.fecha > a.fecha ? 1 : b.fecha < a.fecha ? -1 : 0))
 
+        // 3.6 Construir Deudas Anteriores por Apartamento
+        const deudasAnteriores: Record<string, DeudaAnteriorGas> = {}
+        if (deudaAnteriorRows.length > 0) {
+          deudaAnteriorRows.forEach(r => {
+            try {
+              const parsed = JSON.parse(r.descripcion || '{}')
+              const aptoId = parsed.apartamentoId || r.apartamento_id || ''
+              const aptoNum = parsed.apartamentoNumero || r.titulo?.replace(/^Deuda Anterior Gas Apto\s*/i, '') || ''
+              const item: DeudaAnteriorGas = {
+                id: r.id,
+                apartamentoId: aptoId,
+                apartamentoNumero: aptoNum,
+                montoBs: Number(r.monto_bs ?? parsed.montoBs ?? 0),
+                montoUsd: Number(r.monto_usd ?? parsed.montoUsd ?? 0),
+                moneda: (r.moneda as any) || parsed.moneda || 'BS',
+                estado: (r.estado as any) || parsed.estado || 'pendiente',
+                nota: parsed.nota || '',
+                fecha: r.fecha || parsed.fecha
+              }
+              const key = item.apartamentoId || item.apartamentoNumero
+              if (key) deudasAnteriores[key] = item
+            } catch (e) {
+              console.warn('[gasService] Error procesando fila gas_deuda_anterior:', e)
+            }
+          })
+        }
+
         const resultado: GasServicioData = {
           config,
           llenados,
           jornadas,
           eventosCalendario,
+          deudasAnteriores,
           updatedAt: new Date().toISOString()
         }
 
@@ -697,6 +742,7 @@ export async function reiniciarDatosGasAFabrica(): Promise<{
         TIPO_GAS_JORNADA,
         TIPO_GAS_PAGO,
         TIPO_GAS_EVENTO,
+        TIPO_GAS_DEUDA_ANTERIOR,
         DB_LEGACY_TIPO
       ])
 
@@ -1372,6 +1418,298 @@ export async function reportarPagoGasResidente(
 }
 
 /**
+ * Guarda o actualiza la deuda anterior histórica de gas para un apartamento
+ */
+export async function guardarDeudaAnteriorGas(params: {
+  apartamentoId: string
+  apartamentoNumero: string
+  monto: number
+  moneda: 'BS' | 'USD'
+  nota?: string
+  estado?: 'pendiente' | 'pagado'
+  tasaBcv?: number
+}): Promise<{ success: boolean; data?: GasServicioData; error?: string | null }> {
+  try {
+    const { data: actual } = await obtenerGasServicioData(true)
+    const tasa = params.tasaBcv || actual.config.tasaBcv || 859.06
+    const moneda = params.moneda || 'BS'
+    const monto = params.monto || 0
+    const montoBs = moneda === 'BS' ? monto : Number((monto * tasa).toFixed(2))
+    const montoUsd = moneda === 'USD' ? monto : (tasa > 0 ? Number((monto / tasa).toFixed(2)) : 0)
+
+    const cleanNum = String(params.apartamentoNumero || '').trim().replace(/^APTO\.?\s*/i, '')
+
+    // Buscar si ya existe la fila en casos_comunidad
+    const { data: existingRows } = await supabase
+      .from('casos_comunidad')
+      .select('id')
+      .eq('tipo', TIPO_GAS_DEUDA_ANTERIOR)
+      .ilike('titulo', `%${cleanNum}%`)
+      .limit(1)
+
+    const rowId = existingRows && existingRows.length > 0 ? existingRows[0].id : generarUUID()
+
+    const item: DeudaAnteriorGas = {
+      id: rowId,
+      apartamentoId: params.apartamentoId,
+      apartamentoNumero: cleanNum,
+      montoBs,
+      montoUsd,
+      moneda,
+      estado: params.estado || (monto > 0 ? 'pendiente' : 'pagado'),
+      nota: params.nota?.trim() || 'Deuda Anterior de Gas',
+      fecha: new Date().toISOString().split('T')[0]
+    }
+
+    await supabase.from('casos_comunidad').upsert({
+      id: rowId,
+      tipo: TIPO_GAS_DEUDA_ANTERIOR,
+      apartamento_id: esUUIDValido(params.apartamentoId) ? params.apartamentoId : null,
+      titulo: `Deuda Anterior Gas Apto ${cleanNum}`,
+      descripcion: JSON.stringify(item),
+      monto_usd: montoUsd,
+      monto_bs: montoBs,
+      moneda: moneda,
+      estado: item.estado,
+      fecha: item.fecha,
+      updated_at: new Date().toISOString()
+    })
+
+    appCache.invalidate('gas_servicio_data_global')
+    appCache.invalidateTags(['gas', 'deudas_gas', 'saldos', 'recibos', 'mora'])
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('condominio_gas_updated'))
+    }
+
+    const { data: frescos } = await obtenerGasServicioData(true)
+    return { success: true, data: frescos, error: null }
+  } catch (err: any) {
+    console.error('[gasService] Error guardando deuda anterior gas:', err)
+    return { success: false, error: err.message }
+  }
+}
+
+/**
+ * Elimina la deuda anterior histórica de gas para un apartamento
+ */
+export async function eliminarDeudaAnteriorGas(
+  apartamentoKey: string
+): Promise<{ success: boolean; data?: GasServicioData; error?: string | null }> {
+  try {
+    const cleanKey = String(apartamentoKey || '').replace(/^APTO\.?\s*/i, '').trim()
+    await supabase
+      .from('casos_comunidad')
+      .delete()
+      .eq('tipo', TIPO_GAS_DEUDA_ANTERIOR)
+      .ilike('titulo', `%${cleanKey}%`)
+
+    appCache.invalidate('gas_servicio_data_global')
+    appCache.invalidateTags(['gas', 'deudas_gas', 'saldos', 'recibos', 'mora'])
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('condominio_gas_updated'))
+    }
+
+    const { data: frescos } = await obtenerGasServicioData(true)
+    return { success: true, data: frescos, error: null }
+  } catch (err: any) {
+    console.error('[gasService] Error eliminando deuda anterior gas:', err)
+    return { success: false, error: err.message }
+  }
+}
+
+/**
+ * Guarda o modifica la cuota/deuda de gas de un mes específico para un apartamento en el Calendario de Deudas
+ */
+export async function guardarDeudaMesGas(params: {
+  mesKey: string // YYYY-MM
+  mesLabel?: string
+  apartamentoId: string
+  apartamentoNumero: string
+  propietario?: string
+  monto: number
+  moneda: 'BS' | 'USD'
+  estado: 'pendiente' | 'pagado'
+  referencia?: string
+  metodo?: string
+  fechaPago?: string
+  nota?: string
+  tasaBcv?: number
+}): Promise<{ success: boolean; data?: GasServicioData; error?: string | null }> {
+  try {
+    const { data: actual } = await obtenerGasServicioData(true)
+    const tasa = params.tasaBcv || actual.config.tasaBcv || 859.06
+    const moneda = params.moneda || 'BS'
+    const monto = params.monto || 0
+    const montoBs = moneda === 'BS' ? monto : Number((monto * tasa).toFixed(2))
+    const montoUsd = moneda === 'USD' ? monto : (tasa > 0 ? Number((monto / tasa).toFixed(2)) : 0)
+    const cleanNum = String(params.apartamentoNumero || '').trim().replace(/^APTO\.?\s*/i, '')
+
+    // 1. Buscar o crear la jornada correspondiente a este mes
+    let jornada = actual.jornadas.find(j => j.mes === params.mesKey)
+    let jornadaId: string
+
+    if (!jornada) {
+      jornadaId = generarUUID()
+      const titulo = params.mesLabel || `Cuota Gas ${params.mesKey}`
+      await supabase.from('casos_comunidad').insert({
+        id: jornadaId,
+        tipo: TIPO_GAS_JORNADA,
+        titulo,
+        descripcion: JSON.stringify({
+          id: jornadaId,
+          titulo,
+          mes: params.mesKey,
+          fechaInicio: `${params.mesKey}-01`,
+          monedaPrincipal: moneda,
+          costoPorAptoBs: montoBs,
+          costoPorAptoUsd: montoUsd,
+          metaTotalBs: montoBs * 62,
+          metaTotalUsd: montoUsd * 62,
+          estado: 'activa',
+          activa: true
+        }),
+        monto_usd: montoUsd,
+        monto_bs: montoBs,
+        moneda,
+        estado: 'activa',
+        fecha: `${params.mesKey}-01`
+      })
+    } else {
+      jornadaId = jornada.id
+    }
+
+    // 2. Buscar o crear la fila individual de gas_pago
+    const { data: existingPagos } = await supabase
+      .from('casos_comunidad')
+      .select('id')
+      .eq('tipo', TIPO_GAS_PAGO)
+      .ilike('titulo', `%${cleanNum}%`)
+      .ilike('titulo', `%${jornadaId}%`)
+      .limit(1)
+
+    const pagoRowId = existingPagos && existingPagos.length > 0 ? existingPagos[0].id : generarUUID()
+
+    const pagoDetalle: DetallePagoAptoGas & { jornadaId: string } = {
+      jornadaId,
+      apartamentoId: params.apartamentoId,
+      apartamentoNumero: cleanNum,
+      propietario: params.propietario,
+      estado: params.estado,
+      fechaPago: params.estado === 'pagado' ? (params.fechaPago || new Date().toISOString().split('T')[0]) : undefined,
+      moneda,
+      montoBs,
+      montoUsd,
+      metodoPago: params.metodo as any,
+      referencia: params.referencia,
+      observaciones: params.nota
+    }
+
+    await supabase.from('casos_comunidad').upsert({
+      id: pagoRowId,
+      tipo: TIPO_GAS_PAGO,
+      apartamento_id: esUUIDValido(params.apartamentoId) ? params.apartamentoId : null,
+      titulo: `Pago Gas Apto ${cleanNum} - ${jornadaId}`,
+      descripcion: JSON.stringify(pagoDetalle),
+      monto_usd: montoUsd,
+      monto_bs: montoBs,
+      moneda,
+      estado: params.estado,
+      fecha: pagoDetalle.fechaPago || `${params.mesKey}-01`,
+      updated_at: new Date().toISOString()
+    })
+
+    appCache.invalidate('gas_servicio_data_global')
+    appCache.invalidateTags(['gas', 'deudas_gas', 'saldos', 'recibos', 'mora'])
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('condominio_gas_updated'))
+    }
+
+    const { data: frescos } = await obtenerGasServicioData(true)
+    return { success: true, data: frescos, error: null }
+  } catch (err: any) {
+    console.error('[gasService] Error en guardarDeudaMesGas:', err)
+    return { success: false, error: err.message }
+  }
+}
+
+/**
+ * Elimina la deuda de un mes específico para un apartamento
+ */
+export async function eliminarDeudaMesGas(
+  mesKey: string,
+  apartamentoKey: string
+): Promise<{ success: boolean; data?: GasServicioData; error?: string | null }> {
+  try {
+    const { data: actual } = await obtenerGasServicioData(true)
+    const cleanKey = String(apartamentoKey || '').replace(/^APTO\.?\s*/i, '').trim()
+    const jornada = actual.jornadas.find(j => j.mes === mesKey)
+
+    if (jornada) {
+      await supabase
+        .from('casos_comunidad')
+        .delete()
+        .eq('tipo', TIPO_GAS_PAGO)
+        .ilike('titulo', `%${cleanKey}%`)
+        .ilike('titulo', `%${jornada.id}%`)
+    }
+
+    appCache.invalidate('gas_servicio_data_global')
+    appCache.invalidateTags(['gas', 'deudas_gas', 'saldos', 'recibos', 'mora'])
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('condominio_gas_updated'))
+    }
+
+    const { data: frescos } = await obtenerGasServicioData(true)
+    return { success: true, data: frescos, error: null }
+  } catch (err: any) {
+    console.error('[gasService] Error en eliminarDeudaMesGas:', err)
+    return { success: false, error: err.message }
+  }
+}
+
+/**
+ * Elimina todas las deudas de gas (anteriores y mensuales pendientes) de un apartamento
+ */
+export async function eliminarTodasLasDeudasGasApartamento(
+  apartamentoKey: string
+): Promise<{ success: boolean; data?: GasServicioData; error?: string | null }> {
+  try {
+    const cleanKey = String(apartamentoKey || '').replace(/^APTO\.?\s*/i, '').trim()
+
+    // 1. Eliminar deuda anterior
+    await supabase
+      .from('casos_comunidad')
+      .delete()
+      .eq('tipo', TIPO_GAS_DEUDA_ANTERIOR)
+      .ilike('titulo', `%${cleanKey}%`)
+
+    // 2. Eliminar cuotas pendientes de gas_pago
+    await supabase
+      .from('casos_comunidad')
+      .delete()
+      .eq('tipo', TIPO_GAS_PAGO)
+      .ilike('titulo', `%${cleanKey}%`)
+
+    appCache.invalidate('gas_servicio_data_global')
+    appCache.invalidateTags(['gas', 'deudas_gas', 'saldos', 'recibos', 'mora'])
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('condominio_gas_updated'))
+    }
+
+    const { data: frescos } = await obtenerGasServicioData(true)
+    return { success: true, data: frescos, error: null }
+  } catch (err: any) {
+    console.error('[gasService] Error en eliminarTodasLasDeudasGasApartamento:', err)
+    return { success: false, error: err.message }
+  }
+}
+
+/**
  * Calcula las métricas del micro dashboard de gas
  */
 export function calcularMetricasGas(data: GasServicioData) {
@@ -1484,6 +1822,26 @@ export function obtenerHistorialCuotasGasApartamento(
   if (!data?.jornadas || (!aptoId && !aptoNumero)) return []
   const res: HistorialCuotaGasApartamento[] = []
 
+  // 1. Deuda anterior histórica si existe
+  if (data?.deudasAnteriores) {
+    const da = Object.values(data.deudasAnteriores).find(d => matchAptoEnGas(d as any, aptoId, aptoNumero))
+    if (da && (da.montoBs > 0 || da.montoUsd > 0)) {
+      res.push({
+        jornadaId: 'deuda-anterior-gas',
+        titulo: da.nota || 'Deuda Anterior de Gas',
+        esEspecial: false,
+        mes: 'Anterior',
+        fechaLimite: undefined,
+        moneda: da.moneda,
+        montoBs: Number(da.montoBs.toFixed(2)),
+        montoUsd: Number(da.montoUsd.toFixed(2)),
+        monto: Number((da.moneda === 'BS' ? da.montoBs : da.montoUsd).toFixed(2)),
+        estado: da.estado,
+        fechaPago: da.fecha
+      })
+    }
+  }
+
   for (const j of data.jornadas) {
     let detalle: DetallePagoAptoGas | undefined
     if (aptoId && j.pagos[aptoId]) detalle = j.pagos[aptoId]
@@ -1547,6 +1905,27 @@ export function obtenerTodasLasDeudasGasApartamento(
   const cuotasPendientes: ItemDeudaGasDetallada[] = []
   let totalBs = 0
   let totalUsd = 0
+
+  // 1. Deuda anterior acumulada si está pendiente
+  if (data?.deudasAnteriores) {
+    const da = Object.values(data.deudasAnteriores).find(d => matchAptoEnGas(d as any, aptoId, aptoNumero))
+    if (da && da.estado === 'pendiente' && (da.montoBs > 0 || da.montoUsd > 0)) {
+      totalBs += da.montoBs
+      totalUsd += da.montoUsd
+      cuotasPendientes.push({
+        campanaId: 'deuda-anterior-gas',
+        titulo: da.nota || 'Deuda Anterior de Gas',
+        esEspecial: false,
+        mes: 'Anterior',
+        fechaLimite: undefined,
+        monedaPrincipal: da.moneda,
+        montoBs: da.montoBs,
+        montoUsd: da.montoUsd,
+        montoPrincipal: da.moneda === 'BS' ? da.montoBs : da.montoUsd,
+        estado: 'pendiente'
+      })
+    }
+  }
 
   for (const j of data.jornadas) {
     let detalle: DetallePagoAptoGas | undefined
