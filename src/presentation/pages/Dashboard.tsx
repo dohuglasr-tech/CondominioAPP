@@ -129,7 +129,7 @@ export function Dashboard() {
   // ── Lógica estricta de "Diferencia de pago" vs "No está al día / Deuda pendiente" ──
   // La diferencia SOLO aplica cuando:
   // 1. El residente tiene saldo a favor (> 0.05), O
-  // 2. Su último pago fue menor a la cuota seleccionada a pagar por el residente (abono parcial o pago inferior a la cuota).
+  // 2. Su último pago fue menor a la cuota seleccionada a pagar por el residente (abono parcial o pago inferior a la cuota del período actual).
   // Si no cumple esto, NO es diferencia; es deuda pendiente / no está al día.
   const tieneSaldoAFavor = (saldoAFavor > 0.05 || saldoAFavorBs > 0.05)
   const tieneAbonoEnRecibos = recibosPendientesList.some(r =>
@@ -141,7 +141,6 @@ export function Dashboard() {
     )
   )
 
-  const ultimoPagoComparado = pagosRecientes.find(p => p.estado === 'aprobado' || p.estado === 'completado') || ultimoPago
   const cuotaReciboUsd = reciboPendiente
     ? Number(reciboPendiente.total_usd || (reciboPendiente.total_bs && tasaValida > 0 ? reciboPendiente.total_bs / tasaValida : 0))
     : 0
@@ -149,18 +148,47 @@ export function Dashboard() {
     ? Number(reciboPendiente.total_bs || (reciboPendiente.total_usd && tasaValida > 0 ? reciboPendiente.total_usd * tasaValida : 0))
     : 0
 
-  const ultimoPagoMenorQueCuota = Boolean(
-    tieneAbonoEnRecibos ||
-    (ultimoPagoComparado && reciboPendiente && (() => {
-      const pagoUsd = Number(ultimoPagoComparado.monto_usd || (ultimoPagoComparado.monto_bs && tasaValida > 0 ? ultimoPagoComparado.monto_bs / tasaValida : 0))
-      const pagoBs = Number(ultimoPagoComparado.monto_bs || (ultimoPagoComparado.monto_usd && tasaValida > 0 ? ultimoPagoComparado.monto_usd * tasaValida : 0))
+  // Comprobar si existe un pago reportado/aprobado específico para este recibo pendiente
+  // (evita que un pago de un mes anterior menor que la nueva cuota se confunda con abono)
+  const pagoCorrespondienteAlRecibo = pagosRecientes.find(p => {
+    if (!reciboPendiente) return false
+    if (p.estado !== 'aprobado' && p.estado !== 'completado') return false
+
+    const fechaPagoStr = p.fecha_pago || p.created_at
+    const fechaReciboStr = reciboPendiente.emitido_at || reciboPendiente.created_at
+    const mesFacturado = (reciboPendiente.mes_facturado || '').slice(0, 7) // 'YYYY-MM'
+
+    // Coincidencia por notas o referencia
+    const notas = ((p.notas_admin || '') + ' ' + (p.referencia || '')).toLowerCase()
+    if (mesFacturado && notas.includes(mesFacturado)) return true
+
+    // Coincidencia por fecha (pago realizado en o después de la emisión del recibo)
+    if (fechaPagoStr && fechaReciboStr) {
+      const tPago = new Date(fechaPagoStr).getTime()
+      const tRecibo = new Date(fechaReciboStr).getTime()
+      return tPago >= (tRecibo - 24 * 60 * 60 * 1000)
+    }
+
+    if (fechaPagoStr && mesFacturado) {
+      const mesPago = fechaPagoStr.slice(0, 7)
+      return mesPago >= mesFacturado
+    }
+
+    return false
+  })
+
+  const pagoMenorQueCuotaPeriodo = Boolean(
+    pagoCorrespondienteAlRecibo && reciboPendiente && (() => {
+      const pagoUsd = Number(pagoCorrespondienteAlRecibo.monto_usd || (pagoCorrespondienteAlRecibo.monto_bs && tasaValida > 0 ? pagoCorrespondienteAlRecibo.monto_bs / tasaValida : 0))
+      const pagoBs = Number(pagoCorrespondienteAlRecibo.monto_bs || (pagoCorrespondienteAlRecibo.monto_usd && tasaValida > 0 ? pagoCorrespondienteAlRecibo.monto_usd * tasaValida : 0))
       const esMenorUsd = pagoUsd > 0.05 && cuotaReciboUsd > 0.05 && pagoUsd < (cuotaReciboUsd - 0.05)
       const esMenorBs = pagoBs > 0.05 && cuotaReciboBs > 0.05 && pagoBs < (cuotaReciboBs - 1)
       return esMenorUsd || esMenorBs
-    })())
+    })()
   )
 
-  const aplicaDiferencia = tieneDeudaTotal && (tieneSaldoAFavor || ultimoPagoMenorQueCuota)
+  const ultimoPagoMenorQueCuota = tieneAbonoEnRecibos || pagoMenorQueCuotaPeriodo
+  const aplicaDiferencia = Boolean(tieneDeudaCondominio && (tieneSaldoAFavor || ultimoPagoMenorQueCuota))
 
   // ── Verificación estricta de solvencia para Carta de Solvencia ──
   // El residente SOLO puede ver y descargar su carta si está 100% SOLVENTE:
@@ -654,12 +682,12 @@ export function Dashboard() {
                   alignItems: 'center',
                   gap: '5px'
                 }}>
-                  {aplicaDiferencia
-                    ? '🔵 Diferencia Pendiente'
-                    : tieneDeudaGas && !tieneDeudaCondominio && !tieneDeudaLocales
+                  {tieneDeudaGas && !tieneDeudaCondominio && !tieneDeudaLocales
                     ? '⛽ Solo Cuota de Gas Pendiente'
                     : tieneDeudaLocales && !tieneDeudaCondominio && !tieneDeudaGas
                     ? '🏬 Solo Deuda de Local Pendiente'
+                    : aplicaDiferencia
+                    ? '🔵 Diferencia Pendiente'
                     : (tieneDeudaCondominio && tieneDeudaGas) || (tieneDeudaCondominio && tieneDeudaLocales) || (tieneDeudaGas && tieneDeudaLocales)
                     ? '🔴 No está al día · Deudas Pendientes'
                     : '🔴 No está al día · Deuda Pendiente'}
@@ -2070,12 +2098,12 @@ export function Dashboard() {
                         fontSize: '12px',
                         fontWeight: 700
                       }}>
-                        {aplicaDiferencia
-                          ? '🔵 Diferencia Pendiente'
-                          : tieneDeudaGas && !tieneDeudaCondominio && !tieneDeudaLocales
+                        {tieneDeudaGas && !tieneDeudaCondominio && !tieneDeudaLocales
                           ? '⛽ Solo Cuota de Gas Pendiente'
                           : tieneDeudaLocales && !tieneDeudaCondominio && !tieneDeudaGas
                           ? '🏬 Solo Deuda de Local Pendiente'
+                          : aplicaDiferencia
+                          ? '🔵 Diferencia Pendiente'
                           : (tieneDeudaCondominio && tieneDeudaGas) || (tieneDeudaCondominio && tieneDeudaLocales) || (tieneDeudaGas && tieneDeudaLocales)
                           ? '🔴 No está al día · Deudas Pendientes'
                           : '🔴 No está al día · Deuda Pendiente'}
