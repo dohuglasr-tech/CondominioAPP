@@ -499,7 +499,7 @@ export function Dashboard() {
           padding: 32px 28px 48px;
         }
 
-        @media (max-width: 768px) {
+        @media (max-width: 860px) {
           .resident-desktop-view {
             display: none;
           }

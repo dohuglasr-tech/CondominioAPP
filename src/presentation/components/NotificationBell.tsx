@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../data/supabase'
 import {
@@ -19,36 +20,36 @@ interface NotificationBellProps {
 
 const ICONOS: Record<string, React.ReactNode> = {
   recibo_emitido: (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
       <polyline points="14 2 14 8 20 8"/>
       <line x1="9" y1="13" x2="15" y2="13"/>
     </svg>
   ),
   mora: (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
       <line x1="12" y1="8" x2="12" y2="12"/>
       <line x1="12" y1="16" x2="12.01" y2="16"/>
     </svg>
   ),
   chat: (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
     </svg>
   ),
   pago_aprobado: (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
       <polyline points="20 6 9 17 4 12"/>
     </svg>
   ),
   pago_rechazado: (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
       <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
     </svg>
   ),
   aviso: (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
       <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
     </svg>
@@ -58,7 +59,7 @@ const ICONOS: Record<string, React.ReactNode> = {
 const COLORES: Record<string, string> = {
   recibo_emitido: 'var(--color-accent, #f97316)',
   mora: '#ef4444',
-  chat: '#3b82f6',
+  chat: '#38bdf8',
   pago_aprobado: '#22c55e',
   pago_rechazado: '#ef4444',
   aviso: '#a855f7',
@@ -91,7 +92,45 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
   const [notifs, setNotifs] = useState<Notificacion[]>([])
   const [noLeidas, setNoLeidas] = useState(0)
   const [pushGranted, setPushGranted] = useState(false)
-  const panelRef = useRef<HTMLDivElement>(null)
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  const [coords, setCoords] = useState<{ top: number; left?: number; right?: number; isLeft: boolean }>({
+    top: 60,
+    isLeft: false
+  })
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 860)
+
+  // ── Actualizar posición y modo mobile al abrir o redimensionar ─────────────
+  const updatePosition = useCallback(() => {
+    const mobile = window.innerWidth <= 860
+    setIsMobile(mobile)
+
+    if (buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect()
+      const isLeft = rect.left < 340
+      const top = Math.min(window.innerHeight - 480, Math.max(10, rect.bottom + 8))
+
+      if (isLeft) {
+        // Asegurar que no se desborde ni a la izquierda (< 12) ni a la derecha
+        const clampedLeft = Math.max(12, Math.min(rect.left, window.innerWidth - 372))
+        setCoords({ top, left: clampedLeft, isLeft: true })
+      } else {
+        const clampedRight = Math.max(12, Math.min(window.innerWidth - rect.right, window.innerWidth - 372))
+        setCoords({ top, right: clampedRight, isLeft: false })
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    if (open) {
+      updatePosition()
+      window.addEventListener('resize', updatePosition)
+      window.addEventListener('scroll', updatePosition, true)
+      return () => {
+        window.removeEventListener('resize', updatePosition)
+        window.removeEventListener('scroll', updatePosition, true)
+      }
+    }
+  }, [open, updatePosition])
 
   // ── Cargar notificaciones ─────────────────────────────────────────────────
   const cargar = useCallback(async () => {
@@ -112,7 +151,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
     cargar()
   }, [cargar])
 
-  // ── Suscripción Realtime (canal único por instancia para evitar colisiones) ──
+  // ── Suscripción Realtime ───────────────────────────────────────────────────
   useEffect(() => {
     if (!apartamentoId) return
 
@@ -133,8 +172,6 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
             const nueva = payload.new as Notificacion
             setNotifs((prev) => [nueva, ...prev].slice(0, 30))
             setNoLeidas((prev) => prev + 1)
-
-            // Disparar notificación nativa web / móvil del dispositivo
             mostrarNotificacionLocal(nueva.titulo, nueva.cuerpo, nueva.link)
           }
         )
@@ -150,19 +187,9 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
     }
   }, [apartamentoId])
 
-  // ── Cerrar al hacer clic fuera ────────────────────────────────────────────
-  useEffect(() => {
-    const handleClick = (e: MouseEvent) => {
-      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
-        setOpen(false)
-      }
-    }
-    if (open) document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
-  }, [open])
-
   // ── Solicitar permisos de push al abrir la campanita por primera vez ───────
   const handleOpen = async () => {
+    updatePosition()
     setOpen((v) => !v)
     try {
       const hasNotification = typeof window !== 'undefined' && 'Notification' in window && typeof Notification !== 'undefined'
@@ -187,7 +214,8 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
   }
 
   // ── Marcar todas como leídas ─────────────────────────────────────────────
-  const handleMarcarTodas = async () => {
+  const handleMarcarTodas = async (e: React.MouseEvent) => {
+    e.stopPropagation()
     if (!apartamentoId) return
     await marcarTodasLeidas(apartamentoId)
     setNotifs((prev) => prev.map((x) => ({ ...x, leida: true })))
@@ -195,26 +223,28 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
   }
 
   return (
-    <div ref={panelRef} style={{ position: 'relative' }}>
+    <>
       {/* ── Botón campanita ─────────────────────────────────────────── */}
       <button
+        ref={buttonRef}
         onClick={handleOpen}
         title="Notificaciones"
         style={{
           background: 'transparent',
           border: 'none',
-          color: iconColor,
-          padding: '6px',
+          color: open ? 'var(--color-accent, #f97316)' : iconColor,
+          padding: '7px',
           cursor: 'pointer',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           position: 'relative',
-          borderRadius: '8px',
-          transition: 'color 0.2s',
+          borderRadius: '10px',
+          transition: 'all 0.18s ease',
+          WebkitTapHighlightColor: 'transparent',
         }}
       >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
           <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
           <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
         </svg>
@@ -225,18 +255,19 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
             position: 'absolute',
             top: '2px',
             right: '2px',
-            minWidth: '16px',
-            height: '16px',
+            minWidth: '17px',
+            height: '17px',
             backgroundColor: '#ef4444',
             color: '#fff',
-            fontSize: '9px',
+            fontSize: '9.5px',
             fontWeight: 900,
             borderRadius: '999px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: '0 3px',
+            padding: '0 4px',
             border: '2px solid #090a0d',
+            boxShadow: '0 2px 8px rgba(239, 68, 68, 0.6)',
             animation: 'bell-pulse 2s infinite',
           }}>
             {noLeidas > 9 ? '9+' : noLeidas}
@@ -244,203 +275,347 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
         )}
       </button>
 
-      {/* ── Panel desplegable ────────────────────────────────────────── */}
-      {open && (
-        <div style={{
-          position: 'absolute',
-          top: 'calc(100% + 10px)',
-          right: 0,
-          width: '340px',
-          maxWidth: 'calc(100vw - 24px)',
-          backgroundColor: '#111216',
-          border: '1px solid rgba(255,255,255,0.1)',
-          borderRadius: '16px',
-          boxShadow: '0 20px 60px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.05)',
-          zIndex: 9999,
-          overflow: 'hidden',
-        }}>
-          {/* Cabecera */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: '16px 16px 12px',
-            borderBottom: '1px solid rgba(255,255,255,0.07)',
-          }}>
-            <div>
-              <div style={{ color: '#fff', fontSize: '14px', fontWeight: 800 }}>Notificaciones</div>
-              {noLeidas > 0 && (
-                <div style={{ color: 'var(--color-accent, #f97316)', fontSize: '11px', fontWeight: 600, marginTop: '2px' }}>
-                  {noLeidas} sin leer
-                </div>
-              )}
-            </div>
-            {noLeidas > 0 && (
-              <button
-                onClick={handleMarcarTodas}
-                style={{
-                  background: 'var(--color-accent-light, rgba(249,115,22,0.12))',
-                  border: '1px solid var(--border-accent, rgba(249,115,22,0.25))',
-                  color: 'var(--color-accent, #f97316)',
-                  fontSize: '11px',
-                  fontWeight: 700,
-                  padding: '4px 10px',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                }}
-              >
-                Marcar todas
-              </button>
-            )}
-          </div>
+      {/* ── Modal Portal para evitar que overflow:hidden o límites del sidebar lo corten ── */}
+      {open && typeof document !== 'undefined' && createPortal(
+        <>
+          {/* Backdrop con Blur */}
+          <div
+            onClick={() => setOpen(false)}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              backgroundColor: isMobile ? 'rgba(0, 0, 0, 0.75)' : 'rgba(0, 0, 0, 0.35)',
+              backdropFilter: isMobile ? 'blur(6px)' : 'none',
+              WebkitBackdropFilter: isMobile ? 'blur(6px)' : 'none',
+              zIndex: 999998,
+              animation: 'notif-fade 0.18s ease-out',
+            }}
+          />
 
-          {/* Lista */}
-          <div style={{ maxHeight: '380px', overflowY: 'auto' }}>
-            {notifs.length === 0 ? (
-              <div style={{
-                padding: '40px 20px',
-                textAlign: 'center',
-                color: '#555',
-              }}>
-                <div style={{ fontSize: '32px', marginBottom: '8px' }}>🔔</div>
-                <div style={{ fontSize: '13px' }}>Sin notificaciones aún</div>
+          {/* Panel Flotante de Notificaciones */}
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              position: 'fixed',
+              top: isMobile ? 'calc(env(safe-area-inset-top, 0px) + 68px)' : `${coords.top}px`,
+              ...(isMobile
+                ? {
+                    left: '12px',
+                    right: '12px',
+                    width: 'calc(100vw - 24px)',
+                    maxWidth: '420px',
+                    margin: '0 auto',
+                  }
+                : coords.isLeft
+                ? {
+                    left: `${coords.left}px`,
+                    right: 'auto',
+                    width: '360px',
+                    maxWidth: 'calc(100vw - 24px)',
+                  }
+                : {
+                    right: `${coords.right}px`,
+                    left: 'auto',
+                    width: '360px',
+                    maxWidth: 'calc(100vw - 24px)',
+                  }
+              ),
+              backgroundColor: '#111318',
+              border: '1px solid rgba(255, 255, 255, 0.12)',
+              borderRadius: isMobile ? '22px' : '18px',
+              boxShadow: '0 24px 64px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(255, 255, 255, 0.08), 0 8px 24px rgba(0, 0, 0, 0.5)',
+              zIndex: 999999,
+              display: 'flex',
+              flexDirection: 'column',
+              maxHeight: isMobile ? 'calc(80vh - 40px)' : '480px',
+              overflow: 'hidden',
+              animation: 'notif-pop 0.22s cubic-bezier(0.16, 1, 0.3, 1)',
+            }}
+          >
+            {/* Cabecera */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '16px 18px 14px',
+              borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+              backgroundColor: 'rgba(255, 255, 255, 0.02)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '16px' }}>🔔</span>
+                <div>
+                  <div style={{ color: '#fff', fontSize: '15px', fontWeight: 800, letterSpacing: '-0.2px' }}>
+                    Notificaciones
+                  </div>
+                  {noLeidas > 0 ? (
+                    <div style={{ color: 'var(--color-accent, #f97316)', fontSize: '11px', fontWeight: 700, marginTop: '1px' }}>
+                      {noLeidas} nueva{noLeidas > 1 ? 's' : ''} sin leer
+                    </div>
+                  ) : (
+                    <div style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 500, marginTop: '1px' }}>
+                      Al día
+                    </div>
+                  )}
+                </div>
               </div>
-            ) : (
-              notifs.map((n) => (
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {noLeidas > 0 && (
+                  <button
+                    onClick={handleMarcarTodas}
+                    style={{
+                      background: 'var(--color-accent-light, rgba(249, 115, 22, 0.12))',
+                      border: '1px solid var(--border-accent, rgba(249, 115, 22, 0.3))',
+                      color: 'var(--color-accent, #f97316)',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      padding: '4px 10px',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s',
+                    }}
+                  >
+                    Marcar todas
+                  </button>
+                )}
+
                 <button
-                  key={n.id}
-                  onClick={() => handleClickNotif(n)}
+                  onClick={() => setOpen(false)}
+                  title="Cerrar"
                   style={{
-                    width: '100%',
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: '12px',
-                    padding: '13px 16px',
-                    background: n.leida ? 'transparent' : 'var(--color-accent-light, rgba(249,115,22,0.04))',
-                    border: 'none',
-                    borderBottom: '1px solid rgba(255,255,255,0.05)',
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                    transition: 'background 0.15s',
-                  }}
-                >
-                  {/* Ícono del tipo */}
-                  <div style={{
-                    width: '32px',
-                    height: '32px',
+                    background: 'rgba(255, 255, 255, 0.06)',
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                    color: '#a1a1aa',
+                    width: '28px',
+                    height: '28px',
                     borderRadius: '50%',
-                    backgroundColor: `${COLORES[n.tipo] || '#666'}20`,
-                    color: COLORES[n.tipo] || '#666',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    flexShrink: 0,
-                    marginTop: '2px',
-                    border: `1px solid ${COLORES[n.tipo] || '#666'}30`,
-                  }}>
-                    {ICONOS[n.tipo] || ICONOS.aviso}
-                  </div>
-
-                  {/* Texto */}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{
-                      color: n.leida ? '#888' : '#fff',
-                      fontSize: '13px',
-                      fontWeight: n.leida ? 500 : 700,
-                      lineHeight: 1.3,
-                      marginBottom: '3px',
-                    }}>
-                      {n.titulo}
-                    </div>
-                    <div style={{
-                      color: '#666',
-                      fontSize: '12px',
-                      lineHeight: 1.4,
-                      display: '-webkit-box',
-                      WebkitLineClamp: 2,
-                      WebkitBoxOrient: 'vertical',
-                      overflow: 'hidden',
-                    }}>
-                      {n.cuerpo}
-                    </div>
-                    <div style={{ color: '#444', fontSize: '10px', marginTop: '4px', fontWeight: 500 }}>
-                      {formatRelativo(n.created_at)}
-                    </div>
-                  </div>
-
-                  {/* Punto de no leída */}
-                  {!n.leida && (
-                    <div style={{
-                      width: '8px',
-                      height: '8px',
-                      borderRadius: '50%',
-                      backgroundColor: 'var(--color-accent, #f97316)',
-                      flexShrink: 0,
-                      marginTop: '6px',
-                    }} />
-                  )}
+                    cursor: 'pointer',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  ✕
                 </button>
-              ))
-            )}
-          </div>
+              </div>
+            </div>
 
-          {/* Footer */}
-          <div style={{
-            padding: '10px 16px',
-            borderTop: '1px solid rgba(255,255,255,0.07)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: '8px'
-          }}>
-            {typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default' ? (
+            {/* Lista con scroll suave */}
+            <div style={{
+              flex: 1,
+              overflowY: 'auto',
+              WebkitOverflowScrolling: 'touch',
+              overscrollBehavior: 'contain',
+            }}>
+              {notifs.length === 0 ? (
+                <div style={{
+                  padding: '44px 24px',
+                  textAlign: 'center',
+                  color: '#64748b',
+                }}>
+                  <div style={{
+                    width: '56px',
+                    height: '56px',
+                    borderRadius: '50%',
+                    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '24px',
+                    margin: '0 auto 12px',
+                  }}>
+                    🔔
+                  </div>
+                  <div style={{ fontSize: '14px', fontWeight: 700, color: '#e2e8f0', marginBottom: '4px' }}>
+                    Sin notificaciones aún
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#94a3b8', lineHeight: 1.4 }}>
+                    Te avisaremos aquí cuando se emita un nuevo recibo, se apruebe un pago o haya avisos comunitarios.
+                  </div>
+                </div>
+              ) : (
+                notifs.map((n) => (
+                  <button
+                    key={n.id}
+                    onClick={() => handleClickNotif(n)}
+                    style={{
+                      width: '100%',
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: '12px',
+                      padding: '14px 18px',
+                      background: n.leida ? 'transparent' : 'rgba(249, 115, 22, 0.04)',
+                      border: 'none',
+                      borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      transition: 'background 0.15s',
+                      position: 'relative',
+                    }}
+                  >
+                    {/* Ícono del tipo */}
+                    <div style={{
+                      width: '36px',
+                      height: '36px',
+                      borderRadius: '12px',
+                      backgroundColor: `${COLORES[n.tipo] || '#666'}18`,
+                      color: COLORES[n.tipo] || '#94a3b8',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                      marginTop: '2px',
+                      border: `1px solid ${COLORES[n.tipo] || '#666'}35`,
+                    }}>
+                      {ICONOS[n.tipo] || ICONOS.aviso}
+                    </div>
+
+                    {/* Texto */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '6px',
+                        marginBottom: '3px',
+                      }}>
+                        <div style={{
+                          color: n.leida ? '#cbd5e1' : '#fff',
+                          fontSize: '13.5px',
+                          fontWeight: n.leida ? 600 : 800,
+                          lineHeight: 1.25,
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                        }}>
+                          {n.titulo}
+                        </div>
+                        {!n.leida && (
+                          <span style={{
+                            width: '8px',
+                            height: '8px',
+                            borderRadius: '50%',
+                            backgroundColor: 'var(--color-accent, #f97316)',
+                            flexShrink: 0,
+                            boxShadow: '0 0 8px rgba(249, 115, 22, 0.8)',
+                          }} />
+                        )}
+                      </div>
+
+                      <div style={{
+                        color: n.leida ? '#94a3b8' : '#cbd5e1',
+                        fontSize: '12px',
+                        lineHeight: 1.45,
+                        display: '-webkit-box',
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical',
+                        overflow: 'hidden',
+                      }}>
+                        {n.cuerpo}
+                      </div>
+
+                      <div style={{
+                        color: '#64748b',
+                        fontSize: '10.5px',
+                        marginTop: '5px',
+                        fontWeight: 600,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}>
+                        <span>🕒</span> {formatRelativo(n.created_at)}
+                      </div>
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+
+            {/* Footer */}
+            <div style={{
+              padding: '12px 18px',
+              borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '10px',
+              backgroundColor: 'rgba(255, 255, 255, 0.02)',
+            }}>
+              {typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default' ? (
+                <button
+                  onClick={async () => {
+                    const ok = await registrarPushNotificaciones()
+                    setPushGranted(ok)
+                  }}
+                  style={{
+                    background: 'var(--color-accent-light, rgba(249, 115, 22, 0.12))',
+                    border: '1px solid var(--border-accent, rgba(249, 115, 22, 0.3))',
+                    color: 'var(--color-accent, #f97316)',
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    padding: '5px 10px',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}
+                >
+                  🔔 Activar alertas push
+                </button>
+              ) : (
+                <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>
+                  {pushGranted || (typeof Notification !== 'undefined' && Notification.permission === 'granted')
+                    ? '✓ Alertas push activas'
+                    : ''}
+                </span>
+              )}
+
               <button
-                onClick={async () => {
-                  const ok = await registrarPushNotificaciones()
-                  setPushGranted(ok)
-                }}
+                onClick={() => setOpen(false)}
                 style={{
-                  background: 'var(--color-accent-light, rgba(249, 115, 22, 0.12))',
-                  border: '1px solid var(--border-accent, rgba(249, 115, 22, 0.3))',
-                  color: 'var(--color-accent, #f97316)',
-                  fontSize: '11px',
+                  background: 'none',
+                  border: 'none',
+                  color: '#94a3b8',
+                  fontSize: '12px',
                   fontWeight: 700,
+                  cursor: 'pointer',
                   padding: '4px 8px',
-                  borderRadius: '6px',
-                  cursor: 'pointer'
                 }}
               >
-                🔔 Activar avisos push
+                Cerrar
               </button>
-            ) : (
-              <span style={{ fontSize: '11px', color: '#555' }}>
-                {pushGranted || (typeof Notification !== 'undefined' && Notification.permission === 'granted') ? '✓ Notificaciones activas' : ''}
-              </span>
-            )}
-
-            <button
-              onClick={() => setOpen(false)}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: '#71717a',
-                fontSize: '12px',
-                cursor: 'pointer',
-              }}
-            >
-              Cerrar
-            </button>
+            </div>
           </div>
-        </div>
+        </>,
+        document.body
       )}
 
-      {/* Animación del badge */}
+      {/* Estilos de animación globales */}
       <style>{`
         @keyframes bell-pulse {
           0%, 100% { transform: scale(1); }
-          50% { transform: scale(1.15); }
+          50% { transform: scale(1.18); }
+        }
+        @keyframes notif-fade {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes notif-pop {
+          from {
+            opacity: 0;
+            transform: scale(0.96) translateY(-6px);
+          }
+          to {
+            opacity: 1;
+            transform: scale(1) translateY(0);
+          }
         }
       `}</style>
-    </div>
+    </>
   )
 }

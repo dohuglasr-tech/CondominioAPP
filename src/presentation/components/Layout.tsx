@@ -977,7 +977,7 @@ export const Layout: React.FC = () => {
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
-          max-width: 180px;
+          max-width: min(240px, calc(100vw - 180px));
         }
         .mobile-header-apto {
           color: var(--color-accent, #f97316);
@@ -1297,7 +1297,7 @@ export const Layout: React.FC = () => {
         }
 
         /* ─── RESPONSIVE RULES ──────────────────────────── */
-        @media (max-width: 768px) {
+        @media (max-width: 860px) {
           .layout-container {
             position: fixed;
             top: 0; left: 0; right: 0; bottom: 0;
