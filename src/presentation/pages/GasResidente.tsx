@@ -131,7 +131,8 @@ export const GasResidente: React.FC = () => {
         'postgres_changes',
         { event: '*', schema: 'public', table: 'casos_comunidad' },
         (payload: any) => {
-          if (payload?.new?.tipo === 'config_gas_servicio' || payload?.old?.tipo === 'config_gas_servicio') {
+          const t = payload?.new?.tipo || payload?.old?.tipo
+          if (t === 'config_gas_servicio' || (typeof t === 'string' && t.startsWith('gas_'))) {
             appCache.invalidateTags(['gas', 'saldos'])
             cargarDatos(true)
           }
