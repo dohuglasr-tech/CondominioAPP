@@ -13,9 +13,12 @@ import {
   reiniciarDatosGasAFabrica,
   guardarDeudaAnteriorGas,
   eliminarDeudaAnteriorGas,
+  eliminarDeudaAnteriorEdificioGas,
   guardarDeudaMesGas,
   eliminarDeudaMesGas,
+  eliminarDeudaMesEdificioGas,
   eliminarTodasLasDeudasGasApartamento,
+  eliminarTodasLasDeudasGasEdificio,
   GasServicioData,
   LlenadoGas,
   DetallePagoAptoGas,
@@ -62,10 +65,13 @@ export const AdminGas: React.FC = () => {
   const [modalEliminarDeudaOpen, setModalEliminarDeudaOpen] = useState(false)
   const [eliminandoDeuda, setEliminandoDeuda] = useState(false)
   const [formEliminarDeuda, setFormEliminarDeuda] = useState({
+    aplicarATodoEdificio: false,
     apartamentoId: '',
     apartamentoNumero: '',
     tipoEliminacion: 'anterior' as 'anterior' | 'mes' | 'todas',
-    mesKey: '2026-10'
+    mesKey: '2026-10',
+    checkConfirmacion: false,
+    palabraConfirmacion: ''
   })
 
   // Modal de Celda Interactiva en la Matriz de Deudas de Gas
@@ -635,39 +641,88 @@ export const AdminGas: React.FC = () => {
 
   const handleEliminarDeudaModal = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!formEliminarDeuda.apartamentoNumero) return
-    const aptoNum = formEliminarDeuda.apartamentoNumero
+    const esEdificio = formEliminarDeuda.aplicarATodoEdificio
     const tipo = formEliminarDeuda.tipoEliminacion
 
-    const msg = tipo === 'anterior'
-      ? `¿Eliminar la deuda anterior de gas del Apto ${aptoNum}?`
-      : tipo === 'mes'
-      ? `¿Eliminar la deuda de gas del mes ${formEliminarDeuda.mesKey} para el Apto ${aptoNum}?`
-      : `¿Eliminar TODAS las deudas de gas (anterior y mensual) del Apto ${aptoNum}?`
-
-    if (!window.confirm(msg)) return
-
-    setEliminandoDeuda(true)
-    try {
-      if (tipo === 'anterior') {
-        const res = await eliminarDeudaAnteriorGas(aptoNum)
-        if (res.success && res.data) setData(res.data)
-        showToast(`Deuda anterior del Apto ${aptoNum} eliminada`)
-      } else if (tipo === 'mes') {
-        const res = await eliminarDeudaMesGas(formEliminarDeuda.mesKey || `${calAnio}-10`, aptoNum)
-        if (res.success && res.data) setData(res.data)
-        showToast(`Deuda de mes del Apto ${aptoNum} eliminada`)
-      } else if (tipo === 'todas') {
-        const res = await eliminarTodasLasDeudasGasApartamento(aptoNum)
-        if (res.success && res.data) setData(res.data)
-        showToast(`Todas las deudas de gas del Apto ${aptoNum} fueron eliminadas`)
+    if (esEdificio) {
+      if (formEliminarDeuda.palabraConfirmacion.trim() !== 'BORRAR') {
+        showToast('Escribe BORRAR para confirmar la eliminación de todo el edificio')
+        return
       }
-      setModalEliminarDeudaOpen(false)
-      await cargarDatos()
-    } catch (err: any) {
-      showToast(err.message || 'Error al eliminar deuda')
-    } finally {
-      setEliminandoDeuda(false)
+
+      const descConcepto = tipo === 'anterior'
+        ? 'la DEUDA ANTERIOR HISTÓRICA'
+        : tipo === 'mes'
+        ? `la DEUDA DE GAS DEL MES ${formEliminarDeuda.mesKey}`
+        : 'TODAS LAS DEUDAS DE GAS (Anterior + Mensuales)'
+
+      if (!window.confirm(`🚨 CONFIRMACIÓN CRÍTICA:\n\n¿Estás 100% seguro de que deseas eliminar ${descConcepto} de TODO EL EDIFICIO (${apartamentosDb.length} apartamentos)?\n\nTodos los saldos quedarán en 0 y solventes. Esta acción no se puede deshacer.`)) {
+        return
+      }
+
+      setEliminandoDeuda(true)
+      try {
+        if (tipo === 'anterior') {
+          const res = await eliminarDeudaAnteriorEdificioGas()
+          if (res.success && res.data) setData(res.data)
+          showToast('Deuda anterior de todo el edificio eliminada con éxito')
+        } else if (tipo === 'mes') {
+          const res = await eliminarDeudaMesEdificioGas(formEliminarDeuda.mesKey || `${calAnio}-10`)
+          if (res.success && res.data) setData(res.data)
+          showToast(`Deuda de gas del mes ${formEliminarDeuda.mesKey} eliminada para todo el edificio`)
+        } else if (tipo === 'todas') {
+          const res = await eliminarTodasLasDeudasGasEdificio()
+          if (res.success && res.data) setData(res.data)
+          showToast('Todas las deudas de gas de todo el edificio fueron eliminadas')
+        }
+        setModalEliminarDeudaOpen(false)
+        await cargarDatos()
+      } catch (err: any) {
+        showToast(err.message || 'Error al eliminar deuda de todo el edificio')
+      } finally {
+        setEliminandoDeuda(false)
+      }
+    } else {
+      if (!formEliminarDeuda.apartamentoNumero) {
+        showToast('Selecciona un apartamento')
+        return
+      }
+      if (!formEliminarDeuda.checkConfirmacion) {
+        showToast('Marca la casilla de confirmación para continuar')
+        return
+      }
+
+      const aptoNum = formEliminarDeuda.apartamentoNumero
+      const msg = tipo === 'anterior'
+        ? `¿Eliminar la deuda anterior de gas del Apto ${aptoNum}?`
+        : tipo === 'mes'
+        ? `¿Eliminar la deuda de gas del mes ${formEliminarDeuda.mesKey} para el Apto ${aptoNum}?`
+        : `¿Eliminar TODAS las deudas de gas (anterior y mensual) del Apto ${aptoNum}?`
+
+      if (!window.confirm(msg)) return
+
+      setEliminandoDeuda(true)
+      try {
+        if (tipo === 'anterior') {
+          const res = await eliminarDeudaAnteriorGas(aptoNum)
+          if (res.success && res.data) setData(res.data)
+          showToast(`Deuda anterior del Apto ${aptoNum} eliminada`)
+        } else if (tipo === 'mes') {
+          const res = await eliminarDeudaMesGas(formEliminarDeuda.mesKey || `${calAnio}-10`, aptoNum)
+          if (res.success && res.data) setData(res.data)
+          showToast(`Deuda de mes del Apto ${aptoNum} eliminada`)
+        } else if (tipo === 'todas') {
+          const res = await eliminarTodasLasDeudasGasApartamento(aptoNum)
+          if (res.success && res.data) setData(res.data)
+          showToast(`Todas las deudas de gas del Apto ${aptoNum} fueron eliminadas`)
+        }
+        setModalEliminarDeudaOpen(false)
+        await cargarDatos()
+      } catch (err: any) {
+        showToast(err.message || 'Error al eliminar deuda')
+      } finally {
+        setEliminandoDeuda(false)
+      }
     }
   }
 
@@ -4907,42 +4962,135 @@ export const AdminGas: React.FC = () => {
 
             <form onSubmit={handleEliminarDeudaModal} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
               <div style={{ padding: '20px 24px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                {/* Selector de Apartamento */}
+                {/* Selector de Alcance: Apartamento Individual vs Todo el Edificio */}
                 <div>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#cbd5e1', marginBottom: '6px' }}>
-                    Apartamento con deuda a eliminar:
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#cbd5e1', marginBottom: '8px' }}>
+                    Alcance de la Eliminación:
                   </label>
-                  <select
-                    value={formEliminarDeuda.apartamentoNumero}
-                    onChange={e => {
-                      const selNum = e.target.value
-                      const aptoObj = apartamentosDb.find(a => a.numero === selNum)
-                      setFormEliminarDeuda(prev => ({
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: '8px',
+                    backgroundColor: '#030712',
+                    padding: '4px',
+                    borderRadius: '12px',
+                    border: '1px solid #1f2937'
+                  }}>
+                    <button
+                      type="button"
+                      onClick={() => setFormEliminarDeuda(prev => ({
                         ...prev,
-                        apartamentoNumero: selNum,
-                        apartamentoId: aptoObj?.id || selNum
-                      }))
-                    }}
-                    required
-                    style={{
-                      width: '100%',
-                      backgroundColor: '#030712',
-                      border: '1px solid #374151',
-                      borderRadius: '10px',
-                      padding: '10px 14px',
-                      color: '#fff',
-                      fontSize: '13px',
-                      fontWeight: 600
-                    }}
-                  >
-                    <option value="">-- Elige un apartamento --</option>
-                    {apartamentosDb.map(a => (
-                      <option key={a.id || a.numero} value={a.numero}>
-                        Apto {a.numero} {a.propietario_nombre ? `· ${a.propietario_nombre}` : ''}
-                      </option>
-                    ))}
-                  </select>
+                        aplicarATodoEdificio: false,
+                        palabraConfirmacion: '',
+                        checkConfirmacion: false
+                      }))}
+                      style={{
+                        padding: '9px 12px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        backgroundColor: !formEliminarDeuda.aplicarATodoEdificio ? '#1f2937' : 'transparent',
+                        color: !formEliminarDeuda.aplicarATodoEdificio ? '#fff' : '#94a3b8',
+                        fontSize: '12px',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px'
+                      }}
+                    >
+                      <span>🏠</span>
+                      <span>Un Apartamento</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormEliminarDeuda(prev => ({
+                        ...prev,
+                        aplicarATodoEdificio: true,
+                        apartamentoNumero: 'EDIFICIO',
+                        palabraConfirmacion: '',
+                        checkConfirmacion: false
+                      }))}
+                      style={{
+                        padding: '9px 12px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        backgroundColor: formEliminarDeuda.aplicarATodoEdificio ? '#ef4444' : 'transparent',
+                        color: '#fff',
+                        fontSize: '12px',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        boxShadow: formEliminarDeuda.aplicarATodoEdificio ? '0 2px 10px rgba(239, 68, 68, 0.4)' : 'none'
+                      }}
+                    >
+                      <span>🏢</span>
+                      <span>Todo el Edificio</span>
+                    </button>
+                  </div>
                 </div>
+
+                {/* Si es individual, Selector de Apartamento */}
+                {!formEliminarDeuda.aplicarATodoEdificio ? (
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#cbd5e1', marginBottom: '6px' }}>
+                      Apartamento con deuda a eliminar:
+                    </label>
+                    <select
+                      value={formEliminarDeuda.apartamentoNumero}
+                      onChange={e => {
+                        const selNum = e.target.value
+                        const aptoObj = apartamentosDb.find(a => a.numero === selNum)
+                        setFormEliminarDeuda(prev => ({
+                          ...prev,
+                          apartamentoNumero: selNum,
+                          apartamentoId: aptoObj?.id || selNum
+                        }))
+                      }}
+                      required={!formEliminarDeuda.aplicarATodoEdificio}
+                      style={{
+                        width: '100%',
+                        backgroundColor: '#030712',
+                        border: '1px solid #374151',
+                        borderRadius: '10px',
+                        padding: '10px 14px',
+                        color: '#fff',
+                        fontSize: '13px',
+                        fontWeight: 600
+                      }}
+                    >
+                      <option value="">-- Elige un apartamento --</option>
+                      {apartamentosDb.map(a => (
+                        <option key={a.id || a.numero} value={a.numero}>
+                          Apto {a.numero} {a.propietario_nombre ? `· ${a.propietario_nombre}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  <div style={{
+                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                    border: '1px solid rgba(239, 68, 68, 0.35)',
+                    borderRadius: '12px',
+                    padding: '12px 16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px'
+                  }}>
+                    <span style={{ fontSize: '22px' }}>🏢</span>
+                    <div>
+                      <div style={{ fontSize: '13px', fontWeight: 800, color: '#fca5a5' }}>
+                        Borrando deuda de TODO EL EDIFICIO
+                      </div>
+                      <div style={{ fontSize: '11px', color: '#cbd5e1', marginTop: '2px' }}>
+                        Se condonará la deuda de los <strong>{apartamentosDb.length} apartamentos</strong> registrados en la comunidad.
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Opciones de alcance */}
                 <div>
@@ -4970,10 +5118,10 @@ export const AdminGas: React.FC = () => {
                       />
                       <div>
                         <div style={{ fontSize: '13px', fontWeight: 700, color: '#fff' }}>
-                          Solo Deuda Anterior Histórica
+                          {formEliminarDeuda.aplicarATodoEdificio ? 'Solo Deuda Anterior de TODO el Edificio' : 'Solo Deuda Anterior Histórica'}
                         </div>
                         <div style={{ fontSize: '11px', color: '#94a3b8' }}>
-                          Elimina el saldo acumulado previo a este año
+                          {formEliminarDeuda.aplicarATodoEdificio ? 'Elimina los saldos anteriores acumulados de todos los inmuebles' : 'Elimina el saldo acumulado previo a este año'}
                         </div>
                       </div>
                     </label>
@@ -4998,10 +5146,10 @@ export const AdminGas: React.FC = () => {
                       />
                       <div style={{ flex: 1 }}>
                         <div style={{ fontSize: '13px', fontWeight: 700, color: '#fff' }}>
-                          Deuda de un Mes Específico
+                          {formEliminarDeuda.aplicarATodoEdificio ? 'Deuda de un Mes Específico en TODO el Edificio' : 'Deuda de un Mes Específico'}
                         </div>
                         <div style={{ fontSize: '11px', color: '#94a3b8' }}>
-                          Borra la obligación de gas del mes seleccionado
+                          {formEliminarDeuda.aplicarATodoEdificio ? 'Borra la cuota mensual de todos los apartamentos en el mes elegido' : 'Borra la obligación de gas del mes seleccionado'}
                         </div>
                       </div>
                     </label>
@@ -5051,15 +5199,87 @@ export const AdminGas: React.FC = () => {
                       />
                       <div>
                         <div style={{ fontSize: '13px', fontWeight: 800, color: '#fca5a5' }}>
-                          TODAS las Deudas de Gas (Anterior + Todos los Meses)
+                          {formEliminarDeuda.aplicarATodoEdificio ? 'TODAS las Deudas de Gas de TODO EL EDIFICIO' : 'TODAS las Deudas de Gas (Anterior + Todos los Meses)'}
                         </div>
                         <div style={{ fontSize: '11px', color: '#94a3b8' }}>
-                          Limpia por completo cualquier deuda y lo deja solvente
+                          {formEliminarDeuda.aplicarATodoEdificio ? 'Deja a absolutamente todos los apartamentos en 0 deuda y solventes' : 'Limpia por completo cualquier deuda y lo deja solvente'}
                         </div>
                       </div>
                     </label>
                   </div>
                 </div>
+
+                {/* BLOQUE DE CONFIRMACIÓN OBLIGATORIA */}
+                {formEliminarDeuda.aplicarATodoEdificio ? (
+                  <div style={{
+                    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+                    border: '1px solid rgba(239, 68, 68, 0.4)',
+                    borderRadius: '12px',
+                    padding: '14px 16px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '10px'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '16px' }}>🔒</span>
+                      <span style={{ fontSize: '12px', fontWeight: 800, color: '#fca5a5', textTransform: 'uppercase' }}>
+                        Confirmación de Seguridad Obligatoria
+                      </span>
+                    </div>
+                    <p style={{ margin: 0, fontSize: '12px', color: '#cbd5e1', lineHeight: 1.4 }}>
+                      Para autorizar el borrado de la deuda de <strong>TODO EL EDIFICIO</strong>, escribe la palabra <strong style={{ color: '#ef4444', letterSpacing: '1px' }}>BORRAR</strong> a continuación:
+                    </p>
+                    <input
+                      type="text"
+                      value={formEliminarDeuda.palabraConfirmacion}
+                      onChange={e => setFormEliminarDeuda(prev => ({ ...prev, palabraConfirmacion: e.target.value.toUpperCase() }))}
+                      placeholder="Escribe BORRAR aquí"
+                      autoComplete="off"
+                      style={{
+                        width: '100%',
+                        backgroundColor: '#030712',
+                        border: formEliminarDeuda.palabraConfirmacion.trim() === 'BORRAR' ? '2px solid #10b981' : '1px solid #ef4444',
+                        borderRadius: '8px',
+                        padding: '10px 14px',
+                        color: '#fff',
+                        fontSize: '14px',
+                        fontWeight: 800,
+                        letterSpacing: '2px',
+                        textAlign: 'center',
+                        outline: 'none',
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                    <div style={{ fontSize: '11px', textAlign: 'center', fontWeight: 600 }}>
+                      {formEliminarDeuda.palabraConfirmacion.trim() === 'BORRAR' ? (
+                        <span style={{ color: '#34d399' }}>✓ Confirmación aceptada. Botón de eliminación habilitado.</span>
+                      ) : (
+                        <span style={{ color: '#f87171' }}>⚠️ Escribe exactamente "BORRAR" para habilitar la eliminación.</span>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <label style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+                    border: formEliminarDeuda.checkConfirmacion ? '1px solid #10b981' : '1px solid #374151',
+                    borderRadius: '10px',
+                    padding: '10px 14px',
+                    cursor: 'pointer'
+                  }}>
+                    <input
+                      type="checkbox"
+                      checked={formEliminarDeuda.checkConfirmacion}
+                      onChange={e => setFormEliminarDeuda(prev => ({ ...prev, checkConfirmacion: e.target.checked }))}
+                      style={{ width: '18px', height: '18px', accentColor: '#ef4444', cursor: 'pointer' }}
+                    />
+                    <span style={{ fontSize: '12px', color: '#cbd5e1', fontWeight: 600 }}>
+                      Confirmo que deseo perdonar/eliminar esta deuda del Apto {formEliminarDeuda.apartamentoNumero || 'seleccionado'}
+                    </span>
+                  </label>
+                )}
 
                 <div style={{
                   backgroundColor: 'rgba(239, 68, 68, 0.08)',
@@ -5102,7 +5322,12 @@ export const AdminGas: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  disabled={eliminandoDeuda || !formEliminarDeuda.apartamentoNumero}
+                  disabled={
+                    eliminandoDeuda ||
+                    (formEliminarDeuda.aplicarATodoEdificio
+                      ? formEliminarDeuda.palabraConfirmacion.trim() !== 'BORRAR'
+                      : (!formEliminarDeuda.apartamentoNumero || !formEliminarDeuda.checkConfirmacion))
+                  }
                   style={{
                     padding: '9px 20px',
                     backgroundColor: '#ef4444',
@@ -5111,11 +5336,28 @@ export const AdminGas: React.FC = () => {
                     borderRadius: '10px',
                     fontSize: '12px',
                     fontWeight: 800,
-                    cursor: eliminandoDeuda || !formEliminarDeuda.apartamentoNumero ? 'not-allowed' : 'pointer',
+                    cursor:
+                      eliminandoDeuda ||
+                      (formEliminarDeuda.aplicarATodoEdificio
+                        ? formEliminarDeuda.palabraConfirmacion.trim() !== 'BORRAR'
+                        : (!formEliminarDeuda.apartamentoNumero || !formEliminarDeuda.checkConfirmacion))
+                        ? 'not-allowed'
+                        : 'pointer',
+                    opacity:
+                      eliminandoDeuda ||
+                      (formEliminarDeuda.aplicarATodoEdificio
+                        ? formEliminarDeuda.palabraConfirmacion.trim() !== 'BORRAR'
+                        : (!formEliminarDeuda.apartamentoNumero || !formEliminarDeuda.checkConfirmacion))
+                        ? 0.5
+                        : 1,
                     boxShadow: '0 4px 12px rgba(239, 68, 68, 0.4)'
                   }}
                 >
-                  {eliminandoDeuda ? 'Eliminando...' : 'Confirmar Eliminación'}
+                  {eliminandoDeuda
+                    ? 'Eliminando...'
+                    : formEliminarDeuda.aplicarATodoEdificio
+                    ? 'Confirmar Eliminación de Todo el Edificio'
+                    : 'Confirmar Eliminación'}
                 </button>
               </div>
             </form>

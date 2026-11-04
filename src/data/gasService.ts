@@ -1636,7 +1636,7 @@ export async function guardarDeudaMesGas(params: {
 }
 
 /**
- * Elimina la deuda de un mes específico para un apartamento
+ * Elimina la deuda de un mes específico para un apartamento (dejándolo en saldo 0 y solvente)
  */
 export async function eliminarDeudaMesGas(
   mesKey: string,
@@ -1648,12 +1648,43 @@ export async function eliminarDeudaMesGas(
     const jornada = actual.jornadas.find(j => j.mes === mesKey)
 
     if (jornada) {
-      await supabase
+      // Buscar si ya existe fila de pago para este apto y jornada
+      const { data: existingPagos } = await supabase
         .from('casos_comunidad')
-        .delete()
+        .select('id, descripcion')
         .eq('tipo', TIPO_GAS_PAGO)
         .ilike('titulo', `%${cleanKey}%`)
         .ilike('titulo', `%${jornada.id}%`)
+        .limit(1)
+
+      const pagoRowId = existingPagos && existingPagos.length > 0 ? existingPagos[0].id : generarUUID()
+
+      const pagoDetalle: DetallePagoAptoGas & { jornadaId: string } = {
+        jornadaId: jornada.id,
+        apartamentoId: cleanKey,
+        apartamentoNumero: cleanKey,
+        estado: 'pagado',
+        fechaPago: new Date().toISOString().split('T')[0],
+        moneda: jornada.monedaPrincipal || 'BS',
+        montoBs: 0,
+        montoUsd: 0,
+        metodoPago: 'otro',
+        referencia: 'CONDONADA',
+        observaciones: 'Deuda eliminada / perdonada por administración'
+      }
+
+      await supabase.from('casos_comunidad').upsert({
+        id: pagoRowId,
+        tipo: TIPO_GAS_PAGO,
+        titulo: `Pago Gas Apto ${cleanKey} - ${jornada.id}`,
+        descripcion: JSON.stringify(pagoDetalle),
+        monto_usd: 0,
+        monto_bs: 0,
+        moneda: jornada.monedaPrincipal || 'BS',
+        estado: 'pagado',
+        fecha: pagoDetalle.fechaPago,
+        updated_at: new Date().toISOString()
+      })
     }
 
     appCache.invalidate('gas_servicio_data_global')
@@ -1679,6 +1710,7 @@ export async function eliminarTodasLasDeudasGasApartamento(
 ): Promise<{ success: boolean; data?: GasServicioData; error?: string | null }> {
   try {
     const cleanKey = String(apartamentoKey || '').replace(/^APTO\.?\s*/i, '').trim()
+    const { data: actual } = await obtenerGasServicioData(true)
 
     // 1. Eliminar deuda anterior
     await supabase
@@ -1687,12 +1719,45 @@ export async function eliminarTodasLasDeudasGasApartamento(
       .eq('tipo', TIPO_GAS_DEUDA_ANTERIOR)
       .ilike('titulo', `%${cleanKey}%`)
 
-    // 2. Eliminar cuotas pendientes de gas_pago
-    await supabase
-      .from('casos_comunidad')
-      .delete()
-      .eq('tipo', TIPO_GAS_PAGO)
-      .ilike('titulo', `%${cleanKey}%`)
+    // 2. Para todas las jornadas existentes: marcar al apartamento como pagado con saldo 0
+    for (const jornada of actual.jornadas) {
+      const { data: existingPagos } = await supabase
+        .from('casos_comunidad')
+        .select('id, descripcion')
+        .eq('tipo', TIPO_GAS_PAGO)
+        .ilike('titulo', `%${cleanKey}%`)
+        .ilike('titulo', `%${jornada.id}%`)
+        .limit(1)
+
+      const pagoRowId = existingPagos && existingPagos.length > 0 ? existingPagos[0].id : generarUUID()
+
+      const pagoDetalle: DetallePagoAptoGas & { jornadaId: string } = {
+        jornadaId: jornada.id,
+        apartamentoId: cleanKey,
+        apartamentoNumero: cleanKey,
+        estado: 'pagado',
+        fechaPago: new Date().toISOString().split('T')[0],
+        moneda: jornada.monedaPrincipal || 'BS',
+        montoBs: 0,
+        montoUsd: 0,
+        metodoPago: 'otro',
+        referencia: 'CONDONADA',
+        observaciones: 'Todas las deudas de gas eliminadas por administración'
+      }
+
+      await supabase.from('casos_comunidad').upsert({
+        id: pagoRowId,
+        tipo: TIPO_GAS_PAGO,
+        titulo: `Pago Gas Apto ${cleanKey} - ${jornada.id}`,
+        descripcion: JSON.stringify(pagoDetalle),
+        monto_usd: 0,
+        monto_bs: 0,
+        moneda: jornada.monedaPrincipal || 'BS',
+        estado: 'pagado',
+        fecha: pagoDetalle.fechaPago,
+        updated_at: new Date().toISOString()
+      })
+    }
 
     appCache.invalidate('gas_servicio_data_global')
     appCache.invalidateTags(['gas', 'deudas_gas', 'saldos', 'recibos', 'mora'])
@@ -1705,6 +1770,192 @@ export async function eliminarTodasLasDeudasGasApartamento(
     return { success: true, data: frescos, error: null }
   } catch (err: any) {
     console.error('[gasService] Error en eliminarTodasLasDeudasGasApartamento:', err)
+    return { success: false, error: err.message }
+  }
+}
+
+/**
+ * Elimina la Deuda Anterior de Gas de TODO EL EDIFICIO (todos los apartamentos)
+ */
+export async function eliminarDeudaAnteriorEdificioGas(): Promise<{
+  success: boolean
+  data?: GasServicioData
+  error?: string | null
+}> {
+  try {
+    await supabase
+      .from('casos_comunidad')
+      .delete()
+      .eq('tipo', TIPO_GAS_DEUDA_ANTERIOR)
+
+    appCache.invalidate('gas_servicio_data_global')
+    appCache.invalidateTags(['gas', 'deudas_gas', 'saldos', 'recibos', 'mora'])
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('condominio_gas_updated'))
+    }
+
+    const { data: frescos } = await obtenerGasServicioData(true)
+    return { success: true, data: frescos, error: null }
+  } catch (err: any) {
+    console.error('[gasService] Error en eliminarDeudaAnteriorEdificioGas:', err)
+    return { success: false, error: err.message }
+  }
+}
+
+/**
+ * Elimina la deuda de gas de un mes específico para TODO EL EDIFICIO
+ */
+export async function eliminarDeudaMesEdificioGas(
+  mesKey: string
+): Promise<{ success: boolean; data?: GasServicioData; error?: string | null }> {
+  try {
+    const { data: actual } = await obtenerGasServicioData(true)
+    const jornada = actual.jornadas.find(j => j.mes === mesKey)
+
+    if (jornada) {
+      // 1. Poner costo por apartamento en 0 para la jornada
+      const updatedJornada = {
+        ...jornada,
+        costoPorAptoBs: 0,
+        costoPorAptoUsd: 0,
+        metaTotalBs: 0,
+        metaTotalUsd: 0
+      }
+
+      await supabase
+        .from('casos_comunidad')
+        .update({
+          descripcion: JSON.stringify(updatedJornada),
+          monto_bs: 0,
+          monto_usd: 0,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', jornada.id)
+
+      // 2. Marcar cualquier pago pendiente de esta jornada como pagado con monto 0
+      const { data: pagosPendientes } = await supabase
+        .from('casos_comunidad')
+        .select('id, descripcion')
+        .eq('tipo', TIPO_GAS_PAGO)
+        .ilike('titulo', `%${jornada.id}%`)
+        .eq('estado', 'pendiente')
+
+      if (pagosPendientes && pagosPendientes.length > 0) {
+        for (const p of pagosPendientes) {
+          let desc: any = {}
+          try { desc = JSON.parse(p.descripcion) } catch {}
+          desc.estado = 'pagado'
+          desc.montoBs = 0
+          desc.montoUsd = 0
+          desc.observaciones = 'Deuda condonada / eliminada para todo el edificio'
+
+          await supabase
+            .from('casos_comunidad')
+            .update({
+              estado: 'pagado',
+              monto_bs: 0,
+              monto_usd: 0,
+              descripcion: JSON.stringify(desc),
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', p.id)
+        }
+      }
+    }
+
+    appCache.invalidate('gas_servicio_data_global')
+    appCache.invalidateTags(['gas', 'deudas_gas', 'saldos', 'recibos', 'mora'])
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('condominio_gas_updated'))
+    }
+
+    const { data: frescos } = await obtenerGasServicioData(true)
+    return { success: true, data: frescos, error: null }
+  } catch (err: any) {
+    console.error('[gasService] Error en eliminarDeudaMesEdificioGas:', err)
+    return { success: false, error: err.message }
+  }
+}
+
+/**
+ * Elimina TODAS las deudas de gas de TODO EL EDIFICIO (Deuda Anterior + Todos los Meses)
+ */
+export async function eliminarTodasLasDeudasGasEdificio(): Promise<{
+  success: boolean
+  data?: GasServicioData
+  error?: string | null
+}> {
+  try {
+    const { data: actual } = await obtenerGasServicioData(true)
+
+    // 1. Eliminar todas las deudas anteriores
+    await supabase
+      .from('casos_comunidad')
+      .delete()
+      .eq('tipo', TIPO_GAS_DEUDA_ANTERIOR)
+
+    // 2. Para todas las jornadas existentes: poner sus costos por apartamento en 0
+    for (const jornada of actual.jornadas) {
+      const updatedJornada = {
+        ...jornada,
+        costoPorAptoBs: 0,
+        costoPorAptoUsd: 0,
+        metaTotalBs: 0,
+        metaTotalUsd: 0
+      }
+      await supabase
+        .from('casos_comunidad')
+        .update({
+          descripcion: JSON.stringify(updatedJornada),
+          monto_bs: 0,
+          monto_usd: 0,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', jornada.id)
+    }
+
+    // 3. Marcar o perdonar pagos pendientes de gas
+    const { data: pagosPendientes } = await supabase
+      .from('casos_comunidad')
+      .select('id, descripcion')
+      .eq('tipo', TIPO_GAS_PAGO)
+      .eq('estado', 'pendiente')
+
+    if (pagosPendientes && pagosPendientes.length > 0) {
+      for (const p of pagosPendientes) {
+        let desc: any = {}
+        try { desc = JSON.parse(p.descripcion) } catch {}
+        desc.estado = 'pagado'
+        desc.montoBs = 0
+        desc.montoUsd = 0
+        desc.observaciones = 'Deuda condonada general edificio'
+
+        await supabase
+          .from('casos_comunidad')
+          .update({
+            estado: 'pagado',
+            monto_bs: 0,
+            monto_usd: 0,
+            descripcion: JSON.stringify(desc),
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', p.id)
+      }
+    }
+
+    appCache.invalidate('gas_servicio_data_global')
+    appCache.invalidateTags(['gas', 'deudas_gas', 'saldos', 'recibos', 'mora'])
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('condominio_gas_updated'))
+    }
+
+    const { data: frescos } = await obtenerGasServicioData(true)
+    return { success: true, data: frescos, error: null }
+  } catch (err: any) {
+    console.error('[gasService] Error en eliminarTodasLasDeudasGasEdificio:', err)
     return { success: false, error: err.message }
   }
 }
