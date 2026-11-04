@@ -34,6 +34,7 @@ import { AdminCasos } from './presentation/pages/admin/AdminCasos'
 import { AdminMora } from './presentation/pages/admin/AdminMora'
 import { AdminCalendarioDeudas } from './presentation/pages/admin/AdminCalendarioDeudas'
 import { AdminHistorial } from './presentation/pages/admin/AdminHistorial'
+import { AdminLogs } from './presentation/pages/admin/AdminLogs'
 import { AdminGas } from './presentation/pages/admin/AdminGas'
 import { AdminLocales } from './presentation/pages/admin/AdminLocales'
 import { ListaMoraResidente } from './presentation/pages/ListaMoraResidente'
@@ -338,6 +339,7 @@ function AppShell() {
           <Route path="gas"        element={<AdminGas />} />
           <Route path="locales"    element={<AdminLocales />} />
           <Route path="historial"  element={<AdminHistorial />} />
+          <Route path="logs"       element={<AdminLogs />} />
         </Route>
 
         <Route

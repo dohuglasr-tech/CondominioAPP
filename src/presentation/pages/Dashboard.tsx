@@ -15,6 +15,7 @@ import { obtenerLocalesPorApartamento, LocalComercial } from '../../data/locales
 import { obtenerJunta, MiembroJunta } from '../../data/juntaService'
 import { ModalCartaSolvencia } from '../components/ModalCartaSolvencia'
 import { DatosCartaSolvencia, obtenerMesActualEs, descargarSolvenciaPDF } from '../../utils/solvenciaPdfGenerator'
+import { registrarAccesoResidente } from '../../data/accesosService'
 
 interface PagoItem {
   id: string
@@ -70,6 +71,18 @@ export function Dashboard() {
   useEffect(() => {
     tasaValidaRef.current = tasaValida
   }, [tasaValida])
+
+  // ── Registrar conexión del residente (Fire-and-forget, throttle por sesión) ──
+  useEffect(() => {
+    const rolActual = perfil?.rol
+    const esResidente = rolActual === 'residente' || (!rolActual && aptoNumero)
+    if (esResidente) {
+      const numApto = aptDetalle?.numero || aptoNumero
+      if (numApto) {
+        registrarAccesoResidente(String(numApto), apartamentoId, residenteNombre)
+      }
+    }
+  }, [aptoNumero, apartamentoId, residenteNombre, perfil?.rol, aptDetalle?.numero])
 
   // ── Cálculo consolidado y desglose de deudas ──────────────────────────────
   // Si el recibo no está indexado (o la deuda es manual en Bs), queda fija en Bolívares.
