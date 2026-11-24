@@ -1011,7 +1011,11 @@ export const AdminMora: React.FC = () => {
                       display: 'inline-block', marginTop: '6px', fontSize: '11px', fontWeight: 800,
                       color: riesgoMeta.color, background: 'rgba(0,0,0,0.4)', padding: '2px 8px', borderRadius: '6px'
                     }}>
-                      {d.tasa_riesgo === 'azul' ? '🔵 Recibo del mes (<1m)' : `⏳ ${d.meses_deuda} meses de atraso`}
+                      {d.tasa_riesgo === 'azul'
+                        ? (((d.desglose?.cuotas_especiales?.length || 0) > 0 && (d.desglose?.recibos_bs?.length || 0) === 0 && (d.desglose?.recibos_usd?.length || 0) === 0)
+                          ? '✨ Cuota Extraordinaria vigente'
+                          : '🔵 Recibo del mes (<1m)')
+                        : `⏳ ${d.meses_deuda} meses de atraso`}
                     </div>
                   </div>
                 </div>

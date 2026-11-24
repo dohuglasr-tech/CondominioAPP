@@ -27,6 +27,7 @@ import {
   PosicionInsercionColumna,
   EventoCalendarioCuota
 } from '../../../data/calendarioDeudasService'
+import { clasificarCuotaExtraordinaria, obtenerFechaHoyLocalIso } from '../../../data/moraService'
 import { useAuth } from '../../../application/contexts/AuthContext'
 import { SkeletonTable } from '../../components/Skeleton'
 import { generarCarteleraAscensorPDF } from '../../../utils/carteleraAscensorPdfGenerator'
@@ -565,8 +566,10 @@ export const AdminCalendarioDeudas: React.FC = () => {
       })
 
       const celdasPers = f.valores_personalizados || {}
+      const hoyIsoOpt = obtenerFechaHoyLocalIso()
       configuracion.columnas.forEach(col => {
         if (col.tipo === 'cuota_especial') {
+          if (clasificarCuotaExtraordinaria(col.fechaEmision, col.fechaLimite, hoyIsoOpt) === 'programada') return
           const val = celdasPers[col.id]
           if (val && val.estado === 'pendiente' && val.monto > 0) {
             pendingCount++
@@ -2308,13 +2311,15 @@ export const AdminCalendarioDeudas: React.FC = () => {
                       }
                     })
                     const pct = asignados > 0 ? Math.round((pagados / asignados) * 100) : 0
-                    const hoyIso = new Date().toISOString().slice(0, 10)
-                    const vencida = Boolean(col.fechaLimite && col.fechaLimite < hoyIso && pagados < asignados)
+                    const hoyIso = obtenerFechaHoyLocalIso()
+                    const estadoVigencia = clasificarCuotaExtraordinaria(col.fechaEmision, col.fechaLimite, hoyIso)
+                    const esProgramada = estadoVigencia === 'programada'
+                    const vencida = estadoVigencia === 'vencida' && pagados < asignados
 
                     return (
                       <div key={`${itemAnio}-${col.id}`} style={{
                         backgroundColor: '#111827',
-                        border: `1px solid ${vencida ? 'rgba(239, 68, 68, 0.35)' : 'rgba(234, 179, 8, 0.22)'}`,
+                        border: `1px solid ${vencida ? 'rgba(239, 68, 68, 0.35)' : esProgramada ? 'rgba(56, 189, 248, 0.35)' : 'rgba(234, 179, 8, 0.22)'}`,
                         borderRadius: '10px',
                         padding: '12px'
                       }}>
@@ -2336,6 +2341,16 @@ export const AdminCalendarioDeudas: React.FC = () => {
                               <span style={{ fontSize: '10px', fontWeight: 700, padding: '1px 6px', borderRadius: '4px', backgroundColor: col.moneda === 'BS' ? 'rgba(234,88,12,0.2)' : 'rgba(59,130,246,0.2)', color: col.moneda === 'BS' ? '#fb923c' : '#93c5fd' }}>
                                 {col.moneda} {col.montoDefecto ? (col.moneda === 'BS' ? `Bs. ${fmtBs(col.montoDefecto)}` : `$${fmtUsd(col.montoDefecto)}`) : 'Variable'}
                               </span>
+                              {esProgramada && (
+                                <span style={{ fontSize: '10px', fontWeight: 800, color: '#38bdf8', backgroundColor: 'rgba(56,189,248,0.16)', padding: '1px 6px', borderRadius: '4px' }}>
+                                  🗓️ Programada · Desde {col.fechaEmision}
+                                </span>
+                              )}
+                              {!esProgramada && !vencida && (
+                                <span style={{ fontSize: '10px', fontWeight: 800, color: '#4ade80', backgroundColor: 'rgba(34,197,94,0.16)', padding: '1px 6px', borderRadius: '4px' }}>
+                                  ✅ Vigente
+                                </span>
+                              )}
                               {vencida && (
                                 <span style={{ fontSize: '10px', fontWeight: 800, color: '#f87171', backgroundColor: 'rgba(239,68,68,0.18)', padding: '1px 6px', borderRadius: '4px' }}>
                                   ⚠️ Vencida

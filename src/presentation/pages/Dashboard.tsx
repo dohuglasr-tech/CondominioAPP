@@ -1,11 +1,19 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuth } from '../../application/contexts/AuthContext'
+import { useTheme } from '../../application/contexts/ThemeContext'
 import { useBcvRate } from '../../data/useBcvRate'
 import { ReportarPagoModal } from '../components/ReportarPagoModal'
 import { supabase } from '../../data/supabase'
 import { appCache } from '../../data/cacheService'
 import { useNavigate } from 'react-router-dom'
-import { obtenerDeudaMoraApartamento, TASA_RIESGO_CONFIG, DeudaMoraItem, TasaRiesgoMora } from '../../data/moraService'
+import {
+  obtenerDeudaMoraApartamento,
+  TASA_RIESGO_CONFIG,
+  DeudaMoraItem,
+  TasaRiesgoMora,
+  formatearFechaCortaEs,
+  obtenerFechaHoyLocalIso
+} from '../../data/moraService'
 import { formatAlicuotaPct, getAlicuotaPctNumber } from '../../utils/alicuota'
 import { AvisoBanner } from '../components/AvisoBanner'
 import { obtenerSaldoAFavorApartamento } from '../../data/saldoFavorService'
@@ -39,6 +47,8 @@ const getTasaConfig = (tasa?: string) => {
 
 export function Dashboard() {
   const { perfil, config } = useAuth()
+  const { theme } = useTheme()
+  const isLight = theme === 'light'
   const navigate = useNavigate()
 
   const p = perfil as any
@@ -220,6 +230,22 @@ export function Dashboard() {
 
   const ultimoPagoMenorQueCuota = tieneAbonoEnRecibos || pagoMenorQueCuotaPeriodo
   const aplicaDiferencia = Boolean(tieneDeudaCondominio && (tieneSaldoAFavor || ultimoPagoMenorQueCuota))
+
+  // ── Separación de Cuotas Extraordinarias: Vigentes/Vencidas vs Programadas (Futuras) ──
+  const hoyLocalIso = obtenerFechaHoyLocalIso()
+  const cuotasExtraActivas = moraRecord?.desglose?.cuotas_especiales || []
+  const cuotasExtraProgramadas = moraRecord?.desglose?.cuotas_programadas || []
+  const tieneDeudaAnterior = Boolean(
+    moraRecord?.desglose?.deuda_base_2025 ||
+    moraRecord?.desglose?.cable_viajero ||
+    moraRecord?.desglose?.guaya ||
+    moraRecord?.desglose?.arreglo
+  )
+  const tieneRecibosMora = ((moraRecord?.desglose?.recibos_bs?.length || 0) + (moraRecord?.desglose?.recibos_usd?.length || 0)) > 0
+  const soloCuotasExtraActivas = cuotasExtraActivas.length > 0 && !tieneDeudaAnterior && !tieneRecibosMora
+  const tieneCuotaExtraVencida = cuotasExtraActivas.some(c =>
+    c.estadoVigencia ? c.estadoVigencia === 'vencida' : Boolean(c.fechaLimite && c.fechaLimite < hoyLocalIso)
+  )
 
   // ── Verificación estricta de solvencia para Carta de Solvencia ──
   // El residente SOLO puede ver y descargar su carta si está 100% SOLVENTE:
@@ -1169,18 +1195,91 @@ export function Dashboard() {
             </div>
           )}
 
-          {/* ── ALERTA DE CUOTAS EXTRAORDINARIAS / EXTRAOFICIALES (MÓVIL) ── */}
-          {moraRecord?.desglose?.cuotas_especiales && moraRecord.desglose.cuotas_especiales.length > 0 && (
+          {/* ── PRÓXIMOS CARGOS PROGRAMADOS / CUOTAS EXTRAORDINARIAS FUTURAS (MÓVIL) ── */}
+          {cuotasExtraProgramadas.length > 0 && (
             <div style={{
-              background: 'linear-gradient(135deg, rgba(234, 179, 8, 0.14) 0%, rgba(20, 21, 25, 0.95) 100%)',
-              border: '1px solid rgba(234, 179, 8, 0.38)',
+              background: isLight
+                ? 'linear-gradient(135deg, #eff6ff 0%, #ffffff 100%)'
+                : 'linear-gradient(135deg, rgba(14, 165, 233, 0.14) 0%, rgba(15, 23, 42, 0.94) 100%)',
+              border: isLight ? '1px solid #bae6fd' : '1px solid rgba(56, 189, 248, 0.35)',
               borderRadius: '20px',
               padding: '16px',
-              boxShadow: '0 8px 24px rgba(0, 0, 0, 0.45)'
+              boxShadow: isLight ? '0 4px 16px rgba(14, 165, 233, 0.08)' : '0 8px 24px rgba(0, 0, 0, 0.45)'
             }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                <span style={{ color: '#facc15', fontSize: '12px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                  ✨ Cuotas Extraordinarias Pendientes ({moraRecord.desglose.cuotas_especiales.length})
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', gap: '8px', flexWrap: 'wrap' }}>
+                <span style={{ color: isLight ? '#0369a1' : '#38bdf8', fontSize: '12px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  🗓️ Próximo Cargo · Cuota Extraordinaria Programada ({cuotasExtraProgramadas.length})
+                </span>
+                <span style={{
+                  backgroundColor: isLight ? '#e0f2fe' : 'rgba(56, 189, 248, 0.18)',
+                  border: isLight ? '1px solid #7dd3fc' : '1px solid rgba(56, 189, 248, 0.38)',
+                  color: isLight ? '#0369a1' : '#7dd3fc',
+                  borderRadius: '999px',
+                  padding: '2px 9px',
+                  fontSize: '10px',
+                  fontWeight: 800
+                }}>
+                  No exigible aún
+                </span>
+              </div>
+              <p style={{ margin: '0 0 10px 0', fontSize: '11px', color: isLight ? '#475569' : '#94a3b8', lineHeight: 1.4 }}>
+                Este cargo aún no se suma a tu deuda actual ni afecta tu solvencia. Entrará en vigencia a partir de la fecha indicada.
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {cuotasExtraProgramadas.map(ce => (
+                  <div key={ce.id} className="domus-cuota-item" style={{
+                    backgroundColor: isLight ? '#f8fafc' : 'rgba(0,0,0,0.28)',
+                    border: isLight ? '1px solid #cbd5e1' : '1px solid rgba(56, 189, 248, 0.2)',
+                    borderRadius: '12px',
+                    padding: '10px 12px',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    gap: '10px'
+                  }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '2px' }}>
+                        <span style={{
+                          fontSize: '9.5px', fontWeight: 800, padding: '1px 6px', borderRadius: '4px',
+                          backgroundColor: isLight ? '#e0f2fe' : 'rgba(56, 189, 248, 0.18)',
+                          color: isLight ? '#0369a1' : '#7dd3fc'
+                        }}>Cuota Extraordinaria</span>
+                      </div>
+                      <div style={{ color: isLight ? '#0f172a' : '#fff', fontSize: '13px', fontWeight: 700 }}>{ce.label}</div>
+                      {ce.descripcion && (
+                        <div style={{ color: isLight ? '#475569' : '#94a3b8', fontSize: '11px', marginTop: '2px', lineHeight: 1.35 }}>{ce.descripcion}</div>
+                      )}
+                      <div style={{ fontSize: '10.5px', color: isLight ? '#0369a1' : '#38bdf8', fontWeight: 700, marginTop: '4px' }}>
+                        📅 Cobro a partir del {formatearFechaCortaEs(ce.fechaEmision)}
+                        {ce.fechaLimite ? ` · Límite: ${formatearFechaCortaEs(ce.fechaLimite)}` : ''}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                      <div style={{ color: ce.moneda === 'BS' ? (isLight ? '#c2410c' : '#fb923c') : (isLight ? '#0369a1' : '#38bdf8'), fontWeight: 800, fontSize: '13px' }}>
+                        {ce.moneda === 'BS' ? `Bs. ${fmtBs(ce.monto)}` : `$${ce.monto.toFixed(2)} USD`}
+                      </div>
+                      <div style={{ fontSize: '10px', color: isLight ? '#64748b' : '#94a3b8' }}>No incluido en saldo actual</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── ALERTA DE CUOTAS EXTRAORDINARIAS VIGENTES / EXIGIBLES (MÓVIL) ── */}
+          {cuotasExtraActivas.length > 0 && (
+            <div style={{
+              background: isLight
+                ? 'linear-gradient(135deg, #fefce8 0%, #ffffff 100%)'
+                : 'linear-gradient(135deg, rgba(234, 179, 8, 0.14) 0%, rgba(20, 21, 25, 0.95) 100%)',
+              border: isLight ? '1px solid #fde047' : '1px solid rgba(234, 179, 8, 0.38)',
+              borderRadius: '20px',
+              padding: '16px',
+              boxShadow: isLight ? '0 4px 16px rgba(202, 138, 4, 0.08)' : '0 8px 24px rgba(0, 0, 0, 0.45)'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', gap: '8px' }}>
+                <span style={{ color: isLight ? '#a16207' : '#facc15', fontSize: '12px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  ✨ Cuotas Extraordinarias Vigentes ({cuotasExtraActivas.length})
                 </span>
                 <button
                   onClick={() => {
@@ -1188,9 +1287,9 @@ export function Dashboard() {
                     setModalOpen(true)
                   }}
                   style={{
-                    backgroundColor: 'rgba(234, 179, 8, 0.2)',
-                    border: '1px solid rgba(234, 179, 8, 0.4)',
-                    color: '#fde047',
+                    backgroundColor: isLight ? '#eab308' : 'rgba(234, 179, 8, 0.2)',
+                    border: isLight ? '1px solid #ca8a04' : '1px solid rgba(234, 179, 8, 0.4)',
+                    color: isLight ? '#000' : '#fde047',
                     borderRadius: '8px',
                     padding: '4px 10px',
                     fontSize: '11px',
@@ -1202,13 +1301,12 @@ export function Dashboard() {
                 </button>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {moraRecord.desglose.cuotas_especiales.map(ce => {
-                  const hoyIso = new Date().toISOString().slice(0, 10)
-                  const vencida = Boolean(ce.fechaLimite && ce.fechaLimite < hoyIso)
+                {cuotasExtraActivas.map(ce => {
+                  const vencida = ce.estadoVigencia ? ce.estadoVigencia === 'vencida' : Boolean(ce.fechaLimite && ce.fechaLimite < hoyLocalIso)
                   return (
                     <div key={ce.id} className="domus-cuota-item" style={{
-                      backgroundColor: 'rgba(0,0,0,0.28)',
-                      border: '1px solid rgba(255,255,255,0.07)',
+                      backgroundColor: isLight ? '#ffffff' : 'rgba(0,0,0,0.28)',
+                      border: `1px solid ${vencida ? 'rgba(239,68,68,0.35)' : (isLight ? '#fde68a' : 'rgba(255,255,255,0.07)')}`,
                       borderRadius: '12px',
                       padding: '10px 12px',
                       display: 'flex',
@@ -1217,17 +1315,32 @@ export function Dashboard() {
                       gap: '8px'
                     }}>
                       <div style={{ minWidth: 0 }}>
-                        <div style={{ color: '#fff', fontSize: '13px', fontWeight: 700 }}>{ce.label}</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '2px' }}>
+                          <span style={{
+                            fontSize: '9.5px', fontWeight: 800, padding: '1px 6px', borderRadius: '4px',
+                            backgroundColor: isLight ? '#fef3c7' : 'rgba(234,179,8,0.2)',
+                            color: isLight ? '#92400e' : '#fde047'
+                          }}>Cuota Extraordinaria</span>
+                          <span style={{
+                            fontSize: '9.5px', fontWeight: 800, padding: '1px 6px', borderRadius: '4px',
+                            backgroundColor: vencida ? (isLight ? '#fee2e2' : 'rgba(239,68,68,0.2)') : (isLight ? '#dcfce7' : 'rgba(34,197,94,0.18)'),
+                            color: vencida ? (isLight ? '#b91c1c' : '#f87171') : (isLight ? '#15803d' : '#4ade80')
+                          }}>{vencida ? '⚠️ Vencida' : 'Vigente al cobro'}</span>
+                        </div>
+                        <div style={{ color: isLight ? '#0f172a' : '#fff', fontSize: '13px', fontWeight: 700 }}>{ce.label}</div>
+                        {ce.descripcion && (
+                          <div style={{ color: isLight ? '#475569' : '#94a3b8', fontSize: '11px', marginTop: '2px', lineHeight: 1.35 }}>{ce.descripcion}</div>
+                        )}
                         {(ce.fechaEmision || ce.fechaLimite) && (
-                          <div style={{ fontSize: '10.5px', color: vencida ? '#f87171' : '#94a3b8', marginTop: '2px' }}>
-                            {ce.fechaEmision ? `Emisión: ${ce.fechaEmision}` : ''}
+                          <div style={{ fontSize: '10.5px', color: vencida ? (isLight ? '#dc2626' : '#f87171') : (isLight ? '#64748b' : '#94a3b8'), marginTop: '3px' }}>
+                            {ce.fechaEmision ? `Vigente desde: ${formatearFechaCortaEs(ce.fechaEmision)}` : ''}
                             {ce.fechaEmision && ce.fechaLimite ? ' · ' : ''}
-                            {ce.fechaLimite ? `${vencida ? '⚠️ Vencida:' : '📅 Límite:'} ${ce.fechaLimite}` : ''}
+                            {ce.fechaLimite ? `${vencida ? '⚠️ Vencida:' : '📅 Límite:'} ${formatearFechaCortaEs(ce.fechaLimite)}` : ''}
                           </div>
                         )}
                       </div>
                       <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                        <div style={{ color: ce.moneda === 'BS' ? '#fb923c' : '#facc15', fontWeight: 800, fontSize: '13px' }}>
+                        <div style={{ color: ce.moneda === 'BS' ? (isLight ? '#c2410c' : '#fb923c') : (isLight ? '#a16207' : '#facc15'), fontWeight: 800, fontSize: '13px' }}>
                           {ce.moneda === 'BS' ? `Bs. ${fmtBs(ce.monto)}` : `$${ce.monto.toFixed(2)} USD`}
                         </div>
                       </div>
@@ -1238,40 +1351,67 @@ export function Dashboard() {
             </div>
           )}
 
-          {/* ── ALERTA DE RECIBO / MORA (Si el apartamento figura en la lista y tiene deuda real) ── */}
+          {/* ── ALERTA DE RECIBO / MORA (Si el apartamento figura en la lista y tiene deuda real exigible) ── */}
           {moraRecord && tieneDeudaReal && (() => {
             const tasaCfg = getTasaConfig(moraRecord.tasa_riesgo)
             const esDiferencia = aplicaDiferencia
+            const esSoloExtraVigente = soloCuotasExtraActivas && !tieneCuotaExtraVencida && !esDiferencia
+            const esSoloExtraVencida = soloCuotasExtraActivas && tieneCuotaExtraVencida && !esDiferencia
+            const nombresExtraTexto = cuotasExtraActivas.map(c => c.label).join(', ')
+            const conceptoGeneralMora = tieneDeudaAnterior && cuotasExtraActivas.length > 0
+              ? 'deuda anterior y Cuota(s) Extraordinaria(s) por un total de'
+              : tieneDeudaAnterior
+              ? 'deuda anterior acumulada de'
+              : cuotasExtraActivas.length > 0 && tieneRecibosMora
+              ? 'recibo(s) pendiente(s) y Cuota(s) Extraordinaria(s) por un total de'
+              : 'recibos pendientes acumulados de'
+            const accentMobile = esDiferencia
+              ? '#38bdf8'
+              : esSoloExtraVigente
+              ? '#eab308'
+              : (moraRecord.tasa_riesgo === 'azul' ? '#ef4444' : tasaCfg.color)
             return (
             <div style={{
               background: esDiferencia
                 ? 'linear-gradient(135deg, rgba(14, 165, 233, 0.16) 0%, rgba(3, 105, 161, 0.16) 100%)'
+                : esSoloExtraVigente
+                ? 'linear-gradient(135deg, rgba(234, 179, 8, 0.14) 0%, rgba(202, 138, 4, 0.08) 100%)'
                 : 'linear-gradient(135deg, rgba(239, 68, 68, 0.12) 0%, rgba(185, 28, 28, 0.12) 100%)',
-              border: `2px solid ${esDiferencia ? '#38bdf8' : (moraRecord.tasa_riesgo === 'azul' ? '#ef4444' : tasaCfg.color)}`,
+              border: `2px solid ${accentMobile}`,
               borderRadius: '20px',
               padding: '16px',
-              boxShadow: `0 8px 24px rgba(0, 0, 0, 0.5), 0 0 16px ${esDiferencia ? 'rgba(56, 189, 248, 0.25)' : (moraRecord.tasa_riesgo === 'azul' ? 'rgba(239, 68, 68, 0.25)' : `${tasaCfg.color}25`)}`
+              boxShadow: `0 8px 24px rgba(0, 0, 0, 0.5), 0 0 16px ${accentMobile}35`
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
-                <span style={{ fontSize: '20px' }}>{esDiferencia ? '💳' : (moraRecord.tasa_riesgo === 'azul' ? '🔴' : '⚠️')}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '20px' }}>{esDiferencia ? '💳' : esSoloExtraVigente ? '✨' : (moraRecord.tasa_riesgo === 'azul' ? '🔴' : '⚠️')}</span>
                 <span style={{ fontWeight: 800, fontSize: '13px', color: '#fff' }}>
                   {esDiferencia
                     ? `Apto ${moraRecord.apartamento_numero} · Saldo Pendiente de tu Último Recibo`
+                    : esSoloExtraVigente
+                    ? `Apto ${moraRecord.apartamento_numero} · Cuota Extraordinaria Vigente`
+                    : esSoloExtraVencida
+                    ? `Apto ${moraRecord.apartamento_numero} · Cuota Extraordinaria Vencida`
                     : moraRecord.tasa_riesgo === 'azul'
                     ? `Apto ${moraRecord.apartamento_numero} · No está al día · Recibo al Cobro`
                     : `Apto ${moraRecord.apartamento_numero} · No está al día · En Lista de Mora`}
                 </span>
                 <span style={{
                   fontSize: '10px', fontWeight: 800,
-                  color: esDiferencia ? '#38bdf8' : (moraRecord.tasa_riesgo === 'azul' ? '#ef4444' : tasaCfg.color),
-                  background: esDiferencia ? 'rgba(56, 189, 248, 0.15)' : (moraRecord.tasa_riesgo === 'azul' ? 'rgba(239, 68, 68, 0.15)' : tasaCfg.bg),
-                  border: `1px solid ${esDiferencia ? 'rgba(56, 189, 248, 0.35)' : (moraRecord.tasa_riesgo === 'azul' ? 'rgba(239, 68, 68, 0.35)' : tasaCfg.border)}`,
+                  color: accentMobile,
+                  background: esDiferencia ? 'rgba(56, 189, 248, 0.15)' : esSoloExtraVigente ? 'rgba(234, 179, 8, 0.16)' : (moraRecord.tasa_riesgo === 'azul' ? 'rgba(239, 68, 68, 0.15)' : tasaCfg.bg),
+                  border: `1px solid ${accentMobile}55`,
                   padding: '2px 6px', borderRadius: '999px', marginLeft: 'auto'
                 }}>
-                  {esDiferencia ? '🔵 Diferencia Pendiente' : (moraRecord.tasa_riesgo === 'azul' ? '🔴 No está al día' : tasaCfg.badgeText)}
+                  {esDiferencia
+                    ? '🔵 Diferencia Pendiente'
+                    : esSoloExtraVigente
+                    ? '✨ Cuota Extraordinaria'
+                    : esSoloExtraVencida
+                    ? '⚠️ Cuota Extraordinaria Vencida'
+                    : (moraRecord.tasa_riesgo === 'azul' ? '🔴 No está al día' : tasaCfg.badgeText)}
                 </span>
               </div>
-              <p style={{ margin: '0 0 12px 0', fontSize: '11px', color: '#cbd5e1', lineHeight: 1.3 }}>
+              <p style={{ margin: '0 0 12px 0', fontSize: '11px', color: '#cbd5e1', lineHeight: 1.35 }}>
                 {esDiferencia ? (
                   tieneSaldoAFavor ? (
                     <>
@@ -1282,15 +1422,25 @@ export function Dashboard() {
                       Le queda por pagar la diferencia de su último recibo: <strong style={{ color: '#38bdf8' }}>${deudaUsd.toFixed(2)} USD (Bs. {fmtBs(deudaBs)})</strong>. Reporta tu pago para quedar completamente al día.
                     </>
                   )
+                ) : esSoloExtraVigente ? (
+                  <>
+                    Posees una <strong>Cuota Extraordinaria</strong> vigente ({nombresExtraTexto}) por{' '}
+                    <strong style={{ color: '#facc15' }}>${deudaUsd.toFixed(2)} USD (Bs. {fmtBs(deudaBs)})</strong>. Cancélala antes de su vencimiento para mantener tu solvencia.
+                  </>
+                ) : esSoloExtraVencida ? (
+                  <>
+                    Presentas una <strong>Cuota Extraordinaria</strong> vencida ({nombresExtraTexto}) por{' '}
+                    <strong style={{ color: '#f87171' }}>${deudaUsd.toFixed(2)} USD (Bs. {fmtBs(deudaBs)})</strong>. Regulariza tu pago para volver a estar al día.
+                  </>
                 ) : moraRecord.tasa_riesgo === 'azul' ? (
                   <>
                     Tu apartamento no está al día. Tienes el recibo del mes emitido (&lt;1 mes) con un monto de{' '}
-                    <strong style={{ color: '#f87171' }}>${moraRecord.monto_usd.toFixed(2)} USD</strong>. Reporta tu pago para regularizar tu solvencia.
+                    <strong style={{ color: '#f87171' }}>${deudaUsd.toFixed(2)} USD</strong>. Reporta tu pago para regularizar tu solvencia.
                   </>
                 ) : (
                   <>
-                    Tu apartamento no está al día. Tienes <strong>{moraRecord.meses_deuda} meses de atraso</strong> con una deuda acumulada de{' '}
-                    <strong style={{ color: 'var(--color-accent, #f97316)' }}>${moraRecord.monto_usd.toFixed(2)} USD</strong>.
+                    Tu apartamento no está al día. Tienes <strong>{moraRecord.meses_deuda} meses de atraso</strong> con {conceptoGeneralMora}{' '}
+                    <strong style={{ color: 'var(--color-accent, #f97316)' }}>${deudaUsd.toFixed(2)} USD (Bs. {fmtBs(deudaBs)})</strong>.
                   </>
                 )}
               </p>
@@ -1848,43 +1998,70 @@ export function Dashboard() {
             </div>
           </div>
 
-          {/* ALERTA DE MORA / RECIBO DESKTOP (Si aplica y tiene deuda real) */}
+          {/* ALERTA DE MORA / RECIBO DESKTOP (Si aplica y tiene deuda real exigible) */}
           {moraRecord && tieneDeudaReal && (() => {
             const tasaCfg = getTasaConfig(moraRecord.tasa_riesgo)
             const esDiferencia = aplicaDiferencia
+            const esSoloExtraVigente = soloCuotasExtraActivas && !tieneCuotaExtraVencida && !esDiferencia
+            const esSoloExtraVencida = soloCuotasExtraActivas && tieneCuotaExtraVencida && !esDiferencia
+            const nombresExtraTexto = cuotasExtraActivas.map(c => c.label).join(', ')
+            const conceptoGeneralMora = tieneDeudaAnterior && cuotasExtraActivas.length > 0
+              ? 'deuda anterior y Cuota(s) Extraordinaria(s) por un total de'
+              : tieneDeudaAnterior
+              ? 'deuda anterior acumulada de'
+              : cuotasExtraActivas.length > 0 && tieneRecibosMora
+              ? 'recibo(s) pendiente(s) y Cuota(s) Extraordinaria(s) por un total de'
+              : 'recibos pendientes acumulados de'
+            const accentDesktop = esDiferencia
+              ? '#38bdf8'
+              : esSoloExtraVigente
+              ? '#eab308'
+              : (moraRecord.tasa_riesgo === 'azul' ? '#ef4444' : tasaCfg.color)
             return (
             <div style={{
               background: esDiferencia
                 ? 'linear-gradient(135deg, rgba(14, 165, 233, 0.16) 0%, rgba(3, 105, 161, 0.16) 100%)'
+                : esSoloExtraVigente
+                ? 'linear-gradient(135deg, rgba(234, 179, 8, 0.14) 0%, rgba(202, 138, 4, 0.08) 100%)'
                 : 'linear-gradient(135deg, rgba(239, 68, 68, 0.12) 0%, rgba(185, 28, 28, 0.12) 100%)',
-              border: `2px solid ${esDiferencia ? '#38bdf8' : (moraRecord.tasa_riesgo === 'azul' ? '#ef4444' : tasaCfg.color)}`,
+              border: `2px solid ${accentDesktop}`,
               borderRadius: '20px',
               padding: '18px 24px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
               marginBottom: '24px',
-              boxShadow: `0 8px 30px rgba(0, 0, 0, 0.5), 0 0 16px ${esDiferencia ? 'rgba(56, 189, 248, 0.25)' : (moraRecord.tasa_riesgo === 'azul' ? 'rgba(239, 68, 68, 0.25)' : `${tasaCfg.color}25`)}`
+              boxShadow: `0 8px 30px rgba(0, 0, 0, 0.5), 0 0 16px ${accentDesktop}35`
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                <span style={{ fontSize: '32px' }}>{esDiferencia ? '💳' : (moraRecord.tasa_riesgo === 'azul' ? '🔴' : '⚠️')}</span>
+                <span style={{ fontSize: '32px' }}>{esDiferencia ? '💳' : esSoloExtraVigente ? '✨' : (moraRecord.tasa_riesgo === 'azul' ? '🔴' : '⚠️')}</span>
                 <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                     <span style={{ fontWeight: 800, fontSize: '16px', color: '#fff' }}>
                       {esDiferencia
                         ? `Tu Apartamento (${moraRecord.apartamento_numero}) tiene un saldo pendiente en su último recibo`
+                        : esSoloExtraVigente
+                        ? `Tu Apartamento (${moraRecord.apartamento_numero}) · Cuota Extraordinaria Vigente`
+                        : esSoloExtraVencida
+                        ? `Tu Apartamento (${moraRecord.apartamento_numero}) · Cuota Extraordinaria Vencida`
                         : moraRecord.tasa_riesgo === 'azul'
                         ? `Tu Apartamento (${moraRecord.apartamento_numero}) no está al día · Recibo del Mes al Cobro`
                         : `Tu Apartamento (${moraRecord.apartamento_numero}) no está al día · En Lista de Mora`}
                     </span>
                     <span style={{
                       fontSize: '11px', fontWeight: 800,
-                      color: esDiferencia ? '#38bdf8' : (moraRecord.tasa_riesgo === 'azul' ? '#ef4444' : tasaCfg.color),
-                      background: esDiferencia ? 'rgba(56, 189, 248, 0.15)' : (moraRecord.tasa_riesgo === 'azul' ? 'rgba(239, 68, 68, 0.15)' : tasaCfg.bg),
-                      border: `1px solid ${esDiferencia ? 'rgba(56, 189, 248, 0.35)' : (moraRecord.tasa_riesgo === 'azul' ? 'rgba(239, 68, 68, 0.35)' : tasaCfg.border)}`,
+                      color: accentDesktop,
+                      background: esDiferencia ? 'rgba(56, 189, 248, 0.15)' : esSoloExtraVigente ? 'rgba(234, 179, 8, 0.16)' : (moraRecord.tasa_riesgo === 'azul' ? 'rgba(239, 68, 68, 0.15)' : tasaCfg.bg),
+                      border: `1px solid ${accentDesktop}55`,
                       padding: '2px 8px', borderRadius: '999px'
                     }}>
-                      {esDiferencia ? '🔵 Diferencia Pendiente' : (moraRecord.tasa_riesgo === 'azul' ? '🔴 No está al día' : tasaCfg.badgeText)}
+                      {esDiferencia
+                        ? '🔵 Diferencia Pendiente'
+                        : esSoloExtraVigente
+                        ? '✨ Cuota Extraordinaria'
+                        : esSoloExtraVencida
+                        ? '⚠️ Cuota Extraordinaria Vencida'
+                        : (moraRecord.tasa_riesgo === 'azul' ? '🔴 No está al día' : tasaCfg.badgeText)}
                     </span>
                   </div>
                   <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#cbd5e1' }}>
@@ -1898,15 +2075,25 @@ export function Dashboard() {
                           Le queda por pagar la diferencia de su último recibo: <strong style={{ color: '#38bdf8' }}>${deudaUsd.toFixed(2)} USD (Bs. {fmtBs(deudaBs)})</strong>. Reporta tu pago para mantener tu solvencia al 100%.
                         </>
                       )
+                    ) : esSoloExtraVigente ? (
+                      <>
+                        Tienes una <strong>Cuota Extraordinaria</strong> vigente al cobro ({nombresExtraTexto}) por{' '}
+                        <strong style={{ color: '#facc15' }}>${deudaUsd.toFixed(2)} USD (Bs. {fmtBs(deudaBs)})</strong>. Cancélala dentro de su plazo para conservar tu solvencia.
+                      </>
+                    ) : esSoloExtraVencida ? (
+                      <>
+                        Presentas una <strong>Cuota Extraordinaria</strong> vencida ({nombresExtraTexto}) por{' '}
+                        <strong style={{ color: '#f87171' }}>${deudaUsd.toFixed(2)} USD (Bs. {fmtBs(deudaBs)})</strong>. Regulariza tu saldo para recuperar tu solvencia.
+                      </>
                     ) : moraRecord.tasa_riesgo === 'azul' ? (
                       <>
                         Tu apartamento no está al día. Tienes el recibo del mes emitido (&lt;1 mes) con un monto de{' '}
-                        <strong style={{ color: '#f87171' }}>${moraRecord.monto_usd.toFixed(2)} USD</strong>. Cancela dentro del plazo para regularizar tu solvencia comunitaria.
+                        <strong style={{ color: '#f87171' }}>${deudaUsd.toFixed(2)} USD</strong>. Cancela dentro del plazo para regularizar tu solvencia comunitaria.
                       </>
                     ) : (
                       <>
-                        Tu apartamento no está al día. Presentas <strong>{moraRecord.meses_deuda} meses de atraso</strong> con una deuda anterior acumulada de{' '}
-                        <strong style={{ color: 'var(--color-accent, #f97316)' }}>${moraRecord.monto_usd.toFixed(2)} USD</strong>. Regulariza tu saldo para evitar recargos legales.
+                        Tu apartamento no está al día. Presentas <strong>{moraRecord.meses_deuda} meses de atraso</strong> con {conceptoGeneralMora}{' '}
+                        <strong style={{ color: 'var(--color-accent, #f97316)' }}>${deudaUsd.toFixed(2)} USD (Bs. {fmtBs(deudaBs)})</strong>. Regulariza tu saldo para evitar recargos legales.
                       </>
                     )}
                   </p>
@@ -1950,25 +2137,107 @@ export function Dashboard() {
             )
           })()}
 
-          {/* ── ALERTA DE CUOTAS EXTRAORDINARIAS / EXTRAOFICIALES (DESKTOP) ── */}
-          {moraRecord?.desglose?.cuotas_especiales && moraRecord.desglose.cuotas_especiales.length > 0 && (
+          {/* ── PRÓXIMOS CARGOS / CUOTAS EXTRAORDINARIAS PROGRAMADAS (DESKTOP) ── */}
+          {cuotasExtraProgramadas.length > 0 && (
             <div style={{
-              background: 'linear-gradient(135deg, rgba(234, 179, 8, 0.12) 0%, rgba(15, 23, 42, 0.92) 100%)',
-              border: '1px solid rgba(234, 179, 8, 0.35)',
+              background: isLight
+                ? 'linear-gradient(135deg, #eff6ff 0%, #ffffff 100%)'
+                : 'linear-gradient(135deg, rgba(14, 165, 233, 0.12) 0%, rgba(15, 23, 42, 0.94) 100%)',
+              border: isLight ? '1px solid #bae6fd' : '1px solid rgba(56, 189, 248, 0.35)',
               borderRadius: '20px',
               padding: '18px 24px',
               marginBottom: '24px',
-              boxShadow: '0 8px 26px rgba(0, 0, 0, 0.45)'
+              boxShadow: isLight ? '0 6px 20px rgba(14, 165, 233, 0.08)' : '0 8px 26px rgba(0, 0, 0, 0.45)'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', gap: '12px', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span style={{ fontSize: '20px' }}>🗓️</span>
+                  <div>
+                    <div style={{ color: isLight ? '#0369a1' : '#38bdf8', fontSize: '13px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      Próximo Cargo · Cuota Extraordinaria Programada ({cuotasExtraProgramadas.length})
+                    </div>
+                    <div style={{ color: isLight ? '#475569' : '#94a3b8', fontSize: '12px' }}>
+                      Este cargo aún no se suma a tu deuda actual ni afecta tu solvencia. Entrará en vigencia a partir de la fecha indicada por la administración.
+                    </div>
+                  </div>
+                </div>
+                <span style={{
+                  backgroundColor: isLight ? '#e0f2fe' : 'rgba(56, 189, 248, 0.16)',
+                  color: isLight ? '#0369a1' : '#7dd3fc',
+                  border: isLight ? '1px solid #7dd3fc' : '1px solid rgba(56, 189, 248, 0.35)',
+                  borderRadius: '999px',
+                  padding: '5px 12px',
+                  fontSize: '11px',
+                  fontWeight: 800
+                }}>
+                  Programado · No exigible aún
+                </span>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '10px' }}>
+                {cuotasExtraProgramadas.map(ce => (
+                  <div key={ce.id} className="domus-cuota-item" style={{
+                    backgroundColor: isLight ? '#f8fafc' : 'rgba(0,0,0,0.28)',
+                    border: isLight ? '1px solid #cbd5e1' : '1px solid rgba(56,189,248,0.2)',
+                    borderRadius: '14px',
+                    padding: '12px 14px',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    gap: '12px'
+                  }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '3px' }}>
+                        <span style={{
+                          fontSize: '10px', fontWeight: 800, padding: '2px 7px', borderRadius: '5px',
+                          backgroundColor: isLight ? '#e0f2fe' : 'rgba(56, 189, 248, 0.18)',
+                          color: isLight ? '#0369a1' : '#7dd3fc'
+                        }}>Cuota Extraordinaria</span>
+                      </div>
+                      <div style={{ color: isLight ? '#0f172a' : '#fff', fontSize: '13.5px', fontWeight: 700 }}>{ce.label}</div>
+                      {ce.descripcion && (
+                        <div style={{ color: isLight ? '#475569' : '#94a3b8', fontSize: '11.5px', marginTop: '3px', lineHeight: 1.4 }}>{ce.descripcion}</div>
+                      )}
+                      <div style={{ fontSize: '11px', color: isLight ? '#0369a1' : '#38bdf8', fontWeight: 700, marginTop: '5px' }}>
+                        📅 Cobro a partir del {formatearFechaCortaEs(ce.fechaEmision)}
+                        {ce.fechaLimite ? ` · Fecha límite: ${formatearFechaCortaEs(ce.fechaLimite)}` : ''}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                      <div style={{ color: ce.moneda === 'BS' ? (isLight ? '#c2410c' : '#fb923c') : (isLight ? '#0369a1' : '#38bdf8'), fontWeight: 900, fontSize: '15px' }}>
+                        {ce.moneda === 'BS' ? `Bs. ${fmtBs(ce.monto)}` : `$${ce.monto.toFixed(2)} USD`}
+                      </div>
+                      <div style={{ fontSize: '10.5px', color: isLight ? '#64748b' : '#94a3b8' }}>
+                        {ce.moneda === 'BS' ? `≈ $${(ce.monto / tasaValida).toFixed(2)}` : `≈ Bs. ${fmtBs(ce.monto * tasaValida)}`}
+                      </div>
+                      <div style={{ fontSize: '10px', color: isLight ? '#64748b' : '#94a3b8', marginTop: '2px' }}>No incluido en saldo actual</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── ALERTA DE CUOTAS EXTRAORDINARIAS VIGENTES / EXIGIBLES (DESKTOP) ── */}
+          {cuotasExtraActivas.length > 0 && (
+            <div style={{
+              background: isLight
+                ? 'linear-gradient(135deg, #fefce8 0%, #ffffff 100%)'
+                : 'linear-gradient(135deg, rgba(234, 179, 8, 0.12) 0%, rgba(15, 23, 42, 0.92) 100%)',
+              border: isLight ? '1px solid #fde047' : '1px solid rgba(234, 179, 8, 0.35)',
+              borderRadius: '20px',
+              padding: '18px 24px',
+              marginBottom: '24px',
+              boxShadow: isLight ? '0 6px 20px rgba(202, 138, 4, 0.08)' : '0 8px 26px rgba(0, 0, 0, 0.45)'
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', gap: '12px', flexWrap: 'wrap' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <span style={{ fontSize: '20px' }}>✨</span>
                   <div>
-                    <div style={{ color: '#facc15', fontSize: '13px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                      Cuotas Extraordinarias y Próximas Fechas Límite ({moraRecord.desglose.cuotas_especiales.length})
+                    <div style={{ color: isLight ? '#a16207' : '#facc15', fontSize: '13px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      Cuotas Extraordinarias Vigentes ({cuotasExtraActivas.length})
                     </div>
-                    <div style={{ color: '#94a3b8', fontSize: '12px' }}>
-                      Obligaciones extraordinarias sincronizadas con tu estado de cuenta y calendario.
+                    <div style={{ color: isLight ? '#475569' : '#94a3b8', fontSize: '12px' }}>
+                      Cargos extraordinarios vigentes en tu estado de cuenta y sincronizados con el calendario.
                     </div>
                   </div>
                 </div>
@@ -1992,13 +2261,12 @@ export function Dashboard() {
                 </button>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '10px' }}>
-                {moraRecord.desglose.cuotas_especiales.map(ce => {
-                  const hoyIso = new Date().toISOString().slice(0, 10)
-                  const vencida = Boolean(ce.fechaLimite && ce.fechaLimite < hoyIso)
+                {cuotasExtraActivas.map(ce => {
+                  const vencida = ce.estadoVigencia ? ce.estadoVigencia === 'vencida' : Boolean(ce.fechaLimite && ce.fechaLimite < hoyLocalIso)
                   return (
                     <div key={ce.id} className="domus-cuota-item" style={{
-                      backgroundColor: 'rgba(0,0,0,0.3)',
-                      border: `1px solid ${vencida ? 'rgba(239,68,68,0.35)' : 'rgba(255,255,255,0.08)'}`,
+                      backgroundColor: isLight ? '#ffffff' : 'rgba(0,0,0,0.3)',
+                      border: `1px solid ${vencida ? 'rgba(239,68,68,0.35)' : (isLight ? '#fde68a' : 'rgba(255,255,255,0.08)')}`,
                       borderRadius: '14px',
                       padding: '12px 14px',
                       display: 'flex',
@@ -2007,23 +2275,35 @@ export function Dashboard() {
                       gap: '12px'
                     }}>
                       <div style={{ minWidth: 0 }}>
-                        <div style={{ color: '#fff', fontSize: '13.5px', fontWeight: 700 }}>{ce.label}</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '3px' }}>
+                          <span style={{
+                            fontSize: '10px', fontWeight: 800, padding: '2px 7px', borderRadius: '5px',
+                            backgroundColor: isLight ? '#fef3c7' : 'rgba(234,179,8,0.2)',
+                            color: isLight ? '#92400e' : '#fde047'
+                          }}>Cuota Extraordinaria</span>
+                          <span style={{
+                            fontSize: '10px', fontWeight: 800, padding: '2px 7px', borderRadius: '5px',
+                            backgroundColor: vencida ? (isLight ? '#fee2e2' : 'rgba(239,68,68,0.2)') : (isLight ? '#dcfce7' : 'rgba(34,197,94,0.18)'),
+                            color: vencida ? (isLight ? '#b91c1c' : '#f87171') : (isLight ? '#15803d' : '#4ade80')
+                          }}>{vencida ? '⚠️ Vencida' : 'Vigente al cobro'}</span>
+                        </div>
+                        <div style={{ color: isLight ? '#0f172a' : '#fff', fontSize: '13.5px', fontWeight: 700 }}>{ce.label}</div>
                         {ce.descripcion && (
-                          <div style={{ color: '#94a3b8', fontSize: '11px', marginTop: '2px' }}>{ce.descripcion}</div>
+                          <div style={{ color: isLight ? '#475569' : '#94a3b8', fontSize: '11px', marginTop: '2px' }}>{ce.descripcion}</div>
                         )}
                         {(ce.fechaEmision || ce.fechaLimite) && (
-                          <div style={{ fontSize: '11px', color: vencida ? '#f87171' : '#cbd5e1', marginTop: '4px' }}>
-                            {ce.fechaEmision ? `Emisión: ${ce.fechaEmision}` : ''}
+                          <div style={{ fontSize: '11px', color: vencida ? (isLight ? '#dc2626' : '#f87171') : (isLight ? '#64748b' : '#cbd5e1'), marginTop: '4px' }}>
+                            {ce.fechaEmision ? `Vigente desde: ${formatearFechaCortaEs(ce.fechaEmision)}` : ''}
                             {ce.fechaEmision && ce.fechaLimite ? ' · ' : ''}
-                            {ce.fechaLimite ? `${vencida ? '⚠️ Vence:' : '📅 Límite:'} ${ce.fechaLimite}` : ''}
+                            {ce.fechaLimite ? `${vencida ? '⚠️ Vence:' : '📅 Límite:'} ${formatearFechaCortaEs(ce.fechaLimite)}` : ''}
                           </div>
                         )}
                       </div>
                       <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                        <div style={{ color: ce.moneda === 'BS' ? '#fb923c' : '#facc15', fontWeight: 900, fontSize: '15px' }}>
+                        <div style={{ color: ce.moneda === 'BS' ? (isLight ? '#c2410c' : '#fb923c') : (isLight ? '#a16207' : '#facc15'), fontWeight: 900, fontSize: '15px' }}>
                           {ce.moneda === 'BS' ? `Bs. ${fmtBs(ce.monto)}` : `$${ce.monto.toFixed(2)} USD`}
                         </div>
-                        <div style={{ fontSize: '10.5px', color: '#94a3b8' }}>
+                        <div style={{ fontSize: '10.5px', color: isLight ? '#64748b' : '#94a3b8' }}>
                           {ce.moneda === 'BS' ? `≈ $${(ce.monto / tasaValida).toFixed(2)}` : `≈ Bs. ${fmtBs(ce.monto * tasaValida)}`}
                         </div>
                       </div>

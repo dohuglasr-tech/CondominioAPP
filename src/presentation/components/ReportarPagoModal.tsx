@@ -2,7 +2,7 @@ import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { reportarPago, subirComprobante } from '../../data/pagosService'
 import { comprimirImagen, ResultadoCompresion } from '../../utils/imageCompressor'
 import { obtenerSaldoAFavorApartamento } from '../../data/saldoFavorService'
-import { obtenerDeudasMora, DesgloseConceptoItem } from '../../data/moraService'
+import { obtenerDeudasMora, DesgloseConceptoItem, formatearFechaCortaEs } from '../../data/moraService'
 import { obtenerJunta, MiembroJunta } from '../../data/juntaService'
 import { useAuth } from '../../application/contexts/AuthContext'
 import { ConfigEdificio, supabase } from '../../data/supabase'
@@ -169,6 +169,7 @@ export function ReportarPagoModal({
   // Paso 1: deudas
   const [loadingDeudas, setLoadingDeudas] = useState(true)
   const [deudas, setDeudas] = useState<DeudaSeleccionable[]>([])
+  const [cuotasProgramadas, setCuotasProgramadas] = useState<DesgloseConceptoItem[]>([])
   const [saldoAFavor, setSaldoAFavor] = useState(0)
   const [gasBancarios, setGasBancarios] = useState<DatosPagoGas | null>(null)
   const [gasEnVerificacionCount, setGasEnVerificacionCount] = useState(0)
@@ -231,6 +232,7 @@ export function ReportarPagoModal({
             (cleanTarget && num === cleanTarget)
           )
         })
+        setCuotasProgramadas(miDeuda?.desglose?.cuotas_programadas || [])
         let items = miDeuda?.desglose?.items || []
 
         // Respaldo de seguridad: si no vino por moraService, consultar recibos pendientes directamente
@@ -730,11 +732,27 @@ export function ReportarPagoModal({
             <p style={{ fontSize: '13px' }}>Cargando tu estado de cuenta...</p>
           </div>
         ) : deudas.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '28px 0', color: '#555' }}>
+          <div style={{ textAlign: 'center', padding: '24px 0', color: '#555' }}>
             <div style={{ fontSize: '32px', marginBottom: '10px' }}>✅</div>
             <p style={{ color: '#aaa', fontSize: '14px', fontWeight: 600, marginBottom: '6px' }}>¡Estás al día!</p>
-            <p style={{ fontSize: '13px' }}>No tienes cuotas ni recibos pendientes acumulados.</p>
-            <p style={{ fontSize: '12px', color: '#444', marginTop: '6px' }}>Si deseas adelantar o pagar otra cuota, avanza.</p>
+            <p style={{ fontSize: '13px' }}>No tienes cuotas ni recibos exigibles pendientes acumulados.</p>
+            {cuotasProgramadas.length > 0 && (
+              <div style={{
+                marginTop: '14px', textAlign: 'left',
+                background: 'rgba(14, 165, 233, 0.08)', border: '1px solid rgba(56, 189, 248, 0.25)',
+                borderRadius: '10px', padding: '10px 12px', fontSize: '11.5px', color: '#38bdf8'
+              }}>
+                <div style={{ fontWeight: 800, marginBottom: '4px' }}>
+                  🗓️ Tienes {cuotasProgramadas.length} {cuotasProgramadas.length === 1 ? 'Cuota Extraordinaria programada' : 'Cuotas Extraordinarias programadas'} a futuro:
+                </div>
+                {cuotasProgramadas.map(cp => (
+                  <div key={cp.id} style={{ color: '#94a3b8', marginTop: '3px' }}>
+                    • <strong style={{ color: '#cbd5e1' }}>{cp.label}</strong> ({cp.moneda === 'BS' ? `Bs. ${cp.monto.toLocaleString('es-VE', { minimumFractionDigits: 2 })}` : `$${cp.monto.toFixed(2)} USD`}) — Cobro a partir del {formatearFechaCortaEs(cp.fechaEmision)}
+                  </div>
+                ))}
+              </div>
+            )}
+            <p style={{ fontSize: '12px', color: '#444', marginTop: '10px' }}>Si deseas adelantar o pagar otra cuota, avanza.</p>
           </div>
         ) : (
           <>
@@ -806,7 +824,7 @@ export function ReportarPagoModal({
                     style={{ width: '18px', height: '18px', accentColor: 'var(--color-accent, #f97316)', cursor: 'pointer', flexShrink: 0 }} />
                   <span style={{ fontSize: '18px', flexShrink: 0 }}>{deuda.icono || '📌'}</span>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px', flexWrap: 'wrap' }}>
                       <p style={{ color: '#fff', fontSize: '13px', fontWeight: 600, margin: 0 }}>{deuda.label}</p>
                       {deuda.categoria === 'gas' ? (
                         <span style={{
@@ -814,6 +832,18 @@ export function ReportarPagoModal({
                           background: 'rgba(249,115,22,0.2)', color: 'var(--color-accent, #f97316)',
                           fontWeight: 800
                         }}>GAS</span>
+                      ) : ['deuda_2025', 'cable_viajero', 'guaya', 'arreglo'].includes(deuda.id) ? (
+                        <span style={{
+                          fontSize: '9px', padding: '1px 5px', borderRadius: '4px',
+                          background: 'rgba(245,158,11,0.18)', color: '#fbbf24',
+                          fontWeight: 800
+                        }}>DEUDA ANTERIOR</span>
+                      ) : deuda.categoria === 'cuota_especial' ? (
+                        <span style={{
+                          fontSize: '9px', padding: '1px 5px', borderRadius: '4px',
+                          background: 'rgba(234,179,8,0.18)', color: '#facc15',
+                          fontWeight: 800
+                        }}>CUOTA EXTRAORDINARIA</span>
                       ) : (
                         <span style={{
                           fontSize: '9px', padding: '1px 5px', borderRadius: '4px',
@@ -822,6 +852,9 @@ export function ReportarPagoModal({
                         }}>CONDOMINIO</span>
                       )}
                     </div>
+                    {deuda.descripcion && (
+                      <p style={{ color: '#94a3b8', fontSize: '11px', margin: '0 0 2px 0' }}>{deuda.descripcion}</p>
+                    )}
                     <p style={{ color: '#aaa', fontSize: '12px', margin: 0 }}>
                       {deuda.moneda === 'USD' ? (
                         <>
@@ -847,6 +880,22 @@ export function ReportarPagoModal({
                 </label>
               ))}
             </div>
+
+            {cuotasProgramadas.length > 0 && (
+              <div style={{
+                background: 'rgba(14, 165, 233, 0.08)', border: '1px solid rgba(56, 189, 248, 0.25)',
+                borderRadius: '10px', padding: '10px 12px', marginBottom: '12px', fontSize: '11.5px', color: '#38bdf8'
+              }}>
+                <div style={{ fontWeight: 800, marginBottom: '3px' }}>
+                  🗓️ Próximo cargo programado (no exigible aún):
+                </div>
+                {cuotasProgramadas.map(cp => (
+                  <div key={cp.id} style={{ color: '#94a3b8', marginTop: '2px' }}>
+                    • <strong style={{ color: '#e2e8f0' }}>{cp.label}</strong> ({cp.moneda === 'BS' ? `Bs. ${cp.monto.toLocaleString('es-VE', { minimumFractionDigits: 2 })}` : `$${cp.monto.toFixed(2)} USD`}) — Cobro a partir del {formatearFechaCortaEs(cp.fechaEmision)}
+                  </div>
+                ))}
+              </div>
+            )}
 
             {/* Resumen Total del Paso 1 */}
             <div style={{

@@ -24,6 +24,48 @@ export interface DesgloseReciboItem {
   estado: 'pendiente' | 'pagado'
 }
 
+export type EstadoVigenciaCuota = 'programada' | 'vigente' | 'vencida'
+
+/**
+ * Fecha local actual en formato YYYY-MM-DD (evita desfases de zona horaria UTC al caer la tarde).
+ */
+export function obtenerFechaHoyLocalIso(): string {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+/**
+ * Clasifica una cuota extraordinaria según sus fechas de emisión/vigencia y límite:
+ * - 'programada': fechaEmision futura (> hoy) -> NO exigible todavía, no suma deuda ni mora.
+ * - 'vencida': fechaLimite pasada (< hoy) -> exigible y vencida.
+ * - 'vigente': en vigencia actual (emisión <= hoy o sin fecha futura, y no vencida).
+ */
+export function clasificarCuotaExtraordinaria(
+  fechaEmision?: string,
+  fechaLimite?: string,
+  hoyIso: string = obtenerFechaHoyLocalIso()
+): EstadoVigenciaCuota {
+  const emision = (fechaEmision || '').trim().slice(0, 10)
+  const limite = (fechaLimite || '').trim().slice(0, 10)
+  if (/^\d{4}-\d{2}-\d{2}$/.test(emision) && emision > hoyIso) {
+    return 'programada'
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(limite) && limite < hoyIso) {
+    return 'vencida'
+  }
+  return 'vigente'
+}
+
+export function formatearFechaCortaEs(iso?: string): string {
+  const clean = (iso || '').trim().slice(0, 10)
+  const match = clean.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!match) return iso || ''
+  return `${match[3]}/${match[2]}/${match[1]}`
+}
+
 export interface DesgloseConceptoItem {
   id: string
   label: string
@@ -31,6 +73,7 @@ export interface DesgloseConceptoItem {
   monto: number
   moneda: 'BS' | 'USD'
   estado: 'pendiente' | 'pagado'
+  estadoVigencia?: EstadoVigenciaCuota
   icono?: string
   detalle?: string
   columnaId?: string
@@ -48,6 +91,7 @@ export interface DesgloseDeudaMora {
   recibos_bs: DesgloseReciboItem[]
   recibos_usd: DesgloseReciboItem[]
   cuotas_especiales: DesgloseConceptoItem[]
+  cuotas_programadas?: DesgloseConceptoItem[]
   items: DesgloseConceptoItem[]
   total_bs: number
   total_usd: number
@@ -350,11 +394,52 @@ export async function obtenerDeudaMoraApartamento(
         const recs = recsRes.data || []
         const configRows = configsRes.data || []
 
-        // Parsear cuotas extraoficiales / especiales pendientes para este apartamento
+        // Parsear cuotas extraoficiales / especiales separando vigentes vs programadas (futuras)
+        const hoyIso = obtenerFechaHoyLocalIso()
         const cuotasEspecialesList: DesgloseConceptoItem[] = []
+        const cuotasProgramadasList: DesgloseConceptoItem[] = []
         let cuotasEspBs = 0
         let cuotasEspUsd = 0
         const targetAptoId = apartamentoId || moraRow?.apartamento_id || ''
+
+        const procesarCuotaEspecialApto = (
+          idPrefix: string,
+          titulo: string,
+          val: any,
+          defaultMoneda: 'USD' | 'BS',
+          anioCfg: number,
+          descripcion?: string,
+          fechaEmision?: string,
+          fechaLimite?: string
+        ) => {
+          const montoVal = Number(val?.monto || 0)
+          if (!val || val.estado !== 'pendiente' || montoVal <= 0.01) return
+          const mon: 'USD' | 'BS' = val.moneda || defaultMoneda || 'USD'
+          const estadoVigencia = clasificarCuotaExtraordinaria(fechaEmision, fechaLimite, hoyIso)
+          const itemObj: DesgloseConceptoItem = {
+            id: `cuota_esp_${anioCfg}_${idPrefix}`,
+            columnaId: idPrefix,
+            anio: anioCfg,
+            label: titulo || 'Cuota Extraordinaria',
+            categoria: 'cuota_especial',
+            monto: Number(montoVal.toFixed(2)),
+            moneda: mon,
+            estado: 'pendiente',
+            estadoVigencia,
+            icono: estadoVigencia === 'programada' ? '🗓️' : '✨',
+            descripcion,
+            fechaEmision,
+            fechaLimite
+          }
+
+          if (estadoVigencia === 'programada') {
+            cuotasProgramadasList.push(itemObj)
+          } else {
+            if (mon === 'USD') cuotasEspUsd += montoVal
+            else cuotasEspBs += montoVal
+            cuotasEspecialesList.push(itemObj)
+          }
+        }
 
         if (targetAptoId && configRows.length > 0) {
           configRows.forEach((cfgRow: any) => {
@@ -371,58 +456,38 @@ export async function obtenerDeudaMoraApartamento(
               cfgObj.columnas.forEach((col: any) => {
                 if (col.tipo !== 'cuota_especial') return
                 const val = celdasPers[col.id] ?? (col.montoDefecto ? { monto: col.montoDefecto, estado: 'pendiente' } : null)
-                const montoVal = Number(val?.monto || 0)
-                if (val && val.estado === 'pendiente' && montoVal > 0.01) {
-                  const mon: 'USD' | 'BS' = val.moneda || col.moneda || 'USD'
-                  if (mon === 'USD') cuotasEspUsd += montoVal
-                  else cuotasEspBs += montoVal
-                  cuotasEspecialesList.push({
-                    id: `cuota_esp_${anioCfg}_${col.id}`,
-                    columnaId: col.id,
-                    anio: anioCfg,
-                    label: col.titulo || 'Cuota Extraordinaria',
-                    categoria: 'cuota_especial',
-                    monto: Number(montoVal.toFixed(2)),
-                    moneda: mon,
-                    estado: 'pendiente',
-                    icono: '✨',
-                    descripcion: col.descripcion,
-                    fechaEmision: col.fechaEmision,
-                    fechaLimite: col.fechaLimite
-                  })
-                }
+                procesarCuotaEspecialApto(
+                  col.id,
+                  col.titulo || 'Cuota Extraordinaria',
+                  val,
+                  col.moneda || 'USD',
+                  anioCfg,
+                  col.descripcion,
+                  col.fechaEmision,
+                  col.fechaLimite
+                )
               })
             }
 
             if (Array.isArray(cfgObj.filasCuotasEspeciales)) {
               cfgObj.filasCuotasEspeciales.forEach((fila: any) => {
                 const val = fila.valoresPorApto?.[targetAptoId] ?? (fila.montoDefecto ? { monto: fila.montoDefecto, estado: 'pendiente' } : null)
-                const montoVal = Number(val?.monto || 0)
-                if (val && val.estado === 'pendiente' && montoVal > 0.01) {
-                  const mon: 'USD' | 'BS' = fila.moneda || 'USD'
-                  if (mon === 'USD') cuotasEspUsd += montoVal
-                  else cuotasEspBs += montoVal
-                  cuotasEspecialesList.push({
-                    id: `cuota_esp_${anioCfg}_${fila.id}`,
-                    columnaId: fila.id,
-                    anio: anioCfg,
-                    label: fila.nombre || 'Cuota Extraordinaria',
-                    categoria: 'cuota_especial',
-                    monto: Number(montoVal.toFixed(2)),
-                    moneda: mon,
-                    estado: 'pendiente',
-                    icono: '✨',
-                    descripcion: fila.descripcion,
-                    fechaEmision: fila.fechaEmision,
-                    fechaLimite: fila.fechaLimite
-                  })
-                }
+                procesarCuotaEspecialApto(
+                  fila.id,
+                  fila.nombre || 'Cuota Extraordinaria',
+                  val,
+                  fila.moneda || 'USD',
+                  anioCfg,
+                  fila.descripcion,
+                  fila.fechaEmision,
+                  fila.fechaLimite
+                )
               })
             }
           })
         }
 
-        if (!moraRow && recs.length === 0 && cuotasEspecialesList.length === 0) {
+        if (!moraRow && recs.length === 0 && cuotasEspecialesList.length === 0 && cuotasProgramadasList.length === 0) {
           return null
         }
 
@@ -550,12 +615,21 @@ export async function obtenerDeudaMoraApartamento(
           }
         })
 
-        const totalMeses = (moraRow?.meses_deuda && !esMoraSolventada ? moraRow.meses_deuda : 0) + recs.length + cuotasEspecialesList.length
+        const cuotasVencidasCount = cuotasEspecialesList.filter(c => c.estadoVigencia === 'vencida').length
+        const tieneHistoricoDeuda = !esMoraSolventada && (
+          deudaBase2025 > 0.01 ||
+          cableViajero > 0.01 ||
+          guaya > 0.01 ||
+          arreglo > 0.01 ||
+          (Boolean(moraRow?.monto_usd) && Number(moraRow?.monto_usd) > 0.01 && !conceptosHist.deuda_2025)
+        )
+        const totalMeses = (moraRow?.meses_deuda && !esMoraSolventada && tieneHistoricoDeuda ? moraRow.meses_deuda : 0) + recs.length + cuotasVencidasCount
+        const todoSolventado = sumBs <= 0.01 && sumUsd <= 0.01 && recs.length === 0 && cuotasEspecialesList.length === 0
 
         let tasaRiesgo: TasaRiesgoMora = 'azul'
-        if (totalMeses === 0 && sumBs <= 0.01 && sumUsd <= 0.01) {
+        if (todoSolventado) {
           tasaRiesgo = 'azul'
-        } else if (recs.length <= 1 && cuotasEspecialesList.length === 0 && (!moraRow || esMoraSolventada || (deudaBase2025 === 0 && cableViajero === 0 && guaya === 0 && arreglo === 0))) {
+        } else if (!tieneHistoricoDeuda && recs.length <= 1 && cuotasVencidasCount === 0) {
           tasaRiesgo = 'azul'
         } else if (totalMeses <= 3) {
           tasaRiesgo = 'amarillo'
@@ -571,7 +645,6 @@ export async function obtenerDeudaMoraApartamento(
 
         const aptoObj = moraRow?.apartamentos || {}
         const aptoNumStr = aptoObj.numero || aptoNumero || moraRow?.apartamento_numero || ''
-        const todoSolventado = esMoraSolventada && recs.length === 0 && cuotasEspecialesList.length === 0
 
         const item: DeudaMoraItem = {
           id: moraRow?.id || `mora_calc_${apartamentoId || aptoNumStr}`,
@@ -580,13 +653,13 @@ export async function obtenerDeudaMoraApartamento(
           piso: aptoObj.piso != null ? aptoObj.piso : moraRow?.piso,
           propietario_nombre: aptoObj.propietario_nombre || moraRow?.propietario_nombre || 'Propietario',
           propietario_telefono: aptoObj.telefono_contacto || moraRow?.propietario_telefono || '',
-          meses_deuda: Math.max(recs.length, totalMeses),
+          meses_deuda: todoSolventado ? 0 : totalMeses,
           monto_usd: Number(sumUsd.toFixed(2)),
           monto_bs: Number(sumBs.toFixed(2)),
           moneda_principal: monedaPrincipal,
           tasa_riesgo: tasaRiesgo,
           accion_legal: moraRow?.accion_legal || (tasaRiesgo === 'azul' ? 'ninguna' : 'notificacion_preventiva'),
-          estado: todoSolventado ? 'solventado' : (cuotasEspecialesList.length > 0 ? 'activo' : (moraRow?.estado || 'activo')),
+          estado: todoSolventado ? 'solventado' : (cuotasEspecialesList.length > 0 || recs.length > 0 ? 'activo' : (moraRow?.estado || 'activo')),
           conceptos_detalle: moraRow?.conceptos_detalle || '',
           observaciones: moraRow?.observaciones || '',
           fecha_corte: moraRow?.fecha_corte || new Date().toISOString().slice(0, 10),
@@ -601,6 +674,7 @@ export async function obtenerDeudaMoraApartamento(
             recibos_bs: recibosBsList,
             recibos_usd: recibosUsdList,
             cuotas_especiales: cuotasEspecialesList,
+            cuotas_programadas: cuotasProgramadasList,
             items: itemsList,
             total_bs: Number(sumBs.toFixed(2)),
             total_usd: Number(sumUsd.toFixed(2))
@@ -855,36 +929,67 @@ export async function obtenerDeudasMora(
             }
           })
 
-          // 3. Cuotas especiales adicionales del calendario (de todos los años configurados)
+          // 3. Cuotas especiales adicionales del calendario (separando vigentes vs programadas futuras)
+          const hoyIso = obtenerFechaHoyLocalIso()
           const cuotasAdicionales: DesgloseConceptoItem[] = []
+          const cuotasProgramadas: DesgloseConceptoItem[] = []
+
+          const pushCuotaCalendario = (
+            idPrefix: string,
+            titulo: string,
+            val: any,
+            defaultMoneda: 'USD' | 'BS',
+            anioCfg: number,
+            descripcion?: string,
+            fechaEmision?: string,
+            fechaLimite?: string
+          ) => {
+            if (!val || val.estado !== 'pendiente' || Number(val.monto || 0) <= 0.01) return
+            const montoVal = Number(val.monto)
+            const mon: 'USD' | 'BS' = val.moneda || defaultMoneda || 'USD'
+            const estadoVigencia = clasificarCuotaExtraordinaria(fechaEmision, fechaLimite, hoyIso)
+            const cuotaItem: DesgloseConceptoItem = {
+              id: `cuota_esp_${anioCfg}_${idPrefix}`,
+              columnaId: idPrefix,
+              anio: anioCfg,
+              label: titulo || 'Cuota Extraordinaria',
+              categoria: 'cuota_especial',
+              monto: Number(montoVal.toFixed(2)),
+              moneda: mon,
+              estado: 'pendiente',
+              estadoVigencia,
+              icono: estadoVigencia === 'programada' ? '🗓️' : '✨',
+              descripcion,
+              fechaEmision,
+              fechaLimite
+            }
+
+            if (estadoVigencia === 'programada') {
+              cuotasProgramadas.push(cuotaItem)
+            } else {
+              if (mon === 'USD') sumUsd += montoVal
+              else sumBs += montoVal
+              cuotasAdicionales.push(cuotaItem)
+              itemsList.push(cuotaItem)
+            }
+          }
+
           configsCalendario.forEach(({ anio: anioCfg, config: cfgObj }) => {
             if (Array.isArray(cfgObj?.columnas)) {
               const celdasPers = cfgObj.valoresCeldasPersonalizadas?.[apto.id] || {}
               cfgObj.columnas.forEach((col: any) => {
                 if (col.tipo === 'cuota_especial') {
                   const val = celdasPers[col.id] ?? (col.montoDefecto ? { monto: col.montoDefecto, estado: 'pendiente' } : null)
-                  if (val && val.estado === 'pendiente' && Number(val.monto || 0) > 0.01) {
-                    const montoVal = Number(val.monto)
-                    const mon: 'USD' | 'BS' = val.moneda || col.moneda || 'USD'
-                    if (mon === 'USD') sumUsd += montoVal
-                    else sumBs += montoVal
-                    const cuotaItem: DesgloseConceptoItem = {
-                      id: `cuota_esp_${anioCfg}_${col.id}`,
-                      columnaId: col.id,
-                      anio: anioCfg,
-                      label: col.titulo || 'Cuota Especial',
-                      categoria: 'cuota_especial',
-                      monto: Number(montoVal.toFixed(2)),
-                      moneda: mon,
-                      estado: 'pendiente',
-                      icono: '✨',
-                      descripcion: col.descripcion,
-                      fechaEmision: col.fechaEmision,
-                      fechaLimite: col.fechaLimite
-                    }
-                    cuotasAdicionales.push(cuotaItem)
-                    itemsList.push(cuotaItem)
-                  }
+                  pushCuotaCalendario(
+                    col.id,
+                    col.titulo || 'Cuota Extraordinaria',
+                    val,
+                    col.moneda || 'USD',
+                    anioCfg,
+                    col.descripcion,
+                    col.fechaEmision,
+                    col.fechaLimite
+                  )
                 }
               })
             }
@@ -892,28 +997,16 @@ export async function obtenerDeudasMora(
             if (Array.isArray(cfgObj?.filasCuotasEspeciales)) {
               cfgObj.filasCuotasEspeciales.forEach((fila: any) => {
                 const val = fila.valoresPorApto?.[apto.id] ?? (fila.montoDefecto ? { monto: fila.montoDefecto, estado: 'pendiente' } : null)
-                if (val && val.estado === 'pendiente' && Number(val.monto || 0) > 0.01) {
-                  const montoVal = Number(val.monto)
-                  const mon: 'USD' | 'BS' = fila.moneda || 'USD'
-                  if (mon === 'USD') sumUsd += montoVal
-                  else sumBs += montoVal
-                  const cuotaItem: DesgloseConceptoItem = {
-                    id: `cuota_esp_${anioCfg}_${fila.id}`,
-                    columnaId: fila.id,
-                    anio: anioCfg,
-                    label: fila.nombre || 'Cuota Extraordinaria',
-                    categoria: 'cuota_especial',
-                    monto: Number(montoVal.toFixed(2)),
-                    moneda: mon,
-                    estado: 'pendiente',
-                    icono: '✨',
-                    descripcion: fila.descripcion,
-                    fechaEmision: fila.fechaEmision,
-                    fechaLimite: fila.fechaLimite
-                  }
-                  cuotasAdicionales.push(cuotaItem)
-                  itemsList.push(cuotaItem)
-                }
+                pushCuotaCalendario(
+                  fila.id,
+                  fila.nombre || 'Cuota Extraordinaria',
+                  val,
+                  fila.moneda || 'USD',
+                  anioCfg,
+                  fila.descripcion,
+                  fila.fechaEmision,
+                  fila.fechaLimite
+                )
               })
             }
           })
@@ -922,20 +1015,24 @@ export async function obtenerDeudasMora(
           const totalUsd = Number(sumUsd.toFixed(2))
           const tieneDeuda = totalBs > 0.01 || totalUsd > 0.01
 
-          // Si el usuario no pidió incluir solventes y este apto no debe nada ni tiene mora registrada activa
+          // Si el usuario no pidió incluir solventes y este apto no debe nada exigible todavía
           if (!tieneDeuda && !incluirSolventes) {
             return
           }
 
-          // Calcular tasa de riesgo y gravedad
-          const totalConceptosImpagos = itemsList.length
+          // Calcular tasa de riesgo y gravedad (cuotas futuras programadas NO activan mora;
+          // una cuota extraordinaria vigente sin vencer tampoco marca atraso)
+          const cuotasVencidasCount = cuotasAdicionales.filter(c => c.estadoVigencia === 'vencida').length
+          const tieneHistoricoDeuda = deudaBase2025 > 0.01 || cableViajero > 0.01 || guaya > 0.01 || arreglo > 0.01
+          const totalConceptosMora = (tieneHistoricoDeuda ? Math.max(1, Number(moraRow?.meses_deuda || 1)) : 0) + recs.length + cuotasVencidasCount
+
           let tasa: TasaRiesgoMora = 'azul'
           if (tieneDeuda) {
-            if (totalConceptosImpagos <= 1 && recs.length <= 1 && deudaBase2025 <= 0.01) {
-              tasa = 'azul' // Solo recibo del mes
-            } else if (totalConceptosImpagos <= 3) {
+            if (!tieneHistoricoDeuda && recs.length <= 1 && cuotasVencidasCount === 0) {
+              tasa = 'azul' // Recibo del mes o cuota extraordinaria vigente (no vencida)
+            } else if (totalConceptosMora <= 3) {
               tasa = 'amarillo'
-            } else if (totalConceptosImpagos <= 6) {
+            } else if (totalConceptosMora <= 6) {
               tasa = 'rojo'
             } else {
               tasa = 'morado'
@@ -955,11 +1052,13 @@ export async function obtenerDeudasMora(
           if (arreglo > 0.01) partesResumen.push(`Arreglo Asc. (${mArreglo === 'BS' ? 'Bs. ' + arreglo.toLocaleString('es-VE', { minimumFractionDigits: 2 }) : '$' + arreglo.toFixed(2)})`)
           if (recibosBsList.length > 0) partesResumen.push(`${recibosBsList.length} recibos en Bs (${recibosBsList.map(r => r.label.split(' ')[0]).join(', ')})`)
           if (recibosUsdList.length > 0) partesResumen.push(`${recibosUsdList.length} recibos en $ (${recibosUsdList.map(r => r.label.split(' ')[0]).join(', ')})`)
-          if (cuotasAdicionales.length > 0) partesResumen.push(`${cuotasAdicionales.length} cuotas esp.`)
+          if (cuotasAdicionales.length > 0) {
+            partesResumen.push(`Cuota Extraordinaria (${cuotasAdicionales.map(c => c.label).join(', ')})`)
+          }
 
           const conceptosDetalleTexto = partesResumen.length > 0
             ? partesResumen.join(' · ')
-            : (tieneDeuda ? 'Cuotas pendientes al cobro' : 'Al día / Solvente')
+            : (tieneDeuda ? 'Conceptos pendientes al cobro' : (cuotasProgramadas.length > 0 ? 'Al día / Cuota Extraordinaria programada a futuro' : 'Al día / Solvente'))
 
           listaDeudores.push({
             id: moraRow?.id || `mora-apto-${apto.id}`,
@@ -969,7 +1068,7 @@ export async function obtenerDeudasMora(
             propietario_nombre: propNombre,
             propietario_telefono: propTel,
             propietario_email: propEmail,
-            meses_deuda: Math.max(tieneDeuda ? 1 : 0, totalConceptosImpagos),
+            meses_deuda: tieneDeuda ? totalConceptosMora : 0,
             monto_usd: totalUsd,
             monto_bs: totalBs,
             monto_manual_usd: Number((moraRow?.monto_usd || 0).toFixed(2)),
@@ -992,6 +1091,7 @@ export async function obtenerDeudasMora(
               recibos_bs: recibosBsList,
               recibos_usd: recibosUsdList,
               cuotas_especiales: cuotasAdicionales,
+              cuotas_programadas: cuotasProgramadas,
               items: itemsList,
               total_bs: totalBs,
               total_usd: totalUsd

@@ -7,7 +7,8 @@ import {
   TASA_RIESGO_CONFIG,
   ACCION_LEGAL_CONFIG,
   obtenerDeudasMora,
-  obtenerPisoApto
+  obtenerPisoApto,
+  formatearFechaCortaEs
 } from '../../data/moraService'
 
 export { obtenerPisoApto }
@@ -819,7 +820,13 @@ export const ListaMoraResidente: React.FC = () => {
                       <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>
                         {d.propietario_nombre && d.propietario_nombre !== 'N/D' ? d.propietario_nombre : 'Propietario'}
                         {tieneDeuda && (
-                          <span> · <strong style={{ color: '#e2e8f0' }}>{d.tasa_riesgo === 'azul' ? 'Recibo del mes (<1m)' : `${d.meses_deuda} conceptos/meses pendientes`}</strong></span>
+                          <span> · <strong style={{ color: '#e2e8f0' }}>
+                            {d.tasa_riesgo === 'azul'
+                              ? ((d.desglose?.cuotas_especiales?.length || 0) > 0 && (d.desglose?.recibos_bs?.length || 0) === 0 && (d.desglose?.recibos_usd?.length || 0) === 0
+                                ? 'Cuota Extraordinaria vigente'
+                                : 'Recibo del mes (<1m)')
+                              : `${d.meses_deuda} conceptos/meses pendientes`}
+                          </strong></span>
                         )}
                         {d.fecha_corte && <span> · Corte: {d.fecha_corte}</span>}
                       </div>
@@ -851,7 +858,7 @@ export const ListaMoraResidente: React.FC = () => {
                 </div>
 
                 {/* ── DESGLOSE DETALLADO Y MINIMALISTA POR CONCEPTO ── */}
-                {tieneDeuda && d.desglose && (
+                {(tieneDeuda || (d.desglose?.cuotas_programadas && d.desglose.cuotas_programadas.length > 0)) && d.desglose && (
                   <div style={{
                     background: 'rgba(0, 0, 0, 0.28)',
                     border: '1px solid rgba(255, 255, 255, 0.06)',
@@ -861,15 +868,15 @@ export const ListaMoraResidente: React.FC = () => {
                     flexDirection: 'column',
                     gap: '10px'
                   }}>
-                    {/* SECCIÓN 1: DEUDAS PASADAS 2025 Y CUOTAS EXTRAORDINARIAS */}
-                    {(d.desglose.deuda_base_2025 || d.desglose.cable_viajero || d.desglose.guaya || d.desglose.arreglo || (d.desglose.cuotas_especiales && d.desglose.cuotas_especiales.length > 0)) && (
+                    {/* SECCIÓN 1: DEUDAS PASADAS 2025 */}
+                    {(d.desglose.deuda_base_2025 || d.desglose.cable_viajero || d.desglose.guaya || d.desglose.arreglo) && (
                       <div>
                         <div style={{
                           fontSize: '10px', fontWeight: 800, color: '#fb923c', textTransform: 'uppercase',
                           letterSpacing: '0.5px', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '5px'
                         }}>
                           <span>🏛️</span>
-                          <span>Deuda Pasada 2025 y Cuotas Extraordinarias</span>
+                          <span>Deuda Pasada 2025</span>
                         </div>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                           {d.desglose.deuda_base_2025 && (
@@ -935,23 +942,73 @@ export const ListaMoraResidente: React.FC = () => {
                               </strong>
                             </div>
                           )}
+                        </div>
+                      </div>
+                    )}
 
-                          {d.desglose.cuotas_especiales?.map(ce => (
+                    {/* SECCIÓN 1B: CUOTAS EXTRAORDINARIAS VIGENTES */}
+                    {d.desglose.cuotas_especiales && d.desglose.cuotas_especiales.length > 0 && (
+                      <div>
+                        <div style={{
+                          fontSize: '10px', fontWeight: 800, color: '#facc15', textTransform: 'uppercase',
+                          letterSpacing: '0.5px', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '5px'
+                        }}>
+                          <span>✨</span>
+                          <span>Cuotas Extraordinarias Vigentes</span>
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                          {d.desglose.cuotas_especiales.map(ce => (
                             <div key={ce.id} style={{
-                              display: 'inline-flex', alignItems: 'center', gap: '6px',
+                              display: 'inline-flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap',
                               background: 'rgba(234, 179, 8, 0.1)', border: '1px solid rgba(234, 179, 8, 0.3)',
-                              borderRadius: '8px', padding: '4px 9px', fontSize: '11px'
+                              borderRadius: '8px', padding: '5px 9px', fontSize: '11px'
                             }}>
                               <span>✨</span>
-                              <span style={{ color: '#cbd5e1' }}>{ce.label}:</span>
-                              <strong style={{ color: ce.moneda === 'BS' ? '#facc15' : '#60a5fa' }}>
+                              <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{ce.label}:</span>
+                              <strong style={{ color: ce.moneda === 'BS' ? '#fb923c' : '#facc15' }}>
                                 {ce.moneda === 'BS' ? `Bs. ${fmtBs(ce.monto)}` : `$${fmtUsd(ce.monto)} USD`}
                               </strong>
                               {ce.fechaLimite && (
-                                <span style={{ color: '#94a3b8', fontSize: '10px' }}>
-                                  (📅 Límite {ce.fechaLimite})
+                                <span style={{ color: ce.estadoVigencia === 'vencida' ? '#f87171' : '#94a3b8', fontSize: '10px' }}>
+                                  ({ce.estadoVigencia === 'vencida' ? '⚠️ Vencida' : '📅 Límite'} {formatearFechaCortaEs(ce.fechaLimite)})
                                 </span>
                               )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* SECCIÓN 1C: PRÓXIMOS CARGOS PROGRAMADOS (NO EXIGIBLES AÚN) */}
+                    {d.desglose.cuotas_programadas && d.desglose.cuotas_programadas.length > 0 && (
+                      <div>
+                        <div style={{
+                          fontSize: '10px', fontWeight: 800, color: '#38bdf8', textTransform: 'uppercase',
+                          letterSpacing: '0.5px', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '5px'
+                        }}>
+                          <span>🗓️</span>
+                          <span>Próximo Cargo · Cuota Extraordinaria Programada (No sumado a deuda actual)</span>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                          {d.desglose.cuotas_programadas.map(ce => (
+                            <div key={ce.id} style={{
+                              display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap',
+                              background: 'rgba(14, 165, 233, 0.1)', border: '1px solid rgba(56, 189, 248, 0.28)',
+                              borderRadius: '8px', padding: '6px 10px', fontSize: '11px'
+                            }}>
+                              <div style={{ minWidth: 0 }}>
+                                <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{ce.label}</span>
+                                {ce.descripcion && (
+                                  <span style={{ color: '#94a3b8', marginLeft: '6px' }}>— {ce.descripcion}</span>
+                                )}
+                                <div style={{ color: '#38bdf8', fontSize: '10px', marginTop: '2px', fontWeight: 700 }}>
+                                  📅 Cobro a partir del {formatearFechaCortaEs(ce.fechaEmision)}
+                                  {ce.fechaLimite ? ` · Límite: ${formatearFechaCortaEs(ce.fechaLimite)}` : ''}
+                                </div>
+                              </div>
+                              <strong style={{ color: ce.moneda === 'BS' ? '#fb923c' : '#38bdf8', flexShrink: 0 }}>
+                                {ce.moneda === 'BS' ? `Bs. ${fmtBs(ce.monto)}` : `$${fmtUsd(ce.monto)} USD`}
+                              </strong>
                             </div>
                           ))}
                         </div>

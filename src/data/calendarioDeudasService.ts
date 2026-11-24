@@ -4,6 +4,7 @@ import { registrarEventoAuditoria } from './auditoriaService'
 import { obtenerTodosLosSaldosAFavor } from './saldoFavorService'
 import { compararApartamentos } from '../utils/alicuota'
 import { encodePagoMeta, PagoDomusMeta } from './gasService'
+import { clasificarCuotaExtraordinaria, obtenerFechaHoyLocalIso } from './moraService'
 
 export interface ReciboMesItem {
   id: string
@@ -621,10 +622,13 @@ export async function obtenerMatrizCalendario(
           })
 
           const celdasPers = configCalendario.valoresCeldasPersonalizadas?.[apto.id] || {}
+          const hoyIsoCal = obtenerFechaHoyLocalIso()
 
-          // Sumar montos de columnas personalizadas (cuotas especiales en columnas)
+          // Sumar montos de columnas personalizadas (excluyendo cuotas programadas futuras aún no exigibles)
           colsParaApto.forEach((col: ColumnaCalendarioConfig) => {
             if (col.tipo === 'cuota_especial') {
+              const estadoVigencia = clasificarCuotaExtraordinaria(col.fechaEmision, col.fechaLimite, hoyIsoCal)
+              if (estadoVigencia === 'programada') return
               const val = celdasPers[col.id] ?? (col.montoDefecto ? { monto: col.montoDefecto, estado: 'pendiente' } : null)
               if (val && val.estado === 'pendiente' && val.monto > 0) {
                 const mon = (val as any)?.moneda || col.moneda || 'USD'
@@ -681,9 +685,12 @@ export async function obtenerMatrizCalendario(
           let sumPendienteUsd = 0
           let mesesConDeuda = 0
           const colsParaPers = configCalendario.columnas || []
+          const hoyIsoPers = obtenerFechaHoyLocalIso()
 
           colsParaPers.forEach((col: ColumnaCalendarioConfig) => {
             if (col.tipo === 'cuota_especial') {
+              const estadoVigencia = clasificarCuotaExtraordinaria(col.fechaEmision, col.fechaLimite, hoyIsoPers)
+              if (estadoVigencia === 'programada') return
               const val = celdasPers[col.id] ?? (col.montoDefecto ? { monto: col.montoDefecto, estado: 'pendiente' } : null)
               if (val && val.estado === 'pendiente' && val.monto > 0) {
                 if (col.moneda === 'USD') sumPendienteUsd += val.monto
