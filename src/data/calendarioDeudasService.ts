@@ -195,7 +195,7 @@ export function obtenerColumnasPorDefecto(anio = 2026): ColumnaCalendarioConfig[
 
 export function obtenerConfiguracionPorDefecto(anio = 2026): ConfiguracionCalendario {
   return {
-    tituloSeccionHistorica: anio === 2026 ? 'DEUDA AL AÑO 2025 / CONCEPTOS EXTRAORDINARIOS' : '',
+    tituloSeccionHistorica: anio === 2026 ? 'DEUDA AL AÑO 2025 / CONCEPTOS EXTRAORDINARIOS' : `CONCEPTOS EXTRAORDINARIOS ${anio}`,
     tituloSeccionMensual: `CALENDARIO MENSUAL ${anio} (EMISIÓN)`,
     columnas: obtenerColumnasPorDefecto(anio),
     filasPersonalizadas: [],
@@ -1376,13 +1376,26 @@ export async function agregarColumnaPersonalizada(params: {
   try {
     const anio = params.anio || 2026
     const config = await obtenerConfiguracionCalendario(anio)
+    const cols = [...(config.columnas || obtenerColumnasPorDefecto(anio))]
+    const pos = params.posicion
+
+    let seccionEfectiva: 'naranja' | 'azul' = params.seccion
+    if (pos.tipo === 'inicio_naranja' || pos.tipo === 'fin_naranja') {
+      seccionEfectiva = 'naranja'
+    } else if (pos.tipo === 'inicio_azul' || pos.tipo === 'fin_azul') {
+      seccionEfectiva = 'azul'
+    } else if ((pos.tipo === 'despues_de' || pos.tipo === 'antes_de') && pos.colIdReferencia) {
+      const refCol = cols.find(c => c.id === pos.colIdReferencia)
+      if (refCol) seccionEfectiva = refCol.seccion
+    }
+
     const id = `cuota_col_${Date.now()}`
     const montoLimpio = parsearMontoFlexible(params.montoDefecto, params.moneda)
     const nuevaCol: ColumnaCalendarioConfig = {
       id,
       titulo: params.titulo.trim(),
       ...(params.descripcion?.trim() ? { descripcion: params.descripcion.trim() } : {}),
-      seccion: params.seccion,
+      seccion: seccionEfectiva,
       moneda: params.moneda,
       tipo: 'cuota_especial',
       esPersonalizada: true,
@@ -1392,9 +1405,6 @@ export async function agregarColumnaPersonalizada(params: {
       creadaEn: new Date().toISOString(),
       orden: 999
     }
-
-    const cols = [...(config.columnas || obtenerColumnasPorDefecto(anio))]
-    const pos = params.posicion
 
     if (pos.tipo === 'inicio_naranja') {
       const idxPrimerNaranja = cols.findIndex(c => c.seccion === 'naranja')
@@ -1481,16 +1491,18 @@ export async function editarColumnaPersonalizada(params: {
   apartamentosIds?: string[]
   actualizarPendientes?: boolean
   anio?: number
+  nuevoAnio?: number
 }): Promise<{ success: boolean; error: string | null }> {
   try {
     const anio = params.anio || 2026
+    const anioDestino = params.nuevoAnio || anio
     const config = await obtenerConfiguracionCalendario(anio)
     const cols = [...(config.columnas || obtenerColumnasPorDefecto(anio))]
     const idx = cols.findIndex(c => c.id === params.colId)
     if (idx === -1) return { success: false, error: 'Cuota extraordinaria no encontrada' }
 
     const montoLimpio = parsearMontoFlexible(params.montoDefecto, params.moneda)
-    cols[idx] = {
+    const colActualizada: ColumnaCalendarioConfig = {
       ...cols[idx],
       titulo: params.titulo.trim(),
       descripcion: params.descripcion?.trim() || undefined,
@@ -1500,11 +1512,62 @@ export async function editarColumnaPersonalizada(params: {
       fechaEmision: params.fechaEmision || undefined,
       fechaLimite: params.fechaLimite || undefined
     }
-    config.columnas = cols
+
+    let configTarget = config
+    let targetAnio = anio
+
+    if (anioDestino !== anio) {
+      // Mover columna y sus valores desde `anio` hacia `anioDestino` preservando pagados/pendientes
+      cols.splice(idx, 1)
+      cols.forEach((c, i) => { c.orden = i + 1 })
+      config.columnas = cols
+
+      const valoresTransferidos: Record<string, any> = {}
+      if (config.valoresCeldasPersonalizadas) {
+        Object.keys(config.valoresCeldasPersonalizadas).forEach(aid => {
+          const val = config.valoresCeldasPersonalizadas[aid]?.[params.colId]
+          if (val !== undefined) {
+            valoresTransferidos[aid] = val
+            delete config.valoresCeldasPersonalizadas[aid][params.colId]
+          }
+        })
+      }
+      await guardarConfiguracionCalendario(config, anio)
+
+      const configDest = await obtenerConfiguracionCalendario(anioDestino)
+      const colsDest = [...(configDest.columnas || obtenerColumnasPorDefecto(anioDestino))]
+      if (colActualizada.seccion === 'naranja') {
+        let idxUltNaranja = -1
+        for (let i = colsDest.length - 1; i >= 0; i--) {
+          if (colsDest[i].seccion === 'naranja') {
+            idxUltNaranja = i
+            break
+          }
+        }
+        if (idxUltNaranja >= 0) colsDest.splice(idxUltNaranja + 1, 0, colActualizada)
+        else colsDest.unshift(colActualizada)
+      } else {
+        colsDest.push(colActualizada)
+      }
+      colsDest.forEach((c, i) => { c.orden = i + 1 })
+      configDest.columnas = colsDest
+
+      if (!configDest.valoresCeldasPersonalizadas) configDest.valoresCeldasPersonalizadas = {}
+      Object.entries(valoresTransferidos).forEach(([aid, val]) => {
+        if (!configDest.valoresCeldasPersonalizadas[aid]) configDest.valoresCeldasPersonalizadas[aid] = {}
+        configDest.valoresCeldasPersonalizadas[aid][params.colId] = val
+      })
+
+      configTarget = configDest
+      targetAnio = anioDestino
+    } else {
+      cols[idx] = colActualizada
+      config.columnas = cols
+    }
 
     // Si se solicita reasignar / actualizar montos pendientes
     if (params.actualizarPendientes && montoLimpio >= 0) {
-      if (!config.valoresCeldasPersonalizadas) config.valoresCeldasPersonalizadas = {}
+      if (!configTarget.valoresCeldasPersonalizadas) configTarget.valoresCeldasPersonalizadas = {}
       let targets: string[] = []
       if (params.apartamentosIds && params.apartamentosIds.length > 0) {
         targets = params.apartamentosIds
@@ -1516,18 +1579,18 @@ export async function editarColumnaPersonalizada(params: {
       if (targets.length > 0) {
         const targetSet = new Set(targets)
         // Limpiar pendientes de apartamentos ya no seleccionados
-        Object.keys(config.valoresCeldasPersonalizadas).forEach(aid => {
-          const val = config.valoresCeldasPersonalizadas[aid]?.[params.colId]
+        Object.keys(configTarget.valoresCeldasPersonalizadas).forEach(aid => {
+          const val = configTarget.valoresCeldasPersonalizadas[aid]?.[params.colId]
           if (val && val.estado === 'pendiente' && !targetSet.has(aid)) {
-            delete config.valoresCeldasPersonalizadas[aid][params.colId]
+            delete configTarget.valoresCeldasPersonalizadas[aid][params.colId]
           }
         })
         // Asignar o actualizar pendientes en los seleccionados (respetando los ya pagados)
         targets.forEach(aid => {
-          if (!config.valoresCeldasPersonalizadas[aid]) config.valoresCeldasPersonalizadas[aid] = {}
-          const prev = config.valoresCeldasPersonalizadas[aid][params.colId]
+          if (!configTarget.valoresCeldasPersonalizadas[aid]) configTarget.valoresCeldasPersonalizadas[aid] = {}
+          const prev = configTarget.valoresCeldasPersonalizadas[aid][params.colId]
           if (!prev || prev.estado !== 'pagado') {
-            config.valoresCeldasPersonalizadas[aid][params.colId] = {
+            configTarget.valoresCeldasPersonalizadas[aid][params.colId] = {
               monto: montoLimpio,
               estado: montoLimpio > 0 ? 'pendiente' : 'pagado',
               moneda: params.moneda
@@ -1537,8 +1600,9 @@ export async function editarColumnaPersonalizada(params: {
       }
     }
 
-    await guardarConfiguracionCalendario(config, anio)
+    await guardarConfiguracionCalendario(configTarget, targetAnio)
     appCache.invalidateTags(['calendario_config', 'mora', 'saldos', 'recibos', 'pagos'])
+    appCache.invalidatePattern(/^calendario_matriz/)
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('condominio_cuotas_updated'))
     }
