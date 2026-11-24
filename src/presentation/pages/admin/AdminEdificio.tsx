@@ -404,7 +404,9 @@ export const AdminEdificio: React.FC = () => {
       }
 
       // Consultar apartamentos existentes
-      const { data: existentes, error: errExistentes } = await supabase.from('apartamentos').select('*')
+      const { data: existentes, error: errExistentes } = await supabase
+        .from('apartamentos')
+        .select('id, numero, piso')
       if (errExistentes) throw errExistentes
 
       const existentesMap = new Map((existentes || []).map(e => [e.numero, e]))

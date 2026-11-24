@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react'
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react'
 import { Session, User } from '@supabase/supabase-js'
 import { supabase, Perfil, ConfigEdificio, Rol } from '../../data/supabase'
 import { appCache } from '../../data/cacheService'
@@ -60,6 +60,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const [tenantSubdomain, setTenantSubdomain] = useState<string | null>(() => extractTenantSubdomain())
+  const lastLoadedUserIdRef = useRef<string | null>(null)
+  const perfilInFlightRef = useRef<{ userId: string; promise: Promise<void> } | null>(null)
+  const lastAccessWriteRef = useRef<{ userId: string; ts: number }>({ userId: '', ts: 0 })
 
   // ── Cargar configuración del edificio con resolución de subdominio & multi-tenant ──
   const cargarConfig = useCallback(async (forceRefresh = false, explicitBuildingId?: string) => {
@@ -127,7 +130,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
           const { data } = await supabase
             .from('configuracion_edificio')
-            .select('*')
+            .select('id, nombre_edificio, slug, rif, rif_edificio, direccion, ciudad, telefono, email_contacto, email_admin, dominio_email, logo_url, color_primario, tasa_bcv_actual, tasa_bcv_actualizada, banco, cedula_cuenta, tipo_cuenta, cuenta_bancaria, titular_cuenta, pago_movil_banco, pago_movil_cedula, pago_movil_telefono, zelle_email, total_apartamentos, total_pisos, apartamentos_por_piso, tiene_ph, total_ph, fecha_inicio_gestion, fecha_fin_administracion_anterior, banner_emergencia_activo, banner_emergencia_texto, banner_emergencia_nivel, modo_mantenimiento, modo_mantenimiento_motivo, updated_at')
             .limit(1)
             .maybeSingle()
 
@@ -156,63 +159,102 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
-  // ── Cargar perfil del usuario ─────────────────────────────────
-  const cargarPerfil = useCallback(async (userId: string, userEmail?: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('perfiles')
-        .select('*, apartamento:apartamento_id(numero)')
-        .eq('id', userId)
-        .maybeSingle()
+  // ── Cargar perfil del usuario (deduplicado + throttle de ultimo_acceso) ──
+  const cargarPerfil = useCallback(async (userId: string, userEmail?: string, force = false): Promise<void> => {
+    if (!force && perfilInFlightRef.current?.userId === userId) {
+      return perfilInFlightRef.current.promise
+    }
 
-      if (error || !data) {
-        if (error) console.error('[Auth] Error cargando perfil con join:', error.message)
-        // Fallback robusto sin join
-        const { data: fallbackData } = await supabase
+    const run = (async () => {
+      try {
+        const { data, error } = await supabase
           .from('perfiles')
-          .select('*')
+          .select('id, apartamento_id, rol, estado_cuenta, nombre_completo, cedula, telefono, avatar_url, clave_cambiada, ultimo_acceso, condicion_habitacional, carga_familiar, propietario_nombre, propietario_cedula, propietario_telefono, propietario_email, perfil_completo, email, edificio_id, created_at, updated_at, apartamento:apartamento_id(numero)')
           .eq('id', userId)
           .maybeSingle()
-        if (fallbackData) {
-          setPerfil(fallbackData)
-          if ((fallbackData as any).edificio_id) {
-            cargarConfig(false, (fallbackData as any).edificio_id)
+
+        if (error || !data) {
+          if (error) console.error('[Auth] Error cargando perfil con join:', error.message)
+          // Fallback robusto sin join
+          const { data: fallbackData } = await supabase
+            .from('perfiles')
+            .select('id, apartamento_id, rol, estado_cuenta, nombre_completo, cedula, telefono, avatar_url, clave_cambiada, ultimo_acceso, condicion_habitacional, carga_familiar, propietario_nombre, propietario_cedula, propietario_telefono, propietario_email, perfil_completo, email, edificio_id, created_at, updated_at')
+            .eq('id', userId)
+            .maybeSingle()
+          if (fallbackData) {
+            setPerfil(fallbackData)
+            lastLoadedUserIdRef.current = userId
+            if ((fallbackData as any).edificio_id) {
+              cargarConfig(force, (fallbackData as any).edificio_id)
+            }
+          }
+          return
+        }
+
+        if (data) {
+          setPerfil(data)
+          lastLoadedUserIdRef.current = userId
+          // Sincronizar tema y configuración del edificio asociado respetando caché salvo force=true
+          cargarConfig(force, (data as any).edificio_id || undefined)
+
+          const now = Date.now()
+          const storageKey = `domus_last_access_${userId}`
+          let lastStoredTs = lastAccessWriteRef.current.userId === userId ? lastAccessWriteRef.current.ts : 0
+          if (!lastStoredTs && typeof window !== 'undefined') {
+            try {
+              lastStoredTs = Number(sessionStorage.getItem(storageKey) || '0')
+            } catch {}
+          }
+          const needsAccessWrite = !lastStoredTs || (now - lastStoredTs) >= 15 * 60 * 1000
+          const needsEmailSync = Boolean(
+            userEmail &&
+            (!data.propietario_email || data.propietario_email !== userEmail) &&
+            data.condicion_habitacional !== 'alquilado'
+          )
+
+          if (needsAccessWrite || needsEmailSync) {
+            const updatePayload: Record<string, any> = {}
+            if (needsAccessWrite) {
+              updatePayload.ultimo_acceso = new Date(now).toISOString()
+              lastAccessWriteRef.current = { userId, ts: now }
+              if (typeof window !== 'undefined') {
+                try { sessionStorage.setItem(storageKey, String(now)) } catch {}
+              }
+            }
+            if (needsEmailSync) {
+              updatePayload.propietario_email = userEmail
+              data.propietario_email = userEmail
+            }
+
+            supabase
+              .from('perfiles')
+              .update(updatePayload)
+              .eq('id', userId)
+              .then(() => {}, () => {})
           }
         }
-        return
-      }
-      if (data) {
-        setPerfil(data)
-        // Sincronizar tema y configuración completa del edificio asociado al usuario autenticado
-        cargarConfig(true, (data as any).edificio_id || undefined)
-
-        // Registrar último acceso y sincronizar email oficial con el que se registró el propietario
-        const updatePayload: Record<string, any> = { ultimo_acceso: new Date().toISOString() }
-        if (userEmail && (!data.propietario_email || data.propietario_email !== userEmail) && data.condicion_habitacional !== 'alquilado') {
-          updatePayload.propietario_email = userEmail
-          data.propietario_email = userEmail
+      } catch (e) {
+        console.warn('[Auth] Excepción en cargarPerfil:', e)
+      } finally {
+        if (perfilInFlightRef.current?.userId === userId) {
+          perfilInFlightRef.current = null
         }
-
-        supabase
-          .from('perfiles')
-          .update(updatePayload)
-          .eq('id', userId)
-          .then(() => {}, () => {})
       }
-    } catch (e) {
-      console.warn('[Auth] Excepción en cargarPerfil:', e)
-    }
+    })()
+
+    perfilInFlightRef.current = { userId, promise: run }
+    return run
   }, [cargarConfig])
 
   const refreshPerfil = useCallback(async (explicitUserId?: string) => {
     const targetId = explicitUserId || user?.id || session?.user?.id
     if (targetId) {
-      await cargarPerfil(targetId, user?.email || session?.user?.email)
+      await cargarPerfil(targetId, user?.email || session?.user?.email, true)
     } else {
       const { data: { user: currentUser } } = await supabase.auth.getUser()
       if (currentUser) {
         setUser(currentUser)
-        await cargarPerfil(currentUser.id, currentUser.email)
+        await cargarPerfil(currentUser.id, currentUser.email, true)
       }
     }
   }, [user, session, cargarPerfil])
@@ -251,8 +293,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setSession(newSession)
         setUser(newSession?.user ?? null)
         if (newSession?.user) {
+          if (
+            (event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED') &&
+            lastLoadedUserIdRef.current === newSession.user.id
+          ) {
+            return
+          }
           await cargarPerfil(newSession.user.id, newSession.user.email)
         } else {
+          lastLoadedUserIdRef.current = null
           setPerfil(null)
         }
       }
@@ -373,6 +422,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // ── Cerrar sesión ─────────────────────────────────────────────
   const signOut = async () => {
     clearPasswordRecovery()
+    lastLoadedUserIdRef.current = null
     await supabase.auth.signOut()
     setPerfil(null)
     setSession(null)

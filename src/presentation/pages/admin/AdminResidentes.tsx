@@ -146,8 +146,8 @@ export const AdminResidentes: React.FC = () => {
     setLoading(true)
     try {
       const [aptosRes, perfilesRes, pagosRes, saldosMap, moraRes, recibosGeneradosRes] = await Promise.all([
-        supabase.from('apartamentos').select('*'),
-        supabase.from('perfiles').select('*'),
+        supabase.from('apartamentos').select('id, numero, piso, alicuota, estado, propietario_nombre, propietario_cedula, telefono_contacto, created_at'),
+        supabase.from('perfiles').select('id, apartamento_id, nombre_completo, cedula, telefono, email, condicion_habitacional, propietario_nombre, propietario_cedula, propietario_telefono, propietario_email'),
         fetchAllSupabasePages((from, to) =>
           supabase
             .from('pagos_reportados')
@@ -450,7 +450,7 @@ export const AdminResidentes: React.FC = () => {
     const [auditRes, aptoDbRes] = await Promise.all([
       supabase
         .from('historial_auditoria')
-        .select('*')
+        .select('id, fecha, created_at, titulo, descripcion, motivo, autor_nombre, monto_usd, monto_bs')
         .or(`apartamento_id.eq.${residente.id},apartamento_numero.eq.${residente.apartamento}`)
         .order('fecha', { ascending: true }),
       supabase
@@ -516,7 +516,7 @@ export const AdminResidentes: React.FC = () => {
     moraItems.forEach(it => {
       if (it.categoria === 'cuota_especial' || it.categoria === 'deuda_2025') {
         timelineItems.push({
-          fecha: residente.mora_item?.fecha_corte || new Date().toISOString().substring(0, 10),
+          fecha: residente.mora_item?.fecha_corte || getHoyVE(),
           tipo: 'cargo',
           titulo: it.label,
           detalle: it.detalle || `Obligación especial (${it.categoria === 'deuda_2025' ? 'Deuda Consolidada 2025' : 'Cuota Extraordinaria'})`,
@@ -671,7 +671,7 @@ export const AdminResidentes: React.FC = () => {
     try {
       setGenerandoPdfId(residente.id)
       const payloadExpediente = await construirDatosExpedienteLegal(residente)
-      descargarExpedienteLegalApto(payloadExpediente)
+      await descargarExpedienteLegalApto(payloadExpediente)
 
       setDeleteMessage({
         type: 'success',

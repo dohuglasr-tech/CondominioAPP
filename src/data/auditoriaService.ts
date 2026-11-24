@@ -50,7 +50,7 @@ export async function obtenerHistorialAuditoria(): Promise<LogAuditoria[]> {
   try {
     const { data, error } = await supabase
       .from('historial_auditoria')
-      .select('*')
+      .select('id, fecha, tipo_accion, titulo, descripcion, apartamento_numero, apartamento_id, mes_afectado, monto_usd, monto_bs, motivo, autor_nombre, autor_email, datos_anteriores, datos_nuevos, ip_origen, created_at')
       .order('fecha', { ascending: false })
 
     if (!error && data) {

@@ -182,8 +182,14 @@ export const AdminGenerarRecibos: React.FC = () => {
     setLoading(true)
     try {
       const [configRes, gastosRes, aptosRes, perfilesRes, reciboExistRes, localesData] = await Promise.all([
-        supabase.from('configuracion_edificio').select('*').limit(1).maybeSingle(),
-        supabase.from('gastos_comunes').select('*')
+        supabase
+          .from('configuracion_edificio')
+          .select('id, nombre_edificio, rif, direccion, email_contacto, dominio_email, banco, cedula_cuenta, tipo_cuenta, cuenta_bancaria, titular_cuenta, pago_movil_banco, pago_movil_cedula, pago_movil_telefono, zelle_email, tasa_bcv_actual, color_primario, fecha_inicio_gestion, fecha_fin_administracion_anterior')
+          .limit(1)
+          .maybeSingle(),
+        supabase
+          .from('gastos_comunes')
+          .select('id, descripcion, categoria, tipo, monto_usd, monto_bs, mes_aplicacion, created_at')
           .gte('mes_aplicacion', mesStr).lte('mes_aplicacion', mesStr)
           .order('created_at', { ascending: true }),
         supabase.from('apartamentos')
@@ -259,7 +265,8 @@ export const AdminGenerarRecibos: React.FC = () => {
   // Cargar cargos especiales del mes y añadir automáticamente cargos de locales asignados NO SOLVENTES
   useEffect(() => {
     if (apartamentos.length === 0) return
-    supabase.from('cargos_especiales').select('*')
+    supabase.from('cargos_especiales')
+      .select('id, apartamento_id, tipo, descripcion, monto_usd, monto_bs, mes_aplicacion')
       .gte('mes_aplicacion', mesStr).lte('mes_aplicacion', mesStr)
       .then(({ data }) => {
         const base: CargoEspecial[] = (data || []).filter(c => !c.id?.startsWith('cargo_local_'))
@@ -370,26 +377,26 @@ export const AdminGenerarRecibos: React.FC = () => {
   }
 
   // ── Generar y Descargar PDF (Con visor y descarga directa) ───────────
-  const generarDocPDF = (apto: Apartamento) => {
+  const generarDocPDF = async (apto: Apartamento) => {
     if (!config) return null
     const esPH = apto.numero.toUpperCase().includes('PH') || apto.piso === 11
     const pct = esPH ? fondoReservaPhPct : fondoReservaPct
     const totalesFondos = getTotalesFondosApto(apto)
-    return generarPDF(apto, gastos, cargos, config, pct, mesLabel, anio, notasResidentes, undefined, undefined, donaciones, totalesFondos)
+    return await generarPDF(apto, gastos, cargos, config, pct, mesLabel, anio, notasResidentes, undefined, undefined, donaciones, totalesFondos)
   }
 
-  const descargarPDF = (apto: Apartamento) => {
-    const doc = generarDocPDF(apto)
+  const descargarPDF = async (apto: Apartamento) => {
+    const doc = await generarDocPDF(apto)
     if (!doc) return
     doc.save(`Recibo_Apto${apto.numero}_${mesLabel}${anio}.pdf`)
   }
 
-  const handleAbrirPrevisualizacionPdf = (idx?: number) => {
+  const handleAbrirPrevisualizacionPdf = async (idx?: number) => {
     const targetIdx = idx !== undefined ? idx : previewAptoIdx
     const apto = apartamentos[targetIdx]
     if (!apto) return
     setPreviewAptoIdx(targetIdx)
-    const doc = generarDocPDF(apto)
+    const doc = await generarDocPDF(apto)
     if (!doc) return
     if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl)
     const blob = doc.output('blob')
@@ -398,11 +405,11 @@ export const AdminGenerarRecibos: React.FC = () => {
     setPdfModalOpen(true)
   }
 
-  const handleCambiarAptoPdf = (idx: number) => {
+  const handleCambiarAptoPdf = async (idx: number) => {
     setPreviewAptoIdx(idx)
     const apto = apartamentos[idx]
     if (apto) {
-      const doc = generarDocPDF(apto)
+      const doc = await generarDocPDF(apto)
       if (!doc) return
       if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl)
       const blob = doc.output('blob')

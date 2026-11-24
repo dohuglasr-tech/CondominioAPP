@@ -254,10 +254,10 @@ export const ModalCartaSolvencia: React.FC<ModalCartaSolvenciaProps> = ({
     }
   }
 
-  const handleDescargar = () => {
+  const handleDescargar = async () => {
     setDescargando(true)
     try {
-      descargarSolvenciaPDF(datosActualizados)
+      await descargarSolvenciaPDF(datosActualizados)
     } finally {
       setTimeout(() => setDescargando(false), 1200)
     }
@@ -491,7 +491,7 @@ export const ModalCartaSolvencia: React.FC<ModalCartaSolvenciaProps> = ({
           </button>
 
           <button
-            onClick={() => abrirSolvenciaPDF(datosActualizados)}
+            onClick={() => { void abrirSolvenciaPDF(datosActualizados) }}
             style={{
               backgroundColor: 'rgba(59, 130, 246, 0.15)',
               color: '#60a5fa',

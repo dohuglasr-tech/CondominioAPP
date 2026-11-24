@@ -35,6 +35,8 @@ class CacheService {
   private inFlightRequests = new Map<string, Promise<any>>()
   private listeners = new Set<CacheListener>()
   private realtimeInitialized = false
+  private pendingRealtimeTags = new Set<string>()
+  private realtimeDebounceTimer: ReturnType<typeof setTimeout> | null = null
 
   /**
    * Obtiene un dato desde la caché en memoria o ejecuta la función fetcher si expiró/no existe.
@@ -180,6 +182,11 @@ class CacheService {
   clear(): void {
     this.memoryCache.clear()
     this.inFlightRequests.clear()
+    if (this.realtimeDebounceTimer) {
+      clearTimeout(this.realtimeDebounceTimer)
+      this.realtimeDebounceTimer = null
+    }
+    this.pendingRealtimeTags.clear()
     if (typeof window !== 'undefined') {
       try {
         const keysToRemove: string[] = []
@@ -211,9 +218,24 @@ class CacheService {
     }
   }
 
+  private scheduleRealtimeInvalidation(tags: string[], delayMs: number = 500): void {
+    tags.forEach((t) => this.pendingRealtimeTags.add(t))
+    if (this.realtimeDebounceTimer) {
+      clearTimeout(this.realtimeDebounceTimer)
+    }
+    this.realtimeDebounceTimer = setTimeout(() => {
+      const batch = Array.from(this.pendingRealtimeTags)
+      this.pendingRealtimeTags.clear()
+      this.realtimeDebounceTimer = null
+      if (batch.length > 0) {
+        this.invalidateTags(batch)
+      }
+    }, delayMs)
+  }
+
   /**
    * Inicializa la escucha global de Supabase Realtime para auto-purgar la caché
-   * ante cualquier cambio que ocurra en la base de datos (sea local o por otro usuario).
+   * ante cualquier cambio que ocurra en la base de datos (con debounce 500ms para evitar ráfagas).
    */
   initRealtimeSync(supabaseClient: any): void {
     if (this.realtimeInitialized || !supabaseClient) return
@@ -224,22 +246,22 @@ class CacheService {
       supabaseClient
         .channel(channelId)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'pagos_reportados' }, () => {
-          this.invalidateTags(['pagos', 'saldos', 'recibos', 'mora'])
+          this.scheduleRealtimeInvalidation(['pagos', 'saldos', 'recibos', 'mora'])
         })
         .on('postgres_changes', { event: '*', schema: 'public', table: 'recibos_generados' }, () => {
-          this.invalidateTags(['recibos', 'saldos', 'mora'])
+          this.scheduleRealtimeInvalidation(['recibos', 'saldos', 'mora'])
         })
         .on('postgres_changes', { event: '*', schema: 'public', table: 'gastos_comunes' }, () => {
-          this.invalidateTags(['gastos', 'recibos'])
+          this.scheduleRealtimeInvalidation(['gastos', 'recibos'])
         })
         .on('postgres_changes', { event: '*', schema: 'public', table: 'apartamentos' }, () => {
-          this.invalidateTags(['apartamentos', 'residentes', 'saldos'])
+          this.scheduleRealtimeInvalidation(['apartamentos', 'residentes', 'saldos'])
         })
         .on('postgres_changes', { event: '*', schema: 'public', table: 'configuracion_edificio' }, () => {
-          this.invalidateTags(['config', 'tasa_bcv'])
+          this.scheduleRealtimeInvalidation(['config', 'tasa_bcv'])
         })
         .on('postgres_changes', { event: '*', schema: 'public', table: 'historial_auditoria' }, () => {
-          this.invalidateTags(['auditoria', 'saldos'])
+          this.scheduleRealtimeInvalidation(['auditoria', 'saldos'])
         })
         .subscribe()
     } catch (err) {

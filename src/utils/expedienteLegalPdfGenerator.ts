@@ -1,5 +1,4 @@
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
+import { loadPdfLibs, JsPDFInstance } from './pdfLoader'
 import { formatAlicuotaPct } from './alicuota'
 import { getHoyVE } from './fechaVE'
 
@@ -111,7 +110,8 @@ const TASA_RIESGO_LABELS: Record<string, { label: string; sub: string; color: [n
  * Diseñado bajo los estándares del sistema (Slate 900 y Acento Naranja),
  * con fundamentación jurídica en la Ley de Propiedad Horizontal (Arts. 13 y 14).
  */
-export function generarExpedienteLegalPDF(datos: ExpedienteLegalAptoData): jsPDF {
+export async function generarExpedienteLegalPDF(datos: ExpedienteLegalAptoData): Promise<JsPDFInstance> {
+  const { jsPDF, autoTable } = await loadPdfLibs()
   const doc = new jsPDF({ format: 'a4', unit: 'mm' })
   const pageWidth = doc.internal.pageSize.getWidth()   // 210mm
   const pageHeight = doc.internal.pageSize.getHeight() // 297mm
@@ -249,8 +249,8 @@ export function generarExpedienteLegalPDF(datos: ExpedienteLegalAptoData): jsPDF
   const ocupacionLabel = apto.estadoOcupacion === 'ocupado_propietario'
     ? 'Ocupado por Propietario'
     : apto.estadoOcupacion === 'alquilado'
-    ? 'Arrendado / Alquilado'
-    : 'Desocupado'
+      ? 'Arrendado / Alquilado'
+      : 'Desocupado'
   doc.text(ocupacionLabel, col1X + 24, subY)
 
   subY += 4.5
@@ -321,28 +321,28 @@ export function generarExpedienteLegalPDF(datos: ExpedienteLegalAptoData): jsPDF
       val: esSolvente ? '$0.00 USD' : `$${fmtUsd(m.deudaTotalUsd)} USD`,
       sub: esSolvente ? 'Solvente al día' : `Bs. ${fmtBs(m.deudaTotalBs)}`,
       color: esSolvente ? cGreen : cRed,
-      bg: esSolvente ? [240, 253, 244] as [number,number,number] : [254, 242, 242] as [number,number,number]
+      bg: esSolvente ? [240, 253, 244] as [number, number, number] : [254, 242, 242] as [number, number, number]
     },
     {
       label: 'MOROSIDAD / CONDICIÓN',
       val: esSolvente ? '0 Cuotas' : `${m.mesesDeuda} ${m.mesesDeuda === 1 ? 'Cuota' : 'Cuotas'}`,
       sub: riesgoConfig.label,
       color: riesgoConfig.color,
-      bg: [255, 251, 235] as [number,number,number]
+      bg: [255, 251, 235] as [number, number, number]
     },
     {
       label: 'CUMPLIMIENTO DE PAGO',
       val: `${m.tasaCumplimientoPct}%`,
       sub: `${m.recibosPagados} de ${m.totalRecibosEmitidos} Recibos`,
-      color: m.tasaCumplimientoPct >= 80 ? cGreen : (m.tasaCumplimientoPct >= 50 ? [202, 138, 4] as [number,number,number] : cRed),
-      bg: [248, 250, 252] as [number,number,number]
+      color: m.tasaCumplimientoPct >= 80 ? cGreen : (m.tasaCumplimientoPct >= 50 ? [202, 138, 4] as [number, number, number] : cRed),
+      bg: [248, 250, 252] as [number, number, number]
     },
     {
       label: 'SALDO A FAVOR / CRÉDITO',
       val: m.saldoAFavorUsd > 0.001 ? `+$${fmtUsd(m.saldoAFavorUsd)}` : '$0.00 USD',
       sub: m.saldoAFavorUsd > 0.001 ? `Bs. ${fmtBs(m.saldoAFavorBs)}` : 'Sin saldo a favor',
       color: m.saldoAFavorUsd > 0.001 ? cGreen : cMuted,
-      bg: m.saldoAFavorUsd > 0.001 ? [240, 253, 244] as [number,number,number] : [248, 250, 252] as [number,number,number]
+      bg: m.saldoAFavorUsd > 0.001 ? [240, 253, 244] as [number, number, number] : [248, 250, 252] as [number, number, number]
     }
   ]
 
@@ -684,8 +684,8 @@ export function generarExpedienteLegalPDF(datos: ExpedienteLegalAptoData): jsPDF
 /**
  * Función helper directa para descargar el expediente en el navegador
  */
-export function descargarExpedienteLegalApto(datos: ExpedienteLegalAptoData): void {
-  const doc = generarExpedienteLegalPDF(datos)
+export async function descargarExpedienteLegalApto(datos: ExpedienteLegalAptoData): Promise<void> {
+  const doc = await generarExpedienteLegalPDF(datos)
   const aptoSanitizado = datos.apartamento.numero.replace(/[^a-zA-Z0-9_-]/g, '_')
   const fechaStr = getHoyVE()
   doc.save(`Expediente_Legal_Apto_${aptoSanitizado}_${fechaStr}.pdf`)

@@ -1374,7 +1374,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
   }
 
   // ── Descargar PDF Cartelera de Ascensor (Tamaño Carta Sin Márgenes) ────────
-  const handleDescargarCarteleraPdf = (filtroDirecto?: 'todos' | 'con_deuda' | 'solventes') => {
+  const handleDescargarCarteleraPdf = async (filtroDirecto?: 'todos' | 'con_deuda' | 'solventes') => {
     if (filas.length === 0) {
       showToast('⚠️ No hay apartamentos disponibles para generar el PDF')
       return
@@ -1385,7 +1385,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
       const filtroAplicar = filtroDirecto || carteleraFiltro
       const tasaVal = getTasaBcvNumerica(resumen?.tasaBcvActual, config?.tasa_bcv_actual)
 
-      const doc = generarCarteleraAscensorPDF({
+      const doc = await generarCarteleraAscensorPDF({
         nombreEdificio: config?.nombre_edificio || 'Condominio',
         rifEdificio: config?.rif || null,
         direccionEdificio: config?.direccion || null,

@@ -6,8 +6,7 @@ import { useAuth } from '../../../application/contexts/AuthContext'
 import { registrarEventoAuditoria } from '../../../data/auditoriaService'
 import { generarPDFRecibo, ReciboAptoData, ReciboGastoData, ReciboCargoData, ReciboConfigData } from '../../../utils/reciboPdfGenerator'
 import { compararApartamentos, formatAlicuotaPct } from '../../../utils/alicuota'
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
+import { loadPdfLibs } from '../../../utils/pdfLoader'
 import { SkeletonCard, SkeletonChart, SkeletonTable } from '../../components/Skeleton'
 import { generarMensajeCobroRecibo, generarMensajeReciboPagado, abrirWhatsApp } from '../../../utils/whatsappHelper'
 import {
@@ -80,7 +79,7 @@ const MESES = [
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
 ]
 
-const fmtBs  = (n: number) => (n || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const fmtBs = (n: number) => (n || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtUsd = (n: number) => (n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 export const AdminRecibosEmitidos: React.FC = () => {
@@ -172,7 +171,10 @@ export const AdminRecibosEmitidos: React.FC = () => {
       }
 
       const [recibosRes, aptosRes, perfilesRes] = await Promise.all([
-        supabase.from('recibos_generados').select('*').eq('mes_facturado', mes),
+        supabase
+          .from('recibos_generados')
+          .select('id, apartamento_id, mes_facturado, tasa_bcv, total_gastos_usd, alicuota, subtotal_usd, fondo_reserva_pct, fondo_reserva_usd, cargos_extra_usd, total_usd, total_bs, estado, es_indexado, data_json, emitido_at')
+          .eq('mes_facturado', mes),
         supabase.from('apartamentos').select('id, numero, piso, alicuota, propietario_nombre, telefono_contacto'),
         supabase.from('perfiles').select('id, apartamento_id, nombre_completo, condicion_habitacional, propietario_nombre, telefono, propietario_email')
       ])
@@ -454,7 +456,7 @@ export const AdminRecibosEmitidos: React.FC = () => {
               .from('perfiles')
               .update({ propietario_email: item.email.trim() })
               .eq('apartamento_id', item.recibo.apartamento_id)
-          } catch {}
+          } catch { }
         }
 
         nuevosLogs.push({
@@ -517,9 +519,9 @@ export const AdminRecibosEmitidos: React.FC = () => {
             apartamento: d.recibo.apartamento?.numero,
             apartamentoId: d.recibo.apartamento_id
           }))
-        }).catch(() => {})
+        }).catch(() => { })
       }
-    } catch {}
+    } catch { }
   }
 
   // ── 1. Cargar meses con recibos emitidos y configuración ──────────────────
@@ -527,7 +529,11 @@ export const AdminRecibosEmitidos: React.FC = () => {
     setLoading(true)
     try {
       const [configRes, kpiMesesRes] = await Promise.all([
-        supabase.from('configuracion_edificio').select('*').limit(1).maybeSingle(),
+        supabase
+          .from('configuracion_edificio')
+          .select('id, nombre_edificio, rif, direccion, dominio_email, email_contacto, banco, cedula_cuenta, tipo_cuenta, cuenta_bancaria, titular_cuenta, pago_movil_banco, pago_movil_cedula, pago_movil_telefono, zelle_email, tasa_bcv_actual, color_primario, fecha_inicio_gestion, fecha_fin_administracion_anterior')
+          .limit(1)
+          .maybeSingle(),
         supabase.rpc('get_admin_dashboard_kpis', { p_mes: null })
       ])
 
@@ -575,7 +581,11 @@ export const AdminRecibosEmitidos: React.FC = () => {
     try {
       const [recibosRes, aptosRes, perfilesRes] = await Promise.all([
         fetchAllSupabasePages((from, to) =>
-          supabase.from('recibos_generados').select('*').eq('mes_facturado', mesSeleccionado).range(from, to)
+          supabase
+            .from('recibos_generados')
+            .select('id, apartamento_id, mes_facturado, tasa_bcv, total_gastos_usd, alicuota, subtotal_usd, fondo_reserva_pct, fondo_reserva_usd, cargos_extra_usd, total_usd, total_bs, estado, es_indexado, data_json, emitido_at')
+            .eq('mes_facturado', mesSeleccionado)
+            .range(from, to)
         ),
         supabase.from('apartamentos').select('id, numero, piso, alicuota, propietario_nombre, telefono_contacto'),
         supabase.from('perfiles').select('id, apartamento_id, nombre_completo, condicion_habitacional, propietario_nombre, telefono, propietario_email')
@@ -799,26 +809,26 @@ export const AdminRecibosEmitidos: React.FC = () => {
     }
 
     const totalFacturadoUsd = recibos.reduce((s, r) => s + Number(r.total_usd || 0), 0)
-    const totalFacturadoBs  = recibos.reduce((s, r) => s + Number(r.total_bs || 0), 0)
+    const totalFacturadoBs = recibos.reduce((s, r) => s + Number(r.total_bs || 0), 0)
 
     const solventes = recibos.filter(r => r.estado === 'pagado')
-    const morosos   = recibos.filter(r => r.estado === 'pendiente')
+    const morosos = recibos.filter(r => r.estado === 'pendiente')
 
     const totalCobradoUsd = solventes.reduce((s, r) => s + Number(r.total_usd || 0), 0)
-    const totalCobradoBs  = solventes.reduce((s, r) => s + Number(r.total_bs || 0), 0)
+    const totalCobradoBs = solventes.reduce((s, r) => s + Number(r.total_bs || 0), 0)
 
     const totalMoraUsd = morosos.reduce((s, r) => s + Number(r.total_usd || 0), 0)
-    const totalMoraBs  = morosos.reduce((s, r) => s + Number(r.total_bs || 0), 0)
+    const totalMoraBs = morosos.reduce((s, r) => s + Number(r.total_bs || 0), 0)
 
     const pctRecaudado = totalFacturadoUsd > 0 ? Math.round((totalCobradoUsd / totalFacturadoUsd) * 100) : 0
-    const pctMora      = 100 - pctRecaudado
+    const pctMora = 100 - pctRecaudado
 
     // Fondo de reserva del mes
     const fondoReservaUsd = recibos[0]?.total_gastos_usd * ((recibos[0]?.fondo_reserva_pct || 10) / 100) || 0
-    const fondoReservaBs  = (recibos[0]?.total_bs || 0) * 0.1 // Referencial
+    const fondoReservaBs = (recibos[0]?.total_bs || 0) * 0.1 // Referencial
 
     const totalGastosComunesUsd = recibos[0]?.total_gastos_usd || 0
-    const totalGastosComunesBs  = (recibos[0]?.data_json?.gastos || []).reduce((s, g) => s + (g.monto_bs || 0), 0)
+    const totalGastosComunesBs = (recibos[0]?.data_json?.gastos || []).reduce((s, g) => s + (g.monto_bs || 0), 0)
 
     // Agrupación de gastos por categoría
     const gastosSample = recibos[0]?.data_json?.gastos || []
@@ -837,7 +847,7 @@ export const AdminRecibosEmitidos: React.FC = () => {
       if (!catMap.has(cat)) catMap.set(cat, { totalUsd: 0, totalBs: 0 })
       const item = catMap.get(cat)!
       item.totalUsd += g.monto_usd || 0
-      item.totalBs  += g.monto_bs || 0
+      item.totalBs += g.monto_bs || 0
     })
 
     const gastosPorCategoria = Array.from(catMap.entries()).map(([categoria, vals]) => ({
@@ -907,7 +917,7 @@ export const AdminRecibosEmitidos: React.FC = () => {
   }, [recibos, filtroEstado, busqueda])
 
   // ── 6. Descargar PDF individual de un recibo ya emitido ───────────────────
-  const descargarPDFReciboEmitido = (r: ReciboEmitido) => {
+  const descargarPDFReciboEmitido = async (r: ReciboEmitido) => {
     if (!config) return
     const [anioStr, mesNumStr] = (r.mes_facturado || '').split('-')
     const anio = parseInt(anioStr) || 2026
@@ -950,18 +960,18 @@ export const AdminRecibosEmitidos: React.FC = () => {
     const totalesFondos = r.data_json?.totales_fondos || (
       (r.data_json?.fondo_reserva_general_positivo_usd !== undefined || r.data_json?.fondo_reserva_locales_positivo_usd !== undefined)
         ? {
-            fondoReservaGeneralPositivoUsd: r.data_json.fondo_reserva_general_positivo_usd,
-            fondoReservaGeneralPositivoBs: r.data_json.fondo_reserva_general_positivo_bs,
-            fondoReservaLocalesPositivoUsd: r.data_json.fondo_reserva_locales_positivo_usd,
-            fondoReservaLocalesPositivoBs: r.data_json.fondo_reserva_locales_positivo_bs,
-            totalRecaudadoPositivoUsd: r.data_json.total_recaudado_positivo_usd,
-            totalRecaudadoPositivoBs: r.data_json.total_recaudado_positivo_bs,
-            localAsignadoInfo: r.data_json.local_asignado_info
-          }
+          fondoReservaGeneralPositivoUsd: r.data_json.fondo_reserva_general_positivo_usd,
+          fondoReservaGeneralPositivoBs: r.data_json.fondo_reserva_general_positivo_bs,
+          fondoReservaLocalesPositivoUsd: r.data_json.fondo_reserva_locales_positivo_usd,
+          fondoReservaLocalesPositivoBs: r.data_json.fondo_reserva_locales_positivo_bs,
+          totalRecaudadoPositivoUsd: r.data_json.total_recaudado_positivo_usd,
+          totalRecaudadoPositivoBs: r.data_json.total_recaudado_positivo_bs,
+          localAsignadoInfo: r.data_json.local_asignado_info
+        }
         : undefined
     )
 
-    const doc = generarPDFRecibo(
+    const doc = await generarPDFRecibo(
       aptoData,
       gastos,
       cargos,
@@ -1101,11 +1111,12 @@ export const AdminRecibosEmitidos: React.FC = () => {
   }
 
   // ── 7. Exportar Reporte Resumen Ejecutivo del Mes en PDF ──────────────────
-  const descargarReporteMesPDF = () => {
+  const descargarReporteMesPDF = async () => {
     if (!config || recibos.length === 0) return
+    const { jsPDF, autoTable } = await loadPdfLibs()
     const doc = new jsPDF({ format: 'a4', unit: 'mm' })
-    const cDark: [number,number,number] = [15, 23, 42]
-    const cAccent: [number,number,number] = [249, 115, 22]
+    const cDark: [number, number, number] = [15, 23, 42]
+    const cAccent: [number, number, number] = [249, 115, 22]
 
     const [anioStr, mesNumStr] = (mesSeleccionado || '').split('-')
     const anio = parseInt(anioStr) || 2026
@@ -1183,7 +1194,7 @@ export const AdminRecibosEmitidos: React.FC = () => {
   }
 
   // ── 7b. Exportar Informe Ejecutivo de Cierre de Gestión en PDF ────────────
-  const descargarInformeEjecutivoGestion = () => {
+  const descargarInformeEjecutivoGestion = async () => {
     if (!config || recibos.length === 0) return
     const tasaBcv = getTasaBcvNumerica(recibos[0]?.tasa_bcv, config?.tasa_bcv_actual)
 
@@ -1210,7 +1221,7 @@ export const AdminRecibosEmitidos: React.FC = () => {
       apartamentosEnMora: stats.cantMorosos,
     }
 
-    generarInformeGestionPDF(datos)
+    await generarInformeGestionPDF(datos)
     showToast('📑 Informe Ejecutivo descargado correctamente.')
   }
 
@@ -1352,7 +1363,7 @@ export const AdminRecibosEmitidos: React.FC = () => {
 
   return (
     <div style={{ padding: '28px 32px', maxWidth: '1280px', margin: '0 auto', color: '#fff', fontFamily: 'Inter, sans-serif' }}>
-      
+
       {/* Toast */}
       {toast && (
         <div style={{
@@ -1396,7 +1407,7 @@ export const AdminRecibosEmitidos: React.FC = () => {
               >
                 {mesesDisponibles.map(m => {
                   const [anioStr, mesNum] = m.split('-')
-                  const label = `${MESES[(parseInt(mesNum)||1) - 1]} ${anioStr}`
+                  const label = `${MESES[(parseInt(mesNum) || 1) - 1]} ${anioStr}`
                   const esHist = m.slice(0, 7) < fechaEntradaActual
                   return <option key={m} value={m}>{label}{esHist ? ' 🏛️ (Histórico)' : ''}</option>
                 })}
@@ -1712,7 +1723,7 @@ export const AdminRecibosEmitidos: React.FC = () => {
 
           {/* ── BENTO GRID: KPIS DE CARTERA ── */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '14px', marginBottom: '22px' }}>
-            
+
             {/* KPI 1: Facturación Total */}
             <div style={{
               background: 'linear-gradient(180deg, #151922 0%, #0d1117 100%)',
@@ -1821,7 +1832,7 @@ export const AdminRecibosEmitidos: React.FC = () => {
 
           {/* ── BENTO CHARTS ── */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '16px', marginBottom: '22px' }}>
-            
+
             {/* GRÁFICO 1: Barra de Recaudación vs Mora */}
             <div style={{
               background: 'linear-gradient(180deg, #151922 0%, #0d1117 100%)',
@@ -1952,7 +1963,7 @@ export const AdminRecibosEmitidos: React.FC = () => {
             padding: '24px 26px',
             boxShadow: '0 14px 34px -4px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06)'
           }}>
-            
+
             {/* Barra de Búsqueda y Filtros */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '14px', marginBottom: '18px' }}>
               <div>
@@ -2068,180 +2079,180 @@ export const AdminRecibosEmitidos: React.FC = () => {
                   style={{ overflowX: 'auto' }}
                 >
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '1px solid #222', color: '#777', textTransform: 'uppercase', fontSize: '10.5px', letterSpacing: '0.4px' }}>
-                      <th style={{ textAlign: 'left', padding: '10px 12px' }}>Apartamento</th>
-                      <th style={{ textAlign: 'left', padding: '10px 12px' }}>Residente / Propietario</th>
-                      <th style={{ textAlign: 'center', padding: '10px 12px' }}>Alícuota</th>
-                      <th style={{ textAlign: 'right', padding: '10px 12px' }}>Total USD</th>
-                      <th style={{ textAlign: 'right', padding: '10px 12px' }}>Total Bs</th>
-                      <th style={{ textAlign: 'center', padding: '10px 12px' }}>Estado</th>
-                      <th style={{ textAlign: 'center', padding: '10px 12px' }}>Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {recibosFiltrados.map(r => {
-                      const esPH = r.apartamento?.numero.toUpperCase().includes('PH')
-                      const isPagado = r.estado === 'pagado'
-                      const cambiando = cambiandoEstadoId === r.id
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid #222', color: '#777', textTransform: 'uppercase', fontSize: '10.5px', letterSpacing: '0.4px' }}>
+                        <th style={{ textAlign: 'left', padding: '10px 12px' }}>Apartamento</th>
+                        <th style={{ textAlign: 'left', padding: '10px 12px' }}>Residente / Propietario</th>
+                        <th style={{ textAlign: 'center', padding: '10px 12px' }}>Alícuota</th>
+                        <th style={{ textAlign: 'right', padding: '10px 12px' }}>Total USD</th>
+                        <th style={{ textAlign: 'right', padding: '10px 12px' }}>Total Bs</th>
+                        <th style={{ textAlign: 'center', padding: '10px 12px' }}>Estado</th>
+                        <th style={{ textAlign: 'center', padding: '10px 12px' }}>Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {recibosFiltrados.map(r => {
+                        const esPH = r.apartamento?.numero.toUpperCase().includes('PH')
+                        const isPagado = r.estado === 'pagado'
+                        const cambiando = cambiandoEstadoId === r.id
 
-                      return (
-                        <tr
-                          key={r.id}
-                          style={{
-                            borderBottom: '1px solid #1a1a1a',
-                            backgroundColor: isPagado ? 'transparent' : 'rgba(239, 68, 68, 0.02)',
-                            transition: 'background-color 0.15s'
-                          }}
-                          onMouseOver={e => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.03)'}
-                          onMouseOut={e => e.currentTarget.style.backgroundColor = isPagado ? 'transparent' : 'rgba(239, 68, 68, 0.02)'}
-                        >
-                          {/* Apto */}
-                          <td style={{ padding: '12px', fontWeight: 800, color: 'var(--color-accent, #f97316)', whiteSpace: 'nowrap' }}>
-                            Apto {r.apartamento?.numero} {esPH && <span style={{ backgroundColor: 'var(--color-accent-light, #f9731620)', color: 'var(--color-accent, #f97316)', border: '1px solid var(--color-accent-glow, #f9731640)', fontSize: '9px', padding: '1px 5px', borderRadius: '4px', marginLeft: '4px' }}>PH</span>}
-                          </td>
+                        return (
+                          <tr
+                            key={r.id}
+                            style={{
+                              borderBottom: '1px solid #1a1a1a',
+                              backgroundColor: isPagado ? 'transparent' : 'rgba(239, 68, 68, 0.02)',
+                              transition: 'background-color 0.15s'
+                            }}
+                            onMouseOver={e => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.03)'}
+                            onMouseOut={e => e.currentTarget.style.backgroundColor = isPagado ? 'transparent' : 'rgba(239, 68, 68, 0.02)'}
+                          >
+                            {/* Apto */}
+                            <td style={{ padding: '12px', fontWeight: 800, color: 'var(--color-accent, #f97316)', whiteSpace: 'nowrap' }}>
+                              Apto {r.apartamento?.numero} {esPH && <span style={{ backgroundColor: 'var(--color-accent-light, #f9731620)', color: 'var(--color-accent, #f97316)', border: '1px solid var(--color-accent-glow, #f9731640)', fontSize: '9px', padding: '1px 5px', borderRadius: '4px', marginLeft: '4px' }}>PH</span>}
+                            </td>
 
-                          {/* Residente */}
-                          <td style={{ padding: '12px', color: '#e2e8f0', fontWeight: 600 }}>
-                            {r.apartamento?.propietario_nombre || (
-                              <span style={{ color: '#64748b', fontStyle: 'italic' }}>Sin registrar</span>
-                            )}
-                            {r.apartamento?.telefono_contacto && (
-                              <div style={{ color: '#64748b', fontSize: '10px', marginTop: '2px' }}>
-                                📞 {r.apartamento.telefono_contacto}
+                            {/* Residente */}
+                            <td style={{ padding: '12px', color: '#e2e8f0', fontWeight: 600 }}>
+                              {r.apartamento?.propietario_nombre || (
+                                <span style={{ color: '#64748b', fontStyle: 'italic' }}>Sin registrar</span>
+                              )}
+                              {r.apartamento?.telefono_contacto && (
+                                <div style={{ color: '#64748b', fontSize: '10px', marginTop: '2px' }}>
+                                  📞 {r.apartamento.telefono_contacto}
+                                </div>
+                              )}
+                            </td>
+
+                            {/* Alícuota */}
+                            <td style={{ padding: '12px', textAlign: 'center', color: '#94a3b8', fontVariantNumeric: 'tabular-nums' }}>
+                              {formatAlicuotaPct(r.alicuota)}
+                            </td>
+
+                            {/* Total USD */}
+                            <td style={{ padding: '12px', textAlign: 'right', fontWeight: 800, color: '#fff', fontVariantNumeric: 'tabular-nums' }}>
+                              $ {fmtUsd(r.total_usd)}
+                            </td>
+
+                            {/* Total Bs */}
+                            <td style={{ padding: '12px', textAlign: 'right', color: '#10b981', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+                              {fmtBs(r.total_bs)} Bs
+                            </td>
+
+                            {/* Estado */}
+                            <td style={{ padding: '12px', textAlign: 'center' }}>
+                              <button
+                                onClick={() => cambiarEstadoRecibo(r)}
+                                disabled={cambiando}
+                                title="Haz clic para alternar entre Pagado y Pendiente"
+                                style={{
+                                  border: 'none', cursor: 'pointer', borderRadius: '6px', padding: '4px 10px',
+                                  fontSize: '10.5px', fontWeight: 700,
+                                  backgroundColor: isPagado ? '#10b98118' : '#ef444418',
+                                  color: isPagado ? '#10b981' : '#ef4444',
+                                  borderLeft: isPagado ? '2px solid #10b981' : '2px solid #ef4444',
+                                  opacity: cambiando ? 0.5 : 1
+                                }}
+                              >
+                                {isPagado ? '🟢 Pagado' : '🔴 En Mora'}
+                              </button>
+                            </td>
+
+                            {/* Acciones */}
+                            <td style={{ padding: '12px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                              <div style={{ display: 'inline-flex', gap: '6px' }}>
+                                <button
+                                  onClick={() => descargarPDFReciboEmitido(r)}
+                                  style={{
+                                    backgroundColor: '#1f2937', color: '#fff', border: '1px solid #374151',
+                                    padding: '5px 10px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', fontWeight: 600,
+                                    display: 'flex', alignItems: 'center', gap: '4px'
+                                  }}
+                                  title="Descargar PDF oficial de este recibo"
+                                >
+                                  <span>📥</span> PDF
+                                </button>
+
+                                <button
+                                  onClick={() => handleWhatsAppRecibo(r)}
+                                  style={{
+                                    backgroundColor: 'rgba(34, 197, 94, 0.16)',
+                                    color: '#22c55e',
+                                    border: '1px solid rgba(34, 197, 94, 0.35)',
+                                    padding: '5px 9px',
+                                    borderRadius: '6px',
+                                    fontSize: '11px',
+                                    cursor: 'pointer',
+                                    fontWeight: 700,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '4px'
+                                  }}
+                                  title={isPagado ? "Compartir solvencia por WhatsApp" : "Enviar cobranza con datos de pago por WhatsApp (1 clic)"}
+                                >
+                                  <span>📲</span> {isPagado ? 'Solvencia' : 'WhatsApp'}
+                                </button>
+
+                                <button
+                                  onClick={() => handleEmailRecibo(r)}
+                                  disabled={enviandoEmailId === r.id}
+                                  style={{
+                                    backgroundColor: 'rgba(59, 130, 246, 0.16)',
+                                    color: '#60a5fa',
+                                    border: '1px solid rgba(59, 130, 246, 0.35)',
+                                    padding: '5px 9px',
+                                    borderRadius: '6px',
+                                    fontSize: '11px',
+                                    cursor: enviandoEmailId === r.id ? 'wait' : 'pointer',
+                                    fontWeight: 700,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    opacity: enviandoEmailId === r.id ? 0.6 : 1
+                                  }}
+                                  title="Enviar aviso de cobro o recibo por correo electrónico al residente"
+                                >
+                                  <span>📧</span> {enviandoEmailId === r.id ? '...' : 'Email'}
+                                </button>
+
+                                <button
+                                  onClick={() => setReciboModal(r)}
+                                  style={{
+                                    backgroundColor: '#141414', color: '#888', border: '1px solid #262626',
+                                    padding: '5px 8px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer'
+                                  }}
+                                  title="Ver desglose completo de gastos y notas"
+                                >
+                                  👁️
+                                </button>
+
+                                {/* BOTÓN RETIRAR DEUDA INDIVIDUAL */}
+                                <button
+                                  onClick={() => {
+                                    setReciboParaEliminar(r)
+                                    setMotivoEliminarRecibo('')
+                                    setModalEliminarReciboOpen(true)
+                                  }}
+                                  style={{
+                                    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+                                    color: '#ef4444',
+                                    border: '1px solid rgba(239, 68, 68, 0.25)',
+                                    padding: '5px 8px',
+                                    borderRadius: '6px',
+                                    fontSize: '11px',
+                                    cursor: 'pointer'
+                                  }}
+                                  title="Retirar deuda y anular recibo de este apartamento"
+                                >
+                                  🗑️
+                                </button>
                               </div>
-                            )}
-                          </td>
-
-                          {/* Alícuota */}
-                          <td style={{ padding: '12px', textAlign: 'center', color: '#94a3b8', fontVariantNumeric: 'tabular-nums' }}>
-                            {formatAlicuotaPct(r.alicuota)}
-                          </td>
-
-                          {/* Total USD */}
-                          <td style={{ padding: '12px', textAlign: 'right', fontWeight: 800, color: '#fff', fontVariantNumeric: 'tabular-nums' }}>
-                            $ {fmtUsd(r.total_usd)}
-                          </td>
-
-                          {/* Total Bs */}
-                          <td style={{ padding: '12px', textAlign: 'right', color: '#10b981', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
-                            {fmtBs(r.total_bs)} Bs
-                          </td>
-
-                          {/* Estado */}
-                          <td style={{ padding: '12px', textAlign: 'center' }}>
-                            <button
-                              onClick={() => cambiarEstadoRecibo(r)}
-                              disabled={cambiando}
-                              title="Haz clic para alternar entre Pagado y Pendiente"
-                              style={{
-                                border: 'none', cursor: 'pointer', borderRadius: '6px', padding: '4px 10px',
-                                fontSize: '10.5px', fontWeight: 700,
-                                backgroundColor: isPagado ? '#10b98118' : '#ef444418',
-                                color: isPagado ? '#10b981' : '#ef4444',
-                                borderLeft: isPagado ? '2px solid #10b981' : '2px solid #ef4444',
-                                opacity: cambiando ? 0.5 : 1
-                              }}
-                            >
-                              {isPagado ? '🟢 Pagado' : '🔴 En Mora'}
-                            </button>
-                          </td>
-
-                          {/* Acciones */}
-                          <td style={{ padding: '12px', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                            <div style={{ display: 'inline-flex', gap: '6px' }}>
-                              <button
-                                onClick={() => descargarPDFReciboEmitido(r)}
-                                style={{
-                                  backgroundColor: '#1f2937', color: '#fff', border: '1px solid #374151',
-                                  padding: '5px 10px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', fontWeight: 600,
-                                  display: 'flex', alignItems: 'center', gap: '4px'
-                                }}
-                                title="Descargar PDF oficial de este recibo"
-                              >
-                                <span>📥</span> PDF
-                              </button>
-
-                              <button
-                                onClick={() => handleWhatsAppRecibo(r)}
-                                style={{
-                                  backgroundColor: 'rgba(34, 197, 94, 0.16)',
-                                  color: '#22c55e',
-                                  border: '1px solid rgba(34, 197, 94, 0.35)',
-                                  padding: '5px 9px',
-                                  borderRadius: '6px',
-                                  fontSize: '11px',
-                                  cursor: 'pointer',
-                                  fontWeight: 700,
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '4px'
-                                }}
-                                title={isPagado ? "Compartir solvencia por WhatsApp" : "Enviar cobranza con datos de pago por WhatsApp (1 clic)"}
-                              >
-                                <span>📲</span> {isPagado ? 'Solvencia' : 'WhatsApp'}
-                              </button>
-
-                              <button
-                                onClick={() => handleEmailRecibo(r)}
-                                disabled={enviandoEmailId === r.id}
-                                style={{
-                                  backgroundColor: 'rgba(59, 130, 246, 0.16)',
-                                  color: '#60a5fa',
-                                  border: '1px solid rgba(59, 130, 246, 0.35)',
-                                  padding: '5px 9px',
-                                  borderRadius: '6px',
-                                  fontSize: '11px',
-                                  cursor: enviandoEmailId === r.id ? 'wait' : 'pointer',
-                                  fontWeight: 700,
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '4px',
-                                  opacity: enviandoEmailId === r.id ? 0.6 : 1
-                                }}
-                                title="Enviar aviso de cobro o recibo por correo electrónico al residente"
-                              >
-                                <span>📧</span> {enviandoEmailId === r.id ? '...' : 'Email'}
-                              </button>
-
-                              <button
-                                onClick={() => setReciboModal(r)}
-                                style={{
-                                  backgroundColor: '#141414', color: '#888', border: '1px solid #262626',
-                                  padding: '5px 8px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer'
-                                }}
-                                title="Ver desglose completo de gastos y notas"
-                              >
-                                👁️
-                              </button>
-
-                              {/* BOTÓN RETIRAR DEUDA INDIVIDUAL */}
-                              <button
-                                onClick={() => {
-                                  setReciboParaEliminar(r)
-                                  setMotivoEliminarRecibo('')
-                                  setModalEliminarReciboOpen(true)
-                                }}
-                                style={{
-                                  backgroundColor: 'rgba(239, 68, 68, 0.12)',
-                                  color: '#ef4444',
-                                  border: '1px solid rgba(239, 68, 68, 0.25)',
-                                  padding: '5px 8px',
-                                  borderRadius: '6px',
-                                  fontSize: '11px',
-                                  cursor: 'pointer'
-                                }}
-                                title="Retirar deuda y anular recibo de este apartamento"
-                              >
-                                🗑️
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
                 </div>
 
                 {/* 2. Vista Tarjetas (Mobile / Tablet / Touch-friendly) */}

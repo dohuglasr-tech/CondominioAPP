@@ -1,52 +1,77 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, Suspense, lazy } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from './application/contexts/AuthContext'
 import { ThemeProvider } from './application/contexts/ThemeContext'
 import { Loader } from './presentation/components/Loader'
 import { SplashScreen } from './presentation/components/SplashScreen'
 import { InstallAppPrompt } from './presentation/components/InstallAppPrompt'
-import { Login } from './presentation/pages/Login'
-import { ChangePassword } from './presentation/pages/ChangePassword'
-import { ResetPassword } from './presentation/pages/ResetPassword'
-import { ProfileSetup } from './presentation/pages/ProfileSetup'
-import { Dashboard } from './presentation/pages/Dashboard'
-import { Layout } from './presentation/components/Layout'
-import { GastosPanel } from './presentation/components/GastosPanel'
-import { RecibosPanel } from './presentation/components/RecibosPanel'
-import { ChatPanel } from './presentation/components/ChatPanel'
-import { PropuestasPanel } from './presentation/components/PropuestasPanel'
-import { ReportesPanel } from './presentation/components/ReportesPanel'
-import { PerfilResidente } from './presentation/pages/PerfilResidente'
-// Admin
-import { AdminLogin } from './presentation/pages/admin/AdminLogin'
-import { AdminLayout } from './presentation/components/AdminLayout'
-import { AdminDashboard } from './presentation/pages/admin/AdminDashboard'
-import { AdminEdificio } from './presentation/pages/admin/AdminEdificio'
-import { AdminGastos } from './presentation/pages/admin/AdminGastos'
-import { AdminRecibos } from './presentation/pages/admin/AdminRecibos'
-import { AdminResidentes } from './presentation/pages/admin/AdminResidentes'
-import { AdminPropuestas } from './presentation/pages/admin/AdminPropuestas'
-import { AdminReportes } from './presentation/pages/admin/AdminReportes'
-import { AdminChat } from './presentation/pages/admin/AdminChat'
-import { AdminGenerarRecibos } from './presentation/pages/admin/AdminGenerarRecibos'
-import { AdminRecibosEmitidos } from './presentation/pages/admin/AdminRecibosEmitidos'
-import { AdminCasos } from './presentation/pages/admin/AdminCasos'
-import { AdminMora } from './presentation/pages/admin/AdminMora'
-import { AdminCalendarioDeudas } from './presentation/pages/admin/AdminCalendarioDeudas'
-import { AdminHistorial } from './presentation/pages/admin/AdminHistorial'
-import { AdminLogs } from './presentation/pages/admin/AdminLogs'
-import { AdminGas } from './presentation/pages/admin/AdminGas'
-import { AdminLocales } from './presentation/pages/admin/AdminLocales'
-import { AdminNotificacionesGlobales } from './presentation/pages/admin/AdminNotificacionesGlobales'
-import { ListaMoraResidente } from './presentation/pages/ListaMoraResidente'
-import { JuntaCondominioResidente } from './presentation/pages/JuntaCondominioResidente'
-import { GasResidente } from './presentation/pages/GasResidente'
-import { LocalesResidente } from './presentation/pages/LocalesResidente'
-import { NormasResidente } from './presentation/pages/NormasResidente'
-import { Register } from './presentation/pages/Register'
 import { InactivityManager } from './presentation/components/InactivityManager'
-import { SuperAdminDashboard } from './presentation/pages/superadmin/SuperAdminDashboard'
-import { DescargarReciboPublico } from './presentation/pages/DescargarReciboPublico'
+import { Login } from './presentation/pages/Login'
+import { Layout } from './presentation/components/Layout'
+
+function lazyNamed<P = any>(
+  importer: () => Promise<Record<string, any>>,
+  exportName: string
+): React.LazyExoticComponent<React.ComponentType<P>> {
+  return lazy(async () => {
+    try {
+      const mod = await importer()
+      return { default: mod[exportName] as React.ComponentType<P> }
+    } catch (err) {
+      if (typeof window !== 'undefined') {
+        const lastReload = Number(sessionStorage.getItem('domus_chunk_reload_at') || '0')
+        if (!lastReload || Date.now() - lastReload > 15000) {
+          sessionStorage.setItem('domus_chunk_reload_at', String(Date.now()))
+          window.location.reload()
+          return new Promise<never>(() => {})
+        }
+      }
+      throw err
+    }
+  })
+}
+
+const ChangePassword = lazyNamed(() => import('./presentation/pages/ChangePassword'), 'ChangePassword')
+const ResetPassword = lazyNamed(() => import('./presentation/pages/ResetPassword'), 'ResetPassword')
+const ProfileSetup = lazyNamed(() => import('./presentation/pages/ProfileSetup'), 'ProfileSetup')
+const Register = lazyNamed(() => import('./presentation/pages/Register'), 'Register')
+const DescargarReciboPublico = lazyNamed(() => import('./presentation/pages/DescargarReciboPublico'), 'DescargarReciboPublico')
+
+const Dashboard = lazyNamed(() => import('./presentation/pages/Dashboard'), 'Dashboard')
+const GastosPanel = lazyNamed<{ onClose: () => void }>(() => import('./presentation/components/GastosPanel'), 'GastosPanel')
+const RecibosPanel = lazyNamed<{ onClose: () => void }>(() => import('./presentation/components/RecibosPanel'), 'RecibosPanel')
+const ChatPanel = lazyNamed<{ onClose: () => void }>(() => import('./presentation/components/ChatPanel'), 'ChatPanel')
+const PropuestasPanel = lazyNamed(() => import('./presentation/components/PropuestasPanel'), 'PropuestasPanel')
+const ReportesPanel = lazyNamed(() => import('./presentation/components/ReportesPanel'), 'ReportesPanel')
+const PerfilResidente = lazyNamed(() => import('./presentation/pages/PerfilResidente'), 'PerfilResidente')
+const ListaMoraResidente = lazyNamed(() => import('./presentation/pages/ListaMoraResidente'), 'ListaMoraResidente')
+const JuntaCondominioResidente = lazyNamed(() => import('./presentation/pages/JuntaCondominioResidente'), 'JuntaCondominioResidente')
+const GasResidente = lazyNamed(() => import('./presentation/pages/GasResidente'), 'GasResidente')
+const LocalesResidente = lazyNamed(() => import('./presentation/pages/LocalesResidente'), 'LocalesResidente')
+const NormasResidente = lazyNamed(() => import('./presentation/pages/NormasResidente'), 'NormasResidente')
+
+// Admin & SuperAdmin
+const AdminLogin = lazyNamed(() => import('./presentation/pages/admin/AdminLogin'), 'AdminLogin')
+const AdminLayout = lazyNamed(() => import('./presentation/components/AdminLayout'), 'AdminLayout')
+const AdminDashboard = lazyNamed(() => import('./presentation/pages/admin/AdminDashboard'), 'AdminDashboard')
+const AdminEdificio = lazyNamed(() => import('./presentation/pages/admin/AdminEdificio'), 'AdminEdificio')
+const AdminGastos = lazyNamed(() => import('./presentation/pages/admin/AdminGastos'), 'AdminGastos')
+const AdminRecibos = lazyNamed(() => import('./presentation/pages/admin/AdminRecibos'), 'AdminRecibos')
+const AdminResidentes = lazyNamed(() => import('./presentation/pages/admin/AdminResidentes'), 'AdminResidentes')
+const AdminPropuestas = lazyNamed(() => import('./presentation/pages/admin/AdminPropuestas'), 'AdminPropuestas')
+const AdminReportes = lazyNamed(() => import('./presentation/pages/admin/AdminReportes'), 'AdminReportes')
+const AdminChat = lazyNamed(() => import('./presentation/pages/admin/AdminChat'), 'AdminChat')
+const AdminGenerarRecibos = lazyNamed(() => import('./presentation/pages/admin/AdminGenerarRecibos'), 'AdminGenerarRecibos')
+const AdminRecibosEmitidos = lazyNamed(() => import('./presentation/pages/admin/AdminRecibosEmitidos'), 'AdminRecibosEmitidos')
+const AdminCasos = lazyNamed(() => import('./presentation/pages/admin/AdminCasos'), 'AdminCasos')
+const AdminMora = lazyNamed(() => import('./presentation/pages/admin/AdminMora'), 'AdminMora')
+const AdminCalendarioDeudas = lazyNamed(() => import('./presentation/pages/admin/AdminCalendarioDeudas'), 'AdminCalendarioDeudas')
+const AdminHistorial = lazyNamed(() => import('./presentation/pages/admin/AdminHistorial'), 'AdminHistorial')
+const AdminLogs = lazyNamed(() => import('./presentation/pages/admin/AdminLogs'), 'AdminLogs')
+const AdminGas = lazyNamed(() => import('./presentation/pages/admin/AdminGas'), 'AdminGas')
+const AdminLocales = lazyNamed(() => import('./presentation/pages/admin/AdminLocales'), 'AdminLocales')
+const AdminNotificacionesGlobales = lazyNamed(() => import('./presentation/pages/admin/AdminNotificacionesGlobales'), 'AdminNotificacionesGlobales')
+const SuperAdminDashboard = lazyNamed(() => import('./presentation/pages/superadmin/SuperAdminDashboard'), 'SuperAdminDashboard')
 
 // ── Error Boundary para prevenir pantalla en negro ante errores imprevistos ──
 interface ErrorBoundaryState {
@@ -296,6 +321,7 @@ function AppShell() {
         />
       )}
       {splashDone && !isSuperAdminRoute && !isPublicDownloadRoute && <InstallAppPrompt />}
+      <Suspense fallback={<Loader />}>
       <Routes>
         {/* ── Descarga Directa Pública de Recibo (Sin login ni app) ── */}
         <Route path="/descargar-recibo/:reciboId" element={<DescargarReciboPublico />} />
@@ -384,6 +410,7 @@ function AppShell() {
           <Route path="perfil"     element={<PerfilResidente />} />
         </Route>
       </Routes>
+      </Suspense>
     </>
   )
 }

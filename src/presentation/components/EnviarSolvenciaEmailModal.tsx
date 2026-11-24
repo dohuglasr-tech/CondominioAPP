@@ -66,17 +66,17 @@ export const EnviarSolvenciaEmailModal: React.FC<Props> = ({
   const destinatarioFinal =
     tipoDestino === 'registrado' ? correoRegistrado : emailManual.trim().toLowerCase()
 
-  const handleDescargarCopia = () => {
+  const handleDescargarCopia = async () => {
     try {
-      descargarSolvenciaPDF(datosSolvencia)
+      await descargarSolvenciaPDF(datosSolvencia)
     } catch (e: any) {
       console.warn('[EnviarSolvenciaEmailModal] Error al descargar PDF:', e)
     }
   }
 
-  const handlePrevisualizar = () => {
+  const handlePrevisualizar = async () => {
     try {
-      abrirSolvenciaPDF(datosSolvencia)
+      await abrirSolvenciaPDF(datosSolvencia)
     } catch (e: any) {
       console.warn('[EnviarSolvenciaEmailModal] Error al previsualizar:', e)
     }
@@ -98,7 +98,7 @@ export const EnviarSolvenciaEmailModal: React.FC<Props> = ({
       let pdfFilename: string | undefined = undefined
 
       if (incluirPdfAdjunto) {
-        const doc = generarPDFSolvencia(datosSolvencia)
+        const doc = await generarPDFSolvencia(datosSolvencia)
         const dataUri = doc.output('datauristring')
         pdfBase64 = dataUri.split(',')[1]
         const cleanApto = apto.replace(/[^a-zA-Z0-9_-]/g, '_')

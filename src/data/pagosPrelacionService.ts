@@ -89,10 +89,14 @@ export async function aplicarPagoConPrelacion(
   try {
     // 0. Guard de idempotencia: verificar que este pago.id no haya sido ya aplicado
     const [moraRes, allRecibosRes] = await Promise.all([
-      supabase.from('deudas_mora').select('*').eq('apartamento_id', aptoId).maybeSingle(),
+      supabase
+        .from('deudas_mora')
+        .select('id, apartamento_id, monto_usd, monto_bs, estado, conceptos_detalle, observaciones, fecha_corte, updated_at')
+        .eq('apartamento_id', aptoId)
+        .maybeSingle(),
       supabase
         .from('recibos_generados')
-        .select('*')
+        .select('id, apartamento_id, mes_facturado, tasa_bcv, total_usd, total_bs, estado, es_indexado, emitido_at, data_json')
         .eq('apartamento_id', aptoId)
         .order('mes_facturado', { ascending: true })
     ])

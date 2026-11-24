@@ -82,10 +82,10 @@ export const NormasResidente: React.FC = () => {
   }, [busqueda, categoriaSeleccionada])
 
   // Manejar descarga de PDF
-  const handleDescargarPDF = useCallback(() => {
+  const handleDescargarPDF = useCallback(async () => {
     try {
       setDescargando(true)
-      descargarNormasPDF(datosEdificio)
+      await descargarNormasPDF(datosEdificio)
     } catch (err) {
       console.error('[NormasResidente] Error al generar PDF:', err)
       alert('Hubo un error al compilar el PDF de las normas.')
@@ -95,9 +95,9 @@ export const NormasResidente: React.FC = () => {
   }, [datosEdificio])
 
   // Manejar previsualización o impresión directa de PDF
-  const handleAbrirPDF = useCallback(() => {
+  const handleAbrirPDF = useCallback(async () => {
     try {
-      abrirNormasPDF(datosEdificio)
+      await abrirNormasPDF(datosEdificio)
     } catch (err) {
       console.error('[NormasResidente] Error abriendo visor:', err)
       alert('No se pudo abrir el visor de PDF.')

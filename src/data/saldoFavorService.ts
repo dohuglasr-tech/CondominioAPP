@@ -197,76 +197,76 @@ export async function obtenerTodosLosSaldosAFavor(
 
         const pagosUsdPorApto = new Map<string, number>()
         const pagosBsPorApto = new Map<string, number>()
-        ;(pagosRes.data || []).forEach((p: any) => {
-          const aptoId = p.apartamento_id
-          if (!aptoId) return
-          const mUsd = Number(p.monto_usd) || 0
-          const mBs = Number(p.monto_bs) || 0
+          ; (pagosRes.data || []).forEach((p: any) => {
+            const aptoId = p.apartamento_id
+            if (!aptoId) return
+            const mUsd = Number(p.monto_usd) || 0
+            const mBs = Number(p.monto_bs) || 0
 
-          let addUsd = 0
-          let addBs = 0
-          if (mUsd > 0 && mBs > 0) {
-            addUsd = mUsd
-            addBs = mBs
-          } else if (mUsd > 0) {
-            addUsd = mUsd
-            addBs = mUsd * tasa
-          } else if (mBs > 0) {
-            addBs = mBs
-            addUsd = mBs / tasa
-          }
+            let addUsd = 0
+            let addBs = 0
+            if (mUsd > 0 && mBs > 0) {
+              addUsd = mUsd
+              addBs = mBs
+            } else if (mUsd > 0) {
+              addUsd = mUsd
+              addBs = mUsd * tasa
+            } else if (mBs > 0) {
+              addBs = mBs
+              addUsd = mBs / tasa
+            }
 
-          pagosUsdPorApto.set(aptoId, (pagosUsdPorApto.get(aptoId) || 0) + addUsd)
-          pagosBsPorApto.set(aptoId, (pagosBsPorApto.get(aptoId) || 0) + addBs)
-        })
+            pagosUsdPorApto.set(aptoId, (pagosUsdPorApto.get(aptoId) || 0) + addUsd)
+            pagosBsPorApto.set(aptoId, (pagosBsPorApto.get(aptoId) || 0) + addBs)
+          })
 
         const facturadoUsdPorApto = new Map<string, number>()
         const facturadoBsPorApto = new Map<string, number>()
         const aptosConPendientes = new Set<string>()
 
-        ;(recibosRes.data || []).forEach((r: any) => {
-          const aptoId = r.apartamento_id
-          if (!aptoId) return
-          if (r.estado === 'pendiente') {
-            aptosConPendientes.add(aptoId)
-          }
-          const origUsd = Number(r.data_json?.monto_original_usd ?? r.total_usd ?? 0)
-          const origBs = Number(r.data_json?.monto_original_bs ?? r.total_bs ?? 0)
+          ; (recibosRes.data || []).forEach((r: any) => {
+            const aptoId = r.apartamento_id
+            if (!aptoId) return
+            if (r.estado === 'pendiente') {
+              aptosConPendientes.add(aptoId)
+            }
+            const origUsd = Number(r.data_json?.monto_original_usd ?? r.total_usd ?? 0)
+            const origBs = Number(r.data_json?.monto_original_bs ?? r.total_bs ?? 0)
 
-          let addUsd = 0
-          let addBs = 0
-          if (origUsd > 0 && origBs > 0) {
-            addUsd = origUsd
-            addBs = origBs
-          } else if (origUsd > 0) {
-            addUsd = origUsd
-            addBs = origUsd * tasa
-          } else if (origBs > 0) {
-            addBs = origBs
-            addUsd = origBs / tasa
-          }
+            let addUsd = 0
+            let addBs = 0
+            if (origUsd > 0 && origBs > 0) {
+              addUsd = origUsd
+              addBs = origBs
+            } else if (origUsd > 0) {
+              addUsd = origUsd
+              addBs = origUsd * tasa
+            } else if (origBs > 0) {
+              addBs = origBs
+              addUsd = origBs / tasa
+            }
 
-          facturadoUsdPorApto.set(aptoId, (facturadoUsdPorApto.get(aptoId) || 0) + addUsd)
-          facturadoBsPorApto.set(aptoId, (facturadoBsPorApto.get(aptoId) || 0) + addBs)
-        })
+            facturadoUsdPorApto.set(aptoId, (facturadoUsdPorApto.get(aptoId) || 0) + addUsd)
+            facturadoBsPorApto.set(aptoId, (facturadoBsPorApto.get(aptoId) || 0) + addBs)
+          })
 
-        ;(moraRes.data || []).forEach((m: any) => {
-          if (!m.apartamento_id) return
-          if ((Number(m.monto_bs) || 0) > 0.05 || (Number(m.monto_usd) || 0) > 0.05) {
-            aptosConPendientes.add(m.apartamento_id)
-          }
-        })
+          ; (moraRes.data || []).forEach((m: any) => {
+            if (!m.apartamento_id) return
+            if ((Number(m.monto_bs) || 0) > 0.05 || (Number(m.monto_usd) || 0) > 0.05) {
+              aptosConPendientes.add(m.apartamento_id)
+            }
+          })
 
         const retiradoUsdPorApto = new Map<string, number>()
         const retiradoBsPorApto = new Map<string, number>()
-        ;((retirosRes?.data as any[]) || []).forEach((l) => {
-          if (l.tipo_accion === 'RETIRO_SALDO_A_FAVOR' && l.apartamento_id) {
-            const mUsd = Number(l.monto_usd) || 0
-            const mBs = Number(l.monto_bs) || (mUsd * tasa)
-            retiradoUsdPorApto.set(l.apartamento_id, (retiradoUsdPorApto.get(l.apartamento_id) || 0) + mUsd)
-            retiradoBsPorApto.set(l.apartamento_id, (retiradoBsPorApto.get(l.apartamento_id) || 0) + mBs)
-          }
-        })
+          ; ((retirosRes?.data as any[]) || []).forEach((l) => {
+            if (l.tipo_accion === 'RETIRO_SALDO_A_FAVOR' && l.apartamento_id) {
+              const mUsd = Number(l.monto_usd) || 0
+              const mBs = Number(l.monto_bs) || (mUsd * tasa)
+              retiradoUsdPorApto.set(l.apartamento_id, (retiradoUsdPorApto.get(l.apartamento_id) || 0) + mUsd)
+              retiradoBsPorApto.set(l.apartamento_id, (retiradoBsPorApto.get(l.apartamento_id) || 0) + mBs)
+            }
+          })
 
         // Construir conjunto de todos los apartamentos con movimientos
         const todosAptosIds = new Set<string>([
@@ -491,7 +491,7 @@ export async function abonarSaldoAFavorApartamento(params: {
       // A) Consultar recibos pendientes del apartamento
       const { data: recibosPendientes } = await supabase
         .from('recibos_generados')
-        .select('*')
+        .select('id, total_usd, data_json')
         .eq('apartamento_id', params.apartamento_id)
         .eq('estado', 'pendiente')
         .order('mes_facturado', { ascending: true })
@@ -526,7 +526,7 @@ export async function abonarSaldoAFavorApartamento(params: {
       if (remanente > 0.05) {
         const { data: moraRow } = await supabase
           .from('deudas_mora')
-          .select('*')
+          .select('id, monto_usd, monto_bs, observaciones')
           .eq('apartamento_id', params.apartamento_id)
           .eq('estado', 'activo')
           .maybeSingle()
@@ -614,7 +614,7 @@ export async function aplicarSaldoAFavorADeuda(params: {
     // 1. Liquidar recibos pendientes
     const { data: recibosPendientes } = await supabase
       .from('recibos_generados')
-      .select('*')
+      .select('id, total_usd, data_json')
       .eq('apartamento_id', params.apartamento_id)
       .eq('estado', 'pendiente')
       .order('mes_facturado', { ascending: true })
@@ -648,7 +648,7 @@ export async function aplicarSaldoAFavorADeuda(params: {
     if (remanente > 0.05) {
       const { data: moraRow } = await supabase
         .from('deudas_mora')
-        .select('*')
+        .select('id, monto_usd, monto_bs, observaciones')
         .eq('apartamento_id', params.apartamento_id)
         .eq('estado', 'activo')
         .maybeSingle()

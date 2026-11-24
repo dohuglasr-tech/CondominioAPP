@@ -218,7 +218,7 @@ export function purgeGlobalCache(): void {
 export async function getAllBuildings(): Promise<BuildingData[]> {
   const { data: buildings, error } = await supabase
     .from('configuracion_edificio')
-    .select('*')
+    .select('id, nombre_edificio, slug, rif_edificio, rif, direccion, ciudad, email_admin, email_contacto, telefono, total_apartamentos, total_pisos, apartamentos_por_piso, tiene_ph, total_ph, color_primario, logo_url, banco, cuenta_bancaria, titular_cuenta, pago_movil_banco, pago_movil_cedula, pago_movil_telefono, zelle_email, tasa_bcv_actual, banner_emergencia_activo, banner_emergencia_texto, banner_emergencia_nivel, modo_mantenimiento, modo_mantenimiento_motivo, created_at')
     .order('nombre_edificio', { ascending: true })
 
   if (error) {

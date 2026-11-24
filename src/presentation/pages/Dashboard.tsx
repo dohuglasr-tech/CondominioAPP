@@ -361,7 +361,7 @@ export function Dashboard() {
     }
   }, [apartamentoId, aptoNumero])
 
-  // Cargar pagos, recibos y moras
+  // Cargar pagos, recibos y moras en paralelo (Promise.allSettled)
   const cargarDatosResidente = useCallback(async (forceRefresh = false) => {
     if (!apartamentoId && !aptoNumero) {
       return
@@ -370,12 +370,25 @@ export function Dashboard() {
     try {
       const targetKey = apartamentoId || aptoNumero
 
-      const [listPagos, reciboPend] = await Promise.all([
+      const [
+        pagosRes,
+        recibosRes,
+        moraRes,
+        saldoRes,
+        gasRes,
+        localesRes,
+        juntaRes,
+      ] = await Promise.allSettled([
         appCache.fetch(
           `dashboard_pagos_${targetKey}`,
           async () => {
             if (!apartamentoId) return []
-            const { data } = await supabase.from('pagos_reportados').select('*').eq('apartamento_id', apartamentoId).order('created_at', { ascending: false }).limit(5)
+            const { data } = await supabase
+              .from('pagos_reportados')
+              .select('id, monto_bs, monto_usd, referencia, estado, created_at, fecha_pago, notas_admin, metodo, comprobante_url')
+              .eq('apartamento_id', apartamentoId)
+              .order('created_at', { ascending: false })
+              .limit(5)
             return (data || []) as PagoItem[]
           },
           { ttlMs: 3 * 60 * 1000, tags: ['pagos'], forceRefresh }
@@ -393,54 +406,59 @@ export function Dashboard() {
             return data || []
           },
           { ttlMs: 3 * 60 * 1000, tags: ['recibos'], forceRefresh }
-        )
+        ),
+        obtenerDeudaMoraApartamento(apartamentoId, aptoNumero, forceRefresh),
+        apartamentoId
+          ? obtenerSaldoAFavorApartamento(apartamentoId, tasaValidaRef.current, forceRefresh)
+          : Promise.resolve(null),
+        obtenerGasServicioData(forceRefresh),
+        obtenerLocalesPorApartamento(apartamentoId, aptoNumero),
+        obtenerJunta(forceRefresh),
       ])
 
-      setPagosRecientes(listPagos)
-      if (listPagos.length > 0) setUltimoPago(listPagos[0])
-      else setUltimoPago(null)
-
-      const rList = Array.isArray(reciboPend) ? reciboPend : (reciboPend ? [reciboPend] : [])
-      setRecibosPendientesList(rList)
-      if (rList.length > 0) setReciboPendiente(rList[0])
-      else setReciboPendiente(null)
-
-      // Consultar si está en mora o tiene recibo emitido (<1m Azul o crónico) de forma optimizada
-      const mora = await obtenerDeudaMoraApartamento(apartamentoId, aptoNumero, forceRefresh)
-      setMoraRecord(mora)
-
-      // Consultar saldo a favor (crédito prepagado del apartamento)
-      if (apartamentoId) {
-        const saldoRes = await obtenerSaldoAFavorApartamento(apartamentoId, tasaValidaRef.current, forceRefresh)
-        setSaldoAFavor(saldoRes.saldo_a_favor_usd)
-        setSaldoAFavorBs(saldoRes.saldo_a_favor_bs)
+      if (pagosRes.status === 'fulfilled') {
+        const listPagos = pagosRes.value
+        setPagosRecientes(listPagos)
+        setUltimoPago(listPagos.length > 0 ? listPagos[0] : null)
       }
 
-      // Consultar deuda del servicio de gas comunal (especial u ordinaria)
-      try {
-        const resGas = await obtenerGasServicioData(forceRefresh)
-        if (resGas?.data) {
-          const dGas = obtenerDeudaGasApartamento(resGas.data, apartamentoId, aptoNumero)
+      if (recibosRes.status === 'fulfilled') {
+        const reciboPend = recibosRes.value
+        const rList = Array.isArray(reciboPend) ? reciboPend : (reciboPend ? [reciboPend] : [])
+        setRecibosPendientesList(rList)
+        setReciboPendiente(rList.length > 0 ? rList[0] : null)
+      }
+
+      if (moraRes.status === 'fulfilled') {
+        setMoraRecord(moraRes.value)
+      } else {
+        console.warn('[Dashboard] Error cargando mora:', moraRes.reason)
+      }
+
+      if (saldoRes.status === 'fulfilled' && saldoRes.value) {
+        setSaldoAFavor(saldoRes.value.saldo_a_favor_usd)
+        setSaldoAFavorBs(saldoRes.value.saldo_a_favor_bs)
+      }
+
+      if (gasRes.status === 'fulfilled') {
+        if (gasRes.value?.data) {
+          const dGas = obtenerDeudaGasApartamento(gasRes.value.data, apartamentoId, aptoNumero)
           setDeudaGas(dGas)
         }
-      } catch (errGas) {
-        console.warn('[Dashboard] Error cargando cuota de gas:', errGas)
+      } else {
+        console.warn('[Dashboard] Error cargando cuota de gas:', gasRes.reason)
       }
 
-      // Consultar locales o espacios exclusivos asignados al apartamento
-      try {
-        const locs = await obtenerLocalesPorApartamento(apartamentoId, aptoNumero)
-        setLocalesAsignados(locs)
-      } catch (errLoc) {
-        console.warn('[Dashboard] Error cargando locales asignados:', errLoc)
+      if (localesRes.status === 'fulfilled') {
+        setLocalesAsignados(localesRes.value)
+      } else {
+        console.warn('[Dashboard] Error cargando locales asignados:', localesRes.reason)
       }
 
-      // Consultar miembros de la junta directiva y administración sincronizada
-      try {
-        const resJ = await obtenerJunta(forceRefresh)
-        if (resJ?.data) setJuntaMiembros(resJ.data)
-      } catch (errJ) {
-        console.warn('[Dashboard] Error cargando junta:', errJ)
+      if (juntaRes.status === 'fulfilled') {
+        if (juntaRes.value?.data) setJuntaMiembros(juntaRes.value.data)
+      } else {
+        console.warn('[Dashboard] Error cargando junta:', juntaRes.reason)
       }
     } catch (err) {
       console.warn('[Dashboard] Error cargando datos del residente:', err)
@@ -451,35 +469,50 @@ export function Dashboard() {
     cargarApartamentoInfo(false)
     cargarDatosResidente(false)
 
+    // Debounce de 500ms para agrupar ráfagas Realtime/Broadcast (ej. emisión masiva de 62 recibos)
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null
+    const pendingTags = new Set<string>()
+    const scheduleDebouncedRefresh = (tags: string[]) => {
+      tags.forEach((t) => pendingTags.add(t))
+      if (refreshTimer) clearTimeout(refreshTimer)
+      refreshTimer = setTimeout(() => {
+        const batch = Array.from(pendingTags)
+        pendingTags.clear()
+        refreshTimer = null
+        if (batch.length > 0) {
+          appCache.invalidateTags(batch)
+        }
+        cargarDatosResidente(true)
+      }, 500)
+    }
+
     // Escuchar eventos broadcast de actualización de gas comunal y cuotas extraordinarias
     const onGasUpdated = () => {
-      appCache.invalidateTags(['gas', 'saldos', 'recibos', 'mora'])
-      cargarDatosResidente(true)
+      scheduleDebouncedRefresh(['gas', 'saldos', 'recibos', 'mora'])
     }
     const onCuotasUpdated = () => {
-      appCache.invalidateTags(['mora', 'recibos', 'saldos', 'calendario_config'])
-      cargarDatosResidente(true)
+      scheduleDebouncedRefresh(['mora', 'recibos', 'saldos', 'calendario_config'])
     }
     window.addEventListener('condominio_gas_updated', onGasUpdated)
     window.addEventListener('condominio_cuotas_updated', onCuotasUpdated)
 
     const onStorage = (e: StorageEvent) => {
       if (e.key === 'gas_servicio_cache' || e.key === 'condominio_gas_cache_v2') {
-        appCache.invalidateTags(['gas'])
-        cargarDatosResidente(true)
+        scheduleDebouncedRefresh(['gas'])
       }
     }
     window.addEventListener('storage', onStorage)
 
     if (!apartamentoId) {
       return () => {
+        if (refreshTimer) clearTimeout(refreshTimer)
         window.removeEventListener('condominio_gas_updated', onGasUpdated)
         window.removeEventListener('condominio_cuotas_updated', onCuotasUpdated)
         window.removeEventListener('storage', onStorage)
       }
     }
 
-    // Suscripción Realtime para actualizar pagos, recibos o gas inmediatamente
+    // Suscripción Realtime para actualizar pagos, recibos o gas agrupando ráfagas
     const channelId = `dashboard_resident_${apartamentoId}_${Math.random().toString(36).slice(2, 7)}`
     const channel = supabase
       .channel(channelId)
@@ -487,16 +520,14 @@ export function Dashboard() {
         'postgres_changes',
         { event: '*', schema: 'public', table: 'pagos_reportados', filter: `apartamento_id=eq.${apartamentoId}` },
         () => {
-          appCache.invalidateTags(['pagos', 'saldos', 'recibos', 'mora'])
-          cargarDatosResidente(true)
+          scheduleDebouncedRefresh(['pagos', 'saldos', 'recibos', 'mora'])
         }
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'recibos_generados', filter: `apartamento_id=eq.${apartamentoId}` },
         () => {
-          appCache.invalidateTags(['recibos', 'saldos', 'mora'])
-          cargarDatosResidente(true)
+          scheduleDebouncedRefresh(['recibos', 'saldos', 'mora'])
         }
       )
       .on(
@@ -505,17 +536,16 @@ export function Dashboard() {
         (payload: any) => {
           const t = payload?.new?.tipo || payload?.old?.tipo
           if (t === 'config_gas_servicio' || (typeof t === 'string' && t.startsWith('gas_'))) {
-            appCache.invalidateTags(['gas', 'saldos'])
-            cargarDatosResidente(true)
+            scheduleDebouncedRefresh(['gas', 'saldos'])
           } else if (typeof t === 'string' && t.startsWith('config_calendario_mora')) {
-            appCache.invalidateTags(['mora', 'recibos', 'saldos', 'calendario_config'])
-            cargarDatosResidente(true)
+            scheduleDebouncedRefresh(['mora', 'recibos', 'saldos', 'calendario_config'])
           }
         }
       )
       .subscribe()
 
     return () => {
+      if (refreshTimer) clearTimeout(refreshTimer)
       window.removeEventListener('condominio_gas_updated', onGasUpdated)
       window.removeEventListener('condominio_cuotas_updated', onCuotasUpdated)
       window.removeEventListener('storage', onStorage)

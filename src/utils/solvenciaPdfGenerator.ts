@@ -1,4 +1,4 @@
-import jsPDF from 'jspdf'
+import { loadPdfLibs, JsPDFInstance } from './pdfLoader'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  CARTA DE SOLVENCIA DE CONDOMINIO
@@ -310,7 +310,7 @@ const PAGE_H = 279.4
 const MX = 24
 
 function textoEspaciado(
-  doc: jsPDF,
+  doc: JsPDFInstance,
   txt: string,
   x: number,
   y: number,
@@ -326,7 +326,7 @@ function textoEspaciado(
 }
 
 /** Reduce el tamaño de fuente hasta que el texto quepa en `maxW`. Devuelve el tamaño final. */
-function ajustarFuente(doc: jsPDF, txt: string, maxW: number, size: number, min = 6): number {
+function ajustarFuente(doc: JsPDFInstance, txt: string, maxW: number, size: number, min = 6): number {
   let fs = size
   doc.setFontSize(fs)
   while (doc.getTextWidth(txt) > maxW && fs > min) {
@@ -341,7 +341,7 @@ type Palabra = { piezas: Pieza[]; w: number }
 type Maqueta = { lineas: Palabra[][]; espacio: number }
 
 /** Mide y reparte un párrafo en líneas (sin dibujar). */
-function maquetarParrafo(doc: jsPDF, segs: SegmentoTexto[], maxW: number, fs: number): Maqueta {
+function maquetarParrafo(doc: JsPDFInstance, segs: SegmentoTexto[], maxW: number, fs: number): Maqueta {
   const medir = (t: string, b: boolean) => {
     doc.setFont('helvetica', b ? 'bold' : 'normal')
     doc.setFontSize(fs)
@@ -391,7 +391,7 @@ function maquetarParrafo(doc: jsPDF, segs: SegmentoTexto[], maxW: number, fs: nu
 
 /** Párrafo justificado con tramos en negrita. Devuelve la línea base de la última línea. */
 function dibujarParrafo(
-  doc: jsPDF,
+  doc: JsPDFInstance,
   segs: SegmentoTexto[],
   x: number,
   y: number,
@@ -422,7 +422,7 @@ function dibujarParrafo(
   return y + (lineas.length - 1) * lh
 }
 
-function dibujarCheck(doc: jsPDF, cx: number, cy: number, s: number, color: RGB, lw: number) {
+function dibujarCheck(doc: JsPDFInstance, cx: number, cy: number, s: number, color: RGB, lw: number) {
   doc.setDrawColor(...color)
   doc.setLineWidth(lw)
   doc.setLineCap('round')
@@ -439,7 +439,8 @@ function dibujarCheck(doc: jsPDF, cx: number, cy: number, s: number, color: RGB,
  * Genera la Carta de Solvencia en formato CARTA con diseño a sangre completa
  * (encabezado y pie sin márgenes blancos). Datos sincronizados con el edificio.
  */
-export function generarPDFSolvencia(datos: DatosCartaSolvencia): jsPDF {
+export async function generarPDFSolvencia(datos: DatosCartaSolvencia): Promise<JsPDFInstance> {
+  const { jsPDF } = await loadPdfLibs()
   const doc = new jsPDF({ format: 'letter', unit: 'mm' })
   const c = construirContenidoSolvencia(datos)
   const cw = PAGE_W - MX * 2
@@ -644,15 +645,15 @@ export function generarPDFSolvencia(datos: DatosCartaSolvencia): jsPDF {
 }
 
 /** Descarga directamente el PDF de solvencia en el dispositivo. */
-export function descargarSolvenciaPDF(datos: DatosCartaSolvencia): void {
-  const doc = generarPDFSolvencia(datos)
+export async function descargarSolvenciaPDF(datos: DatosCartaSolvencia): Promise<void> {
+  const doc = await generarPDFSolvencia(datos)
   const cleanApto = (datos.residenteApto || 'Apto').replace(/[^a-zA-Z0-9_-]/g, '_')
   const mes = (datos.mesSolvente || 'Solvencia').toLowerCase()
   doc.save(`Carta_Solvencia_${cleanApto}_${mes}_${datos.anioSolvente}.pdf`)
 }
 
 /** Abre el PDF en una pestaña nueva para visualizar o imprimir. */
-export function abrirSolvenciaPDF(datos: DatosCartaSolvencia): void {
-  const doc = generarPDFSolvencia(datos)
+export async function abrirSolvenciaPDF(datos: DatosCartaSolvencia): Promise<void> {
+  const doc = await generarPDFSolvencia(datos)
   window.open(doc.output('bloburl'), '_blank')
 }

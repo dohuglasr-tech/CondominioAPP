@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
+import { loadPdfLibs } from '../../utils/pdfLoader'
 import {
   obtenerGastosMes,
   obtenerMesesDisponibles,
@@ -17,9 +16,9 @@ interface Props {
 }
 
 const TIPO_CONFIG: Record<string, { label: string; color: string; icon: string }> = {
-  ordinario:      { label: 'Ordinario',       color: '#3b82f6', icon: '📋' },
-  fondo_reserva:  { label: 'Fondo Reserva',   color: '#a855f7', icon: '🏦' },
-  extraordinario: { label: 'Extraordinario',  color: '#f59e0b', icon: '⚡' },
+  ordinario: { label: 'Ordinario', color: '#3b82f6', icon: '📋' },
+  fondo_reserva: { label: 'Fondo Reserva', color: '#a855f7', icon: '🏦' },
+  extraordinario: { label: 'Extraordinario', color: '#f59e0b', icon: '⚡' },
 }
 
 const MESES_NOMBRE: Record<string, string> = {
@@ -51,8 +50,8 @@ export function GastosPanel({ onClose }: Props) {
 
   // ── Modal visor de comprobantes para residente ──
   const [modalGasto, setModalGasto] = useState<GastoComun | null>(null)
-  const [modalTipo, setModalTipo]   = useState<'factura' | 'transferencia'>('factura')
-  const [showModal, setShowModal]   = useState(false)
+  const [modalTipo, setModalTipo] = useState<'factura' | 'transferencia'>('factura')
+  const [showModal, setShowModal] = useState(false)
 
   // ── DATOS DE PRUEBA (MOCK) PARA VISUALIZAR EL DISEÑO ──
   const MOCK_GASTOS: GastoComun[] = [
@@ -195,18 +194,19 @@ export function GastosPanel({ onClose }: Props) {
   const [expandedCat, setExpandedCat] = useState<string | null>(null)
 
   // ── GENERADOR DE PDF PROFESIONAL ──
-  const handleDownloadPDF = () => {
+  const handleDownloadPDF = async () => {
+    const { jsPDF, autoTable } = await loadPdfLibs();
     const doc = new jsPDF();
-    
+
     // Header Dark
-    doc.setFillColor(24, 24, 27); 
+    doc.setFillColor(24, 24, 27);
     doc.rect(0, 0, 210, 44, 'F');
-    
+
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(22);
     doc.setFont("helvetica", "bold");
     doc.text("Condominio Torre 5", 14, 22);
-    
+
     doc.setFontSize(11);
     doc.setFont("helvetica", "normal");
     doc.text(`Relación de Gastos Comunes - ${formatMes(mesActual)}`, 14, 30);
@@ -217,7 +217,7 @@ export function GastosPanel({ onClose }: Props) {
     doc.setFontSize(14);
     doc.setFont("helvetica", "bold");
     doc.text("RESUMEN DEL MES", 14, 58);
-    
+
     doc.setFontSize(11);
     doc.setFont("helvetica", "normal");
     const bsVal = tasa > 0 ? `Bs. ${formatUsd(totalAMostrar * tasa)}` : '---';
@@ -228,7 +228,7 @@ export function GastosPanel({ onClose }: Props) {
     // Separador
     doc.setDrawColor(200, 200, 200);
     doc.line(14, 90, 196, 90);
-    
+
     // Tabla
     const tableData: string[][] = [];
     gastosAMostrar.forEach(g => {
@@ -287,7 +287,7 @@ export function GastosPanel({ onClose }: Props) {
                 ←
               </button>
               <h2 style={st.title}>Gastos Comunes</h2>
-              
+
               {/* Selector de mes Desplegable */}
               {mesesAMostrar.length > 0 && (
                 <select
@@ -367,18 +367,18 @@ export function GastosPanel({ onClose }: Props) {
                   const isExpanded = expandedCat === catKey
 
                   return (
-                    <div 
-                      key={catKey} 
-                      style={{ 
-                        ...st.gastoCard, 
+                    <div
+                      key={catKey}
+                      style={{
+                        ...st.gastoCard,
                         gridColumn: isExpanded ? '1 / -1' : 'auto',
                         borderColor: isExpanded ? 'var(--color-accent, #f97316)' : '#2a2a2a',
                         boxShadow: isExpanded ? '0 4px 20px rgba(0,0,0,0.5)' : 'none',
                         marginBottom: 0
-                      }} 
+                      }}
                     >
                       {/* Header de la tarjeta clickeable para abrir/cerrar */}
-                      <div 
+                      <div
                         style={{ ...st.row, flexWrap: 'nowrap', cursor: 'pointer', userSelect: 'none' }}
                         onClick={() => setExpandedCat(isExpanded ? null : catKey)}
                         role="button"
@@ -423,8 +423,8 @@ export function GastosPanel({ onClose }: Props) {
 
                       {/* Detalle expandido */}
                       {isExpanded && (
-                        <div 
-                          style={{ marginTop: '16px', borderTop: '1px solid #2a2a2a', paddingTop: '12px' }} 
+                        <div
+                          style={{ marginTop: '16px', borderTop: '1px solid #2a2a2a', paddingTop: '12px' }}
                           className="animate-slide-up"
                           onClick={(e) => e.stopPropagation()}
                         >
@@ -524,7 +524,7 @@ export function GastosPanel({ onClose }: Props) {
 
               {/* Botón de PDF */}
               <div style={{ marginTop: '30px', textAlign: 'center', paddingBottom: '10px' }} className="animate-slide-up">
-                <button 
+                <button
                   onClick={handleDownloadPDF}
                   style={{
                     background: 'var(--color-brand-gradient, linear-gradient(90deg, #f97316, #ea580c))',

@@ -1526,7 +1526,7 @@ export async function marcarDeudaMoraComoPagada(
     if (realAptoId) {
       const { data: recsPendientes } = await supabase
         .from('recibos_generados')
-        .select('*')
+        .select('id, data_json')
         .eq('apartamento_id', realAptoId)
         .eq('estado', 'pendiente')
 

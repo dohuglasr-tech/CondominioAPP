@@ -621,7 +621,7 @@ export async function obtenerGasServicioData(forceRefresh: boolean = false): Pro
         // 3. Consultar todas las filas relacionales de gas en casos_comunidad
         const { data: rows, error } = await supabase
           .from('casos_comunidad')
-          .select('*')
+          .select('id, apartamento_id, tipo, titulo, descripcion, monto_usd, monto_bs, moneda, estado, involucrado_nombre, involucrado_contacto, fecha, fecha_vencimiento, comprobante_url, notas_admin, created_at, updated_at')
           .in('tipo', [
             TIPO_GAS_CONFIG,
             TIPO_GAS_LLENADO,

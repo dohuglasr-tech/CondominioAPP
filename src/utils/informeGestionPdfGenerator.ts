@@ -1,5 +1,4 @@
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
+import { loadPdfLibs } from './pdfLoader'
 import { getHoyVE } from './fechaVE'
 
 export interface DatosInformeGestion {
@@ -37,7 +36,8 @@ const CATEGORIA_LABELS: Record<string, string> = {
   reparaciones: 'Reparaciones y Mantenimiento',
 }
 
-export function generarInformeGestionPDF(datos: DatosInformeGestion): void {
+export async function generarInformeGestionPDF(datos: DatosInformeGestion): Promise<void> {
+  const { jsPDF, autoTable } = await loadPdfLibs()
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' })
   const pageWidth = doc.internal.pageSize.getWidth()
   const pageHeight = doc.internal.pageSize.getHeight()

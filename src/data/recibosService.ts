@@ -21,7 +21,7 @@ export async function obtenerPagos(apartamentoId: string): Promise<{ data: Pago[
   try {
     const { data, error } = await supabase
       .from('pagos_reportados')
-      .select('*')
+      .select('id, apartamento_id, monto_bs, monto_usd, referencia, comprobante_url, estado, notas_admin, created_at, fecha_pago')
       .eq('apartamento_id', apartamentoId)
       .order('created_at', { ascending: false })
 

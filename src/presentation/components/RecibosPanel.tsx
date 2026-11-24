@@ -67,10 +67,11 @@ interface PagoReportado {
   apartamento_id: string
   monto_usd: number
   monto_bs: number
-  tasa_bcv: number
-  metodo_pago: string
+  tasa_bcv?: number
+  metodo?: string
+  metodo_pago?: string
   referencia: string
-  banco_origen: string
+  banco_origen?: string
   banco_destino?: string
   fecha_pago: string
   comprobante_url?: string
@@ -201,7 +202,7 @@ export function RecibosPanel({ onClose }: Props) {
           async () => {
             const { data, error } = await supabase
               .from('recibos_generados')
-              .select('*')
+              .select('id, apartamento_id, mes_facturado, tasa_bcv, total_gastos_usd, alicuota, subtotal_usd, fondo_reserva_pct, fondo_reserva_usd, cargos_extra_usd, total_usd, total_bs, estado, es_indexado, data_json, emitido_at')
               .eq('apartamento_id', apartamentoId)
               .order('mes_facturado', { ascending: false })
             if (error) console.warn('[RecibosPanel] Error recibos:', error.message)
@@ -214,7 +215,7 @@ export function RecibosPanel({ onClose }: Props) {
           async () => {
             const { data, error } = await supabase
               .from('pagos_reportados')
-              .select('*')
+              .select('id, apartamento_id, monto_usd, monto_bs, metodo, referencia, fecha_pago, comprobante_url, estado, notas_admin, created_at')
               .eq('apartamento_id', apartamentoId)
               .order('created_at', { ascending: false })
             if (error) console.warn('[RecibosPanel] Error pagos:', error.message)
@@ -224,11 +225,11 @@ export function RecibosPanel({ onClose }: Props) {
         ),
         supabase
           .from('configuracion_edificio')
-          .select('*')
+          .select('id, nombre_edificio, rif, direccion, email_contacto, banco, cedula_cuenta, tipo_cuenta, cuenta_bancaria, titular_cuenta, pago_movil_banco, pago_movil_cedula, pago_movil_telefono, zelle_email, tasa_bcv_actual, color_primario, fecha_inicio_gestion, fecha_fin_administracion_anterior')
           .maybeSingle(),
         supabase
           .from('deudas_mora')
-          .select('*')
+          .select('id, apartamento_id, meses_deuda, monto_usd, monto_bs, moneda_principal, tasa_riesgo, accion_legal, estado, conceptos_detalle, observaciones, fecha_corte, created_at, updated_at')
           .eq('apartamento_id', apartamentoId)
           .maybeSingle(),
       ])
@@ -358,7 +359,7 @@ export function RecibosPanel({ onClose }: Props) {
 
       const docTitulo = esDeudaAtrasada ? (recibo.data_json?.titulo_recibo || 'RECIBO DE PAGO DE DEUDA ATRASADA') : undefined
 
-      const doc = generarPDFRecibo(
+      const doc = await generarPDFRecibo(
         aptoData,
         gastos,
         cargos,
@@ -1511,7 +1512,7 @@ export function RecibosPanel({ onClose }: Props) {
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                         <span style={{ color: '#82828e' }}>Método de Pago</span>
-                        <span style={{ color: '#cbd5e1' }}>{pago.metodo_pago || 'Transferencia / Pago Móvil'}</span>
+                        <span style={{ color: '#cbd5e1' }}>{pago.metodo || pago.metodo_pago || 'Transferencia / Pago Móvil'}</span>
                       </div>
                       {pago.banco_destino && (
                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>

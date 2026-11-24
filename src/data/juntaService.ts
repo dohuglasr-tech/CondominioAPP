@@ -208,7 +208,7 @@ export async function obtenerJunta(forceRefresh = false): Promise<{ data: Miembr
       try {
         const { data: dbData, error } = await supabase
           .from('junta_condominio')
-          .select('*')
+          .select('id, nombre, cargo, categoria, telefono, email, apartamento, descripcion_rol, horario_atencion, orden, avatar_url, created_at, updated_at')
           .order('orden', { ascending: true })
 
         if (error) {

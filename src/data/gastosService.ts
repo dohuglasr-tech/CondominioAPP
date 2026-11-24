@@ -135,7 +135,7 @@ export async function obtenerGastosMes(mes?: string, forceRefresh = false): Prom
     async () => {
       const { data, error } = await supabase
         .from('gastos_comunes')
-        .select('*')
+        .select('id, descripcion, categoria, tipo, monto_usd, monto_bs, mes_aplicacion, fecha_pago, referencia, pagado_por, autorizado_por, notas, factura_url, veces_editado, historial_ediciones, created_at')
         .eq('mes_aplicacion', fecha)
         .order('created_at', { ascending: true })
 

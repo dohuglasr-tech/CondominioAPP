@@ -34,7 +34,7 @@ export const DescargarReciboPublico: React.FC = () => {
   const [generandoPdf, setGenerandoPdf] = useState(false)
 
   // ── Generar y descargar el PDF en el cliente ──────────────────────────────
-  const descargarPDF = useCallback((r: any, cfg: any) => {
+  const descargarPDF = useCallback(async (r: any, cfg: any) => {
     if (!r) return
     try {
       setGenerandoPdf(true)
@@ -85,18 +85,18 @@ export const DescargarReciboPublico: React.FC = () => {
       const totalesFondos = r.data_json?.totales_fondos || (
         (r.data_json?.fondo_reserva_general_positivo_usd !== undefined || r.data_json?.fondo_reserva_locales_positivo_usd !== undefined)
           ? {
-              fondoReservaGeneralPositivoUsd: r.data_json.fondo_reserva_general_positivo_usd,
-              fondoReservaGeneralPositivoBs: r.data_json.fondo_reserva_general_positivo_bs,
-              fondoReservaLocalesPositivoUsd: r.data_json.fondo_reserva_locales_positivo_usd,
-              fondoReservaLocalesPositivoBs: r.data_json.fondo_reserva_locales_positivo_bs,
-              totalRecaudadoPositivoUsd: r.data_json.total_recaudado_positivo_usd,
-              totalRecaudadoPositivoBs: r.data_json.total_recaudado_positivo_bs,
-              localAsignadoInfo: r.data_json.local_asignado_info
-            }
+            fondoReservaGeneralPositivoUsd: r.data_json.fondo_reserva_general_positivo_usd,
+            fondoReservaGeneralPositivoBs: r.data_json.fondo_reserva_general_positivo_bs,
+            fondoReservaLocalesPositivoUsd: r.data_json.fondo_reserva_locales_positivo_usd,
+            fondoReservaLocalesPositivoBs: r.data_json.fondo_reserva_locales_positivo_bs,
+            totalRecaudadoPositivoUsd: r.data_json.total_recaudado_positivo_usd,
+            totalRecaudadoPositivoBs: r.data_json.total_recaudado_positivo_bs,
+            localAsignadoInfo: r.data_json.local_asignado_info
+          }
           : undefined
       )
 
-      const doc = generarPDFRecibo(
+      const doc = await generarPDFRecibo(
         aptoData,
         gastos,
         cargos,
@@ -158,7 +158,7 @@ export const DescargarReciboPublico: React.FC = () => {
             supabase
               .from('recibos_generados')
               .select(`
-                *,
+                id, apartamento_id, mes_facturado, tasa_bcv, total_gastos_usd, alicuota, subtotal_usd, fondo_reserva_pct, fondo_reserva_usd, cargos_extra_usd, total_usd, total_bs, estado, es_indexado, data_json, emitido_at,
                 apartamento:apartamentos (
                   id, numero, piso, alicuota, propietario_nombre, telefono_contacto
                 )
@@ -167,7 +167,7 @@ export const DescargarReciboPublico: React.FC = () => {
               .maybeSingle(),
             supabase
               .from('configuracion_edificio')
-              .select('*')
+              .select('id, nombre_edificio, rif, direccion, email_contacto, banco, cuenta_bancaria, titular_cuenta, tasa_bcv_actual, fecha_inicio_gestion')
               .limit(1)
               .maybeSingle()
           ])

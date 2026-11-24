@@ -120,7 +120,7 @@ export async function resolveTenantBuilding(slugOrId?: string | null): Promise<C
     try {
       const { data: bySlug } = await supabase
         .from('configuracion_edificio')
-        .select('*')
+        .select('id, nombre_edificio, slug, rif, rif_edificio, direccion, ciudad, telefono, email_contacto, email_admin, dominio_email, logo_url, color_primario, tasa_bcv_actual, tasa_bcv_actualizada, banco, cedula_cuenta, tipo_cuenta, cuenta_bancaria, titular_cuenta, pago_movil_banco, pago_movil_cedula, pago_movil_telefono, zelle_email, total_apartamentos, total_pisos, apartamentos_por_piso, tiene_ph, total_ph, fecha_inicio_gestion, fecha_fin_administracion_anterior, banner_emergencia_activo, banner_emergencia_texto, banner_emergencia_nivel, modo_mantenimiento, modo_mantenimiento_motivo, updated_at')
         .eq('slug', target)
         .limit(1)
         .maybeSingle()
@@ -136,7 +136,7 @@ export async function resolveTenantBuilding(slugOrId?: string | null): Promise<C
     if (isUuid) {
       const { data: byId } = await supabase
         .from('configuracion_edificio')
-        .select('*')
+        .select('id, nombre_edificio, slug, rif, rif_edificio, direccion, ciudad, telefono, email_contacto, email_admin, dominio_email, logo_url, color_primario, tasa_bcv_actual, tasa_bcv_actualizada, banco, cedula_cuenta, tipo_cuenta, cuenta_bancaria, titular_cuenta, pago_movil_banco, pago_movil_cedula, pago_movil_telefono, zelle_email, total_apartamentos, total_pisos, apartamentos_por_piso, tiene_ph, total_ph, fecha_inicio_gestion, fecha_fin_administracion_anterior, banner_emergencia_activo, banner_emergencia_texto, banner_emergencia_nivel, modo_mantenimiento, modo_mantenimiento_motivo, updated_at')
         .eq('id', target)
         .limit(1)
         .maybeSingle()
@@ -150,7 +150,7 @@ export async function resolveTenantBuilding(slugOrId?: string | null): Promise<C
     // 3. Fallback inteligente: buscar en todos los edificios comparando slug generado de 'nombre_edificio'
     const { data: allBuildings } = await supabase
       .from('configuracion_edificio')
-      .select('*')
+      .select('id, nombre_edificio, slug, rif, rif_edificio, direccion, ciudad, telefono, email_contacto, email_admin, dominio_email, logo_url, color_primario, tasa_bcv_actual, tasa_bcv_actualizada, banco, cedula_cuenta, tipo_cuenta, cuenta_bancaria, titular_cuenta, pago_movil_banco, pago_movil_cedula, pago_movil_telefono, zelle_email, total_apartamentos, total_pisos, apartamentos_por_piso, tiene_ph, total_ph, fecha_inicio_gestion, fecha_fin_administracion_anterior, banner_emergencia_activo, banner_emergencia_texto, banner_emergencia_nivel, modo_mantenimiento, modo_mantenimiento_motivo, updated_at')
 
     if (allBuildings && allBuildings.length > 0) {
       const matched = allBuildings.find(b => {

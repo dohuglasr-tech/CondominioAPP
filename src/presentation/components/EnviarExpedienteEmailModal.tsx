@@ -77,7 +77,7 @@ export const EnviarExpedienteEmailModal: React.FC<Props> = ({
 
       if (incluirPdfAdjunto) {
         // Generar PDF del expediente legal con todas sus firmas y hash
-        const doc = generarExpedienteLegalPDF(datosExpediente)
+        const doc = await generarExpedienteLegalPDF(datosExpediente)
         const dataUri = doc.output('datauristring')
         pdfBase64 = dataUri.split(',')[1]
         const aptoSanitizado = apto.replace(/[^a-zA-Z0-9_-]/g, '_')

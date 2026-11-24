@@ -79,7 +79,7 @@ export async function notificarTodos(params: {
 export async function obtenerNotificaciones(apartamento_id: string, limite = 20): Promise<Notificacion[]> {
   const { data, error } = await supabase
     .from('notificaciones')
-    .select('*')
+    .select('id, apartamento_id, tipo, titulo, cuerpo, leida, link, meta, created_at')
     .eq('apartamento_id', apartamento_id)
     .order('created_at', { ascending: false })
     .limit(limite)

@@ -1,5 +1,4 @@
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
+import { loadPdfLibs, JsPDFInstance } from './pdfLoader'
 
 export interface DatosNormasCondominio {
   nombreEdificio: string
@@ -188,7 +187,8 @@ export const CLAUSULA_CIERRE_TEXTO =
  * conservando exactamente los mismos colores corporativos (Slate 900 y Naranja),
  * fuentes y formato geométrico de los recibos oficiales.
  */
-export function generarPDFNormas(datos: DatosNormasCondominio): jsPDF {
+export async function generarPDFNormas(datos: DatosNormasCondominio): Promise<JsPDFInstance> {
+  const { jsPDF, autoTable } = await loadPdfLibs()
   const doc = new jsPDF({ format: 'a4', unit: 'mm' })
   const cDark:   [number, number, number] = [15, 23, 42]     // Slate 900
   const cAccent: [number, number, number] = [249, 115, 22]   // Brand Orange
@@ -489,8 +489,8 @@ export function generarPDFNormas(datos: DatosNormasCondominio): jsPDF {
 /**
  * Descarga directamente el archivo PDF del reglamento en el dispositivo del usuario
  */
-export function descargarNormasPDF(datos: DatosNormasCondominio): void {
-  const doc = generarPDFNormas(datos)
+export async function descargarNormasPDF(datos: DatosNormasCondominio): Promise<void> {
+  const doc = await generarPDFNormas(datos)
   const cleanName = (datos.nombreEdificio || 'Edificio')
     .replace(/[^a-zA-Z0-9_-]/g, '_')
   const filename = `Reglamento_Normas_Convivencia_${cleanName}.pdf`
@@ -500,8 +500,8 @@ export function descargarNormasPDF(datos: DatosNormasCondominio): void {
 /**
  * Abre el PDF en una pestaña nueva o visor del navegador para imprimir o visualizar
  */
-export function abrirNormasPDF(datos: DatosNormasCondominio): void {
-  const doc = generarPDFNormas(datos)
+export async function abrirNormasPDF(datos: DatosNormasCondominio): Promise<void> {
+  const doc = await generarPDFNormas(datos)
   const blobUrl = doc.output('bloburl')
   window.open(blobUrl, '_blank')
 }

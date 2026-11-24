@@ -113,7 +113,7 @@ export async function obtenerDestinatariosActivosGlobal(
   const [aptosRes, perfilesRes] = await Promise.all([
     supabase
       .from('apartamentos')
-      .select('*')
+      .select('id, numero, piso, estado, propietario_nombre, telefono_contacto')
       .order('numero'),
     supabase
       .from('perfiles')
@@ -428,7 +428,7 @@ export async function obtenerHistorialNotificacionesGlobales(): Promise<Historia
   try {
     const { data, error } = await supabase
       .from('casos_comunidad')
-      .select('*')
+      .select('id, titulo, descripcion, involucrado_nombre, created_at')
       .eq('tipo', TIPO_COMUNICADO_GLOBAL)
       .order('created_at', { ascending: false })
       .limit(50)

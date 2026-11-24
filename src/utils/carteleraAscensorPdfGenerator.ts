@@ -1,5 +1,4 @@
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
+import { loadPdfLibs, JsPDFInstance } from './pdfLoader'
 import { FilaCalendarioApto } from '../data/calendarioDeudasService'
 
 export interface DatosCarteleraAscensor {
@@ -88,7 +87,8 @@ function obtenerDetalleMeses(item: FilaCalendarioApto, anio: number): string {
  * - En 1, 2 o 3 páginas: Control estricto de altura para garantizar CERO páginas extras y CERO vacíos en blanco.
  * - CERO caracteres corruptos (sin emojis que se rompen en el motor PDF).
  */
-export function generarCarteleraAscensorPDF(datos: DatosCarteleraAscensor): jsPDF {
+export async function generarCarteleraAscensorPDF(datos: DatosCarteleraAscensor): Promise<JsPDFInstance> {
+  const { jsPDF, autoTable } = await loadPdfLibs()
   const orientacion = datos.orientacion || 'portrait'
   const isLandscape = orientacion === 'landscape'
   const distribucion = (datos.distribucionPaginas && [1, 2, 3].includes(datos.distribucionPaginas))

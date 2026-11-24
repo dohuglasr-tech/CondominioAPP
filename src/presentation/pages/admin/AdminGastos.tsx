@@ -141,7 +141,8 @@ export const AdminGastos: React.FC = () => {
         `admin_gastos_${filtroMes}`,
         async () => {
           const { data, error } = await supabase
-            .from('gastos_comunes').select('*')
+            .from('gastos_comunes')
+            .select('id, descripcion, categoria, tipo, monto_usd, monto_bs, mes_aplicacion, fecha_pago, referencia, pagado_por, autorizado_por, notas, factura_url, veces_editado, historial_ediciones, created_at')
             .gte('mes_aplicacion', desde).lte('mes_aplicacion', hasta)
             .order('created_at', { ascending: false })
           if (error) throw error

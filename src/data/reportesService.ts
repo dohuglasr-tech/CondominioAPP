@@ -283,7 +283,7 @@ export async function obtenerReportesResidente(
     // 1. Consultar tabla falencias en Supabase
     let query = supabase
       .from('falencias')
-      .select('*')
+      .select('id, titulo, descripcion, ubicacion, prioridad, estado, foto_url, creado_por, created_at, updated_at')
       .order('created_at', { ascending: false })
 
     const { data: dbRows, error: dbError } = await query
@@ -346,7 +346,7 @@ export async function obtenerTodosLosReportesAdmin(): Promise<{ data: ReporteIte
   try {
     const { data: dbRows, error: dbError } = await supabase
       .from('falencias')
-      .select('*')
+      .select('id, titulo, descripcion, ubicacion, prioridad, estado, foto_url, creado_por, created_at, updated_at')
       .order('created_at', { ascending: false })
 
     if (!dbError && dbRows) {

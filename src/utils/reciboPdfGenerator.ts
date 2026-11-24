@@ -1,5 +1,4 @@
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
+import { loadPdfLibs, JsPDFInstance } from './pdfLoader'
 import { getAlicuotaDecimal, formatAlicuotaPct } from './alicuota'
 
 export interface ReciboAptoData {
@@ -91,7 +90,7 @@ VECINOS: FAVOR REVISAR SUS FILTRACIONES Y DRENAJES DE AIRES ACONDICIONADOS.`
  * Estilo factura moderna con paleta de colores de la aplicación (Slate 900 y Naranja)
  * Formato y estructura coincidente con el modelo de Excel del condominio.
  */
-export function generarPDFRecibo(
+export async function generarPDFRecibo(
   apto: ReciboAptoData,
   gastos: ReciboGastoData[],
   cargos: ReciboCargoData[],
@@ -104,7 +103,8 @@ export function generarPDFRecibo(
   tituloDoc?: string,
   donaciones?: ReciboDonacionData[],
   totalesFondos?: ReciboTotalesFondosData
-): jsPDF {
+): Promise<JsPDFInstance> {
+  const { jsPDF, autoTable } = await loadPdfLibs()
   const doc = new jsPDF({ format: 'a4', unit: 'mm' })
   const cDark:   [number,number,number] = [15, 23, 42]     // Slate 900
   const cAccent: [number,number,number] = [249, 115, 22]   // Brand Orange

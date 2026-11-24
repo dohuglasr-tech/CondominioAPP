@@ -246,7 +246,7 @@ export function ReportarPagoModal({
           try {
             const { data: directRecs } = await supabase
               .from('recibos_generados')
-              .select('*')
+              .select('id, mes_facturado, total_usd, total_bs')
               .or(`apartamento_id.eq.${apartamentoId}`)
               .eq('estado', 'pendiente')
               .order('mes_facturado', { ascending: true })

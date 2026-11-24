@@ -221,7 +221,7 @@ export async function obtenerLocales(): Promise<LocalComercial[]> {
         // 2. Intentar consultar casos_comunidad de tipo 'local_comercial'
         const { data, error } = await supabase
           .from('casos_comunidad')
-          .select('*')
+          .select('id, apartamento_id, tipo, titulo, descripcion, monto_usd, monto_bs, moneda, estado, involucrado_nombre, involucrado_contacto, fecha, fecha_vencimiento, notas_admin, created_at, updated_at')
           .eq('tipo', 'local_comercial')
           .order('created_at', { ascending: true })
 
@@ -252,7 +252,7 @@ export async function obtenerLocales(): Promise<LocalComercial[]> {
 
             const { data: recargados } = await supabase
               .from('casos_comunidad')
-              .select('*')
+              .select('id, apartamento_id, tipo, titulo, descripcion, monto_usd, monto_bs, moneda, estado, involucrado_nombre, involucrado_contacto, fecha, fecha_vencimiento, notas_admin, created_at, updated_at')
               .eq('tipo', 'local_comercial')
               .order('created_at', { ascending: true })
 

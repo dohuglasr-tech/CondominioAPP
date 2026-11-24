@@ -134,7 +134,7 @@ export async function obtenerMensajes(limite: number = 80): Promise<{ data: Chat
     // 1. Consultar mensajes
     const { data, error } = await supabase
       .from('chat_mensajes')
-      .select('*')
+      .select('id, autor_id, contenido, adjunto_url, adjunto_tipo, editado, created_at, autor_nombre, autor_rol, apartamento_numero, es_admin, es_anuncio')
       .order('created_at', { ascending: false })
       .limit(limite)
 

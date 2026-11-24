@@ -562,7 +562,9 @@ export async function obtenerMatrizCalendario(
               .order('mes_facturado', { ascending: true })
               .range(from, to)
           ),
-          supabase.from('deudas_mora').select('*'),
+          supabase
+            .from('deudas_mora')
+            .select('id, apartamento_id, estado, monto_bs, monto_usd, conceptos_detalle, observaciones, fecha_corte, updated_at'),
           obtenerConfiguracionCalendario(anioSeleccionado)
         ])
 
@@ -936,14 +938,14 @@ export async function guardarMontoReciboPersonalizado(params: EditarMontoCuotaPa
     if (targetReciboId) {
       const { data } = await supabase
         .from('recibos_generados')
-        .select('*')
+        .select('id, data_json')
         .eq('id', targetReciboId)
         .maybeSingle()
       reciboExistente = data
     } else {
       const { data } = await supabase
         .from('recibos_generados')
-        .select('*')
+        .select('id, data_json')
         .eq('apartamento_id', apartamentoId)
         .eq('mes_facturado', mesFacturadoIso)
         .maybeSingle()
