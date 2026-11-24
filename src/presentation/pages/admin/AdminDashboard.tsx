@@ -3,11 +3,25 @@ import { useNavigate } from 'react-router-dom'
 import { useBcvRate } from '../../../data/useBcvRate'
 import { supabase } from '../../../data/supabase'
 import { appCache } from '../../../data/cacheService'
+import { useTheme } from '../../../application/contexts/ThemeContext'
 import { SkeletonCard } from '../../components/Skeleton'
 import { PublicarAvisoModal } from '../../components/PublicarAvisoModal'
 import { BotonLimpiarCache } from '../../components/BotonLimpiarCache'
 import { ModalRecibosSolventes, ReciboSolventeItem } from '../../components/ModalRecibosSolventes'
 import { ModalTimelineAprobaciones } from '../../components/ModalTimelineAprobaciones'
+
+const LIGHT_ACCENT_MAP: Record<string, string> = {
+  '#f59e0b': '#b45309',
+  '#10b981': '#047857',
+  '#3b82f6': '#1d4ed8',
+  '#8b5cf6': '#6d28d9',
+  '#ef4444': '#dc2626',
+  '#06b6d4': '#0e7490',
+}
+
+function getLightAccentColor(color: string): string {
+  return LIGHT_ACCENT_MAP[color.toLowerCase()] ?? color
+}
 
 interface StatCardProps {
   icon: string
@@ -20,47 +34,61 @@ interface StatCardProps {
   onClick?: () => void
 }
 
-const StatCard: React.FC<StatCardProps> = ({ icon, label, value, sub, color = 'var(--color-accent, #f97316)', badge, pulse, onClick }) => (
-  <div
-    onClick={onClick}
-    style={{
-      background: 'linear-gradient(180deg, #151922 0%, #0d1117 100%)',
-      border: pulse ? `1px solid ${color}` : '1px solid rgba(255, 255, 255, 0.08)',
-      borderTop: pulse ? `1px solid ${color}` : '1px solid rgba(255, 255, 255, 0.14)',
-      boxShadow: pulse
-        ? `0 0 20px ${color}35, 0 12px 30px rgba(0, 0, 0, 0.5)`
-        : '0 14px 34px -4px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06)',
-      borderRadius: '22px',
-      padding: '22px',
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '8px',
-      cursor: onClick ? 'pointer' : 'default',
-      transition: 'all 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
-      position: 'relative',
-    }}
-  >
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-      <span style={{ fontSize: '24px' }}>{icon}</span>
-      {badge && (
-        <span style={{
-          backgroundColor: `${color}18`,
-          color: color,
-          fontSize: '11px',
-          fontWeight: 700,
-          padding: '3px 10px',
-          borderRadius: '999px',
-          border: `1px solid ${color}35`,
-        }}>
-          {badge}
-        </span>
-      )}
+const StatCard: React.FC<StatCardProps> = ({ icon, label, value, sub, color = 'var(--color-accent, #f97316)', badge, pulse, onClick }) => {
+  const { theme } = useTheme()
+  const isLight = theme === 'light'
+  const displayColor = isLight ? getLightAccentColor(color) : color
+
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        background: isLight ? '#ffffff' : 'linear-gradient(180deg, #151922 0%, #0d1117 100%)',
+        border: isLight
+          ? (pulse ? `1.5px solid ${displayColor}` : '1px solid #e2e8f0')
+          : (pulse ? `1px solid ${color}` : '1px solid rgba(255, 255, 255, 0.08)'),
+        borderTop: isLight
+          ? `3px solid ${displayColor}`
+          : (pulse ? `1px solid ${color}` : '1px solid rgba(255, 255, 255, 0.14)'),
+        boxShadow: isLight
+          ? (pulse
+              ? `0 0 0 3px ${displayColor}18, 0 8px 24px rgba(15, 23, 42, 0.08)`
+              : '0 4px 18px rgba(15, 23, 42, 0.06)')
+          : (pulse
+              ? `0 0 20px ${color}35, 0 12px 30px rgba(0, 0, 0, 0.5)`
+              : '0 14px 34px -4px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06)'),
+        borderRadius: '22px',
+        padding: '22px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '8px',
+        cursor: onClick ? 'pointer' : 'default',
+        transition: 'all 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
+        position: 'relative',
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontSize: '24px' }}>{icon}</span>
+        {badge && (
+          <span style={{
+            backgroundColor: isLight ? `${displayColor}14` : `${color}18`,
+            color: displayColor,
+            fontSize: '11px',
+            fontWeight: 700,
+            padding: '3px 10px',
+            borderRadius: '999px',
+            border: `1px solid ${displayColor}35`,
+          }}>
+            {badge}
+          </span>
+        )}
+      </div>
+      <p style={{ color: isLight ? '#64748b' : '#7e8b9b', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.8px', margin: 0 }}>{label}</p>
+      <p style={{ color: isLight ? '#0f172a' : '#fff', fontSize: '24px', fontWeight: 800, margin: 0, letterSpacing: '-0.5px' }}>{value}</p>
+      {sub && <p style={{ color: displayColor, fontSize: '12px', fontWeight: 600, margin: 0 }}>{sub}</p>}
     </div>
-    <p style={{ color: '#7e8b9b', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.8px', margin: 0 }}>{label}</p>
-    <p style={{ color: '#fff', fontSize: '24px', fontWeight: 800, margin: 0, letterSpacing: '-0.5px' }}>{value}</p>
-    {sub && <p style={{ color, fontSize: '12px', fontWeight: 600, margin: 0 }}>{sub}</p>}
-  </div>
-)
+  )
+}
 
 export interface ActividadItem {
   id: string
