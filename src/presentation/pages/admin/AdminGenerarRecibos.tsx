@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../../data/supabase'
 import { notificarApartamento } from '../../../data/notificacionesService'
 import { despacharEmailRecibo } from '../../../data/emailService'
+import { guardarDestinatariosUltimoReciboEnviado } from '../../../data/notificacionesGlobalesService'
 import { getAlicuotaDecimal, formatAlicuotaPct, compararApartamentos } from '../../../utils/alicuota'
 import { generarPDFRecibo, ReciboTotalesFondosData } from '../../../utils/reciboPdfGenerator'
 import { obtenerLocales, actualizarLocal, LocalComercial } from '../../../data/localesService'
@@ -559,6 +560,19 @@ export const AdminGenerarRecibos: React.FC = () => {
           zelle_email: config?.zelle_email,
           colorPrimario: config?.color_primario
         }).catch(err => console.warn(`[AdminGenerarRecibos] Error despachando email a Apto. ${apto.numero}:`, err))
+      }
+
+      if (aptosConEmail.length > 0) {
+        guardarDestinatariosUltimoReciboEnviado({
+          mes: mesStr,
+          origen: 'emision_recibos',
+          destinatarios: aptosConEmail.map(a => ({
+            email: a.propietario_email!,
+            nombre: a.propietario_nombre,
+            apartamento: a.numero,
+            apartamentoId: a.id
+          }))
+        }).catch(() => {})
       }
     }
 

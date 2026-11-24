@@ -16,6 +16,7 @@ import {
   despacharEmailRecordatorioRecibo,
   getBasePortalUrl
 } from '../../../data/emailService'
+import { guardarDestinatariosUltimoReciboEnviado } from '../../../data/notificacionesGlobalesService'
 import { generarInformeGestionPDF, DatosInformeGestion } from '../../../utils/informeGestionPdfGenerator'
 import { esReciboIndexado } from '../../../utils/indexacionHelper'
 
@@ -491,7 +492,8 @@ export const AdminRecibosEmitidos: React.FC = () => {
     setPasoEmails('resumen')
 
     try {
-      const exitosos = nuevosLogs.filter(l => l.ok).length
+      const exitososLogs = nuevosLogs.filter(l => l.ok)
+      const exitosos = exitososLogs.length
       registrarEventoAuditoria({
         tipo_accion: 'ENVIO_EMAILS_MASIVO',
         titulo: `Envío Masivo de Correos — ${mesParaEmails}`,
@@ -505,9 +507,27 @@ export const AdminRecibosEmitidos: React.FC = () => {
           total_destinatarios: destinatarios.length,
           exitosos,
           fallidos: destinatarios.length - exitosos,
-          guardado_en_perfiles: guardarEmailsEnPerfil
+          guardado_en_perfiles: guardarEmailsEnPerfil,
+          destinatarios_enviados: exitososLogs.map(l => ({ apto: l.apto, email: l.email }))
         }
       })
+
+      const listaGuardar = exitososLogs.length > 0
+        ? destinatarios.filter(d => exitososLogs.some(l => l.email.toLowerCase() === d.email.trim().toLowerCase()))
+        : destinatarios
+
+      if (listaGuardar.length > 0) {
+        guardarDestinatariosUltimoReciboEnviado({
+          mes: mesParaEmails,
+          origen: 'envio_masivo_recibos',
+          destinatarios: listaGuardar.map(d => ({
+            email: d.email,
+            nombre: d.nombre || d.recibo.apartamento?.propietario_nombre,
+            apartamento: d.recibo.apartamento?.numero,
+            apartamentoId: d.recibo.apartamento_id
+          }))
+        }).catch(() => {})
+      }
     } catch {}
   }
 

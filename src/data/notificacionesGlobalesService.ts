@@ -1,3 +1,4 @@
+import * as XLSX from 'xlsx'
 import { supabase } from './supabase'
 import { registrarEventoAuditoria } from './auditoriaService'
 import { notificarTodos } from './notificacionesService'
@@ -6,12 +7,15 @@ import {
   generarHtmlNotificacionGlobal
 } from './emailService'
 
+export type OrigenAudienciaGlobal = 'bd' | 'ultimo_recibo' | 'excel'
+
 export interface DestinatarioGlobal {
   email: string
   nombre: string
   apartamentos: string[]
   apartamentoIds: string[]
   piso?: number | null
+  origen?: 'bd' | 'ultimo_recibo' | 'excel' | 'manual'
 }
 
 export interface AptoSinCorreo {
@@ -25,6 +29,22 @@ export interface ResumenAudienciaGlobal {
   destinatarios: DestinatarioGlobal[]
   sinCorreo: AptoSinCorreo[]
   totalApartamentosActivos: number
+}
+
+export interface ResumenUltimoReciboEmails {
+  destinatarios: DestinatarioGlobal[]
+  mesReferencia: string | null
+  fechaEnvio: string | null
+  fuente: 'registro_envio' | 'auditoria' | 'ultimo_mes_emitido' | 'ninguno'
+  notaFuente: string
+}
+
+export interface ResultadoExcelCorreos {
+  destinatarios: DestinatarioGlobal[]
+  totalFilas: number
+  descartados: number
+  duplicados: number
+  error?: string
 }
 
 export interface HistorialNotificacionGlobal {
@@ -41,6 +61,8 @@ export interface HistorialNotificacionGlobal {
   modoEnvio: 'bcc_lotes' | 'individual_lotes'
   notificadoEnApp: boolean
   incluirBotonPortal?: boolean
+  origenAudiencia?: OrigenAudienciaGlobal
+  destinatariosEmails?: string[]
   fechaEnvio: string
 }
 
@@ -54,11 +76,29 @@ export interface ProgresoEnvioGlobal {
 }
 
 const TIPO_COMUNICADO_GLOBAL = 'comunicado_global_email'
+const TIPO_ULTIMO_ENVIO_RECIBOS = 'config_ultimo_envio_recibos_emails'
+const LOCAL_KEY_ULTIMO_ENVIO_RECIBOS = 'domus_ultimo_envio_recibos_emails_v1'
+
+function normalizarCadenaApto(s: string): string {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/^(apto|apartamento|unidad|inmueble|depto|piso)[\s.\-]*/i, '')
+    .replace(/[^a-z0-9]/gi, '')
+}
 
 function esEmailValido(email?: string | null): boolean {
   if (!email || typeof email !== 'string') return false
   const clean = email.trim().toLowerCase()
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean)
+}
+
+function extraerEmailsDeTexto(raw: unknown): string[] {
+  const txt = String(raw || '').trim()
+  if (!txt || !txt.includes('@')) return []
+  return txt
+    .split(/[\s,;]+/)
+    .map(p => p.trim().replace(/^[<("']+|[>)"']+$/g, '').toLowerCase())
+    .filter(esEmailValido)
 }
 
 function sleep(ms: number) {
@@ -200,6 +240,7 @@ export async function enviarNotificacionGlobalMasiva(
     incluirBotonPortal?: boolean
     notificarEnApp?: boolean
     tasaBcvReferencia?: number
+    origenAudiencia?: OrigenAudienciaGlobal
   },
   onProgress?: (p: ProgresoEnvioGlobal) => void
 ): Promise<HistorialNotificacionGlobal> {
@@ -346,6 +387,8 @@ export async function enviarNotificacionGlobalMasiva(
     modoEnvio,
     notificadoEnApp: Boolean(params.notificarEnApp),
     incluirBotonPortal: params.incluirBotonPortal !== false,
+    origenAudiencia: params.origenAudiencia || 'bd',
+    destinatariosEmails: emailsUnicos,
     fechaEnvio: new Date().toISOString()
   }
 
@@ -410,12 +453,433 @@ export async function obtenerHistorialNotificacionesGlobales(): Promise<Historia
         modoEnvio: parsed.modoEnvio || 'bcc_lotes',
         notificadoEnApp: Boolean(parsed.notificadoEnApp),
         incluirBotonPortal: parsed.incluirBotonPortal !== false,
+        origenAudiencia: parsed.origenAudiencia || 'bd',
+        destinatariosEmails: Array.isArray(parsed.destinatariosEmails) ? parsed.destinatariosEmails : undefined,
         fechaEnvio: parsed.fechaEnvio || row.created_at || new Date().toISOString()
       } as HistorialNotificacionGlobal
     })
   } catch (err) {
     console.warn('[notificacionesGlobalesService] Error leyendo historial:', err)
     return []
+  }
+}
+
+/**
+ * Registra los destinatarios exactos del último despacho de recibos por correo
+ * (en Supabase bajo tipo `config_*` y en localStorage) para reutilizarlos en Comunicados.
+ */
+export async function guardarDestinatariosUltimoReciboEnviado(params: {
+  mes: string
+  origen: 'emision_recibos' | 'envio_masivo_recibos'
+  destinatarios: Array<{
+    email: string
+    nombre?: string | null
+    apartamento?: string | null
+    apartamentoId?: string | null
+  }>
+}): Promise<void> {
+  const mapa = new Map<string, DestinatarioGlobal>()
+  ;(params.destinatarios || []).forEach(item => {
+    const email = String(item.email || '').trim().toLowerCase()
+    if (!esEmailValido(email)) return
+    const aptoNum = String(item.apartamento || 'S/N').trim()
+    const aptoId = item.apartamentoId ? String(item.apartamentoId) : `rec_${aptoNum}`
+    const nombre = String(item.nombre || 'Propietario').trim() || 'Propietario'
+    const existing = mapa.get(email)
+    if (existing) {
+      if (aptoNum && !existing.apartamentos.includes(aptoNum)) existing.apartamentos.push(aptoNum)
+      if (aptoId && !existing.apartamentoIds.includes(aptoId)) existing.apartamentoIds.push(aptoId)
+    } else {
+      mapa.set(email, {
+        email,
+        nombre,
+        apartamentos: aptoNum ? [aptoNum] : ['S/N'],
+        apartamentoIds: [aptoId],
+        origen: 'ultimo_recibo'
+      })
+    }
+  })
+
+  const lista = Array.from(mapa.values()).sort((a, b) =>
+    (a.apartamentos[0] || '').localeCompare(b.apartamentos[0] || '', undefined, { numeric: true })
+  )
+  if (lista.length === 0) return
+
+  const payload = {
+    mes: params.mes || '',
+    fechaEnvio: new Date().toISOString(),
+    origen: params.origen,
+    destinatarios: lista
+  }
+
+  try {
+    localStorage.setItem(LOCAL_KEY_ULTIMO_ENVIO_RECIBOS, JSON.stringify(payload))
+  } catch {}
+
+  try {
+    const { data: existente } = await supabase
+      .from('casos_comunidad')
+      .select('id')
+      .eq('tipo', TIPO_ULTIMO_ENVIO_RECIBOS)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (existente?.id) {
+      await supabase
+        .from('casos_comunidad')
+        .update({
+          titulo: `ULTIMO_ENVIO_RECIBOS_${payload.mes || 'RECIENTE'}`,
+          descripcion: JSON.stringify(payload),
+          fecha: payload.fechaEnvio.slice(0, 10),
+          involucrado_contacto: `${lista.length} correos`,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', existente.id)
+    } else {
+      await supabase.from('casos_comunidad').insert({
+        tipo: TIPO_ULTIMO_ENVIO_RECIBOS,
+        titulo: `ULTIMO_ENVIO_RECIBOS_${payload.mes || 'RECIENTE'}`,
+        descripcion: JSON.stringify(payload),
+        monto_usd: 0,
+        monto_bs: 0,
+        moneda: 'USD',
+        estado: 'resuelto',
+        fecha: payload.fechaEnvio.slice(0, 10),
+        involucrado_nombre: 'Sistema de Recibos',
+        involucrado_contacto: `${lista.length} correos`
+      })
+    }
+  } catch (err) {
+    console.warn('[notificacionesGlobalesService] Error guardando registro último recibo:', err)
+  }
+}
+
+/**
+ * Obtiene la lista de correos del último recibo enviado:
+ * 1) Registro explícito de despacho (`config_ultimo_envio_recibos_emails` / localStorage)
+ * 2) Historial de auditoría (`ENVIO_EMAILS_MASIVO` de recibos)
+ * 3) Fallback al último período emitido en `recibos_generados` cruzado con correos actuales en BD.
+ */
+export async function obtenerDestinatariosUltimoReciboEnviado(): Promise<ResumenUltimoReciboEmails> {
+  // Prioridad 1: Registro directo en Supabase o localStorage
+  try {
+    const { data: regRow } = await supabase
+      .from('casos_comunidad')
+      .select('descripcion, created_at')
+      .eq('tipo', TIPO_ULTIMO_ENVIO_RECIBOS)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    let parsedReg: any = null
+    if (regRow?.descripcion) {
+      try { parsedReg = JSON.parse(regRow.descripcion) } catch {}
+    }
+    if (!parsedReg) {
+      try {
+        const rawLocal = localStorage.getItem(LOCAL_KEY_ULTIMO_ENVIO_RECIBOS)
+        if (rawLocal) parsedReg = JSON.parse(rawLocal)
+      } catch {}
+    }
+
+    if (parsedReg && Array.isArray(parsedReg.destinatarios) && parsedReg.destinatarios.length > 0) {
+      const lista = (parsedReg.destinatarios as DestinatarioGlobal[])
+        .filter(d => esEmailValido(d?.email))
+        .map(d => ({ ...d, email: d.email.trim().toLowerCase(), origen: 'ultimo_recibo' as const }))
+      if (lista.length > 0) {
+        return {
+          destinatarios: lista,
+          mesReferencia: parsedReg.mes || null,
+          fechaEnvio: parsedReg.fechaEnvio || regRow?.created_at || null,
+          fuente: 'registro_envio',
+          notaFuente: parsedReg.mes
+            ? `Correos exactos del último envío de recibos (${parsedReg.mes})`
+            : 'Correos exactos del último envío de recibos registrado'
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[notificacionesGlobalesService] Aviso leyendo registro último recibo:', err)
+  }
+
+  // Prioridad 2: Historial de auditoría de envío masivo de recibos
+  let mesDesdeAuditoria: string | null = null
+  let fechaAuditoria: string | null = null
+  try {
+    const { data: logsAud } = await supabase
+      .from('historial_auditoria')
+      .select('titulo, fecha, mes_afectado, datos_nuevos')
+      .eq('tipo_accion', 'ENVIO_EMAILS_MASIVO')
+      .order('fecha', { ascending: false })
+      .limit(10)
+
+    const logRecibo = (logsAud || []).find((l: any) =>
+      String(l.titulo || '').startsWith('Envío Masivo de Correos')
+    )
+
+    if (logRecibo) {
+      mesDesdeAuditoria = logRecibo.mes_afectado || logRecibo.datos_nuevos?.mes || null
+      fechaAuditoria = logRecibo.fecha || null
+      const destAud = logRecibo.datos_nuevos?.destinatarios_enviados
+      if (Array.isArray(destAud) && destAud.length > 0) {
+        const mapa = new Map<string, DestinatarioGlobal>()
+        destAud.forEach((item: any) => {
+          const email = String(item?.email || '').trim().toLowerCase()
+          if (!esEmailValido(email)) return
+          const aptoNum = String(item?.apto || 'S/N')
+          const ex = mapa.get(email)
+          if (ex) {
+            if (!ex.apartamentos.includes(aptoNum)) ex.apartamentos.push(aptoNum)
+          } else {
+            mapa.set(email, {
+              email,
+              nombre: 'Propietario',
+              apartamentos: [aptoNum],
+              apartamentoIds: [`aud_${aptoNum}`],
+              origen: 'ultimo_recibo'
+            })
+          }
+        })
+        const lista = Array.from(mapa.values()).sort((a, b) =>
+          (a.apartamentos[0] || '').localeCompare(b.apartamentos[0] || '', undefined, { numeric: true })
+        )
+        if (lista.length > 0) {
+          return {
+            destinatarios: lista,
+            mesReferencia: mesDesdeAuditoria,
+            fechaEnvio: fechaAuditoria,
+            fuente: 'auditoria',
+            notaFuente: mesDesdeAuditoria
+              ? `Recuperado desde auditoría del envío de recibos (${mesDesdeAuditoria})`
+              : 'Recuperado desde auditoría de envío de recibos'
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[notificacionesGlobalesService] Aviso leyendo auditoría último recibo:', err)
+  }
+
+  // Prioridad 3: Fallback al último mes con recibos emitidos en recibos_generados
+  try {
+    let mesObjetivo = mesDesdeAuditoria
+    let fechaRef = fechaAuditoria
+
+    if (!mesObjetivo) {
+      const { data: ultimoRec } = await supabase
+        .from('recibos_generados')
+        .select('mes_facturado, emitido_at')
+        .order('emitido_at', { ascending: false })
+        .order('mes_facturado', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (ultimoRec?.mes_facturado) {
+        mesObjetivo = ultimoRec.mes_facturado
+        fechaRef = ultimoRec.emitido_at || null
+      }
+    }
+
+    if (mesObjetivo) {
+      const [recibosMesRes, aptosRes, perfilesRes] = await Promise.all([
+        supabase.from('recibos_generados').select('apartamento_id').eq('mes_facturado', mesObjetivo),
+        supabase.from('apartamentos').select('id, numero, piso, propietario_nombre, propietario_email'),
+        supabase.from('perfiles').select('apartamento_id, nombre_completo, propietario_nombre, propietario_email, email, condicion_habitacional')
+      ])
+
+      const aptosReciboIds = new Set((recibosMesRes.data || []).map((r: any) => r.apartamento_id).filter(Boolean))
+      const aptosMap = new Map<string, any>()
+      ;(aptosRes.data || []).forEach((a: any) => aptosMap.set(a.id, a))
+
+      const perfilesPorApto = new Map<string, any[]>()
+      ;(perfilesRes.data || []).forEach((p: any) => {
+        if (!p.apartamento_id) return
+        const arr = perfilesPorApto.get(p.apartamento_id) || []
+        arr.push(p)
+        perfilesPorApto.set(p.apartamento_id, arr)
+      })
+
+      const mapaEmails = new Map<string, DestinatarioGlobal>()
+      aptosReciboIds.forEach(aptoId => {
+        const a = aptosMap.get(aptoId)
+        if (!a) return
+        const perfilesApto = perfilesPorApto.get(aptoId) || []
+        const emailsApto = new Set<string>()
+        let nombrePrincipal = a.propietario_nombre || 'Propietario'
+
+        if (esEmailValido(a.propietario_email)) {
+          emailsApto.add(String(a.propietario_email).trim().toLowerCase())
+        }
+        perfilesApto.forEach((p: any) => {
+          if (p.propietario_nombre && p.condicion_habitacional === 'alquilado') {
+            nombrePrincipal = p.propietario_nombre
+          } else if (p.nombre_completo && nombrePrincipal === 'Propietario') {
+            nombrePrincipal = p.nombre_completo
+          }
+          if (esEmailValido(p.propietario_email)) emailsApto.add(String(p.propietario_email).trim().toLowerCase())
+          if (esEmailValido(p.email)) emailsApto.add(String(p.email).trim().toLowerCase())
+        })
+
+        emailsApto.forEach(email => {
+          const ex = mapaEmails.get(email)
+          if (ex) {
+            if (!ex.apartamentos.includes(String(a.numero))) ex.apartamentos.push(String(a.numero))
+            if (!ex.apartamentoIds.includes(a.id)) ex.apartamentoIds.push(a.id)
+          } else {
+            mapaEmails.set(email, {
+              email,
+              nombre: nombrePrincipal,
+              apartamentos: [String(a.numero || 'S/N')],
+              apartamentoIds: [a.id],
+              piso: a.piso ?? null,
+              origen: 'ultimo_recibo'
+            })
+          }
+        })
+      })
+
+      const lista = Array.from(mapaEmails.values()).sort((a, b) =>
+        (a.apartamentos[0] || '').localeCompare(b.apartamentos[0] || '', undefined, { numeric: true })
+      )
+
+      return {
+        destinatarios: lista,
+        mesReferencia: mesObjetivo,
+        fechaEnvio: fechaRef,
+        fuente: 'ultimo_mes_emitido',
+        notaFuente: `Correos de apartamentos incluidos en la última emisión de recibos (${mesObjetivo})`
+      }
+    }
+  } catch (err) {
+    console.warn('[notificacionesGlobalesService] Error en fallback último mes emitido:', err)
+  }
+
+  return {
+    destinatarios: [],
+    mesReferencia: null,
+    fechaEnvio: null,
+    fuente: 'ninguno',
+    notaFuente: 'No se encontraron envíos o emisiones previas de recibos con correos registrados.'
+  }
+}
+
+/**
+ * Parsea un archivo Excel (.xlsx, .xls, .csv) para extraer y deduplicar correos electrónicos,
+ * cruzando opcionalmente números de apartamento con el edificio.
+ */
+export async function parsearExcelCorreos(
+  file: File,
+  aptosExistentes?: Array<{ id: string; numero: string; propietario_nombre?: string | null }>
+): Promise<ResultadoExcelCorreos> {
+  try {
+    const data = new Uint8Array(await file.arrayBuffer())
+    const workbook = XLSX.read(data, { type: 'array' })
+    const sheetName = workbook.SheetNames[0]
+    if (!sheetName) {
+      return { destinatarios: [], totalFilas: 0, descartados: 0, duplicados: 0, error: 'El archivo Excel no contiene hojas.' }
+    }
+
+    const worksheet = workbook.Sheets[sheetName]
+    const matrix = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: '' })
+    const rowsLimpias = (matrix || []).filter(row => Array.isArray(row) && row.some(c => String(c || '').trim() !== ''))
+
+    if (rowsLimpias.length === 0) {
+      return { destinatarios: [], totalFilas: 0, descartados: 0, duplicados: 0, error: 'El archivo Excel está vacío.' }
+    }
+
+    const primeraFila = rowsLimpias[0].map(c => String(c || '').trim())
+    const primeraFilaTieneEmail = primeraFila.some(c => extraerEmailsDeTexto(c).length > 0)
+
+    let idxEmail = -1
+    let idxApto = -1
+    let idxNombre = -1
+    let startRow = 0
+
+    if (!primeraFilaTieneEmail) {
+      primeraFila.forEach((cell, idx) => {
+        const k = cell.toLowerCase()
+        if (idxEmail === -1 && (k.includes('email') || k.includes('correo') || k.includes('mail'))) idxEmail = idx
+        if (idxApto === -1 && (k.includes('apto') || k.includes('apartamento') || k.includes('unidad') || k.includes('inmueble') || k.includes('depto') || k.includes('numero') || k.includes('nro'))) idxApto = idx
+        if (idxNombre === -1 && (k.includes('nombre') || k.includes('propietario') || k.includes('residente') || k.includes('titular') || k.includes('inquilino') || k.includes('destinatario'))) idxNombre = idx
+      })
+      const pareceEncabezado = idxEmail >= 0 || idxApto >= 0 || idxNombre >= 0 ||
+        primeraFila.some(c => /^(correo|email|apartamento|apto|nombre|propietario|unidad)/i.test(c))
+      if (pareceEncabezado) startRow = 1
+    }
+
+    const aptosLookup = new Map<string, { id: string; numero: string; propietario_nombre?: string | null }>()
+    ;(aptosExistentes || []).forEach(a => {
+      const norm = normalizarCadenaApto(a.numero)
+      if (norm) aptosLookup.set(norm, a)
+    })
+
+    const mapaEmails = new Map<string, DestinatarioGlobal>()
+    let totalFilas = 0
+    let descartados = 0
+    let duplicados = 0
+
+    for (let i = startRow; i < rowsLimpias.length; i++) {
+      const row = rowsLimpias[i]
+      totalFilas++
+
+      let emailsFila: string[] = []
+      if (idxEmail >= 0 && idxEmail < row.length) {
+        emailsFila = extraerEmailsDeTexto(row[idxEmail])
+      }
+      if (emailsFila.length === 0) {
+        for (const cell of row) {
+          const found = extraerEmailsDeTexto(cell)
+          if (found.length > 0) emailsFila.push(...found)
+        }
+      }
+
+      if (emailsFila.length === 0) {
+        descartados++
+        continue
+      }
+
+      const rawApto = idxApto >= 0 && idxApto < row.length ? String(row[idxApto] || '').trim() : ''
+      const rawNombre = idxNombre >= 0 && idxNombre < row.length ? String(row[idxNombre] || '').trim() : ''
+      const aptoMatch = rawApto ? aptosLookup.get(normalizarCadenaApto(rawApto)) : undefined
+
+      const aptoLabel = aptoMatch?.numero || rawApto || 'Excel'
+      const aptoId = aptoMatch?.id || `excel_${i}`
+      const nombreFinal = rawNombre || aptoMatch?.propietario_nombre || 'Destinatario Excel'
+
+      emailsFila.forEach(email => {
+        const ex = mapaEmails.get(email)
+        if (ex) {
+          duplicados++
+          if (aptoLabel !== 'Excel' && !ex.apartamentos.includes(aptoLabel)) {
+            if (ex.apartamentos.length === 1 && ex.apartamentos[0] === 'Excel') ex.apartamentos = [aptoLabel]
+            else ex.apartamentos.push(aptoLabel)
+          }
+        } else {
+          mapaEmails.set(email, {
+            email,
+            nombre: nombreFinal,
+            apartamentos: [aptoLabel],
+            apartamentoIds: [aptoId],
+            origen: 'excel'
+          })
+        }
+      })
+    }
+
+    const destinatarios = Array.from(mapaEmails.values()).sort((a, b) =>
+      (a.apartamentos[0] || '').localeCompare(b.apartamentos[0] || '', undefined, { numeric: true })
+    )
+
+    return { destinatarios, totalFilas, descartados, duplicados }
+  } catch (err: any) {
+    return {
+      destinatarios: [],
+      totalFilas: 0,
+      descartados: 0,
+      duplicados: 0,
+      error: err?.message || 'Error leyendo el archivo Excel'
+    }
   }
 }
 

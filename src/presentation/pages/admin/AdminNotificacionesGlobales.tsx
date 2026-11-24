@@ -1,13 +1,19 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react'
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import * as XLSX from 'xlsx'
 import { useAuth } from '../../../application/contexts/AuthContext'
+import { supabase } from '../../../data/supabase'
 import {
   CategoriaComunicadoGlobal,
   generarHtmlNotificacionGlobal
 } from '../../../data/emailService'
 import {
   obtenerDestinatariosActivosGlobal,
+  obtenerDestinatariosUltimoReciboEnviado,
+  parsearExcelCorreos,
   enviarNotificacionGlobalMasiva,
   obtenerHistorialNotificacionesGlobales,
+  OrigenAudienciaGlobal,
+  ResumenUltimoReciboEmails,
   DestinatarioGlobal,
   AptoSinCorreo,
   HistorialNotificacionGlobal,
@@ -73,6 +79,23 @@ export const AdminNotificacionesGlobales: React.FC = () => {
   const [totalAptosActivos, setTotalAptosActivos] = useState(0)
   const [incluirDesocupados, setIncluirDesocupados] = useState(false)
 
+  // Audiencia y orígenes (BD / Último Recibo / Excel + Revisión)
+  const [origenAudiencia, setOrigenAudiencia] = useState<OrigenAudienciaGlobal>('bd')
+  const [destinatariosUltimoRecibo, setDestinatariosUltimoRecibo] = useState<ResumenUltimoReciboEmails | null>(null)
+  const [loadingUltimoRecibo, setLoadingUltimoRecibo] = useState(false)
+  const [destinatariosExcel, setDestinatariosExcel] = useState<DestinatarioGlobal[]>([])
+  const [excelMeta, setExcelMeta] = useState<{
+    nombreArchivo: string
+    totalFilas: number
+    descartados: number
+    duplicados: number
+  } | null>(null)
+  const [destinatariosManualesExtra, setDestinatariosManualesExtra] = useState<DestinatarioGlobal[]>([])
+  const [emailsExcluidos, setEmailsExcluidos] = useState<Set<string>>(() => new Set())
+  const [nuevoEmailManual, setNuevoEmailManual] = useState('')
+  const excelInputRef = useRef<HTMLInputElement>(null)
+  const aptosEdificioRef = useRef<Array<{ id: string; numero: string; propietario_nombre?: string | null }>>([])
+
   // Editor
   const [categoria, setCategoria] = useState<CategoriaComunicadoGlobal>('informativo')
   const [asunto, setAsunto] = useState('')
@@ -80,11 +103,12 @@ export const AdminNotificacionesGlobales: React.FC = () => {
   const [incluirBotonPortal, setIncluirBotonPortal] = useState(true)
   const [notificarEnApp, setNotificarEnApp] = useState(true)
   const [previewMode, setPreviewMode] = useState<'desktop' | 'mobile'>('desktop')
-  const [verAudiencia, setVerAudiencia] = useState(false)
+  const [verAudiencia, setVerAudiencia] = useState(true)
   const [busquedaEmail, setBusquedaEmail] = useState('')
 
   // Envío y progreso
   const [confirmModalOpen, setConfirmModalOpen] = useState(false)
+  const [verListaEnConfirm, setVerListaEnConfirm] = useState(false)
   const [enviando, setEnviando] = useState(false)
   const [progreso, setProgreso] = useState<ProgresoEnvioGlobal | null>(null)
   const [ultimoResultado, setUltimoResultado] = useState<HistorialNotificacionGlobal | null>(null)
@@ -95,6 +119,7 @@ export const AdminNotificacionesGlobales: React.FC = () => {
   const [historial, setHistorial] = useState<HistorialNotificacionGlobal[]>([])
   const [loadingHistorial, setLoadingHistorial] = useState(false)
   const [previewHistorialItem, setPreviewHistorialItem] = useState<HistorialNotificacionGlobal | null>(null)
+  const [verEmailsHistorial, setVerEmailsHistorial] = useState(false)
 
   const showToast = (msg: string) => {
     setToastMsg(msg)
@@ -104,16 +129,36 @@ export const AdminNotificacionesGlobales: React.FC = () => {
   const cargarAudiencia = useCallback(async () => {
     setLoadingAudiencia(true)
     try {
-      const res = await obtenerDestinatariosActivosGlobal(incluirDesocupados)
+      const [res, aptosRes] = await Promise.all([
+        obtenerDestinatariosActivosGlobal(incluirDesocupados),
+        aptosEdificioRef.current.length === 0
+          ? supabase.from('apartamentos').select('id, numero, propietario_nombre').order('numero')
+          : Promise.resolve({ data: null })
+      ])
       setDestinatarios(res.destinatarios)
       setSinCorreo(res.sinCorreo)
       setTotalAptosActivos(res.totalApartamentosActivos)
+      if (aptosRes?.data && Array.isArray(aptosRes.data)) {
+        aptosEdificioRef.current = aptosRes.data
+      }
     } catch (err: any) {
       setErrorMsg(err?.message || 'Error cargando correos de residentes')
     } finally {
       setLoadingAudiencia(false)
     }
   }, [incluirDesocupados])
+
+  const cargarUltimoReciboAudiencia = useCallback(async () => {
+    setLoadingUltimoRecibo(true)
+    try {
+      const res = await obtenerDestinatariosUltimoReciboEnviado()
+      setDestinatariosUltimoRecibo(res)
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Error obteniendo correos del último recibo enviado')
+    } finally {
+      setLoadingUltimoRecibo(false)
+    }
+  }, [])
 
   const cargarHistorial = useCallback(async () => {
     setLoadingHistorial(true)
@@ -132,18 +177,177 @@ export const AdminNotificacionesGlobales: React.FC = () => {
   }, [cargarAudiencia])
 
   useEffect(() => {
+    cargarUltimoReciboAudiencia()
+  }, [cargarUltimoReciboAudiencia])
+
+  useEffect(() => {
     cargarHistorial()
   }, [cargarHistorial])
 
+  const listaBaseAudiencia = useMemo(() => {
+    const base =
+      origenAudiencia === 'ultimo_recibo'
+        ? (destinatariosUltimoRecibo?.destinatarios || [])
+        : origenAudiencia === 'excel'
+          ? destinatariosExcel
+          : destinatarios
+
+    const mapa = new Map<string, DestinatarioGlobal>()
+    base.forEach(d => {
+      const key = d.email.trim().toLowerCase()
+      if (!mapa.has(key)) mapa.set(key, d)
+    })
+    destinatariosManualesExtra.forEach(d => {
+      const key = d.email.trim().toLowerCase()
+      if (!mapa.has(key)) mapa.set(key, d)
+    })
+    return Array.from(mapa.values())
+  }, [origenAudiencia, destinatarios, destinatariosUltimoRecibo, destinatariosExcel, destinatariosManualesExtra])
+
+  const destinatariosSeleccionados = useMemo(() => {
+    return listaBaseAudiencia.filter(d => !emailsExcluidos.has(d.email.trim().toLowerCase()))
+  }, [listaBaseAudiencia, emailsExcluidos])
+
   const destinatariosFiltrados = useMemo(() => {
-    if (!busquedaEmail.trim()) return destinatarios
+    if (!busquedaEmail.trim()) return listaBaseAudiencia
     const q = busquedaEmail.toLowerCase().trim()
-    return destinatarios.filter(d =>
+    return listaBaseAudiencia.filter(d =>
       d.email.toLowerCase().includes(q) ||
       d.nombre.toLowerCase().includes(q) ||
       d.apartamentos.some(a => a.toLowerCase().includes(q))
     )
-  }, [destinatarios, busquedaEmail])
+  }, [listaBaseAudiencia, busquedaEmail])
+
+  const handleSeleccionarOrigen = (nuevoOrigen: OrigenAudienciaGlobal) => {
+    setOrigenAudiencia(nuevoOrigen)
+    setEmailsExcluidos(new Set())
+    setBusquedaEmail('')
+    setVerAudiencia(true)
+    if (nuevoOrigen === 'ultimo_recibo' && !destinatariosUltimoRecibo && !loadingUltimoRecibo) {
+      cargarUltimoReciboAudiencia()
+    }
+  }
+
+  const handleCargarExcelFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setErrorMsg(null)
+    try {
+      const res = await parsearExcelCorreos(file, aptosEdificioRef.current)
+      if (res.error) {
+        setErrorMsg(res.error)
+        return
+      }
+      if (res.destinatarios.length === 0) {
+        setErrorMsg(`El archivo "${file.name}" no contiene correos electrónicos válidos. Asegúrate de incluir una columna de "Correo" o "Email".`)
+        return
+      }
+      setDestinatariosExcel(res.destinatarios)
+      setExcelMeta({
+        nombreArchivo: file.name,
+        totalFilas: res.totalFilas,
+        descartados: res.descartados,
+        duplicados: res.duplicados
+      })
+      setOrigenAudiencia('excel')
+      setEmailsExcluidos(new Set())
+      setVerAudiencia(true)
+      showToast(`✅ Excel cargado: ${res.destinatarios.length} correo(s) único(s) listo(s) para revisar`)
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'No se pudo procesar el archivo Excel')
+    } finally {
+      if (excelInputRef.current) excelInputRef.current.value = ''
+    }
+  }
+
+  const handleDescargarPlantillaExcel = () => {
+    const fuente =
+      destinatariosUltimoRecibo?.destinatarios.length
+        ? destinatariosUltimoRecibo.destinatarios
+        : destinatarios
+
+    const rows = fuente.length > 0
+      ? fuente.map(d => ({
+          Apartamento: d.apartamentos.join(', '),
+          Propietario: d.nombre,
+          'Correo Electrónico': d.email
+        }))
+      : [
+          { Apartamento: '5101', Propietario: 'Ejemplo Propietario', 'Correo Electrónico': 'propietario@ejemplo.com' }
+        ]
+
+    const worksheet = XLSX.utils.json_to_sheet(rows)
+    worksheet['!cols'] = [{ wch: 16 }, { wch: 30 }, { wch: 38 }]
+    const workbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Correos Comunicado')
+    XLSX.writeFile(workbook, 'Plantilla_Correos_Comunicado_Domus.xlsx')
+  }
+
+  const handleAgregarEmailManual = () => {
+    const clean = nuevoEmailManual.trim().toLowerCase()
+    if (!clean) return
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean)) {
+      showToast('⚠️ Ingresa un correo electrónico válido')
+      return
+    }
+    const yaExiste = listaBaseAudiencia.some(d => d.email.toLowerCase() === clean)
+    if (yaExiste) {
+      setEmailsExcluidos(prev => {
+        const next = new Set(prev)
+        next.delete(clean)
+        return next
+      })
+      setNuevoEmailManual('')
+      showToast(`ℹ️ ${clean} ya estaba en la lista y quedó marcado`)
+      return
+    }
+    setDestinatariosManualesExtra(prev => [
+      ...prev,
+      {
+        email: clean,
+        nombre: 'Agregado manualmente',
+        apartamentos: ['Manual'],
+        apartamentoIds: [`manual_${Date.now()}`],
+        origen: 'manual'
+      }
+    ])
+    setEmailsExcluidos(prev => {
+      const next = new Set(prev)
+      next.delete(clean)
+      return next
+    })
+    setNuevoEmailManual('')
+    showToast(`✅ Correo ${clean} agregado a los destinatarios`)
+  }
+
+  const handleToggleExcluirEmail = (email: string) => {
+    const key = email.trim().toLowerCase()
+    setEmailsExcluidos(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  const handleSeleccionarTodos = () => {
+    setEmailsExcluidos(new Set())
+  }
+
+  const handleDeseleccionarTodos = () => {
+    setEmailsExcluidos(new Set(listaBaseAudiencia.map(d => d.email.trim().toLowerCase())))
+  }
+
+  const handleQuitarDestinatario = (email: string) => {
+    const key = email.trim().toLowerCase()
+    setDestinatariosExcel(prev => prev.filter(d => d.email.toLowerCase() !== key))
+    setDestinatariosManualesExtra(prev => prev.filter(d => d.email.toLowerCase() !== key))
+    setEmailsExcluidos(prev => {
+      const next = new Set(prev)
+      next.add(key)
+      return next
+    })
+  }
 
   const previewHtml = useMemo(() => {
     return generarHtmlNotificacionGlobal({
@@ -165,17 +369,18 @@ export const AdminNotificacionesGlobales: React.FC = () => {
   }
 
   const handleConfirmarEnvio = async (soloDestinatarios?: DestinatarioGlobal[]) => {
-    const listaFinal = soloDestinatarios || destinatarios
+    const listaFinal = soloDestinatarios || destinatariosSeleccionados
     if (!asunto.trim() || !cuerpo.trim()) {
       setErrorMsg('Completa el Asunto y el Cuerpo del mensaje antes de enviar.')
       return
     }
     if (listaFinal.length === 0) {
-      setErrorMsg('No hay correos electrónicos válidos en los apartamentos activos.')
+      setErrorMsg('No hay correos electrónicos seleccionados para enviar.')
       return
     }
 
     setConfirmModalOpen(false)
+    setVerListaEnConfirm(false)
     setErrorMsg(null)
     setEnviando(true)
     setUltimoResultado(null)
@@ -199,7 +404,8 @@ export const AdminNotificacionesGlobales: React.FC = () => {
           remitenteNombre,
           remitenteEmail,
           incluirBotonPortal,
-          notificarEnApp
+          notificarEnApp,
+          origenAudiencia
         },
         p => setProgreso(p)
       )
@@ -222,7 +428,7 @@ export const AdminNotificacionesGlobales: React.FC = () => {
   const handleReintentarFallidos = () => {
     if (!ultimoResultado || ultimoResultado.errores.length === 0) return
     const emailsFallidos = new Set(ultimoResultado.errores.map(e => e.email.toLowerCase()))
-    const targets = destinatarios.filter(d => emailsFallidos.has(d.email.toLowerCase()))
+    const targets = listaBaseAudiencia.filter(d => emailsFallidos.has(d.email.toLowerCase()))
     if (targets.length > 0) {
       handleConfirmarEnvio(targets)
     }
@@ -286,25 +492,32 @@ export const AdminNotificacionesGlobales: React.FC = () => {
             gap: '8px'
           }}>
             <span style={{ color: '#34d399', fontWeight: 800 }}>
-              {loadingAudiencia ? '...' : `${destinatarios.length} correos activos`}
+              {loadingAudiencia ? '...' : `${destinatariosSeleccionados.length} correo(s) seleccionados`}
             </span>
             <span style={{ color: '#52525b' }}>|</span>
-            <span style={{ color: sinCorreo.length > 0 ? '#fbbf24' : '#94a3b8', fontWeight: 700 }}>
-              {loadingAudiencia ? '...' : `${sinCorreo.length} aptos sin correo`}
+            <span style={{ color: origenAudiencia === 'bd' && sinCorreo.length > 0 ? '#fbbf24' : '#94a3b8', fontWeight: 700 }}>
+              {origenAudiencia === 'bd'
+                ? (loadingAudiencia ? '...' : `${sinCorreo.length} aptos sin correo`)
+                : origenAudiencia === 'ultimo_recibo'
+                  ? 'Origen: Último Recibo'
+                  : 'Origen: Excel'}
             </span>
           </div>
 
           <button
             type="button"
-            onClick={() => cargarAudiencia()}
-            disabled={loadingAudiencia}
+            onClick={() => {
+              cargarAudiencia()
+              cargarUltimoReciboAudiencia()
+            }}
+            disabled={loadingAudiencia || loadingUltimoRecibo}
             style={{
               backgroundColor: '#1e1e1e',
               color: '#fff',
               border: '1px solid #333',
               padding: '9px 14px',
               borderRadius: '10px',
-              cursor: loadingAudiencia ? 'not-allowed' : 'pointer',
+              cursor: loadingAudiencia || loadingUltimoRecibo ? 'not-allowed' : 'pointer',
               fontSize: '12px',
               fontWeight: 700
             }}
@@ -560,21 +773,25 @@ export const AdminNotificacionesGlobales: React.FC = () => {
               </label>
             </div>
 
-            {/* Audiencia desplegable */}
+            {/* Audiencia: Origen (BD / Último Recibo / Excel) y Revisión de Correos */}
             <div style={{
               backgroundColor: '#0d0f14',
               border: '1px solid #222630',
               borderRadius: '12px',
-              padding: '12px 14px'
+              padding: '14px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px'
             }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                 <div>
                   <div style={{ fontSize: '12.5px', fontWeight: 800, color: '#fff' }}>
-                    👥 Audiencia Recopilada Automáticamente
+                    👥 Destinatarios del Comunicado
                   </div>
                   <div style={{ fontSize: '11.5px', color: '#94a3b8', marginTop: '2px' }}>
-                    {destinatarios.length} correo(s) únicos válidos en {totalAptosActivos} apartamentos activos
-                    {sinCorreo.length > 0 ? ` · ${sinCorreo.length} sin correo registrado` : ''}
+                    <strong style={{ color: '#34d399' }}>{destinatariosSeleccionados.length}</strong> de {listaBaseAudiencia.length} correo(s) seleccionado(s)
+                    {origenAudiencia === 'bd' && ` · ${totalAptosActivos} aptos activos`}
+                    {origenAudiencia === 'bd' && sinCorreo.length > 0 ? ` · ${sinCorreo.length} sin correo` : ''}
                   </div>
                 </div>
                 <button
@@ -591,12 +808,221 @@ export const AdminNotificacionesGlobales: React.FC = () => {
                     cursor: 'pointer'
                   }}
                 >
-                  {verAudiencia ? 'Ocultar lista' : 'Ver destinatarios'}
+                  {verAudiencia ? 'Ocultar lista' : `Revisar correos (${listaBaseAudiencia.length})`}
                 </button>
               </div>
 
+              {/* Selector de origen (3 opciones) */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(135px, 1fr))', gap: '6px' }}>
+                {[
+                  {
+                    id: 'bd' as const,
+                    label: `🏢 Base de Datos (${destinatarios.length})`
+                  },
+                  {
+                    id: 'ultimo_recibo' as const,
+                    label: `🧾 Último Recibo (${loadingUltimoRecibo ? '...' : (destinatariosUltimoRecibo?.destinatarios.length ?? 0)})`
+                  },
+                  {
+                    id: 'excel' as const,
+                    label: `📊 Desde Excel (${destinatariosExcel.length})`
+                  }
+                ].map(opt => {
+                  const activo = origenAudiencia === opt.id
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => handleSeleccionarOrigen(opt.id)}
+                      style={{
+                        padding: '8px 10px',
+                        borderRadius: '9px',
+                        border: `1px solid ${activo ? 'var(--color-accent, #f97316)' : '#262b36'}`,
+                        backgroundColor: activo ? 'rgba(249, 115, 22, 0.16)' : '#12151d',
+                        color: activo ? '#fb923c' : '#cbd5e1',
+                        fontSize: '11.5px',
+                        fontWeight: activo ? 800 : 600,
+                        cursor: 'pointer',
+                        textAlign: 'center'
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  )
+                })}
+              </div>
+
+              {/* Banner informativo para Último Recibo Enviado */}
+              {origenAudiencia === 'ultimo_recibo' && (
+                <div style={{
+                  backgroundColor: 'rgba(59, 130, 246, 0.08)',
+                  border: '1px solid rgba(59, 130, 246, 0.28)',
+                  borderRadius: '10px',
+                  padding: '10px 12px',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: '10px',
+                  flexWrap: 'wrap'
+                }}>
+                  <div style={{ fontSize: '11.5px', color: '#bfdbfe', flex: '1 1 200px' }}>
+                    <div style={{ fontWeight: 800 }}>
+                      🧾 {destinatariosUltimoRecibo?.notaFuente || 'Cargando últimos correos de recibos...'}
+                    </div>
+                    {destinatariosUltimoRecibo?.fechaEnvio && (
+                      <div style={{ fontSize: '11px', color: '#93c5fd', marginTop: '2px' }}>
+                        Referencia: {new Date(destinatariosUltimoRecibo.fechaEnvio).toLocaleString('es-VE', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                    )}
+                    {!loadingUltimoRecibo && (destinatariosUltimoRecibo?.destinatarios.length || 0) === 0 && (
+                      <div style={{ fontSize: '11px', color: '#fcd34d', marginTop: '3px' }}>
+                        Aún no hay recibos enviados con correo. Puedes cargar un Excel o usar la Base de Datos.
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => cargarUltimoReciboAudiencia()}
+                    disabled={loadingUltimoRecibo}
+                    style={{
+                      backgroundColor: '#1e293b',
+                      border: '1px solid #334155',
+                      color: '#93c5fd',
+                      borderRadius: '7px',
+                      padding: '5px 10px',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      cursor: loadingUltimoRecibo ? 'not-allowed' : 'pointer'
+                    }}
+                  >
+                    {loadingUltimoRecibo ? '⏳...' : '🔄 Actualizar'}
+                  </button>
+                </div>
+              )}
+
+              {/* Zona de carga Excel */}
+              {origenAudiencia === 'excel' && (
+                <div style={{
+                  backgroundColor: 'rgba(16, 185, 129, 0.06)',
+                  border: '1px dashed rgba(16, 185, 129, 0.35)',
+                  borderRadius: '10px',
+                  padding: '12px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '10px'
+                }}>
+                  <input
+                    ref={excelInputRef}
+                    type="file"
+                    accept=".xlsx,.xls,.csv"
+                    onChange={handleCargarExcelFile}
+                    style={{ display: 'none' }}
+                  />
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <button
+                      type="button"
+                      onClick={() => excelInputRef.current?.click()}
+                      style={{
+                        backgroundColor: 'rgba(16, 185, 129, 0.2)',
+                        border: '1px solid rgba(16, 185, 129, 0.45)',
+                        color: '#34d399',
+                        borderRadius: '8px',
+                        padding: '8px 12px',
+                        fontSize: '12px',
+                        fontWeight: 800,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      📤 Subir Archivo Excel (.xlsx / .xls / .csv)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDescargarPlantillaExcel}
+                      style={{
+                        backgroundColor: '#1a1e26',
+                        border: '1px solid #2e3442',
+                        color: '#cbd5e1',
+                        borderRadius: '8px',
+                        padding: '8px 12px',
+                        fontSize: '11.5px',
+                        fontWeight: 700,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      📥 Descargar Plantilla Excel
+                    </button>
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#94a3b8' }}>
+                    El archivo puede incluir columnas <strong>Apartamento</strong>, <strong>Nombre</strong> y <strong>Correo</strong> (o simplemente una columna con los correos).
+                  </div>
+                  {excelMeta && (
+                    <div style={{
+                      backgroundColor: '#11161f',
+                      border: '1px solid #232b38',
+                      borderRadius: '8px',
+                      padding: '8px 10px',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: '8px',
+                      flexWrap: 'wrap',
+                      fontSize: '11px'
+                    }}>
+                      <div style={{ color: '#e2e8f0' }}>
+                        📄 <strong>{excelMeta.nombreArchivo}</strong> ·{' '}
+                        <span style={{ color: '#34d399', fontWeight: 700 }}>{destinatariosExcel.length} válidos</span>
+                        {excelMeta.duplicados > 0 && <span style={{ color: '#93c5fd' }}> · {excelMeta.duplicados} duplicados omitidos</span>}
+                        {excelMeta.descartados > 0 && <span style={{ color: '#fbbf24' }}> · {excelMeta.descartados} filas sin correo</span>}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDestinatariosExcel([])
+                          setExcelMeta(null)
+                        }}
+                        style={{
+                          background: 'rgba(239, 68, 68, 0.14)',
+                          border: '1px solid rgba(239, 68, 68, 0.3)',
+                          color: '#f87171',
+                          borderRadius: '6px',
+                          padding: '3px 8px',
+                          fontSize: '10.5px',
+                          fontWeight: 700,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        🗑️ Limpiar
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Panel desplegable de revisión / búsqueda / edición de correos */}
               {verAudiencia && (
-                <div style={{ marginTop: '12px', borderTop: '1px solid #1e222b', paddingTop: '10px' }}>
+                <div style={{ borderTop: '1px solid #1e222b', paddingTop: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '11px', color: '#cbd5e1', fontWeight: 700 }}>
+                      Revisión de correos ({destinatariosSeleccionados.length}/{listaBaseAudiencia.length} marcados)
+                    </span>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <button
+                        type="button"
+                        onClick={handleSeleccionarTodos}
+                        style={{ backgroundColor: '#18202c', border: '1px solid #2b3648', color: '#34d399', borderRadius: '6px', padding: '3px 8px', fontSize: '10.5px', fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        ✓ Todos
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDeseleccionarTodos}
+                        style={{ backgroundColor: '#18202c', border: '1px solid #2b3648', color: '#f87171', borderRadius: '6px', padding: '3px 8px', fontSize: '10.5px', fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        ✕ Ninguno
+                      </button>
+                    </div>
+                  </div>
+
                   <input
                     type="text"
                     placeholder="Buscar apartamento, nombre o correo..."
@@ -610,30 +1036,114 @@ export const AdminNotificacionesGlobales: React.FC = () => {
                       padding: '8px 10px',
                       borderRadius: '8px',
                       fontSize: '12px',
-                      marginBottom: '8px',
                       boxSizing: 'border-box'
                     }}
                   />
-                  <div style={{ maxHeight: '160px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    {destinatariosFiltrados.map(d => (
-                      <div key={d.email} style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        padding: '6px 8px',
-                        backgroundColor: '#12151d',
-                        borderRadius: '6px',
-                        fontSize: '11.5px'
-                      }}>
-                        <span style={{ color: '#e2e8f0' }}>
-                          <strong style={{ color: '#fb923c' }}>Apto {d.apartamentos.join(', ')}</strong> · {d.nombre}
-                        </span>
-                        <span style={{ color: '#94a3b8', fontFamily: 'monospace', fontSize: '11px' }}>{d.email}</span>
-                      </div>
-                    ))}
+
+                  {/* Agregar correo puntual */}
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <input
+                      type="email"
+                      placeholder="+ Agregar correo adicional (ej. vecino@correo.com)"
+                      value={nuevoEmailManual}
+                      onChange={e => setNuevoEmailManual(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          handleAgregarEmailManual()
+                        }
+                      }}
+                      style={{
+                        flex: 1,
+                        backgroundColor: '#07080b',
+                        border: '1px solid #2a2f3b',
+                        color: '#fff',
+                        padding: '7px 10px',
+                        borderRadius: '8px',
+                        fontSize: '12px',
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAgregarEmailManual}
+                      style={{
+                        backgroundColor: '#1e293b',
+                        border: '1px solid #334155',
+                        color: '#93c5fd',
+                        borderRadius: '8px',
+                        padding: '7px 12px',
+                        fontSize: '11.5px',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      + Agregar
+                    </button>
                   </div>
-                  {sinCorreo.length > 0 && (
-                    <div style={{ marginTop: '10px', padding: '8px 10px', backgroundColor: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.25)', borderRadius: '8px', fontSize: '11px', color: '#fcd34d' }}>
+
+                  <div style={{ maxHeight: '220px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    {destinatariosFiltrados.length === 0 ? (
+                      <div style={{ padding: '16px', textAlign: 'center', fontSize: '11.5px', color: '#64748b' }}>
+                        {listaBaseAudiencia.length === 0
+                          ? 'No hay correos cargados en este origen todavía.'
+                          : 'No hay coincidencias con tu búsqueda.'}
+                      </div>
+                    ) : (
+                      destinatariosFiltrados.map(d => {
+                        const checked = !emailsExcluidos.has(d.email.trim().toLowerCase())
+                        const esRemovible = d.origen === 'excel' || d.origen === 'manual'
+                        return (
+                          <div key={d.email} style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            gap: '8px',
+                            padding: '6px 8px',
+                            backgroundColor: checked ? '#12151d' : '#0b0c10',
+                            border: `1px solid ${checked ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.02)'}`,
+                            borderRadius: '6px',
+                            fontSize: '11.5px',
+                            opacity: checked ? 1 : 0.5
+                          }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', flex: 1, minWidth: 0 }}>
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => handleToggleExcluirEmail(d.email)}
+                                style={{ accentColor: 'var(--color-accent, #f97316)', cursor: 'pointer', flexShrink: 0 }}
+                              />
+                              <span style={{ color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                <strong style={{ color: d.origen === 'excel' ? '#34d399' : d.origen === 'manual' ? '#60a5fa' : '#fb923c' }}>
+                                  {d.apartamentos.every(a => a === 'Excel' || a === 'Manual')
+                                    ? d.apartamentos[0]
+                                    : `Apto ${d.apartamentos.join(', ')}`}
+                                </strong>{' '}
+                                · {d.nombre}
+                              </span>
+                            </label>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                              <span style={{ color: '#94a3b8', fontFamily: 'monospace', fontSize: '11px' }}>{d.email}</span>
+                              {esRemovible && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleQuitarDestinatario(d.email)}
+                                  title="Quitar correo de la lista"
+                                  style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: '11px', padding: '0 2px' }}
+                                >
+                                  ✕
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })
+                    )}
+                  </div>
+
+                  {origenAudiencia === 'bd' && sinCorreo.length > 0 && (
+                    <div style={{ marginTop: '4px', padding: '8px 10px', backgroundColor: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.25)', borderRadius: '8px', fontSize: '11px', color: '#fcd34d' }}>
                       <strong>Apartamentos sin correo registrado ({sinCorreo.length}):</strong>{' '}
                       {sinCorreo.map(s => s.numero).join(', ')}
                     </div>
@@ -726,8 +1236,11 @@ export const AdminNotificacionesGlobales: React.FC = () => {
             {/* Botón Principal de Envío */}
             <button
               type="button"
-              disabled={enviando || loadingAudiencia || !asunto.trim() || !cuerpo.trim() || destinatarios.length === 0}
-              onClick={() => setConfirmModalOpen(true)}
+              disabled={enviando || loadingAudiencia || !asunto.trim() || !cuerpo.trim() || destinatariosSeleccionados.length === 0}
+              onClick={() => {
+                setVerListaEnConfirm(false)
+                setConfirmModalOpen(true)
+              }}
               style={{
                 width: '100%',
                 background: 'var(--color-brand-gradient, linear-gradient(135deg, #fb923c 0%, #f97316 55%, #ea580c 100%))',
@@ -737,14 +1250,14 @@ export const AdminNotificacionesGlobales: React.FC = () => {
                 padding: '14px 20px',
                 fontSize: '14px',
                 fontWeight: 800,
-                cursor: enviando || !asunto.trim() || !cuerpo.trim() || destinatarios.length === 0 ? 'not-allowed' : 'pointer',
-                opacity: enviando || !asunto.trim() || !cuerpo.trim() || destinatarios.length === 0 ? 0.55 : 1,
+                cursor: enviando || !asunto.trim() || !cuerpo.trim() || destinatariosSeleccionados.length === 0 ? 'not-allowed' : 'pointer',
+                opacity: enviando || !asunto.trim() || !cuerpo.trim() || destinatariosSeleccionados.length === 0 ? 0.55 : 1,
                 boxShadow: 'var(--color-brand-shadow, 0 6px 20px rgba(249, 115, 22, 0.35))'
               }}
             >
               {enviando
                 ? '⏳ Despachando correos...'
-                : `🚀 Enviar Comunicado Global a ${destinatarios.length} Propietario(s)`}
+                : `🚀 Enviar Comunicado Global a ${destinatariosSeleccionados.length} Destinatario(s)`}
             </button>
           </div>
 
@@ -906,6 +1419,15 @@ export const AdminNotificacionesGlobales: React.FC = () => {
                         <span style={{ color: '#34d399', fontWeight: 700 }}>✅ {item.enviados} enviados</span>
                         {item.fallidos > 0 && <span style={{ color: '#f87171', fontWeight: 700 }}>❌ {item.fallidos} fallidos</span>}
                         <span style={{ color: '#64748b' }}>Total audiencia: {item.totalDestinatarios}</span>
+                        {item.origenAudiencia && (
+                          <span style={{ color: '#cbd5e1', backgroundColor: '#1a1f29', padding: '1px 7px', borderRadius: '999px', fontSize: '10.5px' }}>
+                            {item.origenAudiencia === 'ultimo_recibo'
+                              ? '🧾 Último Recibo'
+                              : item.origenAudiencia === 'excel'
+                                ? '📊 Excel'
+                                : '🏢 BD'}
+                          </span>
+                        )}
                         {item.notificadoEnApp && <span style={{ color: '#60a5fa' }}>🔔 +Notif. App</span>}
                       </div>
                     </div>
@@ -913,7 +1435,10 @@ export const AdminNotificacionesGlobales: React.FC = () => {
                     <div style={{ display: 'flex', gap: '8px' }}>
                       <button
                         type="button"
-                        onClick={() => setPreviewHistorialItem(item)}
+                        onClick={() => {
+                          setVerEmailsHistorial(false)
+                          setPreviewHistorialItem(item)
+                        }}
                         style={{
                           backgroundColor: '#1e222b',
                           border: '1px solid #333947',
@@ -992,7 +1517,7 @@ export const AdminNotificacionesGlobales: React.FC = () => {
                 🚀 Confirmar Envío Global Masivo
               </h3>
               <p style={{ margin: '0 0 16px', fontSize: '13px', color: '#94a3b8', lineHeight: 1.5 }}>
-                Estás a punto de enviar este comunicado oficial a todos los correos activos registrados en la base de datos.
+                Estás a punto de enviar este comunicado oficial a los correos seleccionados.
               </p>
 
               <div style={{
@@ -1004,11 +1529,67 @@ export const AdminNotificacionesGlobales: React.FC = () => {
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '6px',
-                marginBottom: '16px'
+                marginBottom: '12px'
               }}>
                 <div><span style={{ color: '#64748b' }}>Asunto:</span> <strong style={{ color: '#fff' }}>{asunto}</strong></div>
-                <div><span style={{ color: '#64748b' }}>Destinatarios:</span> <strong style={{ color: '#34d399' }}>{destinatarios.length} correos activos</strong></div>
+                <div>
+                  <span style={{ color: '#64748b' }}>Origen:</span>{' '}
+                  <strong style={{ color: '#fb923c' }}>
+                    {origenAudiencia === 'ultimo_recibo'
+                      ? 'Último Recibo Enviado'
+                      : origenAudiencia === 'excel'
+                        ? 'Archivo Excel'
+                        : 'Base de Datos Domus'}
+                  </strong>
+                </div>
+                <div><span style={{ color: '#64748b' }}>Destinatarios:</span> <strong style={{ color: '#34d399' }}>{destinatariosSeleccionados.length} correos seleccionados</strong></div>
                 <div><span style={{ color: '#64748b' }}>Privacidad:</span> <strong style={{ color: '#93c5fd' }}>Lotes BCC confidenciales (sin exposición entre vecinos)</strong></div>
+              </div>
+
+              <div style={{ marginBottom: '16px' }}>
+                <button
+                  type="button"
+                  onClick={() => setVerListaEnConfirm(v => !v)}
+                  style={{
+                    backgroundColor: '#161a23',
+                    border: '1px solid #2a303d',
+                    color: '#93c5fd',
+                    borderRadius: '8px',
+                    padding: '6px 10px',
+                    fontSize: '11.5px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    width: '100%'
+                  }}
+                >
+                  {verListaEnConfirm
+                    ? '🔼 Ocultar lista final de correos'
+                    : `👁️ Revisar los ${destinatariosSeleccionados.length} correos finales`}
+                </button>
+                {verListaEnConfirm && (
+                  <div style={{
+                    marginTop: '8px',
+                    maxHeight: '160px',
+                    overflowY: 'auto',
+                    backgroundColor: '#090b10',
+                    border: '1px solid #1e2430',
+                    borderRadius: '8px',
+                    padding: '8px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '4px',
+                    fontSize: '11px'
+                  }}>
+                    {destinatariosSeleccionados.map(d => (
+                      <div key={d.email} style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
+                        <span style={{ color: '#cbd5e1' }}>
+                          {d.apartamentos.every(a => a === 'Excel' || a === 'Manual') ? d.apartamentos[0] : `Apto ${d.apartamentos.join(', ')}`}
+                        </span>
+                        <span style={{ color: '#94a3b8', fontFamily: 'monospace' }}>{d.email}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
@@ -1077,14 +1658,62 @@ export const AdminNotificacionesGlobales: React.FC = () => {
               overflow: 'hidden'
             }}
           >
-            <div style={{ padding: '16px 20px', borderBottom: '1px solid #222630', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid #222630', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
               <strong style={{ fontSize: '14px', color: '#fff' }}>{previewHistorialItem.asunto}</strong>
-              <button
-                type="button"
-                onClick={() => setPreviewHistorialItem(null)}
-                style={{ background: '#222', border: 'none', color: '#aaa', borderRadius: '50%', width: '28px', height: '28px', cursor: 'pointer' }}
-              >✕</button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {previewHistorialItem.destinatariosEmails && previewHistorialItem.destinatariosEmails.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setVerEmailsHistorial(v => !v)}
+                    style={{
+                      backgroundColor: '#1e222b',
+                      border: '1px solid #333947',
+                      color: '#93c5fd',
+                      borderRadius: '8px',
+                      padding: '5px 10px',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {verEmailsHistorial
+                      ? '🔼 Ocultar correos'
+                      : `👁️ Ver los ${previewHistorialItem.destinatariosEmails.length} correos destinatarios`}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setPreviewHistorialItem(null)}
+                  style={{ background: '#222', border: 'none', color: '#aaa', borderRadius: '50%', width: '28px', height: '28px', cursor: 'pointer' }}
+                >✕</button>
+              </div>
             </div>
+            {verEmailsHistorial && previewHistorialItem.destinatariosEmails && previewHistorialItem.destinatariosEmails.length > 0 && (
+              <div style={{
+                maxHeight: '150px',
+                overflowY: 'auto',
+                padding: '10px 20px',
+                backgroundColor: '#0b0d12',
+                borderBottom: '1px solid #222630',
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: '6px'
+              }}>
+                {previewHistorialItem.destinatariosEmails.map(em => (
+                  <span key={em} style={{
+                    backgroundColor: '#151923',
+                    border: '1px solid #262d3d',
+                    color: '#cbd5e1',
+                    padding: '2px 8px',
+                    borderRadius: '6px',
+                    fontFamily: 'monospace',
+                    fontSize: '11px'
+                  }}>
+                    {em}
+                  </span>
+                ))}
+              </div>
+            )}
             <iframe
               title="Detalle comunicado enviado"
               sandbox="allow-same-origin"
