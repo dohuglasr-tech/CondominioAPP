@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../../../data/supabase'
+import { getHoyVE, getMesActualVE } from '../../../utils/fechaVE'
 import { appCache } from '../../../data/cacheService'
 import {
   parseComprobantesGasto,
@@ -61,9 +62,8 @@ const MESES = [
   'Enero','Febrero','Marzo','Abril','Mayo','Junio',
   'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre',
 ]
-const hoy = new Date()
-const HOY_STR  = hoy.toISOString().slice(0, 10)
-const MES_STR  = hoy.toISOString().slice(0, 7)
+const HOY_STR  = getHoyVE()
+const MES_STR  = getMesActualVE()
 
 const EMPTY_FORM = {
   descripcion: '', categoria: 'espacios_comunes', tipo: 'ordinario',
@@ -134,7 +134,8 @@ export const AdminGastos: React.FC = () => {
     setLoading(true)
     const desde = `${filtroMes}-01`
     const [aniof, mesf] = filtroMes.split('-').map(Number)
-    const hasta = new Date(aniof, mesf, 0).toISOString().slice(0, 10)
+    const ultimoDia = new Date(aniof, mesf, 0).getDate()
+    const hasta = `${aniof}-${String(mesf).padStart(2, '0')}-${String(ultimoDia).padStart(2, '0')}`
     try {
       const data = await appCache.fetch(
         `admin_gastos_${filtroMes}`,

@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { getHoyVE } from '../utils/fechaVE'
 
 export type TipoCaso = 'multa' | 'acuerdo_pago' | 'alquiler_local' | 'asignacion' | 'ingreso_externo'
 export type EstadoCaso = 'abierto' | 'en_proceso' | 'resuelto' | 'cancelado'
@@ -246,7 +247,7 @@ export async function obtenerCasos(): Promise<{ data: CasoComunidad[]; error: st
       estado: row.estado || 'abierto',
       involucrado_nombre: row.involucrado_nombre || '',
       involucrado_contacto: row.involucrado_contacto || '',
-      fecha: row.fecha || new Date().toISOString().slice(0, 10),
+      fecha: row.fecha || getHoyVE(),
       fecha_vencimiento: row.fecha_vencimiento,
       comprobante_url: row.comprobante_url,
       notas_admin: row.notas_admin,
@@ -278,7 +279,7 @@ export async function guardarCaso(caso: Partial<CasoComunidad>): Promise<{ data:
       estado: caso.estado || 'abierto',
       involucrado_nombre: caso.involucrado_nombre || '',
       involucrado_contacto: caso.involucrado_contacto || '',
-      fecha: caso.fecha || new Date().toISOString().slice(0, 10),
+      fecha: caso.fecha || getHoyVE(),
       fecha_vencimiento: caso.fecha_vencimiento || undefined,
       comprobante_url: caso.comprobante_url || undefined,
       notas_admin: caso.notas_admin || '',

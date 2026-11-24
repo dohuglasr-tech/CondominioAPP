@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react'
+import { getHoyVE } from '../../utils/fechaVE'
 
 export interface ReciboSolventeItem {
   id: string
@@ -161,7 +162,7 @@ export const ModalRecibosSolventes: React.FC<ModalRecibosSolventesProps> = ({
     const encodedUri = encodeURI(csvContent)
     const link = document.createElement('a')
     link.setAttribute('href', encodedUri)
-    link.setAttribute('download', `recibos_solventes_${new Date().toISOString().slice(0, 10)}.csv`)
+    link.setAttribute('download', `recibos_solventes_${getHoyVE()}.csv`)
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)

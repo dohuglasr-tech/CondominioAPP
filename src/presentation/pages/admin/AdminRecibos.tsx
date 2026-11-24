@@ -15,6 +15,8 @@ import {
   PagoDomusMeta
 } from '../../../data/gasService'
 import { SkeletonListItem } from '../../components/Skeleton'
+import { getHoyVE } from '../../../utils/fechaVE'
+import { getTasaBcvNumerica, obtenerTasaBcvConfiable } from '../../../utils/tasaBcvHelper'
 
 interface PagoAdmin {
   id: string
@@ -49,12 +51,16 @@ export const AdminRecibos: React.FC = () => {
   const initialFilter = searchParams.get('filtro') || 'todos'
 
   const [pagos, setPagos] = useState<PagoAdmin[]>([])
+  const [totalPagosDb, setTotalPagosDb] = useState<number>(0)
+  const [limitePagos, setLimitePagos] = useState<number>(100)
+  const [contadoresEstado, setContadoresEstado] = useState({ todos: 0, pendiente: 0, aprobado: 0, rechazado: 0 })
   const [loading, setLoading] = useState(true)
   const [filtro, setFiltro] = useState<string>(initialFilter)
   const [filtroServicio, setFiltroServicio] = useState<'todos' | 'condominio' | 'gas' | 'mixto'>('todos')
   const [selected, setSelected] = useState<PagoAdmin | null>(null)
   const [nota, setNota] = useState('')
-  const [procesando, setProcesando] = useState(false)
+  const [procesandoId, setProcesandoId] = useState<string | null>(null)
+  const procesando = procesandoId !== null
   const [previewImg, setPreviewImg] = useState<string | null>(null)
   const [toastMsg, setToastMsg] = useState<string | null>(null)
 
@@ -71,17 +77,31 @@ export const AdminRecibos: React.FC = () => {
     setSearchParams(nuevoFiltro === 'todos' ? {} : { filtro: nuevoFiltro })
   }
 
-  // ── Cargar pagos reales desde Supabase con Caché ───────────────────────
-  const cargarPagos = useCallback(async (forceRefresh = false) => {
+  // ── Cargar pagos reales desde Supabase con Paginación Real y Caché ────────────
+  const cargarPagos = useCallback(async (forceRefresh = false, customLimit?: number) => {
+    const activeLimit = customLimit ?? limitePagos
     setLoading(true)
     try {
-      const mapped = await appCache.fetch(
-        'admin_pagos_lista',
+      const result = await appCache.fetch(
+        `admin_pagos_lista_${filtro}_${activeLimit}`,
         async () => {
-          const [pagosRes, aptRes, perfilesRes] = await Promise.all([
-            supabase.from('pagos_reportados').select('*').order('created_at', { ascending: false }),
+          let pagosQuery = supabase
+            .from('pagos_reportados')
+            .select('id, apartamento_id, reportado_por, monto_bs, monto_usd, referencia, estado, created_at, fecha_pago, notas_admin, comprobante_url, metodo', { count: 'exact' })
+            .order('created_at', { ascending: false })
+
+          if (filtro !== 'todos') {
+            pagosQuery = pagosQuery.eq('estado', filtro)
+          }
+
+          const [pagosRes, aptRes, perfilesRes, cntTodosRes, cntPendRes, cntAprobRes, cntRechRes] = await Promise.all([
+            pagosQuery.range(0, activeLimit - 1),
             supabase.from('apartamentos').select('id, numero, propietario_nombre'),
-            supabase.from('perfiles').select('id, nombre_completo, apartamento_id, propietario_email')
+            supabase.from('perfiles').select('id, nombre_completo, apartamento_id, propietario_email'),
+            supabase.from('pagos_reportados').select('id', { count: 'exact', head: true }),
+            supabase.from('pagos_reportados').select('id', { count: 'exact', head: true }).eq('estado', 'pendiente'),
+            supabase.from('pagos_reportados').select('id', { count: 'exact', head: true }).eq('estado', 'aprobado'),
+            supabase.from('pagos_reportados').select('id', { count: 'exact', head: true }).eq('estado', 'rechazado'),
           ])
 
           if (pagosRes.error) {
@@ -98,9 +118,7 @@ export const AdminRecibos: React.FC = () => {
             (perfilesRes.data || []).map((p: any) => [p.id, { nombre: p.nombre_completo, aptoId: p.apartamento_id, email: p.propietario_email }])
           )
 
-          if (!pagosRes.data) return []
-
-          return pagosRes.data.map((r: any) => {
+          const mapped = (pagosRes.data || []).map((r: any) => {
             const notasLimpias = stripPagoMeta(r.notas_admin)
             const metaDomus = parsePagoMeta(r.notas_admin)
             const servicio: 'gas' | 'condominio' | 'mixto' = metaDomus?.tipoServicio || 'condominio'
@@ -111,7 +129,6 @@ export const AdminRecibos: React.FC = () => {
               if (match) banco = match[1].trim()
             }
 
-            // Resolver número de apartamento y datos
             let aptoInfo = r.apartamento_id ? aptMap.get(r.apartamento_id) : undefined
             let finalAptoId = r.apartamento_id
             if (!aptoInfo && r.reportado_por) {
@@ -146,17 +163,30 @@ export const AdminRecibos: React.FC = () => {
               residente_email: residentEmail,
             }
           })
+
+          return {
+            mapped,
+            totalFiltrado: pagosRes.count ?? mapped.length,
+            contadores: {
+              todos: cntTodosRes.count ?? mapped.length,
+              pendiente: cntPendRes.count ?? 0,
+              aprobado: cntAprobRes.count ?? 0,
+              rechazado: cntRechRes.count ?? 0,
+            }
+          }
         },
         { ttlMs: 2 * 60 * 1000, tags: ['pagos', 'apartamentos'], forceRefresh }
       )
-      setPagos(mapped)
+      setPagos(result.mapped)
+      setTotalPagosDb(result.totalFiltrado)
+      setContadoresEstado(result.contadores)
     } catch (err: any) {
       console.error('[AdminRecibos] Excepción al cargar pagos:', err)
       setPagos([])
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [filtro, limitePagos])
 
   useEffect(() => {
     cargarPagos()
@@ -185,9 +215,10 @@ export const AdminRecibos: React.FC = () => {
     }
   }, [cargarPagos])
 
-  const countPendientes = pagos.filter(p => p.estado === 'pendiente').length
-  const countAprobados = pagos.filter(p => p.estado === 'aprobado').length
-  const countRechazados = pagos.filter(p => p.estado === 'rechazado').length
+  const countPendientes = contadoresEstado.pendiente
+  const countAprobados = contadoresEstado.aprobado
+  const countRechazados = contadoresEstado.rechazado
+  const countTodos = contadoresEstado.todos || pagos.length
   const countGas = pagos.filter(p => p.servicio === 'gas').length
   const countCondominio = pagos.filter(p => p.servicio === 'condominio').length
   const countMixto = pagos.filter(p => p.servicio === 'mixto').length
@@ -219,9 +250,19 @@ export const AdminRecibos: React.FC = () => {
     return matchEstado && matchServicio
   })
 
-  // ── Cambiar estado del pago (Aprobar / Rechazar) ──────────────
+  // ── Cambiar estado del pago (Aprobar / Rechazar con bloqueo atómico) ──────────
   const handleAction = async (id: string, accion: 'aprobado' | 'rechazado') => {
-    setProcesando(true)
+    if (procesandoId !== null) return
+
+    const tasaInfo = obtenerTasaBcvConfiable(config?.tasa_bcv_actual)
+    if (accion === 'aprobado' && tasaInfo.esRespaldo) {
+      const confirmar = window.confirm(
+        `⚠️ Advertencia: La tasa BCV en vivo no está cargada en la configuración del edificio. Se usará la tasa de respaldo (Bs. ${tasaInfo.tasa.toFixed(2)}). ¿Deseas continuar con la aprobación?`
+      )
+      if (!confirmar) return
+    }
+
+    setProcesandoId(id)
     try {
       const pagoObj = pagos.find(p => p.id === id)
       const metaExistente = pagoObj?.metaDomus || parsePagoMeta(pagoObj?.notas_admin)
@@ -231,39 +272,74 @@ export const AdminRecibos: React.FC = () => {
         : notasBaseLimpias
       const notasFinal = metaExistente ? encodePagoMeta(notasConComentario, metaExistente) : notasConComentario
 
-      // Construir el objeto de actualización con campos seguros
-      const updatePayload: Record<string, unknown> = {
-        estado: accion,
-        notas_admin: notasFinal,
-      }
+      // 1. Reclamar atómicamente el pago desde estado 'pendiente' (anti-doble aprobación)
+      let reclamado = false
+      let yaProcesado = false
+      let pagoDb: any = null
 
-      // Intentar incluir fecha_revision (la columna existe si se ejecutó migration_v7)
-      try {
-        updatePayload.fecha_revision = new Date().toISOString()
-      } catch (_) { /* ignorar si la columna no existe aún */ }
+      const { data: rpcClaim, error: rpcClaimErr } = await supabase.rpc('reclamar_pago_para_revision', {
+        p_pago_id: id,
+        p_nuevo_estado: accion,
+        p_notas_admin: notasFinal,
+      })
 
-      const { error } = await supabase
-        .from('pagos_reportados')
-        .update(updatePayload)
-        .eq('id', id)
+      if (!rpcClaimErr && rpcClaim) {
+        if (rpcClaim.already_processed) {
+          yaProcesado = true
+        } else if (!rpcClaim.ok) {
+          setToastMsg(`⚠️ ${rpcClaim.error || 'No se pudo procesar el pago.'}`)
+          setTimeout(() => setToastMsg(null), 5000)
+          return
+        } else {
+          reclamado = true
+          pagoDb = rpcClaim.pago || null
+        }
+      } else {
+        // Fallback atómico si el RPC aún no está desplegado en la instancia
+        const updatePayload: Record<string, unknown> = {
+          estado: accion,
+          notas_admin: notasFinal,
+          fecha_revision: new Date().toISOString(),
+        }
+        let claimRes = await supabase
+          .from('pagos_reportados')
+          .update(updatePayload)
+          .eq('id', id)
+          .eq('estado', 'pendiente')
+          .select('id, apartamento_id, reportado_por, monto_bs, monto_usd, referencia, fecha_pago, notas_admin, metodo')
+          .maybeSingle()
 
-      if (error) {
-        // Si el error es por columna inexistente, reintentar sin fecha_revision
-        if (error.message?.includes('fecha_revision') || error.code === '42703') {
-          const { error: error2 } = await supabase
+        if (claimRes.error && (claimRes.error.message?.includes('fecha_revision') || claimRes.error.code === '42703')) {
+          claimRes = await supabase
             .from('pagos_reportados')
             .update({ estado: accion, notas_admin: notasFinal })
             .eq('id', id)
-          if (error2) {
-            setToastMsg(`⚠️ Error: ${error2.message}`)
-            setTimeout(() => setToastMsg(null), 5000)
-            return
-          }
-        } else {
-          setToastMsg(`⚠️ Error: ${error.message}`)
+            .eq('estado', 'pendiente')
+            .select('id, apartamento_id, reportado_por, monto_bs, monto_usd, referencia, fecha_pago, notas_admin, metodo')
+            .maybeSingle()
+        }
+
+        if (claimRes.error) {
+          setToastMsg(`⚠️ Error: ${claimRes.error.message}`)
           setTimeout(() => setToastMsg(null), 5000)
           return
         }
+
+        if (!claimRes.data) {
+          yaProcesado = true
+        } else {
+          reclamado = true
+          pagoDb = claimRes.data
+        }
+      }
+
+      if (yaProcesado || !reclamado) {
+        setToastMsg('⚠️ Este pago ya fue procesado anteriormente.')
+        setTimeout(() => setToastMsg(null), 5000)
+        setSelected(null)
+        appCache.invalidateTags(['pagos', 'saldos', 'recibos', 'mora'])
+        cargarPagos(true)
+        return
       }
 
       if (accion === 'rechazado') {
@@ -283,14 +359,17 @@ export const AdminRecibos: React.FC = () => {
       }
 
       if (accion === 'aprobado') {
-        const { data: pagoDb, error: errPagoDb } = await supabase
-          .from('pagos_reportados')
-          .select('id, apartamento_id, reportado_por, monto_bs, monto_usd, referencia, fecha_pago, notas_admin, metodo')
-          .eq('id', id)
-          .maybeSingle()
+        if (!pagoDb) {
+          const { data: fetchedPagoDb, error: errPagoDb } = await supabase
+            .from('pagos_reportados')
+            .select('id, apartamento_id, reportado_por, monto_bs, monto_usd, referencia, fecha_pago, notas_admin, metodo')
+            .eq('id', id)
+            .maybeSingle()
 
-        if (errPagoDb) {
-          console.warn('[AdminRecibos] Error obteniendo datos del pago aprobado:', errPagoDb)
+          if (errPagoDb) {
+            console.warn('[AdminRecibos] Error obteniendo datos del pago aprobado:', errPagoDb)
+          }
+          pagoDb = fetchedPagoDb
         }
 
         let aptoId = pagoDb?.apartamento_id || pagoObj?.apartamento_id || (pagoObj?.apartamento as any)?.id
@@ -309,11 +388,11 @@ export const AdminRecibos: React.FC = () => {
         }
 
         const metaPago = parsePagoMeta(pagoDb?.notas_admin || notasFinal) || metaExistente
-        const tasaActual = config?.tasa_bcv_actual && config.tasa_bcv_actual > 1 ? config.tasa_bcv_actual : 859.06
+        const tasaActual = getTasaBcvNumerica(config?.tasa_bcv_actual)
         const montoTotalBs = Number(pagoDb?.monto_bs ?? selected?.monto_bs ?? pagoObj?.monto_bs ?? 0)
         const montoTotalUsd = Number(pagoDb?.monto_usd ?? selected?.monto_usd ?? pagoObj?.monto_usd ?? 0)
         const refPago = pagoDb?.referencia || selected?.numero_referencia || pagoObj?.numero_referencia || 'S/R'
-        const fechaPagoStr = pagoDb?.fecha_pago || selected?.fecha_pago || pagoObj?.fecha_pago || new Date().toISOString().slice(0, 10)
+        const fechaPagoStr = pagoDb?.fecha_pago || selected?.fecha_pago || pagoObj?.fecha_pago || getHoyVE()
         const aptoNumPre = selected?.apartamento?.numero || pagoObj?.apartamento?.numero || ''
 
         if (aptoId) {
@@ -352,6 +431,7 @@ export const AdminRecibos: React.FC = () => {
               try {
                 const resCuotas = await liquidarCuotasEspecialesDesdePago({
                   apartamentoId: aptoId,
+                  pagoReportadoId: id,
                   cuotasEspeciales: metaPago.cuotasEspeciales,
                   montoDisponibleBs: condBs,
                   montoDisponibleUsd: condUsd,
@@ -446,7 +526,7 @@ export const AdminRecibos: React.FC = () => {
             let montoFinalUsd = Number(pagoDb?.monto_usd ?? selected?.monto_usd ?? pagoObj?.monto_usd ?? 0)
 
             if (!montoFinalUsd && montoFinalBs > 0) {
-              const tasa = config?.tasa_bcv_actual && config.tasa_bcv_actual > 1 ? config.tasa_bcv_actual : 859.06
+              const tasa = getTasaBcvNumerica(config?.tasa_bcv_actual)
               montoFinalUsd = Number((montoFinalBs / tasa).toFixed(2))
             }
 
@@ -467,7 +547,7 @@ export const AdminRecibos: React.FC = () => {
                 montoUsd: montoFinalUsd,
                 montoBs: montoFinalBs,
                 referencia: pagoDb?.referencia || selected?.numero_referencia || pagoObj?.numero_referencia || 'S/R',
-                fechaPago: pagoDb?.fecha_pago || selected?.fecha_pago || pagoObj?.fecha_pago || new Date().toISOString().slice(0, 10),
+                fechaPago: pagoDb?.fecha_pago || selected?.fecha_pago || pagoObj?.fecha_pago || getHoyVE(),
                 bancoOrigen: bancoFinal
               })
               console.log('[AdminRecibos] Resultado email enviado:', emailRes)
@@ -497,7 +577,7 @@ export const AdminRecibos: React.FC = () => {
     } finally {
       setSelected(null)
       setNota('')
-      setProcesando(false)
+      setProcesandoId(null)
     }
   }
 
@@ -643,7 +723,7 @@ export const AdminRecibos: React.FC = () => {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           {[
-            { id: 'todos', label: 'Todos', count: pagos.length },
+            { id: 'todos', label: 'Todos', count: countTodos },
             { id: 'pendiente', label: 'Pendientes', count: countPendientes, alert: countPendientes > 0 },
             { id: 'aprobado', label: 'Aprobados', count: countAprobados },
             { id: 'rechazado', label: 'Rechazados', count: countRechazados },
@@ -913,7 +993,7 @@ export const AdminRecibos: React.FC = () => {
                     />
                     <div style={{ display: 'flex', gap: '8px' }}>
                       <button
-                        disabled={procesando}
+                        disabled={procesandoId === pago.id || procesando}
                         onClick={() => handleAction(pago.id, 'aprobado')}
                         style={{
                           backgroundColor: '#10b981',
@@ -921,15 +1001,16 @@ export const AdminRecibos: React.FC = () => {
                           border: 'none',
                           padding: '8px 18px',
                           borderRadius: '8px',
-                          cursor: 'pointer',
+                          cursor: procesando ? 'not-allowed' : 'pointer',
+                          opacity: procesando ? 0.65 : 1,
                           fontWeight: 700,
                           fontSize: '13px',
                         }}
                       >
-                        {procesando ? 'Procesando...' : '✅ Aprobar Pago'}
+                        {procesandoId === pago.id ? 'Procesando...' : '✅ Aprobar Pago'}
                       </button>
                       <button
-                        disabled={procesando}
+                        disabled={procesandoId === pago.id || procesando}
                         onClick={() => handleAction(pago.id, 'rechazado')}
                         style={{
                           backgroundColor: '#ef4444',
@@ -937,12 +1018,13 @@ export const AdminRecibos: React.FC = () => {
                           border: 'none',
                           padding: '8px 18px',
                           borderRadius: '8px',
-                          cursor: 'pointer',
+                          cursor: procesando ? 'not-allowed' : 'pointer',
+                          opacity: procesando ? 0.65 : 1,
                           fontWeight: 700,
                           fontSize: '13px',
                         }}
                       >
-                        {procesando ? 'Procesando...' : '❌ Rechazar Pago'}
+                        {procesandoId === pago.id ? 'Procesando...' : '❌ Rechazar Pago'}
                       </button>
                       <button
                         onClick={() => setSelected(null)}
@@ -964,6 +1046,33 @@ export const AdminRecibos: React.FC = () => {
               </div>
             )
           })}
+          {pagos.length < totalPagosDb && (
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '12px', paddingTop: '14px' }}>
+              <span style={{ color: '#94a3b8', fontSize: '12px', fontWeight: 600 }}>
+                Mostrando {pagos.length} de {totalPagosDb} pagos
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  const nextLim = limitePagos + 100
+                  setLimitePagos(nextLim)
+                  cargarPagos(true, nextLim)
+                }}
+                style={{
+                  backgroundColor: '#1e293b',
+                  color: '#f8fafc',
+                  border: '1px solid #334155',
+                  padding: '8px 16px',
+                  borderRadius: '8px',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                Cargar 100 más
+              </button>
+            </div>
+          )}
         </div>
       )}
 

@@ -5,6 +5,9 @@ import { obtenerTodosLosSaldosAFavor } from './saldoFavorService'
 import { compararApartamentos } from '../utils/alicuota'
 import { encodePagoMeta, PagoDomusMeta } from './gasService'
 import { clasificarCuotaExtraordinaria, obtenerFechaHoyLocalIso } from './moraService'
+import { fetchAllSupabasePages } from './supabasePagination'
+import { getHoyVE } from '../utils/fechaVE'
+import { getTasaBcvNumerica } from '../utils/tasaBcvHelper'
 
 export interface ReciboMesItem {
   id: string
@@ -308,57 +311,129 @@ export async function obtenerConfiguracionCalendario(anio: number = 2026): Promi
   return defaultConfig
 }
 
+function mergearConfiguracionCalendario(
+  remota: ConfiguracionCalendario,
+  localPatch: Partial<ConfiguracionCalendario>,
+  esReintentoConflicto: boolean
+): ConfiguracionCalendario {
+  const base: ConfiguracionCalendario = {
+    tituloSeccionHistorica: localPatch.tituloSeccionHistorica !== undefined ? localPatch.tituloSeccionHistorica : remota.tituloSeccionHistorica,
+    tituloSeccionMensual: localPatch.tituloSeccionMensual !== undefined ? localPatch.tituloSeccionMensual : remota.tituloSeccionMensual,
+    columnas: localPatch.columnas !== undefined ? localPatch.columnas : remota.columnas,
+    filasPersonalizadas: localPatch.filasPersonalizadas !== undefined ? localPatch.filasPersonalizadas : remota.filasPersonalizadas,
+    filasOcultasIds: localPatch.filasOcultasIds !== undefined ? localPatch.filasOcultasIds : remota.filasOcultasIds,
+    valoresCeldasPersonalizadas: localPatch.valoresCeldasPersonalizadas !== undefined ? localPatch.valoresCeldasPersonalizadas : remota.valoresCeldasPersonalizadas,
+    filasCuotasEspeciales: localPatch.filasCuotasEspeciales !== undefined ? localPatch.filasCuotasEspeciales : remota.filasCuotasEspeciales
+  }
+
+  if (!esReintentoConflicto) return base
+
+  // En caso de conflicto concurrente, fusionar celdas y cuotas extraordinarias por apartamento/clave
+  const mergedCeldas: Record<string, Record<string, any>> = { ...(remota.valoresCeldasPersonalizadas || {}) }
+  if (localPatch.valoresCeldasPersonalizadas) {
+    Object.entries(localPatch.valoresCeldasPersonalizadas).forEach(([aptoId, cols]) => {
+      mergedCeldas[aptoId] = {
+        ...(mergedCeldas[aptoId] || {}),
+        ...(cols || {})
+      }
+    })
+  }
+
+  const cuotasMap = new Map<string, FilaCuotaEspecial>()
+  ;(remota.filasCuotasEspeciales || []).forEach(f => cuotasMap.set(f.id, f))
+  ;(localPatch.filasCuotasEspeciales || []).forEach(f => {
+    const prev = cuotasMap.get(f.id)
+    cuotasMap.set(f.id, prev ? {
+      ...prev,
+      ...f,
+      valoresPorApto: { ...(prev.valoresPorApto || {}), ...(f.valoresPorApto || {}) }
+    } : f)
+  })
+
+  return {
+    ...base,
+    valoresCeldasPersonalizadas: mergedCeldas,
+    filasCuotasEspeciales: Array.from(cuotasMap.values())
+  }
+}
+
 export async function guardarConfiguracionCalendario(
   config: Partial<ConfiguracionCalendario>,
   anio: number = 2026
 ): Promise<{ success: boolean; data: ConfiguracionCalendario; error: string | null }> {
+  const defaultConfig = obtenerConfiguracionPorDefecto(anio)
+  const storageKey = anio === 2026 ? CONFIG_STORAGE_KEY : `${CONFIG_STORAGE_KEY}_${anio}`
+  const dbTipo = anio === 2026 ? 'config_calendario_mora' : `config_calendario_mora_${anio}`
+  const MAX_RETRIES = 3
+
   try {
-    const actual = await obtenerConfiguracionCalendario(anio)
-    const nueva: ConfiguracionCalendario = {
-      tituloSeccionHistorica: config.tituloSeccionHistorica !== undefined ? config.tituloSeccionHistorica : actual.tituloSeccionHistorica,
-      tituloSeccionMensual: config.tituloSeccionMensual !== undefined ? config.tituloSeccionMensual : actual.tituloSeccionMensual,
-      columnas: config.columnas !== undefined ? config.columnas : actual.columnas,
-      filasPersonalizadas: config.filasPersonalizadas !== undefined ? config.filasPersonalizadas : actual.filasPersonalizadas,
-      filasOcultasIds: config.filasOcultasIds !== undefined ? config.filasOcultasIds : actual.filasOcultasIds,
-      valoresCeldasPersonalizadas: config.valoresCeldasPersonalizadas !== undefined ? config.valoresCeldasPersonalizadas : actual.valoresCeldasPersonalizadas,
-      filasCuotasEspeciales: config.filasCuotasEspeciales !== undefined ? config.filasCuotasEspeciales : actual.filasCuotasEspeciales
+    let ultimaGuardada: ConfiguracionCalendario = await obtenerConfiguracionCalendario(anio)
+
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      const { data: existente } = await supabase
+        .from('casos_comunidad')
+        .select('id, updated_at, descripcion')
+        .eq('tipo', dbTipo)
+        .maybeSingle()
+
+      let baseRemota = ultimaGuardada
+      if (existente?.descripcion) {
+        try {
+          baseRemota = sanitizarConfiguracion(JSON.parse(existente.descripcion), defaultConfig)
+        } catch {}
+      }
+
+      const nueva = mergearConfiguracionCalendario(baseRemota, config, attempt > 0)
+      localStorage.setItem(storageKey, JSON.stringify(nueva))
+
+      if (existente?.id) {
+        const expectedUpdatedAt = existente.updated_at || null
+        let updQuery = supabase
+          .from('casos_comunidad')
+          .update({
+            descripcion: JSON.stringify(nueva),
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', existente.id)
+
+        if (expectedUpdatedAt) {
+          updQuery = updQuery.eq('updated_at', expectedUpdatedAt)
+        }
+
+        const { data: updatedRow, error: updErr } = await updQuery
+          .select('id, updated_at')
+          .maybeSingle()
+
+        if (updErr) throw updErr
+
+        // Si updatedRow es null (concurrencia optimista: otro proceso actualizó antes), reintentar con merge
+        if (!updatedRow && expectedUpdatedAt) {
+          console.warn(`[calendarioDeudasService] Conflicto optimista al guardar calendario ${anio}, reintento ${attempt + 1}/${MAX_RETRIES}`)
+          ultimaGuardada = baseRemota
+          continue
+        }
+      } else {
+        const { error: insErr } = await supabase
+          .from('casos_comunidad')
+          .insert({
+            tipo: dbTipo,
+            titulo: `CONFIG_CALENDARIO_${anio}`,
+            descripcion: JSON.stringify(nueva),
+            monto_usd: 0,
+            monto_bs: 0
+          })
+        if (insErr) throw insErr
+      }
+
+      appCache.invalidateTags(['recibos', 'saldos', 'mora', 'calendario_config', `calendario_${anio}`, `calendario_matriz_${anio}`])
+      return { success: true, data: nueva, error: null }
     }
 
-    const storageKey = anio === 2026 ? CONFIG_STORAGE_KEY : `${CONFIG_STORAGE_KEY}_${anio}`
-    localStorage.setItem(storageKey, JSON.stringify(nueva))
-
-    const dbTipo = anio === 2026 ? 'config_calendario_mora' : `config_calendario_mora_${anio}`
-
-    // Sincronizar en casos_comunidad para persistencia multi-usuario
-    const { data: existente } = await supabase
-      .from('casos_comunidad')
-      .select('id')
-      .eq('tipo', dbTipo)
-      .maybeSingle()
-
-    if (existente?.id) {
-      await supabase
-        .from('casos_comunidad')
-        .update({
-          descripcion: JSON.stringify(nueva),
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', existente.id)
-    } else {
-      await supabase
-        .from('casos_comunidad')
-        .insert({
-          tipo: dbTipo,
-          titulo: `CONFIG_CALENDARIO_${anio}`,
-          descripcion: JSON.stringify(nueva),
-          monto_usd: 0,
-          monto_bs: 0
-        })
+    return {
+      success: false,
+      data: await obtenerConfiguracionCalendario(anio),
+      error: 'Conflicto de edición concurrente en calendario. Por favor recarga e intenta de nuevo.'
     }
-
-    appCache.invalidateTags(['recibos', 'saldos', 'mora', 'calendario_config', `calendario_${anio}`, `calendario_matriz_${anio}`])
-
-    return { success: true, data: nueva, error: null }
   } catch (err: any) {
     console.error(`[calendarioDeudasService] Error guardando config ${anio}:`, err)
     return { success: false, data: await obtenerConfiguracionCalendario(anio), error: err.message }
@@ -480,12 +555,18 @@ export async function obtenerMatrizCalendario(
           supabase.from('configuracion_edificio').select('tasa_bcv_actual').limit(1).maybeSingle(),
           supabase.from('apartamentos').select('id, numero, piso, alicuota, propietario_nombre, telefono_contacto').order('numero'),
           supabase.from('perfiles').select('apartamento_id, nombre_completo, propietario_nombre, propietario_email, telefono'),
-          supabase.from('recibos_generados').select('*').order('mes_facturado', { ascending: true }),
+          fetchAllSupabasePages((from, to) =>
+            supabase
+              .from('recibos_generados')
+              .select('id, apartamento_id, mes_facturado, total_usd, total_bs, tasa_bcv, estado, emitido_at, data_json')
+              .order('mes_facturado', { ascending: true })
+              .range(from, to)
+          ),
           supabase.from('deudas_mora').select('*'),
           obtenerConfiguracionCalendario(anioSeleccionado)
         ])
 
-        const tasaBcv = Number(configRes.data?.tasa_bcv_actual || 859.06)
+        const tasaBcv = getTasaBcvNumerica(configRes.data?.tasa_bcv_actual)
         const saldosMap = await obtenerTodosLosSaldosAFavor(tasaBcv, forceRefresh)
 
         const aptos = aptosRes.data || []
@@ -785,7 +866,7 @@ export async function obtenerMatrizCalendario(
             totalSaldoAFavorUsd: 0,
             totalSaldoAFavorBs: 0,
             mesesDisponibles: [],
-            tasaBcvActual: 859.06
+            tasaBcvActual: getTasaBcvNumerica()
           },
           configuracion: CONFIGURACION_CALENDARIO_DEFECTO,
           error: err.message || 'Error consultando calendario de mora'
@@ -835,7 +916,7 @@ export async function guardarMontoReciboPersonalizado(params: EditarMontoCuotaPa
     } = params
 
     const isBs = moneda === 'BS'
-    let tasaBcvAplicada = 859.06
+    let tasaBcvAplicada = getTasaBcvNumerica()
     try {
       const { data: edifConfig } = await supabase.from('configuracion_edificio').select('tasa_bcv_actual').limit(1).maybeSingle()
       if (edifConfig?.tasa_bcv_actual && Number(edifConfig.tasa_bcv_actual) > 0) {
@@ -846,7 +927,7 @@ export async function guardarMontoReciboPersonalizado(params: EditarMontoCuotaPa
     const montoNum = parsearMontoFlexible(nuevoMonto, moneda)
     const montoUsd = moneda === 'USD' ? montoNum : Number((montoNum / tasaBcvAplicada).toFixed(2))
     const montoBs  = moneda === 'BS'  ? montoNum : Number((montoNum * tasaBcvAplicada).toFixed(2))
-    const fechaEfectiva = fechaPago || new Date().toISOString().slice(0, 10)
+    const fechaEfectiva = fechaPago || getHoyVE()
 
     // 1. Localizar recibo existente por ID o por (apartamento_id, mes_facturado)
     let targetReciboId = (reciboId && !reciboId.startsWith('temp-')) ? reciboId : null
@@ -1146,7 +1227,7 @@ export async function guardarConceptosHistoricos(params: {
           estado: tieneDeuda ? 'activo' : 'solventado',
           conceptos_detalle: payloadConceptos,
           observaciones: `Conceptos históricos al 2025 para Apto ${apartamentoNumero} actualizados por ${autorNombre || 'Administrador'}.`,
-          fecha_corte: new Date().toISOString().slice(0, 10),
+          fecha_corte: getHoyVE(),
           updated_at: new Date().toISOString()
         },
         { onConflict: 'apartamento_id' }
@@ -1267,7 +1348,7 @@ export async function guardarCeldaPersonalizada(params: {
         })
 
         if (params.estado === 'pagado' && montoNum > 0.01) {
-          let tasa = 859.06
+          let tasa = getTasaBcvNumerica()
           try {
             const { data: edCfg } = await supabase.from('configuracion_edificio').select('tasa_bcv_actual').limit(1).maybeSingle()
             if (edCfg?.tasa_bcv_actual && Number(edCfg.tasa_bcv_actual) > 1) tasa = Number(edCfg.tasa_bcv_actual)
@@ -1299,7 +1380,7 @@ export async function guardarCeldaPersonalizada(params: {
               monto_usd: montoUsd,
               referencia: ref,
               estado: 'aprobado',
-              fecha_pago: new Date().toISOString().slice(0, 10),
+              fecha_pago: getHoyVE(),
               notas_admin: notas
             }).eq('id', autoRows[0].id)
           } else {
@@ -1310,7 +1391,7 @@ export async function guardarCeldaPersonalizada(params: {
               referencia: ref,
               metodo: 'otro',
               estado: 'aprobado',
-              fecha_pago: new Date().toISOString().slice(0, 10),
+              fecha_pago: getHoyVE(),
               notas_admin: notas
             })
           }
@@ -1647,6 +1728,7 @@ export async function editarColumnaPersonalizada(params: {
  */
 export async function liquidarCuotasEspecialesDesdePago(params: {
   apartamentoId: string
+  pagoReportadoId?: string
   cuotasEspeciales: Array<{
     columnaId: string
     anio: number
@@ -1667,7 +1749,7 @@ export async function liquidarCuotasEspecialesDesdePago(params: {
       return { liquidadoBs: 0, liquidadoUsd: 0, error: null }
     }
 
-    const tasa = params.tasaBcv > 1 ? params.tasaBcv : 859.06
+    const tasa = getTasaBcvNumerica(params.tasaBcv)
     const hoyIso = obtenerFechaHoyLocalIso()
     const fechaAbono = (params.fechaPago || hoyIso).slice(0, 10)
     let budgetBs = Number(params.montoDisponibleBs || 0)
@@ -1698,7 +1780,11 @@ export async function liquidarCuotasEspecialesDesdePago(params: {
       for (const item of lista) {
         if (budgetBs <= 0.01 && budgetUsd <= 0.01) break
         const col = (config.columnas || []).find(c => c.id === item.columnaId)
-        const celdaActual = config.valoresCeldasPersonalizadas[params.apartamentoId][item.columnaId]
+        const celdaActual: any = config.valoresCeldasPersonalizadas[params.apartamentoId][item.columnaId]
+        const pagosPreviosIds: string[] = Array.isArray(celdaActual?.pagosAplicadosIds) ? celdaActual.pagosAplicadosIds : []
+        if (params.pagoReportadoId && pagosPreviosIds.includes(params.pagoReportadoId)) {
+          continue
+        }
         const montoActual = Number(celdaActual?.monto ?? col?.montoDefecto ?? item.monto ?? 0)
         const estadoActual = celdaActual?.estado || 'pendiente'
         if (estadoActual === 'pagado' || montoActual <= 0.01) continue
@@ -1711,6 +1797,7 @@ export async function liquidarCuotasEspecialesDesdePago(params: {
           params.esAdelantado ||
           (col?.fechaEmision && clasificarCuotaExtraordinaria(col.fechaEmision, col.fechaLimite, hoyIso) === 'programada')
         )
+        const nextPagosIds = params.pagoReportadoId ? [...pagosPreviosIds, params.pagoReportadoId] : pagosPreviosIds
 
         const deudaBs = mon === 'BS' ? montoActual : Number((montoActual * tasa).toFixed(2))
         const deudaUsd = mon === 'USD' ? montoActual : Number((montoActual / tasa).toFixed(2))
@@ -1724,8 +1811,9 @@ export async function liquidarCuotasEspecialesDesdePago(params: {
             montoOriginal,
             abonado: montoOriginal,
             pagadoPorAdelantado: Boolean(celdaActual?.pagadoPorAdelantado || esAdelantadoEfectivo),
-            ultimaFechaAbono: fechaAbono
-          }
+            ultimaFechaAbono: fechaAbono,
+            ...(nextPagosIds.length > 0 ? { pagosAplicadosIds: nextPagosIds } : {})
+          } as any
           budgetBs = Math.max(0, Number((budgetBs - deudaBs).toFixed(2)))
           budgetUsd = Math.max(0, Number((budgetUsd - deudaUsd).toFixed(2)))
           liquidadoBs += Math.min(deudaBs, Number(params.montoDisponibleBs || deudaBs))
@@ -1744,8 +1832,9 @@ export async function liquidarCuotasEspecialesDesdePago(params: {
             montoOriginal,
             abonado: saldado ? montoOriginal : nuevoAbonado,
             pagadoPorAdelantado: Boolean(celdaActual?.pagadoPorAdelantado || esAdelantadoEfectivo),
-            ultimaFechaAbono: fechaAbono
-          }
+            ultimaFechaAbono: fechaAbono,
+            ...(nextPagosIds.length > 0 ? { pagosAplicadosIds: nextPagosIds } : {})
+          } as any
           liquidadoBs += budgetBs
           liquidadoUsd += budgetUsd
           budgetBs = 0
@@ -1792,7 +1881,7 @@ export async function obtenerEventosCalendarioCuotas(anioFilter?: number): Promi
     ])
 
     const totalAptos = (aptosDb || []).length
-    const hoyIso = new Date().toISOString().slice(0, 10)
+    const hoyIso = getHoyVE()
     const eventos: EventoCalendarioCuota[] = []
 
     const calcularEstado = (fecha: string, pendientes: number, asignados: number): EventoCalendarioCuota['estado'] => {
@@ -2189,8 +2278,9 @@ export async function sincronizarDatosExcelOficial(autorNombre?: string): Promis
         const estadoFinal = tieneDeuda ? 'pendiente' : 'pagado'
         const montoReal = tieneDeuda ? montoExcel : mDef.montoBase
 
-        const montoUsd = mDef.moneda === 'USD' ? montoReal : Number((montoReal / 859.06).toFixed(2))
-        const montoBs  = mDef.moneda === 'BS' ? montoReal : Number((montoReal * 859.06).toFixed(2))
+        const tasaRef = getTasaBcvNumerica()
+        const montoUsd = mDef.moneda === 'USD' ? montoReal : Number((montoReal / tasaRef).toFixed(2))
+        const montoBs  = mDef.moneda === 'BS' ? montoReal : Number((montoReal * tasaRef).toFixed(2))
 
         const { data: recExistente } = await supabase
           .from('recibos_generados')
@@ -2202,7 +2292,7 @@ export async function sincronizarDatosExcelOficial(autorNombre?: string): Promis
         const payloadItem = {
           apartamento_id: apto.id,
           mes_facturado: mDef.mes,
-          tasa_bcv: 859.06,
+          tasa_bcv: tasaRef,
           total_gastos_usd: montoUsd,
           alicuota: Number(apto.alicuota || 0.0159),
           subtotal_usd: montoUsd,

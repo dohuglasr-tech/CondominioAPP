@@ -1,6 +1,8 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { reportarPago, subirComprobante } from '../../data/pagosService'
 import { comprimirImagen, ResultadoCompresion } from '../../utils/imageCompressor'
+import { getHoyVE } from '../../utils/fechaVE'
+import { getTasaBcvNumerica } from '../../utils/tasaBcvHelper'
 import { obtenerSaldoAFavorApartamento } from '../../data/saldoFavorService'
 import { obtenerDeudasMora, DesgloseConceptoItem, formatearFechaCortaEs } from '../../data/moraService'
 import { obtenerJunta, MiembroJunta } from '../../data/juntaService'
@@ -199,7 +201,7 @@ export function ReportarPagoModal({
   const submitBtnRef = useRef<HTMLButtonElement>(null)
 
   // Tasa BCV desde config
-  const tasaBcv = config?.tasa_bcv_actual && Number(config.tasa_bcv_actual) > 1 ? Number(config.tasa_bcv_actual) : 859.06
+  const tasaBcv = getTasaBcvNumerica(config?.tasa_bcv_actual)
 
   // Bloquear scroll del body
   useEffect(() => {
@@ -631,7 +633,7 @@ export function ReportarPagoModal({
             moneda: itemGas.moneda,
             metodoPago: metodoMapeado,
             referencia: refEfectiva,
-            fechaPago: new Date().toISOString().slice(0, 10),
+            fechaPago: getHoyVE(),
             observaciones: `Reportado vía portal de pagos · Banco: ${bancoEfectivo} · Ref: ${refEfectiva}`,
             tasaBcv,
             estadoDestino: 'en_verificacion',

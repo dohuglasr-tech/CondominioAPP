@@ -1,5 +1,6 @@
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import { getHoyVE } from './fechaVE'
 
 export interface DatosInformeGestion {
   nombreEdificio: string
@@ -261,5 +262,5 @@ export function generarInformeGestionPDF(datos: DatosInformeGestion): void {
     { align: 'center' }
   )
 
-  doc.save(`Informe_Gestion_${datos.nombreEdificio.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`)
+  doc.save(`Informe_Gestion_${datos.nombreEdificio.replace(/\s+/g, '_')}_${getHoyVE()}.pdf`)
 }

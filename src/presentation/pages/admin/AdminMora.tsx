@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { getHoyVE } from '../../../utils/fechaVE'
 import { supabase } from '../../../data/supabase'
 import { useBcvRate } from '../../../data/useBcvRate'
 import { useAuth } from '../../../application/contexts/AuthContext'
@@ -50,7 +51,7 @@ export const AdminMora: React.FC = () => {
   const [modalPagoItem, setModalPagoItem] = useState<DeudaMoraItem | null>(null)
   const [pagoMontoUsd, setPagoMontoUsd] = useState<number | ''>('')
   const [pagoMontoBs, setPagoMontoBs] = useState<number | ''>('')
-  const [pagoFecha, setPagoFecha] = useState(new Date().toISOString().slice(0, 10))
+  const [pagoFecha, setPagoFecha] = useState(getHoyVE())
   const [pagoMetodo, setPagoMetodo] = useState('Transferencia Bancaria')
   const [pagoReferencia, setPagoReferencia] = useState('')
   const [pagoNotas, setPagoNotas] = useState('')
@@ -81,7 +82,7 @@ export const AdminMora: React.FC = () => {
   const [formEstado, setFormEstado] = useState<'activo' | 'en_convenio' | 'solventado'>('activo')
   const [formConceptos, setFormConceptos] = useState('')
   const [formObservaciones, setFormObservaciones] = useState('')
-  const [formFechaCorte, setFormFechaCorte] = useState(new Date().toISOString().slice(0, 10))
+  const [formFechaCorte, setFormFechaCorte] = useState(getHoyVE())
 
   const showToast = (msg: string) => {
     setToastMsg(msg)
@@ -152,7 +153,7 @@ export const AdminMora: React.FC = () => {
     setFormEstado('activo')
     setFormConceptos('')
     setFormObservaciones('')
-    setFormFechaCorte(new Date().toISOString().slice(0, 10))
+    setFormFechaCorte(getHoyVE())
     setModalAbierto(true)
   }
 
@@ -176,7 +177,7 @@ export const AdminMora: React.FC = () => {
     setFormEstado(estadoInicial)
     setFormConceptos(item.conceptos_detalle || '')
     setFormObservaciones(item.observaciones || '')
-    setFormFechaCorte(item.fecha_corte || new Date().toISOString().slice(0, 10))
+    setFormFechaCorte(item.fecha_corte || getHoyVE())
     setModalAbierto(true)
   }
 
@@ -336,7 +337,7 @@ export const AdminMora: React.FC = () => {
     setModalPagoItem(item)
     setPagoMontoUsd(item.monto_usd || '')
     setPagoMontoBs(item.monto_bs || '')
-    setPagoFecha(new Date().toISOString().slice(0, 10))
+    setPagoFecha(getHoyVE())
     setPagoMetodo('Transferencia Bancaria')
     setPagoReferencia('')
     setPagoNotas('Pago total de deuda atrasada validada en administración')

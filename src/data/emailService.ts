@@ -3,6 +3,7 @@ import type { ExpedienteLegalAptoData } from '../utils/expedienteLegalPdfGenerat
 import type { DatosCartaSolvencia } from '../utils/solvenciaPdfGenerator'
 import { generarCodigoSolvencia, formatearFechaIso } from '../utils/solvenciaPdfGenerator'
 import { formatAlicuotaPct } from '../utils/alicuota'
+import { getTasaBcvNumerica } from '../utils/tasaBcvHelper'
 
 /**
  * Servicio centralizado para el envío automático de correos electrónicos:
@@ -205,7 +206,7 @@ export function generarHtmlReciboEmitido(datos: DatosEmailRecibo): { subject: st
 
   const tasaBcvReal = (datos.tasaBcv && datos.tasaBcv > 1)
     ? datos.tasaBcv
-    : (datos.totalUsd > 0 && datos.totalBs > 0 ? parseFloat((datos.totalBs / datos.totalUsd).toFixed(4)) : 859.06)
+    : getTasaBcvNumerica(datos.totalUsd > 0 && datos.totalBs > 0 ? parseFloat((datos.totalBs / datos.totalUsd).toFixed(4)) : null)
 
   const primaryColor = datos.colorPrimario || (typeof window !== 'undefined' ? localStorage.getItem('domus_primary_color') : null) || '#f97316'
 
@@ -879,7 +880,7 @@ export function generarHtmlRecordatorioReciboDirecto(datos: DatosEmailRecordator
 
   const tasaBcvReal = (datos.tasaBcv && datos.tasaBcv > 1)
     ? datos.tasaBcv
-    : (datos.totalUsd > 0 && datos.totalBs > 0 ? parseFloat((datos.totalBs / datos.totalUsd).toFixed(4)) : 859.06)
+    : getTasaBcvNumerica(datos.totalUsd > 0 && datos.totalBs > 0 ? parseFloat((datos.totalBs / datos.totalUsd).toFixed(4)) : null)
 
   const primaryColor = datos.colorPrimario || (typeof window !== 'undefined' ? localStorage.getItem('domus_primary_color') : null) || '#f97316'
   const encodedNombre = datos.propietarioNombre ? encodeURIComponent(datos.propietarioNombre.trim()) : ''

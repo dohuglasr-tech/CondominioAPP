@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
 import { appCache } from './cacheService'
 import { comprimirImagen } from '../utils/imageCompressor'
+import { getMesActualVE } from '../utils/fechaVE'
 
 export interface ComprobantesGasto {
   factura_url?: string | null       // Factura o recibo de conforme
@@ -127,7 +128,7 @@ export async function subirComprobanteGasto(
  */
 export async function obtenerGastosMes(mes?: string, forceRefresh = false): Promise<{ data: GastoComun[]; total_usd: number; error: string | null }> {
   // Si no se pasa mes, usar primer día del mes actual
-  const fecha = mes ?? new Date().toISOString().slice(0, 7) + '-01'
+  const fecha = mes ?? `${getMesActualVE()}-01`
 
   return appCache.fetch(
     `gastos_mes_${fecha}`,

@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../../../data/supabase'
+import { getHoyVE } from '../../../utils/fechaVE'
+import { getTasaBcvNumerica } from '../../../utils/tasaBcvHelper'
 import {
   obtenerGasServicioData,
   actualizarConfigTanque,
@@ -49,7 +51,7 @@ export const AdminGas: React.FC = () => {
   // Estado del Calendario
   const [calAnio, setCalAnio] = useState<number>(2026)
   const [calMes, setCalMes] = useState<number>(10) // 1-12
-  const [diaSeleccionado, setDiaSeleccionado] = useState<string | null>(new Date().toISOString().slice(0, 10))
+  const [diaSeleccionado, setDiaSeleccionado] = useState<string | null>(getHoyVE())
 
   // Modales Deuda Anterior y Eliminar Deuda
   const [modalDeudaAnteriorOpen, setModalDeudaAnteriorOpen] = useState(false)
@@ -87,7 +89,7 @@ export const AdminGas: React.FC = () => {
   const [celdaEstado, setCeldaEstado] = useState<'pendiente' | 'pagado'>('pendiente')
   const [celdaReferencia, setCeldaReferencia] = useState<string>('')
   const [celdaMetodo, setCeldaMetodo] = useState<string>('pago_movil')
-  const [celdaFechaPago, setCeldaFechaPago] = useState<string>(new Date().toISOString().slice(0, 10))
+  const [celdaFechaPago, setCeldaFechaPago] = useState<string>(getHoyVE())
   const [celdaNota, setCeldaNota] = useState<string>('')
   const [celdaAplicarATodos, setCeldaAplicarATodos] = useState<boolean>(false)
 
@@ -106,7 +108,7 @@ export const AdminGas: React.FC = () => {
     estado: 'pendiente' as 'pendiente' | 'pagado',
     metodoPago: 'pago_movil',
     referencia: '',
-    fechaPago: new Date().toISOString().slice(0, 10),
+    fechaPago: getHoyVE(),
     nota: '',
     checkConfirmacion: false,
     palabraConfirmacion: ''
@@ -118,7 +120,7 @@ export const AdminGas: React.FC = () => {
 
   const [modalLlenadoOpen, setModalLlenadoOpen] = useState(false)
   const [formLlenado, setFormLlenado] = useState({
-    fecha: new Date().toISOString().slice(0, 10),
+    fecha: getHoyVE(),
     porcentajeInicial: 0,
     porcentajeFinal: 100,
     litrosCargados: 2500,
@@ -134,7 +136,7 @@ export const AdminGas: React.FC = () => {
   // Modal Evento / Recaudación diaria
   const [modalEventoOpen, setModalEventoOpen] = useState(false)
   const [formEvento, setFormEvento] = useState({
-    fecha: new Date().toISOString().slice(0, 10),
+    fecha: getHoyVE(),
     tipo: 'recaudacion' as 'recaudacion' | 'llenado' | 'cierre_cobro' | 'mantenimiento' | 'otro',
     titulo: '',
     descripcion: '',
@@ -146,7 +148,7 @@ export const AdminGas: React.FC = () => {
   const [modalPagoOpen, setModalPagoOpen] = useState(false)
   const [aptoParaPagar, setAptoParaPagar] = useState<DetallePagoAptoGas | null>(null)
   const [formPago, setFormPago] = useState({
-    fechaPago: new Date().toISOString().slice(0, 10),
+    fechaPago: getHoyVE(),
     moneda: 'BS' as 'BS' | 'USD',
     monto: '',
     metodoPago: 'pago_movil' as 'pago_movil' | 'transferencia' | 'efectivo_bs' | 'efectivo_usd' | 'otro',
@@ -524,7 +526,7 @@ export const AdminGas: React.FC = () => {
       setCeldaEstado(m?.estado === 'pagado' ? 'pagado' : 'pendiente')
       setCeldaReferencia(m?.referencia || '')
       setCeldaMetodo(m?.metodoPago || 'pago_movil')
-      setCeldaFechaPago(m?.fechaPago || new Date().toISOString().slice(0, 10))
+      setCeldaFechaPago(m?.fechaPago || getHoyVE())
       setCeldaNota(m?.observaciones || '')
     }
 
@@ -675,7 +677,7 @@ export const AdminGas: React.FC = () => {
       estado: 'pendiente',
       metodoPago: 'pago_movil',
       referencia: '',
-      fechaPago: new Date().toISOString().slice(0, 10),
+      fechaPago: getHoyVE(),
       nota: `Cuota Gas ${mesLabel} ${calAnio}`,
       checkConfirmacion: false,
       palabraConfirmacion: ''
@@ -959,7 +961,7 @@ export const AdminGas: React.FC = () => {
   const handleGuardarLlenado = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!data) return
-    const tasa = data.config.tasaBcv || 859.06
+    const tasa = getTasaBcvNumerica(data.config.tasaBcv)
     const costoNum = Number(formLlenado.costoMonto) || 0
 
     let costoTotalBs = 0
@@ -1015,7 +1017,7 @@ export const AdminGas: React.FC = () => {
       return
     }
     const monto = Number(formEvento.monto) || 0
-    const tasa = data?.config.tasaBcv || 859.06
+    const tasa = getTasaBcvNumerica(data?.config.tasaBcv)
 
     let montoBs = 0
     let montoUsd = 0
@@ -1061,7 +1063,7 @@ export const AdminGas: React.FC = () => {
       : (apto.montoUsd || data?.config.costoPorAptoDefectoUsd || 0)
 
     setFormPago({
-      fechaPago: new Date().toISOString().slice(0, 10),
+      fechaPago: getHoyVE(),
       moneda,
       monto: montoDefecto ? String(montoDefecto) : '',
       metodoPago: (apto.metodoPago as any) || (moneda === 'BS' ? 'pago_movil' : 'efectivo_usd'),
@@ -1074,7 +1076,7 @@ export const AdminGas: React.FC = () => {
   const handleConfirmarPago = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!data || !metricas?.jornadaActiva || !aptoParaPagar) return
-    const tasa = data.config.tasaBcv || 859.06
+    const tasa = getTasaBcvNumerica(data.config.tasaBcv)
     const montoNum = Number(formPago.monto) || 0
 
     let montoBs = 0
@@ -1154,7 +1156,7 @@ export const AdminGas: React.FC = () => {
         monto: montoNum,
         fechaLimite: formCuota.fechaLimite ? formCuota.fechaLimite : undefined,
         enviarEmail: formCuota.enviarEmail,
-        tasaBcv: data?.config.tasaBcv || 859.06
+        tasaBcv: getTasaBcvNumerica(data?.config.tasaBcv)
       })
 
       if (res.success && res.data) {
@@ -1357,7 +1359,7 @@ export const AdminGas: React.FC = () => {
 
           <button
             onClick={() => {
-              setFormEvento(prev => ({ ...prev, fecha: diaSeleccionado || new Date().toISOString().slice(0, 10) }))
+              setFormEvento(prev => ({ ...prev, fecha: diaSeleccionado || getHoyVE() }))
               setModalEventoOpen(true)
             }}
             style={{
@@ -2830,7 +2832,7 @@ export const AdminGas: React.FC = () => {
                   <button
                     onClick={() => {
                       setFormEvento({
-                        fecha: diaSeleccionado || new Date().toISOString().slice(0, 10),
+                        fecha: diaSeleccionado || getHoyVE(),
                         tipo: 'recaudacion',
                         titulo: '',
                         descripcion: '',
@@ -3087,7 +3089,7 @@ export const AdminGas: React.FC = () => {
 
                       <td style={{ padding: '12px 10px' }}>
                         <div style={{ fontWeight: 800, color: isPagado ? '#fff' : '#ef4444' }}>
-                          Bs. {(apto.montoBs || (apto.montoUsd * (data?.config.tasaBcv || 859.06))).toLocaleString('es-VE')}
+                          Bs. {(apto.montoBs || (apto.montoUsd * (getTasaBcvNumerica(data?.config.tasaBcv)))).toLocaleString('es-VE')}
                         </div>
                         <div style={{ fontSize: '11px', color: '#a1a1aa' }}>
                           ≈ ${(apto.montoUsd || 5).toFixed(2)} USD
@@ -4055,7 +4057,7 @@ export const AdminGas: React.FC = () => {
                       value={formConfig.costoPorAptoDefectoBs}
                       onChange={e => {
                         const val = Number(e.target.value) || 0
-                        const tasa = formConfig.tasaBcv || 859.06
+                        const tasa = getTasaBcvNumerica(formConfig.tasaBcv)
                         setFormConfig(prev => prev ? ({
                           ...prev,
                           costoPorAptoDefectoBs: val,
@@ -4080,7 +4082,7 @@ export const AdminGas: React.FC = () => {
                       value={formConfig.costoPorAptoDefectoUsd}
                       onChange={e => {
                         const val = Number(e.target.value) || 0
-                        const tasa = formConfig.tasaBcv || 859.06
+                        const tasa = getTasaBcvNumerica(formConfig.tasaBcv)
                         setFormConfig(prev => prev ? ({
                           ...prev,
                           costoPorAptoDefectoUsd: val,
@@ -4435,7 +4437,7 @@ export const AdminGas: React.FC = () => {
 
               {/* Cálculo en vivo con tasa BCV */}
               {formCuota.monto && Number(formCuota.monto) > 0 && (() => {
-                const tasa = data?.config.tasaBcv || 859.06
+                const tasa = getTasaBcvNumerica(data?.config.tasaBcv)
                 const m = Number(formCuota.monto)
                 const isBs = formCuota.moneda === 'BS'
                 const montoBs = isBs ? m : Number((m * tasa).toFixed(2))

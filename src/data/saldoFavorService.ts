@@ -1,6 +1,8 @@
 import { supabase } from './supabase'
 import { registrarEventoAuditoria } from './auditoriaService'
 import { appCache } from './cacheService'
+import { getHoyVE } from '../utils/fechaVE'
+import { getTasaBcvNumerica } from '../utils/tasaBcvHelper'
 
 export interface SaldoApartamento {
   apartamento_id: string
@@ -19,7 +21,7 @@ export interface SaldoApartamento {
  */
 export async function obtenerSaldoAFavorApartamento(
   apartamento_id: string,
-  tasaBcv: number = 859.06,
+  tasaBcv: number = getTasaBcvNumerica(),
   forceRefresh: boolean = false
 ): Promise<SaldoApartamento> {
   if (!apartamento_id) {
@@ -37,7 +39,7 @@ export async function obtenerSaldoAFavorApartamento(
     `saldo_favor_${apartamento_id}_${tasaBcv}`,
     async () => {
       try {
-        const tasa = tasaBcv && tasaBcv > 1 ? tasaBcv : 859.06
+        const tasa = getTasaBcvNumerica(tasaBcv)
 
         const [pagosRes, recibosRes, retirosRes, moraRes] = await Promise.all([
           supabase
@@ -164,7 +166,7 @@ export async function obtenerSaldoAFavorApartamento(
  * en una sola consulta rápida y paralela (con caché de 3 min).
  */
 export async function obtenerTodosLosSaldosAFavor(
-  tasaBcv: number = 859.06,
+  tasaBcv: number = getTasaBcvNumerica(),
   forceRefresh: boolean = false
 ): Promise<Map<string, SaldoApartamento>> {
   return appCache.fetch(
@@ -173,7 +175,7 @@ export async function obtenerTodosLosSaldosAFavor(
       const mapaSaldos = new Map<string, SaldoApartamento>()
 
       try {
-        const tasa = tasaBcv && tasaBcv > 1 ? tasaBcv : 859.06
+        const tasa = getTasaBcvNumerica(tasaBcv)
 
         const [pagosRes, recibosRes, retirosRes, moraRes] = await Promise.all([
           supabase
@@ -344,7 +346,7 @@ export async function retirarSaldoAFavorApartamento(params: {
       return { success: false, error: 'Debes indicar un motivo válido para la auditoría (mínimo 4 caracteres).' }
     }
 
-    const tasa = params.tasaBcv && params.tasaBcv > 1 ? params.tasaBcv : 859.06
+    const tasa = getTasaBcvNumerica(params.tasaBcv)
     const montoBs = parseFloat((monto * tasa).toFixed(2))
 
     // Registrar en Historial de Auditoría
@@ -431,7 +433,7 @@ export async function abonarSaldoAFavorApartamento(params: {
       return { success: false, error: 'Debes indicar un motivo descriptivo para el abono (mínimo 4 caracteres).' }
     }
 
-    const tasa = params.tasaBcv && params.tasaBcv > 1 ? params.tasaBcv : 859.06
+    const tasa = getTasaBcvNumerica(params.tasaBcv)
     const montoBs = params.monto_bs && params.monto_bs > 0
       ? parseFloat(Number(params.monto_bs).toFixed(2))
       : parseFloat((montoUsd * tasa).toFixed(2))
@@ -446,7 +448,7 @@ export async function abonarSaldoAFavorApartamento(params: {
       monto_bs: montoBs,
       metodo: metodoNorm,
       referencia: refCodigo,
-      fecha_pago: new Date().toISOString().slice(0, 10),
+      fecha_pago: getHoyVE(),
       fecha_revision: new Date().toISOString(),
       estado: 'aprobado',
       notas_admin: `Abono de Saldo a Favor por administración. Banco Origen: Administración · Motivo: ${params.motivo.trim()}`
@@ -604,7 +606,7 @@ export async function aplicarSaldoAFavorADeuda(params: {
       return { success: false, error: 'El monto a aplicar debe ser mayor a 0.' }
     }
 
-    const tasa = params.tasaBcv && params.tasaBcv > 1 ? params.tasaBcv : 859.06
+    const tasa = getTasaBcvNumerica(params.tasaBcv)
     let remanente = monto
     let amortizadoUsd = 0
     const refCompensacion = `COMP-${Date.now().toString(36).toUpperCase()}`

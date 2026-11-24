@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { ExpedienteLegalAptoData, generarExpedienteLegalPDF } from '../../utils/expedienteLegalPdfGenerator'
 import { despacharEmailExpedienteLegal } from '../../data/emailService'
+import { getHoyVE } from '../../utils/fechaVE'
 
 interface Props {
   isOpen: boolean
@@ -80,7 +81,7 @@ export const EnviarExpedienteEmailModal: React.FC<Props> = ({
         const dataUri = doc.output('datauristring')
         pdfBase64 = dataUri.split(',')[1]
         const aptoSanitizado = apto.replace(/[^a-zA-Z0-9_-]/g, '_')
-        const fechaStr = new Date().toISOString().slice(0, 10)
+        const fechaStr = getHoyVE()
         pdfFilename = `Expediente_Legal_Apto_${aptoSanitizado}_${fechaStr}.pdf`
       }
 

@@ -4,6 +4,7 @@ import { supabase, Perfil, ConfigEdificio, Rol } from '../../data/supabase'
 import { appCache } from '../../data/cacheService'
 import { applyTheme } from '../../utils/themeManager'
 import { extractTenantSubdomain, resolveTenantBuilding } from '../../data/tenantService'
+import { esTasaBcvValida, getTasaBcvNumerica, guardarUltimaTasaBcvConocida } from '../../utils/tasaBcvHelper'
 
 
 // ── Tipos del contexto ────────────────────────────────────────────
@@ -70,8 +71,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (urlTenant) {
         const tenantBuilding = await resolveTenantBuilding(urlTenant)
         if (tenantBuilding) {
-          if (!tenantBuilding.tasa_bcv_actual || tenantBuilding.tasa_bcv_actual <= 1) {
-            tenantBuilding.tasa_bcv_actual = 859.06
+          if (esTasaBcvValida(tenantBuilding.tasa_bcv_actual)) {
+            guardarUltimaTasaBcvConocida(tenantBuilding.tasa_bcv_actual)
+          } else {
+            tenantBuilding.tasa_bcv_actual = getTasaBcvNumerica(tenantBuilding.tasa_bcv_actual)
           }
           setConfig(tenantBuilding)
           applyTheme(tenantBuilding.color_primario)
@@ -83,8 +86,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (explicitBuildingId) {
         const tenantBuilding = await resolveTenantBuilding(explicitBuildingId)
         if (tenantBuilding) {
-          if (!tenantBuilding.tasa_bcv_actual || tenantBuilding.tasa_bcv_actual <= 1) {
-            tenantBuilding.tasa_bcv_actual = 859.06
+          if (esTasaBcvValida(tenantBuilding.tasa_bcv_actual)) {
+            guardarUltimaTasaBcvConocida(tenantBuilding.tasa_bcv_actual)
+          } else {
+            tenantBuilding.tasa_bcv_actual = getTasaBcvNumerica(tenantBuilding.tasa_bcv_actual)
           }
           setConfig(tenantBuilding)
           applyTheme(tenantBuilding.color_primario)
@@ -109,8 +114,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             })
             if (!rpcErr) {
               const cfg = (rpcData || null) as ConfigEdificio | null
-              if (cfg && (!cfg.tasa_bcv_actual || cfg.tasa_bcv_actual <= 1)) {
-                cfg.tasa_bcv_actual = 859.06
+              if (cfg) {
+                if (esTasaBcvValida(cfg.tasa_bcv_actual)) {
+                  guardarUltimaTasaBcvConocida(cfg.tasa_bcv_actual)
+                } else {
+                  cfg.tasa_bcv_actual = getTasaBcvNumerica(cfg.tasa_bcv_actual)
+                }
               }
               return cfg
             }
@@ -123,8 +132,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             .maybeSingle()
 
           if (data) {
-            if (!data.tasa_bcv_actual || data.tasa_bcv_actual <= 1) {
-              data.tasa_bcv_actual = 859.06
+            if (esTasaBcvValida(data.tasa_bcv_actual)) {
+              guardarUltimaTasaBcvConocida(data.tasa_bcv_actual)
+            } else {
+              data.tasa_bcv_actual = getTasaBcvNumerica(data.tasa_bcv_actual)
             }
           }
           return data ?? null

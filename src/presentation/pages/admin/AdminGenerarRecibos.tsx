@@ -7,6 +7,7 @@ import { guardarDestinatariosUltimoReciboEnviado } from '../../../data/notificac
 import { getAlicuotaDecimal, formatAlicuotaPct, compararApartamentos } from '../../../utils/alicuota'
 import { generarPDFRecibo, ReciboTotalesFondosData } from '../../../utils/reciboPdfGenerator'
 import { obtenerLocales, actualizarLocal, LocalComercial } from '../../../data/localesService'
+import { getTasaBcvNumerica, obtenerTasaBcvConfiable } from '../../../utils/tasaBcvHelper'
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 interface Apartamento {
@@ -126,7 +127,8 @@ export const AdminGenerarRecibos: React.FC = () => {
   const esHistorico = mesStr.slice(0, 7) < fechaEntradaActual
   const mesLabel = MESES[mes]
 
-  const tasaBcvCalculo = (config?.tasa_bcv_actual && config.tasa_bcv_actual > 1) ? config.tasa_bcv_actual : 859.06
+  const tasaBcvInfo = obtenerTasaBcvConfiable(config?.tasa_bcv_actual)
+  const tasaBcvCalculo = tasaBcvInfo.tasa
 
   const fondoGeneralPosUsd = typeof fondoReservaGeneralPositivoUsd === 'number' ? fondoReservaGeneralPositivoUsd : 0
   const fondoGeneralPosBs  = fondoGeneralPosUsd * tasaBcvCalculo
@@ -269,7 +271,7 @@ export const AdminGenerarRecibos: React.FC = () => {
           return est === 'no_solvente'
         })
 
-        const tasaBcvReal = (config?.tasa_bcv_actual && config.tasa_bcv_actual > 1) ? config.tasa_bcv_actual : 859.06
+        const tasaBcvReal = getTasaBcvNumerica(config?.tasa_bcv_actual)
 
         const cargosDeLocales: CargoEspecial[] = localesNoSolventesConApto.map(l => ({
           id: `cargo_local_${l.id}`,
@@ -412,6 +414,12 @@ export const AdminGenerarRecibos: React.FC = () => {
   // ── Emisión masiva ───────────────────────────────────────────────────
   const emitirRecibos = async () => {
     if (!config || apartamentos.length === 0) return
+    if (!esHistorico && tasaBcvInfo.esRespaldo) {
+      const confirmarRespaldo = window.confirm(
+        `⚠️ Advertencia: No hay una tasa BCV oficial cargada en la configuración del edificio. Se emitirán los recibos usando la tasa de respaldo (Bs. ${tasaBcvInfo.tasa.toFixed(2)}). ¿Deseas emitir de todas formas?`
+      )
+      if (!confirmarRespaldo) return
+    }
     setEmitiendo(true); setResultado(null)
 
     // 1. Limpiar cualquier emisión previa de este mes específico
@@ -433,7 +441,7 @@ export const AdminGenerarRecibos: React.FC = () => {
         mes_facturado:     mesStr,
         tasa_bcv:          esHistorico
           ? (totalGastosBrutosUsd > 0 && totalGastosBrutosBs > 0 ? parseFloat((totalGastosBrutosBs / totalGastosBrutosUsd).toFixed(4)) : 0)
-          : (config.tasa_bcv_actual && config.tasa_bcv_actual > 1 ? config.tasa_bcv_actual : (totalGastosBrutosUsd > 0 ? parseFloat((totalGastosBrutosBs / totalGastosBrutosUsd).toFixed(4)) : 859.06)),
+          : (getTasaBcvNumerica(config.tasa_bcv_actual, totalGastosBrutosUsd > 0 ? parseFloat((totalGastosBrutosBs / totalGastosBrutosUsd).toFixed(4)) : null)),
         total_gastos_usd:  totalGastosNetosUsd,
         alicuota:          getAlicuotaDecimal(apto.alicuota),
         subtotal_usd:      calc.subtotalUsd,
@@ -533,9 +541,10 @@ export const AdminGenerarRecibos: React.FC = () => {
       const aptosConEmail = apartamentos.filter(a => a.propietario_email && a.propietario_email.includes('@'))
       for (const apto of aptosConEmail) {
         const calc = calcularApto(apto)
-        const tasaBcvReal = (config?.tasa_bcv_actual && config.tasa_bcv_actual > 1)
-          ? config.tasa_bcv_actual
-          : (calc.totalUsd > 0 ? parseFloat((calc.totalBs / calc.totalUsd).toFixed(4)) : 859.06)
+        const tasaBcvReal = getTasaBcvNumerica(
+          config?.tasa_bcv_actual,
+          calc.totalUsd > 0 ? parseFloat((calc.totalBs / calc.totalUsd).toFixed(4)) : null
+        )
 
         await despacharEmailRecibo({
           destinatarioEmail: apto.propietario_email!,

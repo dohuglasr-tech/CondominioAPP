@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
 import { appCache } from './cacheService'
 import { registrarEventoAuditoria } from './auditoriaService'
+import { guardarUltimaTasaBcvConocida } from '../utils/tasaBcvHelper'
 
 export interface BcvApiResponse {
   tasa: number
@@ -41,6 +42,8 @@ export async function consultarTasaBcvEnVivo(): Promise<BcvApiResponse | null> {
     if (!tasa || isNaN(tasa) || tasa <= 1) {
       throw new Error('Formato numérico de tasa inválido devuelto por la API')
     }
+
+    guardarUltimaTasaBcvConocida(tasa)
 
     return {
       tasa: parseFloat(tasa.toFixed(4)),
@@ -96,6 +99,8 @@ export async function guardarTasaBcvEnDb(
       .eq('id', config.id)
 
     if (updateError) throw updateError
+
+    guardarUltimaTasaBcvConocida(nuevaTasa)
 
     // Invalidar caché en memoria y persistente
     appCache.invalidateTags(['config', 'tasa_bcv'])

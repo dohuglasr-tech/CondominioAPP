@@ -112,6 +112,19 @@ async function recalcularCuotasEnBs(nuevaTasa: number): Promise<void> {
   }
 }
 
+function getHoyVenezuelaISO(): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Caracas",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const y = parts.find((p) => p.type === "year")?.value;
+  const m = parts.find((p) => p.type === "month")?.value;
+  const d = parts.find((p) => p.type === "day")?.value;
+  return y && m && d ? `${y}-${m}-${d}` : new Date().toISOString().split("T")[0];
+}
+
 // ── Handler principal ─────────────────────────────────────────────
 Deno.serve(async (req: Request) => {
   const cronSecret = (Deno.env.get("CRON_SECRET") || "").trim();
@@ -134,7 +147,7 @@ Deno.serve(async (req: Request) => {
   }
 
   const log: string[] = [];
-  const hoy = new Date().toISOString().split("T")[0];
+  const hoy = getHoyVenezuelaISO();
 
   try {
     // 1. Verificar si ya tenemos la tasa de hoy

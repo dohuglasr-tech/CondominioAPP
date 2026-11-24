@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '../../../data/supabase'
+import { getHoyVE } from '../../../utils/fechaVE'
+import { getTasaBcvNumerica } from '../../../utils/tasaBcvHelper'
 import {
   LocalComercial,
   TipoCuotaLocal,
@@ -76,7 +78,7 @@ export const AdminLocales: React.FC = () => {
     tipo_cuota: 'fija',
     monto_usd: '',
     monto_bs: '',
-    inicio_contrato: new Date().toISOString().slice(0, 10),
+    inicio_contrato: getHoyVE(),
     fin_contrato: '',
     apartamento_id: '',
     estado: 'activo',
@@ -141,7 +143,7 @@ export const AdminLocales: React.FC = () => {
       tipo_cuota: 'fija',
       monto_usd: '',
       monto_bs: '',
-      inicio_contrato: new Date().toISOString().slice(0, 10),
+      inicio_contrato: getHoyVE(),
       fin_contrato: '',
       apartamento_id: '',
       estado: 'activo',
@@ -212,7 +214,7 @@ export const AdminLocales: React.FC = () => {
           tipo_cuota: form.tipo_cuota,
           monto_usd: musd,
           monto_bs: mbs,
-          inicio_contrato: form.inicio_contrato || new Date().toISOString().slice(0, 10),
+          inicio_contrato: form.inicio_contrato || getHoyVE(),
           fin_contrato: form.fin_contrato || undefined,
           apartamento_id: form.apartamento_id ? form.apartamento_id : null,
           apartamento_numero: aptoSel ? aptoSel.numero : undefined,
@@ -236,7 +238,7 @@ export const AdminLocales: React.FC = () => {
           tipo_cuota: form.tipo_cuota,
           monto_usd: musd,
           monto_bs: mbs,
-          inicio_contrato: form.inicio_contrato || new Date().toISOString().slice(0, 10),
+          inicio_contrato: form.inicio_contrato || getHoyVE(),
           fin_contrato: form.fin_contrato || undefined,
           apartamento_id: form.apartamento_id ? form.apartamento_id : null,
           apartamento_numero: aptoSel ? aptoSel.numero : undefined,
@@ -455,7 +457,7 @@ export const AdminLocales: React.FC = () => {
             ${fmtUsd(stats.ingresoMesUsd)} USD
           </div>
           <div style={{ color: '#94a3b8', fontSize: '11.5px', marginTop: '4px', fontWeight: 600 }}>
-            Bs. {fmtBs(stats.ingresoMesBs > 0 ? stats.ingresoMesBs : stats.ingresoMesUsd * (tasaBcv || 859.06))}
+            Bs. {fmtBs(stats.ingresoMesBs > 0 ? stats.ingresoMesBs : stats.ingresoMesUsd * getTasaBcvNumerica(tasaBcv))}
           </div>
         </div>
 
@@ -756,7 +758,7 @@ export const AdminLocales: React.FC = () => {
                         ${fmtUsd(local.monto_usd)} USD
                       </span>
                       <span style={{ color: '#94a3b8', fontSize: '11px', display: 'block' }}>
-                        Bs. {fmtBs(local.monto_bs || (local.monto_usd * (tasaBcv || 859.06)))}
+                        Bs. {fmtBs(local.monto_bs || (local.monto_usd * getTasaBcvNumerica(tasaBcv)))}
                       </span>
                     </div>
 
@@ -773,7 +775,7 @@ export const AdminLocales: React.FC = () => {
                         {tieneDeuda ? `$${fmtUsd(local.deuda_actual_usd)} USD` : 'Al Día'}
                       </span>
                       <span style={{ color: tieneDeuda ? '#fca5a5' : '#94a3b8', fontSize: '11px', display: 'block' }}>
-                        {tieneDeuda ? `Bs. ${fmtBs(local.deuda_actual_bs || (local.deuda_actual_usd * (tasaBcv || 859.06)))}` : '$0.00'}
+                        {tieneDeuda ? `Bs. ${fmtBs(local.deuda_actual_bs || (local.deuda_actual_usd * getTasaBcvNumerica(tasaBcv)))}` : '$0.00'}
                       </span>
                     </div>
                   </div>
@@ -1383,7 +1385,7 @@ export const AdminLocales: React.FC = () => {
                 }}
               />
               <span style={{ color: '#64748b', fontSize: '12px', marginTop: '4px', display: 'block' }}>
-                Equivalente aproximado: Bs. {fmtBs((parseFloat(nuevaDeudaUsd) || 0) * (tasaBcv || 859.06))}
+                Equivalente aproximado: Bs. {fmtBs((parseFloat(nuevaDeudaUsd) || 0) * getTasaBcvNumerica(tasaBcv))}
               </span>
             </div>
 

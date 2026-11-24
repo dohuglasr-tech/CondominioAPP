@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react'
 import { ActividadItem } from '../pages/admin/AdminDashboard'
+import { getHoyVE } from '../../utils/fechaVE'
 
 interface ModalTimelineAprobacionesProps {
   isOpen: boolean
@@ -175,7 +176,7 @@ export const ModalTimelineAprobaciones: React.FC<ModalTimelineAprobacionesProps>
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.setAttribute('download', `timeline_aprobaciones_${new Date().toISOString().slice(0, 10)}.csv`)
+    link.setAttribute('download', `timeline_aprobaciones_${getHoyVE()}.csv`)
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)

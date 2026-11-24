@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { aplicarSaldoAFavorADeuda } from '../../data/saldoFavorService'
+import { getTasaBcvNumerica } from '../../utils/tasaBcvHelper'
 
 interface Props {
   isOpen: boolean
@@ -34,7 +35,7 @@ export const CompensarDeudaModal: React.FC<Props> = ({
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const tasaValida = tasaBcv > 1 ? tasaBcv : 859.06
+  const tasaValida = getTasaBcvNumerica(tasaBcv)
 
   useEffect(() => {
     if (isOpen) {

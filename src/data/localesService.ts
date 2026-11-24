@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { appCache } from './cacheService'
+import { getHoyVE } from '../utils/fechaVE'
 
 export type TipoCuotaLocal = 'fija' | 'variable'
 export type EstadoLocal = 'activo' | 'inactivo' | 'en_mantenimiento'
@@ -135,7 +136,7 @@ function mapCasoToLocal(c: any, aptoMap?: Map<string, { numero: string; propieta
     tipo_cuota: extra.tipo_cuota || 'fija',
     monto_usd: Number(c.monto_usd) || Number(extra.monto_usd) || 0,
     monto_bs: Number(c.monto_bs) || Number(extra.monto_bs) || 0,
-    inicio_contrato: c.fecha || extra.inicio_contrato || new Date().toISOString().slice(0, 10),
+    inicio_contrato: c.fecha || extra.inicio_contrato || getHoyVE(),
     fin_contrato: c.fecha_vencimiento || extra.fin_contrato || undefined,
     apartamento_id: c.apartamento_id || extra.apartamento_id || null,
     apartamento_numero: aptoInfo?.numero || extra.apartamento_numero || '',

@@ -10,6 +10,7 @@ import {
 import { useAuth } from '../../application/contexts/AuthContext'
 import { useNavigate } from 'react-router-dom'
 import { ComprobantesGastoModal } from './ComprobantesGastoModal'
+import { getTasaBcvNumerica } from '../../utils/tasaBcvHelper'
 
 interface Props {
   onClose: () => void
@@ -39,7 +40,7 @@ function formatUsd(n: number): string {
 export function GastosPanel({ onClose }: Props) {
   const { config } = useAuth()
   const navigate = useNavigate()
-  const tasa = (config?.tasa_bcv_actual && config.tasa_bcv_actual > 1) ? config.tasa_bcv_actual : 859.06
+  const tasa = getTasaBcvNumerica(config?.tasa_bcv_actual)
 
   const [gastos, setGastos] = useState<GastoComun[]>([])
   const [totalUsd, setTotalUsd] = useState(0)

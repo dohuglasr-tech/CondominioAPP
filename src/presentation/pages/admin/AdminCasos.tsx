@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { supabase } from '../../../data/supabase'
+import { getHoyVE } from '../../../utils/fechaVE'
 import { useBcvRate } from '../../../data/useBcvRate'
 import { useAuth } from '../../../application/contexts/AuthContext'
 import { registrarEventoAuditoria } from '../../../data/auditoriaService'
@@ -40,7 +41,7 @@ export const AdminCasos: React.FC = () => {
   const [formMontoBs, setFormMontoBs] = useState<number | ''>('')
   const [formMoneda, setFormMoneda] = useState<MonedaCaso>('USD')
   const [formEstado, setFormEstado] = useState<EstadoCaso>('abierto')
-  const [formFecha, setFormFecha] = useState(new Date().toISOString().slice(0, 10))
+  const [formFecha, setFormFecha] = useState(getHoyVE())
   const [formVencimiento, setFormVencimiento] = useState('')
   const [formNotas, setFormNotas] = useState('')
 
@@ -82,7 +83,7 @@ export const AdminCasos: React.FC = () => {
     setFormMontoBs('')
     setFormMoneda('USD')
     setFormEstado('abierto')
-    setFormFecha(new Date().toISOString().slice(0, 10))
+    setFormFecha(getHoyVE())
     setFormVencimiento('')
     setFormNotas('')
     setModalAbierto(true)
@@ -101,7 +102,7 @@ export const AdminCasos: React.FC = () => {
     setFormMontoBs(c.monto_bs || '')
     setFormMoneda(c.moneda || 'USD')
     setFormEstado(c.estado || 'abierto')
-    setFormFecha(c.fecha || new Date().toISOString().slice(0, 10))
+    setFormFecha(c.fecha || getHoyVE())
     setFormVencimiento(c.fecha_vencimiento || '')
     setFormNotas(c.notas_admin || '')
     setModalAbierto(true)

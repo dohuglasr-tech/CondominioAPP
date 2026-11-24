@@ -331,8 +331,25 @@ export async function purgarCacheGlobalTotal(adminNombre?: string): Promise<{ ok
     appCache.invalidateTags(['config', 'tasa_bcv', 'pagos', 'recibos', 'saldos', 'gastos', 'apartamentos', 'auditoria'])
 
     // 5. Enviar señal de recarga remota en tiempo real a todos los dispositivos conectados
+    const channel = supabase.channel(`realtime_edificio_theme_sync_bc_${ahora}`)
     try {
-      const channel = supabase.channel('realtime_edificio_theme_sync')
+      await new Promise<void>((resolve) => {
+        let settled = false
+        const timer = setTimeout(() => {
+          if (!settled) {
+            settled = true
+            resolve()
+          }
+        }, 2000)
+        channel.subscribe((status) => {
+          if (!settled && (status === 'SUBSCRIBED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT')) {
+            settled = true
+            clearTimeout(timer)
+            resolve()
+          }
+        })
+      })
+
       await channel.send({
         type: 'broadcast',
         event: 'force_app_reload',
@@ -345,6 +362,10 @@ export async function purgarCacheGlobalTotal(adminNombre?: string): Promise<{ ok
       })
     } catch (bcErr) {
       console.warn('[CacheService] Error al emitir broadcast de reinicio:', bcErr)
+    } finally {
+      try {
+        await supabase.removeChannel(channel)
+      } catch {}
     }
 
     // 6. Actualizar configuracion_edificio.updated_at para disparar postgres_changes en todos los clientes

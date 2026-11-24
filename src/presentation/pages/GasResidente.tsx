@@ -5,6 +5,8 @@ import { supabase } from '../../data/supabase'
 import { appCache } from '../../data/cacheService'
 import { useBcvRate } from '../../data/useBcvRate'
 import { ReportarPagoModal } from '../components/ReportarPagoModal'
+import { getHoyVE } from '../../utils/fechaVE'
+import { getTasaBcvNumerica } from '../../utils/tasaBcvHelper'
 import {
   obtenerGasServicioData,
   calcularMetricasGas,
@@ -43,10 +45,10 @@ export const GasResidente: React.FC = () => {
   // Calendario visual de Gas
   const [calAnio, setCalAnio] = useState<number>(2026)
   const [calMes, setCalMes] = useState<number>(10) // 1-12
-  const [diaSeleccionado, setDiaSeleccionado] = useState<string | null>(new Date().toISOString().slice(0, 10))
+  const [diaSeleccionado, setDiaSeleccionado] = useState<string | null>(getHoyVE())
 
   const { rate } = useBcvRate()
-  const tasaValida = rate && rate > 1 ? rate : (config?.tasa_bcv_actual && config.tasa_bcv_actual > 1 ? config.tasa_bcv_actual : 859.06)
+  const tasaValida = getTasaBcvNumerica(rate, config?.tasa_bcv_actual)
 
   const p = perfil as any
   const aptoNumero = p?.apartamento?.numero || p?.apartamentos?.numero || p?.apartamento_id || ''

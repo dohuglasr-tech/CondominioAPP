@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { retirarSaldoAFavorApartamento } from '../../data/saldoFavorService'
+import { getTasaBcvNumerica } from '../../utils/tasaBcvHelper'
 
 interface Props {
   isOpen: boolean
@@ -35,7 +36,7 @@ export const RetirarSaldoModal: React.FC<Props> = ({
 
   useEffect(() => {
     if (isOpen) {
-      const calcUsd = saldoAFavorUsd > 0 ? saldoAFavorUsd : (saldoAFavorBs > 0 ? (saldoAFavorBs / (tasaBcv > 1 ? tasaBcv : 859.06)) : 0)
+      const calcUsd = saldoAFavorUsd > 0 ? saldoAFavorUsd : (saldoAFavorBs > 0 ? (saldoAFavorBs / getTasaBcvNumerica(tasaBcv)) : 0)
       setMontoRetirar(calcUsd > 0 ? calcUsd.toFixed(2) : '0')
       setMotivo('')
       setError(null)
@@ -46,7 +47,7 @@ export const RetirarSaldoModal: React.FC<Props> = ({
   if (!isOpen) return null
 
   const montoNum = parseFloat(montoRetirar.replace(',', '.')) || 0
-  const tasaValida = tasaBcv > 1 ? tasaBcv : 859.06
+  const tasaValida = getTasaBcvNumerica(tasaBcv)
   const montoBs = montoNum * tasaValida
   const saldoRestante = Math.max(0, saldoAFavorUsd - montoNum)
 

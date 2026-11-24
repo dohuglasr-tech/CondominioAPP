@@ -3,6 +3,8 @@ import { esReciboIndexado } from '../utils/indexacionHelper'
 import { registrarEventoAuditoria } from './auditoriaService'
 import { appCache } from './cacheService'
 import { limpiarCacheMora } from './moraService'
+import { getHoyVE } from '../utils/fechaVE'
+import { getTasaBcvNumerica } from '../utils/tasaBcvHelper'
 
 export interface DatosPagoAprobado {
   id: string
@@ -55,11 +57,11 @@ export interface ResultadoPrelacion {
  */
 export async function aplicarPagoConPrelacion(
   pago: DatosPagoAprobado,
-  tasaBcvActual: number = 859.06,
+  tasaBcvActual?: number,
   fechaInicioGestion?: string | null
 ): Promise<ResultadoPrelacion> {
   const aptoId = pago.apartamento_id
-  const tasa = Number(pago.tasa_bcv && pago.tasa_bcv > 1 ? pago.tasa_bcv : (tasaBcvActual > 1 ? tasaBcvActual : 859.06))
+  const tasa = getTasaBcvNumerica(tasaBcvActual, pago.tasa_bcv)
   let remanenteBs = Number(pago.monto_bs || 0)
   if (remanenteBs <= 0 && Number(pago.monto_usd || 0) > 0) {
     remanenteBs = Number((Number(pago.monto_usd) * tasa).toFixed(2))
@@ -85,22 +87,45 @@ export async function aplicarPagoConPrelacion(
   }
 
   try {
-    // 1. Consultar deudas en deudas_mora para este apartamento
-    const { data: moraRow } = await supabase
-      .from('deudas_mora')
-      .select('*')
-      .eq('apartamento_id', aptoId)
-      .maybeSingle()
+    // 0. Guard de idempotencia: verificar que este pago.id no haya sido ya aplicado
+    const [moraRes, allRecibosRes] = await Promise.all([
+      supabase.from('deudas_mora').select('*').eq('apartamento_id', aptoId).maybeSingle(),
+      supabase
+        .from('recibos_generados')
+        .select('*')
+        .eq('apartamento_id', aptoId)
+        .order('mes_facturado', { ascending: true })
+    ])
 
-    // 2. Consultar recibos pendientes ordenados por mes_facturado ASC (más antiguos primero)
-    const { data: recibosPendientes } = await supabase
-      .from('recibos_generados')
-      .select('*')
-      .eq('apartamento_id', aptoId)
-      .eq('estado', 'pendiente')
-      .order('mes_facturado', { ascending: true })
+    const moraRow = moraRes.data
+    const todosRecibos = allRecibosRes.data || []
 
-    const recibos = recibosPendientes || []
+    if (pago.id) {
+      let yaAplicadoEnMora = false
+      if (moraRow?.conceptos_detalle && String(moraRow.conceptos_detalle).startsWith('{')) {
+        try {
+          const parsedMora = JSON.parse(moraRow.conceptos_detalle)
+          if (Array.isArray(parsedMora?.pagos_aplicados_ids) && parsedMora.pagos_aplicados_ids.includes(pago.id)) {
+            yaAplicadoEnMora = true
+          }
+        } catch {}
+      }
+
+      const yaAplicadoEnRecibo = todosRecibos.some((r: any) => {
+        const pInfoId = r?.data_json?.pago_info?.pago_id
+        if (pInfoId === pago.id) return true
+        const abonos = Array.isArray(r?.data_json?.abonos) ? r.data_json.abonos : []
+        return abonos.some((a: any) => a?.pago_id === pago.id)
+      })
+
+      if (yaAplicadoEnMora || yaAplicadoEnRecibo) {
+        console.warn('[pagosPrelacionService] Pago ya conciliado previamente, omitiendo duplicado:', pago.id)
+        return resultado
+      }
+    }
+
+    // 2. Filtrar recibos pendientes ordenados por mes_facturado ASC (más antiguos primero)
+    const recibos = todosRecibos.filter((r: any) => r.estado === 'pendiente')
 
     // Separar recibos en: No Indexados (fijos en Bs) vs Indexados (en USD)
     const recibosNoIndexados = recibos.filter(r => !esReciboIndexado(r, fechaInicioGestion))
@@ -130,6 +155,10 @@ export async function aplicarPagoConPrelacion(
         }
         conceptosHist.deuda_2025 = 0
         conceptosHist.actualizado_at = new Date().toISOString()
+        const prevPagosIds = Array.isArray(conceptosHist.pagos_aplicados_ids) ? conceptosHist.pagos_aplicados_ids : []
+        if (pago.id && !prevPagosIds.includes(pago.id)) {
+          conceptosHist.pagos_aplicados_ids = [...prevPagosIds, pago.id]
+        }
 
         await supabase
           .from('deudas_mora')
@@ -148,11 +177,20 @@ export async function aplicarPagoConPrelacion(
       } else {
         // Abono parcial a la deuda en Bs de la mora
         const saldoRestanteBs = Number((moraBs - remanenteBs).toFixed(2))
+        let conceptosHist: any = {}
+        if (moraRow.conceptos_detalle && String(moraRow.conceptos_detalle).startsWith('{')) {
+          try { conceptosHist = JSON.parse(moraRow.conceptos_detalle) } catch {}
+        }
+        const prevPagosIds = Array.isArray(conceptosHist.pagos_aplicados_ids) ? conceptosHist.pagos_aplicados_ids : []
+        if (pago.id && !prevPagosIds.includes(pago.id)) {
+          conceptosHist.pagos_aplicados_ids = [...prevPagosIds, pago.id]
+        }
         await supabase
           .from('deudas_mora')
           .update({
             monto_bs: saldoRestanteBs,
             estado: 'activo',
+            conceptos_detalle: Object.keys(conceptosHist).length > 0 ? JSON.stringify(conceptosHist) : moraRow.conceptos_detalle,
             observaciones: `Abono parcial Bs. ${remanenteBs.toFixed(2)} con pago Ref: ${pago.referencia || 'S/R'}. Saldo rest: Bs. ${saldoRestanteBs}. ${moraRow.observaciones || ''}`.trim(),
             updated_at: new Date().toISOString()
           })
@@ -179,7 +217,7 @@ export async function aplicarPagoConPrelacion(
                 ...(r.data_json || {}),
                 pago_info: {
                   pago_id: pago.id,
-                  fecha_pago: pago.fecha_pago || new Date().toISOString().slice(0, 10),
+                  fecha_pago: pago.fecha_pago || getHoyVE(),
                   referencia: pago.referencia || 'S/R',
                   banco: pago.banco_origen || 'Transferencia',
                   monto_bs: montoReciboBs,
@@ -198,7 +236,7 @@ export async function aplicarPagoConPrelacion(
           const abonosPrevios = r.data_json?.abonos || []
           const nuevoAbono = {
             pago_id: pago.id,
-            fecha: pago.fecha_pago || new Date().toISOString().slice(0, 10),
+            fecha: pago.fecha_pago || getHoyVE(),
             referencia: pago.referencia || 'S/R',
             monto_bs: Number(remanenteBs.toFixed(2)),
             banco: pago.banco_origen || 'Transferencia'
@@ -251,7 +289,7 @@ export async function aplicarPagoConPrelacion(
                 ...(r.data_json || {}),
                 pago_info: {
                   pago_id: pago.id,
-                  fecha_pago: pago.fecha_pago || new Date().toISOString().slice(0, 10),
+                  fecha_pago: pago.fecha_pago || getHoyVE(),
                   referencia: pago.referencia || 'S/R',
                   banco: pago.banco_origen || 'Transferencia',
                   monto_bs: valorBs,
@@ -276,7 +314,7 @@ export async function aplicarPagoConPrelacion(
           const abonosPrevios = r.data_json?.abonos || []
           const nuevoAbono = {
             pago_id: pago.id,
-            fecha: pago.fecha_pago || new Date().toISOString().slice(0, 10),
+            fecha: pago.fecha_pago || getHoyVE(),
             referencia: pago.referencia || 'S/R',
             monto_bs: Number(abonoBs.toFixed(2)),
             monto_usd: abonoUsd,

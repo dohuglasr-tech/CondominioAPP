@@ -13,6 +13,7 @@ import {
   ReciboPagoInfo,
 } from '../../utils/reciboPdfGenerator'
 import { formatAlicuotaPct } from '../../utils/alicuota'
+import { getTasaBcvNumerica } from '../../utils/tasaBcvHelper'
 import {
   generarMensajeCobroRecibo,
   generarMensajeReciboPagado,
@@ -246,7 +247,7 @@ export function RecibosPanel({ onClose }: Props) {
       }
 
       // Calcular saldo a favor disponible del apartamento
-      const tasaActual = configRes.data?.tasa_bcv_actual || authConfig?.tasa_bcv_actual || 859.06
+      const tasaActual = getTasaBcvNumerica(configRes.data?.tasa_bcv_actual, authConfig?.tasa_bcv_actual)
       const sRes = await obtenerSaldoAFavorApartamento(apartamentoId, tasaActual)
       setSaldoAFavor(sRes.saldo_a_favor_usd)
       setSaldoAFavorBs(sRes.saldo_a_favor_bs)
@@ -334,7 +335,7 @@ export function RecibosPanel({ onClose }: Props) {
         banco: config?.banco,
         cuenta_bancaria: config?.cuenta_bancaria,
         titular_cuenta: config?.titular_cuenta,
-        tasa_bcv_actual: (recibo.tasa_bcv && recibo.tasa_bcv > 1 ? recibo.tasa_bcv : (config?.tasa_bcv_actual && config.tasa_bcv_actual > 1 ? config.tasa_bcv_actual : (recibo.total_usd > 0 ? parseFloat((recibo.total_bs / recibo.total_usd).toFixed(4)) : 859.06))),
+        tasa_bcv_actual: getTasaBcvNumerica(recibo.tasa_bcv, config?.tasa_bcv_actual, recibo.total_usd > 0 ? parseFloat((recibo.total_bs / recibo.total_usd).toFixed(4)) : null),
       }
 
       // Si está pagado o hay un pago aprobado para este apartamento
@@ -409,7 +410,7 @@ export function RecibosPanel({ onClose }: Props) {
         anio,
         totalUsd: recibo.total_usd,
         totalBs: recibo.total_bs,
-        tasaBcv: (recibo.tasa_bcv && recibo.tasa_bcv > 1 ? recibo.tasa_bcv : (config?.tasa_bcv_actual && config.tasa_bcv_actual > 1 ? config.tasa_bcv_actual : (authConfig?.tasa_bcv_actual && authConfig.tasa_bcv_actual > 1 ? authConfig.tasa_bcv_actual : (recibo.total_usd > 0 ? parseFloat((recibo.total_bs / recibo.total_usd).toFixed(4)) : 859.06)))),
+        tasaBcv: getTasaBcvNumerica(recibo.tasa_bcv, config?.tasa_bcv_actual, authConfig?.tasa_bcv_actual, recibo.total_usd > 0 ? parseFloat((recibo.total_bs / recibo.total_usd).toFixed(4)) : null),
         alicuotaPct: formatAlicuotaPct(recibo.alicuota),
         bancoNombre: config?.banco || authConfig?.banco || 'Banco Bicentenario',
         cuentaNumero: config?.cuenta_bancaria || authConfig?.cuenta_bancaria || '0175-0525-4100-7575-1351',
@@ -609,7 +610,7 @@ export function RecibosPanel({ onClose }: Props) {
                   {saldoAFavor >= 1 ? `+$${fmtUsd(saldoAFavor)} USD` : `+Bs. ${fmtBs(saldoAFavorBs)}`}
                 </div>
                 <div style={{ color: '#86efac', fontSize: '11px', fontWeight: 600 }}>
-                  {saldoAFavor >= 1 ? `≈ Bs. ${fmtBs(saldoAFavorBs)}` : `≈ $${fmtUsd(saldoAFavor > 0 ? saldoAFavor : saldoAFavorBs / (config?.tasa_bcv_actual || 859.06))} USD`}
+                  {saldoAFavor >= 1 ? `≈ Bs. ${fmtBs(saldoAFavorBs)}` : `≈ $${fmtUsd(saldoAFavor > 0 ? saldoAFavor : saldoAFavorBs / getTasaBcvNumerica(config?.tasa_bcv_actual))} USD`}
                 </div>
               </div>
             </div>
@@ -950,7 +951,7 @@ export function RecibosPanel({ onClose }: Props) {
                         ) : esHistorico ? (
                           <>Emitido el {formatFecha(recibo.emitido_at || recibo.mes_facturado)} · Gastos manuales de administración anterior (Sin anclaje a tasa BCV actual)</>
                         ) : (
-                          <>Emitido el {formatFecha(recibo.emitido_at || recibo.mes_facturado)} · Tasa BCV: {fmtBs((recibo.tasa_bcv && recibo.tasa_bcv > 1 ? recibo.tasa_bcv : (config?.tasa_bcv_actual && config.tasa_bcv_actual > 1 ? config.tasa_bcv_actual : (recibo.total_usd > 0 ? parseFloat((recibo.total_bs / recibo.total_usd).toFixed(4)) : 859.06))))} Bs/$</>
+                          <>Emitido el {formatFecha(recibo.emitido_at || recibo.mes_facturado)} · Tasa BCV: {fmtBs(getTasaBcvNumerica(recibo.tasa_bcv, config?.tasa_bcv_actual, recibo.total_usd > 0 ? parseFloat((recibo.total_bs / recibo.total_usd).toFixed(4)) : null))} Bs/$</>
                         )}
                       </p>
                     </div>

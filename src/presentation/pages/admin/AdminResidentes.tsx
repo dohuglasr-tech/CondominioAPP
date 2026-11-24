@@ -17,6 +17,9 @@ import { EnviarExpedienteEmailModal } from '../../components/EnviarExpedienteEma
 import { EnviarSolvenciaEmailModal } from '../../components/EnviarSolvenciaEmailModal'
 import { DatosCartaSolvencia, normalizarCedula, obtenerMesActualEs } from '../../../utils/solvenciaPdfGenerator'
 import { parsePagoMeta, stripPagoMeta } from '../../../data/gasService'
+import { fetchAllSupabasePages } from '../../../data/supabasePagination'
+import { getHoyVE } from '../../../utils/fechaVE'
+import { getTasaBcvNumerica } from '../../../utils/tasaBcvHelper'
 
 interface PersonaContacto {
   nombre: string
@@ -96,7 +99,7 @@ export const AdminResidentes: React.FC = () => {
   const navigate = useNavigate()
   const { perfil, user, config } = useAuth()
   const { rate } = useBcvRate()
-  const tasaBcvValida = rate && rate > 1 ? rate : 859.06
+  const tasaBcvValida = getTasaBcvNumerica(rate)
 
   const [residentes, setResidentes] = useState<Residente[]>([])
   const [saldosPorApto, setSaldosPorApto] = useState<Map<string, SaldoApartamento>>(new Map())
@@ -145,10 +148,22 @@ export const AdminResidentes: React.FC = () => {
       const [aptosRes, perfilesRes, pagosRes, saldosMap, moraRes, recibosGeneradosRes] = await Promise.all([
         supabase.from('apartamentos').select('*'),
         supabase.from('perfiles').select('*'),
-        supabase.from('pagos_reportados').select('id, apartamento_id, monto_bs, monto_usd, referencia, estado, fecha_pago, comprobante_url, created_at, notas_admin').order('created_at', { ascending: false }),
+        fetchAllSupabasePages((from, to) =>
+          supabase
+            .from('pagos_reportados')
+            .select('id, apartamento_id, monto_bs, monto_usd, referencia, estado, fecha_pago, comprobante_url, created_at, notas_admin')
+            .order('created_at', { ascending: false })
+            .range(from, to)
+        ),
         obtenerTodosLosSaldosAFavor(tasaBcvValida, forceRefresh),
         obtenerDeudasMora(forceRefresh, true),
-        supabase.from('recibos_generados').select('id, apartamento_id, mes_facturado, total_usd, total_bs, tasa_bcv, estado, emitido_at').order('mes_facturado', { ascending: false })
+        fetchAllSupabasePages((from, to) =>
+          supabase
+            .from('recibos_generados')
+            .select('id, apartamento_id, mes_facturado, total_usd, total_bs, tasa_bcv, estado, emitido_at')
+            .order('mes_facturado', { ascending: false })
+            .range(from, to)
+        )
       ])
 
       setSaldosPorApto(saldosMap)
@@ -522,7 +537,7 @@ export const AdminResidentes: React.FC = () => {
         deudasDetalle.push({
           concepto: it.label,
           categoria: it.categoria === 'cuota_especial' ? 'Cuota Extraordinaria' : it.categoria === 'deuda_2025' ? 'Deuda Consolidada 2025' : 'Recibo Ordinario',
-          fechaCorte: residente.mora_item?.fecha_corte || new Date().toISOString().slice(0, 10),
+          fechaCorte: residente.mora_item?.fecha_corte || getHoyVE(),
           montoUsd: it.moneda === 'USD' ? it.monto : (it.monto / tasaBcvValida),
           montoBs: it.moneda === 'BS' ? it.monto : (it.monto * tasaBcvValida),
           estado: it.estado === 'pendiente' ? 'Pendiente / Exigible' : 'Pagado'
@@ -532,7 +547,7 @@ export const AdminResidentes: React.FC = () => {
       deudasDetalle.push({
         concepto: residente.mora_item?.conceptos_detalle || `Cuotas pendientes de condominio (${residente.meses_deuda} meses)`,
         categoria: 'Cuota de Condominio en Mora',
-        fechaCorte: residente.mora_item?.fecha_corte || new Date().toISOString().slice(0, 10),
+        fechaCorte: residente.mora_item?.fecha_corte || getHoyVE(),
         montoUsd: residente.deuda_usd,
         montoBs: residente.deuda_bs > 0 ? residente.deuda_bs : (residente.deuda_usd * tasaBcvValida),
         estado: 'Exigible en Mora'

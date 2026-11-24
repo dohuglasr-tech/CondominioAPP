@@ -18,6 +18,7 @@ import { formatAlicuotaPct, getAlicuotaPctNumber } from '../../utils/alicuota'
 import { AvisoBanner } from '../components/AvisoBanner'
 import { obtenerSaldoAFavorApartamento } from '../../data/saldoFavorService'
 import { esReciboIndexado } from '../../utils/indexacionHelper'
+import { getTasaBcvNumerica } from '../../utils/tasaBcvHelper'
 import { obtenerGasServicioData, obtenerDeudaGasApartamento, DeudaApartamentoGas, parsePagoMeta } from '../../data/gasService'
 import { obtenerLocalesPorApartamento, LocalComercial } from '../../data/localesService'
 import { obtenerJunta, MiembroJunta } from '../../data/juntaService'
@@ -77,7 +78,7 @@ export function Dashboard() {
   const [aptDetalle, setAptDetalle] = useState<{ numero?: string; piso?: number | null; propietario_nombre?: string | null } | null>(null)
 
   const { rate, loading: loadingRate } = useBcvRate()
-  const tasaValida = rate && rate > 1 ? rate : (config?.tasa_bcv_actual && config.tasa_bcv_actual > 1 ? config.tasa_bcv_actual : 859.06)
+  const tasaValida = getTasaBcvNumerica(rate, config?.tasa_bcv_actual)
   const tasaValidaRef = useRef(tasaValida)
   useEffect(() => {
     tasaValidaRef.current = tasaValida
@@ -1077,7 +1078,7 @@ export function Dashboard() {
                   TASA BCV
                 </div>
                 <div style={{ color: '#fff', fontSize: '13px', fontWeight: 800 }}>
-                  Bs. {(rate && rate > 1 ? rate : 859.06).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  Bs. {getTasaBcvNumerica(rate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </div>
               </div>
             </div>
@@ -2077,7 +2078,7 @@ export function Dashboard() {
                 <div>
                   <div style={{ color: '#8e8e93', fontSize: '10px', fontWeight: 800, textTransform: 'uppercase' }}>TASA BCV</div>
                   <div style={{ color: '#fff', fontSize: '13px', fontWeight: 800 }}>
-                    {loadingRate ? 'Cargando...' : `Bs. ${(rate && rate > 1 ? rate : 859.06).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / $`}
+                    {loadingRate ? 'Cargando...' : `Bs. ${getTasaBcvNumerica(rate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / $`}
                   </div>
                 </div>
               </div>

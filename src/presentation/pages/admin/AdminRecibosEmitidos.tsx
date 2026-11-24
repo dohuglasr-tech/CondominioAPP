@@ -22,6 +22,8 @@ import {
 } from '../../../data/notificacionesGlobalesService'
 import { generarInformeGestionPDF, DatosInformeGestion } from '../../../utils/informeGestionPdfGenerator'
 import { esReciboIndexado } from '../../../utils/indexacionHelper'
+import { fetchAllSupabasePages } from '../../../data/supabasePagination'
+import { getTasaBcvNumerica } from '../../../utils/tasaBcvHelper'
 
 interface ReciboEmitido {
   id: string
@@ -418,7 +420,7 @@ export const AdminRecibosEmitidos: React.FC = () => {
       try {
         const tasaBcv = (item.recibo.tasa_bcv && item.recibo.tasa_bcv > 1)
           ? item.recibo.tasa_bcv
-          : (config?.tasa_bcv_actual || 859.06)
+          : getTasaBcvNumerica(config?.tasa_bcv_actual)
 
         const res = await despacharEmailRecordatorioRecibo({
           destinatarioEmail: item.email.trim(),
@@ -524,15 +526,30 @@ export const AdminRecibosEmitidos: React.FC = () => {
   const cargarMeses = useCallback(async () => {
     setLoading(true)
     try {
-      const [configRes, recibosMesesRes] = await Promise.all([
+      const [configRes, kpiMesesRes] = await Promise.all([
         supabase.from('configuracion_edificio').select('*').limit(1).maybeSingle(),
-        supabase.from('recibos_generados').select('mes_facturado').order('mes_facturado', { ascending: false })
+        supabase.rpc('get_admin_dashboard_kpis', { p_mes: null })
       ])
 
       if (configRes.data) setConfig(configRes.data)
 
-      if (recibosMesesRes.data && recibosMesesRes.data.length > 0) {
-        const unicos = Array.from(new Set(recibosMesesRes.data.map(r => r.mes_facturado)))
+      let unicos: string[] = []
+      if (!kpiMesesRes.error && Array.isArray(kpiMesesRes.data?.meses_recibos_exactos)) {
+        unicos = Array.from(new Set((kpiMesesRes.data.meses_recibos_exactos as string[]).filter(Boolean)))
+      } else {
+        const recibosMesesRes = await fetchAllSupabasePages((from, to) =>
+          supabase
+            .from('recibos_generados')
+            .select('mes_facturado')
+            .order('mes_facturado', { ascending: false })
+            .range(from, to)
+        )
+        if (recibosMesesRes.data && recibosMesesRes.data.length > 0) {
+          unicos = Array.from(new Set(recibosMesesRes.data.map(r => r.mes_facturado)))
+        }
+      }
+
+      if (unicos.length > 0) {
         setMesesDisponibles(unicos)
         if (mesParam && unicos.includes(mesParam)) {
           setMesSeleccionado(mesParam)
@@ -557,7 +574,9 @@ export const AdminRecibosEmitidos: React.FC = () => {
     setLoading(true)
     try {
       const [recibosRes, aptosRes, perfilesRes] = await Promise.all([
-        supabase.from('recibos_generados').select('*').eq('mes_facturado', mesSeleccionado),
+        fetchAllSupabasePages((from, to) =>
+          supabase.from('recibos_generados').select('*').eq('mes_facturado', mesSeleccionado).range(from, to)
+        ),
         supabase.from('apartamentos').select('id, numero, piso, alicuota, propietario_nombre, telefono_contacto'),
         supabase.from('perfiles').select('id, apartamento_id, nombre_completo, condicion_habitacional, propietario_nombre, telefono, propietario_email')
       ])
@@ -997,7 +1016,7 @@ export const AdminRecibosEmitidos: React.FC = () => {
         anio,
         totalUsd: r.total_usd,
         totalBs: r.total_bs,
-        tasaBcv: (r.tasa_bcv && r.tasa_bcv > 1 ? r.tasa_bcv : (config?.tasa_bcv_actual && config.tasa_bcv_actual > 1 ? config.tasa_bcv_actual : (r.total_usd > 0 ? parseFloat((r.total_bs / r.total_usd).toFixed(4)) : 859.06))),
+        tasaBcv: getTasaBcvNumerica(r.tasa_bcv, config?.tasa_bcv_actual, r.total_usd > 0 ? parseFloat((r.total_bs / r.total_usd).toFixed(4)) : null),
         alicuotaPct: formatAlicuotaPct(r.alicuota),
         bancoNombre: config?.banco,
         cuentaNumero: config?.cuenta_bancaria,
@@ -1052,7 +1071,7 @@ export const AdminRecibosEmitidos: React.FC = () => {
           anio,
           totalUsd: r.total_usd,
           totalBs: r.total_bs,
-          tasaBcv: (r.tasa_bcv && r.tasa_bcv > 1 ? r.tasa_bcv : (config?.tasa_bcv_actual && config.tasa_bcv_actual > 1 ? config.tasa_bcv_actual : (r.total_usd > 0 ? parseFloat((r.total_bs / r.total_usd).toFixed(4)) : 859.06))),
+          tasaBcv: getTasaBcvNumerica(r.tasa_bcv, config?.tasa_bcv_actual, r.total_usd > 0 ? parseFloat((r.total_bs / r.total_usd).toFixed(4)) : null),
           alicuotaPct: formatAlicuotaPct(r.alicuota),
           reciboId: r.id,
           bancoNombre: config?.banco,
@@ -1166,7 +1185,7 @@ export const AdminRecibosEmitidos: React.FC = () => {
   // ── 7b. Exportar Informe Ejecutivo de Cierre de Gestión en PDF ────────────
   const descargarInformeEjecutivoGestion = () => {
     if (!config || recibos.length === 0) return
-    const tasaBcv = recibos[0]?.tasa_bcv || (config?.tasa_bcv_actual && config.tasa_bcv_actual > 1 ? config.tasa_bcv_actual : 859.06)
+    const tasaBcv = getTasaBcvNumerica(recibos[0]?.tasa_bcv, config?.tasa_bcv_actual)
 
     const datos: DatosInformeGestion = {
       nombreEdificio: config.nombre_edificio || 'Condominio Residencial',
@@ -1794,7 +1813,7 @@ export const AdminRecibosEmitidos: React.FC = () => {
                 Gastos: $ {fmtUsd(stats.totalGastosComunesUsd)}
               </div>
               <div style={{ color: '#64748b', fontSize: '11px', marginTop: '6px' }}>
-                Tasa BCV: Bs. {fmtBs((recibos[0]?.tasa_bcv && recibos[0].tasa_bcv > 1 ? recibos[0].tasa_bcv : (config?.tasa_bcv_actual && config.tasa_bcv_actual > 1 ? config.tasa_bcv_actual : 859.06)))}
+                Tasa BCV: Bs. {fmtBs(getTasaBcvNumerica(recibos[0]?.tasa_bcv, config?.tasa_bcv_actual))}
               </div>
             </div>
 

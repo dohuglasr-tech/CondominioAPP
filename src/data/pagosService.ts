@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
 import { appCache } from './cacheService'
 import { comprimirImagen } from '../utils/imageCompressor'
+import { getHoyVE } from '../utils/fechaVE'
 
 export interface ReportePagoPayload {
   apartamento_id: string
@@ -101,7 +102,7 @@ export async function reportarPago(payload: ReportePagoPayload): Promise<{ id?: 
         comprobante_url: payload.comprobante_url ?? null,
         estado: 'pendiente',
         reportado_por: authData.user.id,
-        fecha_pago: new Date().toISOString().split('T')[0],
+        fecha_pago: getHoyVE(),
       })
       .select('id')
       .maybeSingle()

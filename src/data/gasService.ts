@@ -1,6 +1,8 @@
 import { supabase } from './supabase'
 import { appCache } from './cacheService'
 import { despacharEmailCuotaGas } from './emailService'
+import { getHoyVE, getMesActualVE } from '../utils/fechaVE'
+import { getTasaBcvNumerica } from '../utils/tasaBcvHelper'
 
 export interface DatosPagoGas {
   banco: string
@@ -237,7 +239,7 @@ export const DEFAULT_GAS_CONFIG: TanqueGasConfig = {
   monedaCuota: 'BS',
   costoPorAptoDefectoBs: 0,
   costoPorAptoDefectoUsd: 0,
-  tasaBcv: 859.06,
+  tasaBcv: getTasaBcvNumerica(),
   datosPago: {
     banco: 'Banco de Venezuela (0102)',
     telefono: '',
@@ -269,9 +271,9 @@ export function esUUIDValido(str: string): boolean {
 
 export function generarDatosSemillaGas(
   _aptosList?: { id: string; numero: string; propietario_nombre?: string | null }[],
-  tasaBcvInput: number = 859.06
+  tasaBcvInput: number = getTasaBcvNumerica()
 ): GasServicioData {
-  const tasaBcv = tasaBcvInput || 859.06
+  const tasaBcv = getTasaBcvNumerica(tasaBcvInput)
 
   return {
     config: {
@@ -495,7 +497,7 @@ async function sincronizarPagoAdminGasEnReportes(params: {
     const moneda = params.moneda || 'BS'
     const montoBs = Number((params.montoBs || 0).toFixed(2))
     const montoUsd = Number((params.montoUsd || 0).toFixed(2))
-    const fechaPago = params.fechaPago || new Date().toISOString().slice(0, 10)
+    const fechaPago = params.fechaPago || getHoyVE()
     const refFinal = (params.referencia || '').trim() || `GAS-${(params.mes || 'ANT').replace(/[^0-9A-Z]/gi, '')}-${resolved.numero || 'APTO'}`
     const metodoNorm = normalizarMetodoParaReporte(params.metodoPago, moneda)
 
@@ -614,7 +616,7 @@ export async function obtenerGasServicioData(forceRefresh: boolean = false): Pro
           .limit(1)
           .maybeSingle()
 
-        const tasaBcv = Number(configEdificio?.tasa_bcv_actual || 859.06)
+        const tasaBcv = getTasaBcvNumerica(configEdificio?.tasa_bcv_actual)
 
         // 3. Consultar todas las filas relacionales de gas en casos_comunidad
         const { data: rows, error } = await supabase
@@ -693,7 +695,7 @@ export async function obtenerGasServicioData(forceRefresh: boolean = false): Pro
               const parsed = JSON.parse(r.descripcion || '{}')
               return {
                 id: r.id,
-                fecha: r.fecha || parsed.fecha || new Date().toISOString().split('T')[0],
+                fecha: r.fecha || parsed.fecha || getHoyVE(),
                 porcentajeInicial: Number(parsed.porcentajeInicial ?? 0),
                 porcentajeFinal: Number(parsed.porcentajeFinal ?? 0),
                 litrosCargados: Number(parsed.litrosCargados ?? 0),
@@ -747,8 +749,8 @@ export async function obtenerGasServicioData(forceRefresh: boolean = false): Pro
               id: r.id,
               titulo: r.titulo || meta.titulo || 'Recaudación de Gas',
               esEspecial: Boolean(meta.esEspecial),
-              mes: meta.mes || (r.fecha ? r.fecha.slice(0, 7) : new Date().toISOString().slice(0, 7)),
-              fechaInicio: r.fecha || meta.fechaInicio || new Date().toISOString().slice(0, 10),
+              mes: meta.mes || (r.fecha ? r.fecha.slice(0, 7) : getMesActualVE()),
+              fechaInicio: r.fecha || meta.fechaInicio || getHoyVE(),
               fechaLimite: r.fecha_vencimiento || meta.fechaLimite || '',
               monedaPrincipal: (r.moneda as any) || meta.monedaPrincipal || config.monedaCuota || 'BS',
               costoPorAptoBs: Number(r.monto_bs ?? meta.costoPorAptoBs ?? config.costoPorAptoDefectoBs),
@@ -814,7 +816,7 @@ export async function obtenerGasServicioData(forceRefresh: boolean = false): Pro
             } catch {}
             return {
               id: r.id,
-              fecha: r.fecha || ev.fecha || new Date().toISOString().slice(0, 10),
+              fecha: r.fecha || ev.fecha || getHoyVE(),
               tipo: ev.tipo || 'otro',
               titulo: r.titulo || ev.titulo || 'Evento de Gas',
               descripcion: ev.descripcion || '',
@@ -898,26 +900,66 @@ export async function guardarGasServicioData(
     appCache.invalidate('gas_servicio_data_global')
     appCache.invalidateTags(['gas', 'deudas_gas', 'saldos', 'recibos', 'mora'])
 
-    // 1. Guardar Configuración de Gas (upsert seguro)
-    const { data: configRows } = await supabase
-      .from('casos_comunidad')
-      .select('id')
-      .eq('tipo', TIPO_GAS_CONFIG)
-      .limit(1)
+    // 1. Guardar Configuración de Gas con bloqueo optimista (anti Lost Update)
+    const MAX_CFG_RETRIES = 3
+    for (let attempt = 0; attempt < MAX_CFG_RETRIES; attempt++) {
+      const { data: configRows } = await supabase
+        .from('casos_comunidad')
+        .select('id, updated_at, descripcion')
+        .eq('tipo', TIPO_GAS_CONFIG)
+        .limit(1)
 
-    const configId = configRows && configRows.length > 0 ? configRows[0].id : generarUUID()
-    await supabase.from('casos_comunidad').upsert({
-      id: configId,
-      tipo: TIPO_GAS_CONFIG,
-      titulo: 'Configuración Tanque Gas',
-      descripcion: JSON.stringify(data.config),
-      monto_usd: data.config.costoPorAptoDefectoUsd || 0,
-      monto_bs: data.config.costoPorAptoDefectoBs || 0,
-      moneda: data.config.monedaCuota || 'BS',
-      estado: 'activo',
-      fecha: new Date().toISOString().split('T')[0],
-      updated_at: new Date().toISOString()
-    })
+      const existingCfg = configRows && configRows.length > 0 ? configRows[0] : null
+      let mergedConfig = data.config
+      if (attempt > 0 && existingCfg?.descripcion) {
+        try {
+          const remoteCfg = JSON.parse(existingCfg.descripcion)
+          mergedConfig = { ...remoteCfg, ...data.config, datosPago: { ...(remoteCfg.datosPago || {}), ...(data.config.datosPago || {}) } }
+        } catch {}
+      }
+
+      if (existingCfg?.id) {
+        let updQ = supabase
+          .from('casos_comunidad')
+          .update({
+            titulo: 'Configuración Tanque Gas',
+            descripcion: JSON.stringify(mergedConfig),
+            monto_usd: mergedConfig.costoPorAptoDefectoUsd || 0,
+            monto_bs: mergedConfig.costoPorAptoDefectoBs || 0,
+            moneda: mergedConfig.monedaCuota || 'BS',
+            estado: 'activo',
+            fecha: getHoyVE(),
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', existingCfg.id)
+
+        if (existingCfg.updated_at) {
+          updQ = updQ.eq('updated_at', existingCfg.updated_at)
+        }
+
+        const { data: updatedRow, error: updErr } = await updQ.select('id, updated_at').maybeSingle()
+        if (updErr) throw updErr
+        if (!updatedRow && existingCfg.updated_at) {
+          console.warn(`[gasService] Conflicto optimista en config_gas_servicio, reintento ${attempt + 1}/${MAX_CFG_RETRIES}`)
+          continue
+        }
+        break
+      } else {
+        await supabase.from('casos_comunidad').insert({
+          id: generarUUID(),
+          tipo: TIPO_GAS_CONFIG,
+          titulo: 'Configuración Tanque Gas',
+          descripcion: JSON.stringify(mergedConfig),
+          monto_usd: mergedConfig.costoPorAptoDefectoUsd || 0,
+          monto_bs: mergedConfig.costoPorAptoDefectoBs || 0,
+          moneda: mergedConfig.monedaCuota || 'BS',
+          estado: 'activo',
+          fecha: getHoyVE(),
+          updated_at: new Date().toISOString()
+        })
+        break
+      }
+    }
 
     // 2. Guardar Llenados
     for (const l of data.llenados) {
@@ -973,7 +1015,7 @@ export async function guardarGasServicioData(
               monto_bs: p.montoBs || 0,
               moneda: p.moneda || 'BS',
               estado: p.estado,
-              fecha: p.fechaPago || new Date().toISOString().split('T')[0],
+              fecha: p.fechaPago || getHoyVE(),
               updated_at: new Date().toISOString()
             })
           }
@@ -1042,7 +1084,7 @@ export async function reiniciarDatosGasAFabrica(): Promise<{
       .limit(1)
       .maybeSingle()
 
-    const tasaBcv = Number(configEdificio?.tasa_bcv_actual || 859.06)
+    const tasaBcv = getTasaBcvNumerica(configEdificio?.tasa_bcv_actual)
     const limpia = generarDatosSemillaGas(aptosDb || [], tasaBcv)
 
     // Eliminar todas las filas relacionadas con el servicio de gas
@@ -1069,7 +1111,7 @@ export async function reiniciarDatosGasAFabrica(): Promise<{
       monto_bs: 0,
       moneda: 'BS',
       estado: 'activo',
-      fecha: new Date().toISOString().split('T')[0]
+      fecha: getHoyVE()
     })
 
     saveLocalGasCache(limpia)
@@ -1131,7 +1173,7 @@ export async function actualizarConfigTanque(
       monto_bs: actual.config.costoPorAptoDefectoBs || 0,
       moneda: actual.config.monedaCuota || 'BS',
       estado: 'activo',
-      fecha: new Date().toISOString().split('T')[0],
+      fecha: getHoyVE(),
       updated_at: new Date().toISOString()
     })
 
@@ -1303,7 +1345,7 @@ export async function togglePagoApartamento(
     const pagoRowId = existingRow ? existingRow.id : generarUUID()
 
     if (datosPagoActualizados.estado === 'pagado') {
-      const fechaPago = datosPagoActualizados.fechaPago || new Date().toISOString().split('T')[0]
+      const fechaPago = datosPagoActualizados.fechaPago || getHoyVE()
       detalleCompleto.fechaPago = fechaPago
       detalleCompleto.estado = 'pagado'
 
@@ -1486,7 +1528,7 @@ export async function crearOActualizarCuotaGas(
 ): Promise<{ success: boolean; data?: GasServicioData; error?: string | null; correosEnviados?: number; emailsEnviados?: number }> {
   try {
     const { data: actual } = await obtenerGasServicioData(true)
-    const tasa = params.tasaBcv || actual.config.tasaBcv || 859.06
+    const tasa = getTasaBcvNumerica(params.tasaBcv, actual.config.tasaBcv)
 
     const moneda = params.moneda || params.monedaPrincipal || 'BS'
     let costoBs = params.costoPorAptoBs || 0
@@ -1522,7 +1564,7 @@ export async function crearOActualizarCuotaGas(
       .order('numero')
 
     const aptos = aptosDb || []
-    const mesActual = new Date().toISOString().slice(0, 7)
+    const mesActual = getMesActualVE()
 
     // Buscar si ya hay jornada activa o crear una nueva con UUID
     const { data: jornadaRows } = await supabase
@@ -1539,7 +1581,7 @@ export async function crearOActualizarCuotaGas(
       titulo: params.titulo.trim() || (params.esEspecial ? 'Cuota Especial de Gas Comunal' : 'Recaudación de Gas'),
       esEspecial: !!params.esEspecial,
       mes: mesActual,
-      fechaInicio: new Date().toISOString().slice(0, 10),
+      fechaInicio: getHoyVE(),
       fechaLimite: params.fechaLimite || '',
       monedaPrincipal: moneda,
       costoPorAptoBs: costoBs,
@@ -1582,7 +1624,7 @@ export async function crearOActualizarCuotaGas(
       monto_bs: costoBs,
       moneda: moneda,
       estado: 'activo',
-      fecha: new Date().toISOString().split('T')[0],
+      fecha: getHoyVE(),
       updated_at: new Date().toISOString()
     })
 
@@ -1665,10 +1707,10 @@ export async function reportarPagoGasResidente(
 ): Promise<{ success: boolean; data?: GasServicioData; error?: string | null }> {
   try {
     const { data: actual } = await obtenerGasServicioData(true)
-    const tasa = params.tasaBcv || actual.config.tasaBcv || 859.06
+    const tasa = getTasaBcvNumerica(params.tasaBcv, actual.config.tasaBcv)
     const estadoDestino: EstadoPagoGas = params.estadoDestino || 'en_verificacion'
     const cleanNum = normalizarNumApto(params.apartamentoNumero) || params.apartamentoNumero
-    const fechaPago = params.fechaPago || new Date().toISOString().slice(0, 10)
+    const fechaPago = params.fechaPago || getHoyVE()
     const esDeudaAnterior = params.jornadaId === 'deuda-anterior-gas'
 
     if (esDeudaAnterior) {
@@ -1846,9 +1888,9 @@ export async function aprobarPagoGasDesdeReporte(params: {
 }): Promise<{ success: boolean; liquidadoBs: number; liquidadoUsd: number; error?: string | null }> {
   try {
     const { data: actual } = await obtenerGasServicioData(true)
-    const tasa = params.tasaBcv > 1 ? params.tasaBcv : (actual.config.tasaBcv || 859.06)
+    const tasa = getTasaBcvNumerica(params.tasaBcv > 1 ? params.tasaBcv : null, actual.config.tasaBcv)
     const cleanNum = normalizarNumApto(params.apartamentoNumero) || params.apartamentoNumero
-    const fechaPago = params.fechaPago || new Date().toISOString().slice(0, 10)
+    const fechaPago = params.fechaPago || getHoyVE()
 
     let budgetBs = params.meta?.gasMontoBs !== undefined && params.meta.gasMontoBs > 0
       ? Number(params.meta.gasMontoBs)
@@ -1890,8 +1932,9 @@ export async function aprobarPagoGasDesdeReporte(params: {
         let parsed: any = {}
         try { parsed = JSON.parse(existingRow.descripcion || '{}') } catch {}
 
-        // Idempotencia
-        if (parsed.pagoReportadoId === params.pagoReportadoId && existingRow.estado === 'pagado') {
+        // Idempotencia (evita doble aplicación total o parcial del mismo pagoReportadoId)
+        const pagosPrevIdsAnt: string[] = Array.isArray(parsed.pagosAplicadosIds) ? parsed.pagosAplicadosIds : []
+        if ((parsed.pagoReportadoId === params.pagoReportadoId && (existingRow.estado === 'pagado' || pagosPrevIdsAnt.length === 0)) || pagosPrevIdsAnt.includes(params.pagoReportadoId)) {
           continue
         }
 
@@ -1915,9 +1958,10 @@ export async function aprobarPagoGasDesdeReporte(params: {
             moneda,
             estado: 'pagado',
             pagoReportadoId: params.pagoReportadoId,
+            pagosAplicadosIds: Array.from(new Set([...(Array.isArray(parsed.pagosAplicadosIds) ? parsed.pagosAplicadosIds : []), params.pagoReportadoId])),
             referencia: params.referencia,
             fecha: fechaPago
-          }
+          } as any
           await supabase.from('casos_comunidad').upsert({
             id: rowId,
             tipo: TIPO_GAS_DEUDA_ANTERIOR,
@@ -1953,10 +1997,11 @@ export async function aprobarPagoGasDesdeReporte(params: {
             moneda,
             estado: (restBs <= 0.05 && restUsd <= 0.05) ? 'pagado' : 'pendiente',
             pagoReportadoId: params.pagoReportadoId,
+            pagosAplicadosIds: Array.from(new Set([...(Array.isArray(parsed.pagosAplicadosIds) ? parsed.pagosAplicadosIds : []), params.pagoReportadoId])),
             referencia: params.referencia,
             nota: `${parsed.nota || 'Deuda Anterior de Gas'} (Abono Ref: ${params.referencia})`,
             fecha: fechaPago
-          }
+          } as any
           await supabase.from('casos_comunidad').upsert({
             id: rowId,
             tipo: TIPO_GAS_DEUDA_ANTERIOR,
@@ -2013,8 +2058,9 @@ export async function aprobarPagoGasDesdeReporte(params: {
         try { parsed = JSON.parse(existingRow.descripcion) } catch {}
       }
 
-      // Idempotencia: si ya fue marcado pagado por este mismo pagoReportadoId, omitir
-      if (parsed.pagoReportadoId === params.pagoReportadoId && existingRow?.estado === 'pagado') {
+      // Idempotencia: si este pagoReportadoId ya se aplicó (total o parcialmente), omitir
+      const pagosPrevIdsJor: string[] = Array.isArray(parsed.pagosAplicadosIds) ? parsed.pagosAplicadosIds : []
+      if ((parsed.pagoReportadoId === params.pagoReportadoId && (existingRow?.estado === 'pagado' || pagosPrevIdsJor.length === 0)) || pagosPrevIdsJor.includes(params.pagoReportadoId)) {
         continue
       }
 
@@ -2040,6 +2086,7 @@ export async function aprobarPagoGasDesdeReporte(params: {
           montoBs: deudaBs,
           montoUsd: deudaUsd,
           pagoReportadoId: params.pagoReportadoId,
+          pagosAplicadosIds: Array.from(new Set([...(Array.isArray(parsed.pagosAplicadosIds) ? parsed.pagosAplicadosIds : []), params.pagoReportadoId])),
           metodoPago: (params.metodo as any) || parsed.metodoPago || 'transferencia',
           referencia: params.referencia,
           observaciones: `Pago aprobado en Reportes de Pago · Ref: ${params.referencia}`
@@ -2108,6 +2155,7 @@ export async function aprobarPagoGasDesdeReporte(params: {
           abonoBs: Number(((parsed.abonoBs || 0) + abonoBsNow).toFixed(2)),
           abonoUsd: Number(((parsed.abonoUsd || 0) + abonoUsdNow).toFixed(2)),
           pagoReportadoId: params.pagoReportadoId,
+          pagosAplicadosIds: Array.from(new Set([...(Array.isArray(parsed.pagosAplicadosIds) ? parsed.pagosAplicadosIds : []), params.pagoReportadoId])),
           metodoPago: (params.metodo as any) || parsed.metodoPago || 'transferencia',
           referencia: params.referencia,
           observaciones: `Abono aprobado (Bs. ${abonoBsNow.toLocaleString('es-VE', { minimumFractionDigits: 2 })}) · Ref: ${params.referencia}`
@@ -2278,7 +2326,7 @@ export async function guardarDeudaAnteriorGas(params: {
 }): Promise<{ success: boolean; data?: GasServicioData; error?: string | null }> {
   try {
     const { data: actual } = await obtenerGasServicioData(true)
-    const tasa = params.tasaBcv || actual.config.tasaBcv || 859.06
+    const tasa = getTasaBcvNumerica(params.tasaBcv, actual.config.tasaBcv)
     const moneda = params.moneda || 'BS'
     const monto = params.monto || 0
     const montoBs = moneda === 'BS' ? monto : Number((monto * tasa).toFixed(2))
@@ -2299,7 +2347,7 @@ export async function guardarDeudaAnteriorGas(params: {
       moneda,
       estado: params.estado || (monto > 0 ? 'pendiente' : 'pagado'),
       nota: params.nota?.trim() || 'Deuda Anterior de Gas',
-      fecha: new Date().toISOString().split('T')[0]
+      fecha: getHoyVE()
     }
 
     await supabase.from('casos_comunidad').upsert({
@@ -2427,7 +2475,7 @@ export async function guardarDeudaMesGas(params: {
 }): Promise<{ success: boolean; data?: GasServicioData; error?: string | null }> {
   try {
     const { data: actual } = await obtenerGasServicioData(true)
-    const tasa = params.tasaBcv || actual.config.tasaBcv || 859.06
+    const tasa = getTasaBcvNumerica(params.tasaBcv, actual.config.tasaBcv)
     const moneda = params.moneda || 'BS'
     const monto = params.monto || 0
     const montoBs = moneda === 'BS' ? monto : Number((monto * tasa).toFixed(2))
@@ -2479,7 +2527,7 @@ export async function guardarDeudaMesGas(params: {
       apartamentoNumero: cleanNum,
       propietario: params.propietario,
       estado: params.estado,
-      fechaPago: params.estado === 'pagado' ? (params.fechaPago || new Date().toISOString().split('T')[0]) : undefined,
+      fechaPago: params.estado === 'pagado' ? (params.fechaPago || getHoyVE()) : undefined,
       moneda,
       montoBs,
       montoUsd,
@@ -2558,7 +2606,7 @@ export async function guardarCuotaMesEdificioGas(params: {
 }): Promise<{ success: boolean; data?: GasServicioData; error?: string | null }> {
   try {
     const { data: actual } = await obtenerGasServicioData(true)
-    const tasa = params.tasaBcv || actual.config.tasaBcv || 859.06
+    const tasa = getTasaBcvNumerica(params.tasaBcv, actual.config.tasaBcv)
     const moneda = params.moneda || 'BS'
     const monto = params.monto || 0
     const montoBs = moneda === 'BS' ? monto : Number((monto * tasa).toFixed(2))
@@ -2607,7 +2655,7 @@ export async function guardarCuotaMesEdificioGas(params: {
     if (estado === 'pagado') {
       const { data: aptosDb } = await supabase.from('apartamentos').select('id, numero, propietario_nombre')
       const aptos = aptosDb || []
-      const hoy = new Date().toISOString().split('T')[0]
+      const hoy = getHoyVE()
       for (const a of aptos) {
         const cleanNum = String(a.numero).trim().replace(/^APTO\.?\s*/i, '')
         const pagoDetalle: DetallePagoAptoGas & { jornadaId: string } = {
@@ -2706,7 +2754,7 @@ export async function eliminarDeudaMesGas(
         apartamentoId: cleanKey,
         apartamentoNumero: cleanKey,
         estado: 'pagado',
-        fechaPago: new Date().toISOString().split('T')[0],
+        fechaPago: getHoyVE(),
         moneda: jornada.monedaPrincipal || 'BS',
         montoBs: 0,
         montoUsd: 0,
@@ -2794,7 +2842,7 @@ export async function eliminarTodasLasDeudasGasApartamento(
         apartamentoId: cleanKey,
         apartamentoNumero: cleanKey,
         estado: 'pagado',
-        fechaPago: new Date().toISOString().split('T')[0],
+        fechaPago: getHoyVE(),
         moneda: jornada.monedaPrincipal || 'BS',
         montoBs: 0,
         montoUsd: 0,

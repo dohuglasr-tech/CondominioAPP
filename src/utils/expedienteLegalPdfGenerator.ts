@@ -1,6 +1,7 @@
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { formatAlicuotaPct } from './alicuota'
+import { getHoyVE } from './fechaVE'
 
 export interface ExpedienteLegalAptoData {
   // Datos Institucionales del Edificio y Junta
@@ -686,6 +687,6 @@ export function generarExpedienteLegalPDF(datos: ExpedienteLegalAptoData): jsPDF
 export function descargarExpedienteLegalApto(datos: ExpedienteLegalAptoData): void {
   const doc = generarExpedienteLegalPDF(datos)
   const aptoSanitizado = datos.apartamento.numero.replace(/[^a-zA-Z0-9_-]/g, '_')
-  const fechaStr = new Date().toISOString().slice(0, 10)
+  const fechaStr = getHoyVE()
   doc.save(`Expediente_Legal_Apto_${aptoSanitizado}_${fechaStr}.pdf`)
 }

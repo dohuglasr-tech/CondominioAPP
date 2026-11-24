@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react'
+import { getHoyVE } from '../../../utils/fechaVE'
+import { getTasaBcvNumerica } from '../../../utils/tasaBcvHelper'
 import {
   obtenerMatrizCalendario,
   obtenerConfiguracionCalendario,
@@ -80,7 +82,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
   const [modalEstadoDeseado, setModalEstadoDeseado] = useState<'pagado' | 'pendiente'>('pagado')
   const [modalReferencia, setModalReferencia] = useState('')
   const [modalMetodo, setModalMetodo] = useState('Transferencia Bancaria')
-  const [modalFechaPago, setModalFechaPago] = useState(new Date().toISOString().slice(0, 10))
+  const [modalFechaPago, setModalFechaPago] = useState(getHoyVE())
   const [modalNota, setModalNota] = useState('')
   const [procesandoAccion, setProcesandoAccion] = useState(false)
 
@@ -111,7 +113,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
   const [nuevaColSeccion, setNuevaColSeccion] = useState<'naranja' | 'azul'>('naranja')
   const [nuevaColMoneda, setNuevaColMoneda] = useState<'USD' | 'BS'>('USD')
   const [nuevaColMontoDefecto, setNuevaColMontoDefecto] = useState<string>('')
-  const [nuevaColFechaEmision, setNuevaColFechaEmision] = useState<string>(new Date().toISOString().slice(0, 10))
+  const [nuevaColFechaEmision, setNuevaColFechaEmision] = useState<string>(getHoyVE())
   const [nuevaColFechaLimite, setNuevaColFechaLimite] = useState<string>('')
   const [nuevaColAplicarATodos, setNuevaColAplicarATodos] = useState(true)
   const [nuevaColAlcance, setNuevaColAlcance] = useState<'todos' | 'seleccionados' | 'manual'>('todos')
@@ -129,7 +131,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
   const [eventosCuotas, setEventosCuotas] = useState<EventoCalendarioCuota[]>([])
   const [calEventosAnio, setCalEventosAnio] = useState<number>(new Date().getFullYear())
   const [calEventosMes, setCalEventosMes] = useState<number>(new Date().getMonth() + 1)
-  const [diaEventoSeleccionado, setDiaEventoSeleccionado] = useState<string | null>(new Date().toISOString().slice(0, 10))
+  const [diaEventoSeleccionado, setDiaEventoSeleccionado] = useState<string | null>(getHoyVE())
 
   // Modal para Organizar / Mover Columnas entre Secciones
   const [modalOrganizarColumnasOpen, setModalOrganizarColumnasOpen] = useState(false)
@@ -325,7 +327,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
     const pagoInfo = recibo?.data_json?.pago_info
     const refGuardada = pagoInfo?.referencia || recibo?.data_json?.referencia || recibo?.data_json?.ultima_referencia || ''
     const metodoGuardado = pagoInfo?.metodo || 'Transferencia Bancaria'
-    const fechaGuardada = pagoInfo?.fecha_pago || new Date().toISOString().slice(0, 10)
+    const fechaGuardada = pagoInfo?.fecha_pago || getHoyVE()
     const notaGuardada = pagoInfo?.nota || recibo?.data_json?.nota || ''
 
     setModalApto(apto)
@@ -393,7 +395,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
             pago_info: nuevoEstado === 'pagado' ? {
               referencia: refExistente || 'CHECKLIST_RAPIDO',
               metodo: 'Modo Checklist Directo',
-              fecha_pago: new Date().toISOString().slice(0, 10)
+              fecha_pago: getHoyVE()
             } : mesesActualizados[col.key]!.data_json?.pago_info
           }
         }
@@ -444,7 +446,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
       estado: nuevoEstado,
       referencia: refExistente || 'CHECKLIST_RAPIDO',
       metodo: 'Modo Checklist Directo',
-      fechaPago: new Date().toISOString().slice(0, 10),
+      fechaPago: getHoyVE(),
       autorNombre: perfil?.nombre_completo || 'Administrador'
     })
     await cargarDatos(true)
@@ -461,7 +463,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
 
     setEnviandoEmailManual(true)
     try {
-      const tasaEmail = config?.tasa_bcv_actual && config.tasa_bcv_actual > 1 ? config.tasa_bcv_actual : 859.06
+      const tasaEmail = getTasaBcvNumerica(config?.tasa_bcv_actual)
       const montoFinal = parsearMontoFlexible(modalMontoEditado, modalMonedaEditada)
       const nuevoMontoBs = modalMonedaEditada === 'BS' ? montoFinal : Number((montoFinal * tasaEmail).toFixed(2))
       const nuevoMontoUsd = modalMonedaEditada === 'USD' ? montoFinal : Number((montoFinal / tasaEmail).toFixed(2))
@@ -477,7 +479,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
         montoUsd: nuevoMontoUsd,
         montoBs: nuevoMontoBs,
         referencia: refFinal,
-        fechaPago: modalFechaPago || new Date().toISOString().slice(0, 10),
+        fechaPago: modalFechaPago || getHoyVE(),
         bancoOrigen: modalMetodo || 'Transferencia Bancaria'
       })
 
@@ -512,7 +514,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
       const mesesActualizados = { ...f.meses }
       const prevRec = mesesActualizados[targetColKey]
 
-      const tasa = 859.06
+      const tasa = getTasaBcvNumerica(config?.tasa_bcv_actual)
       const nuevoMontoBs = monedaNueva === 'BS' ? montoFinal : Number((montoFinal * tasa).toFixed(2))
       const nuevoMontoUsd = monedaNueva === 'USD' ? montoFinal : Number((montoFinal / tasa).toFixed(2))
 
@@ -536,7 +538,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
           pago_info: estadoNuevo === 'pagado' ? {
             referencia: refFinal,
             metodo: modalMetodo || 'Transferencia Bancaria',
-            fecha_pago: modalFechaPago || new Date().toISOString().slice(0, 10),
+            fecha_pago: modalFechaPago || getHoyVE(),
             nota: modalNota || null
           } : null
         }
@@ -615,7 +617,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
         let emailMsg = ''
         if (estadoNuevo === 'pagado' && modalEnviarEmail && modalDestinatarioEmail.trim() && modalDestinatarioEmail.includes('@')) {
           try {
-            const tasaEmail = config?.tasa_bcv_actual && config.tasa_bcv_actual > 1 ? config.tasa_bcv_actual : 859.06
+            const tasaEmail = getTasaBcvNumerica(config?.tasa_bcv_actual)
             const nuevoMontoBs = monedaNueva === 'BS' ? montoFinal : Number((montoFinal * tasaEmail).toFixed(2))
             const nuevoMontoUsd = monedaNueva === 'USD' ? montoFinal : Number((montoFinal / tasaEmail).toFixed(2))
             const refFinal = modalReferencia.trim() || 'S/R'
@@ -630,7 +632,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
               montoUsd: nuevoMontoUsd,
               montoBs: nuevoMontoBs,
               referencia: refFinal,
-              fechaPago: modalFechaPago || new Date().toISOString().slice(0, 10),
+              fechaPago: modalFechaPago || getHoyVE(),
               bancoOrigen: modalMetodo || 'Transferencia Bancaria'
             })
 
@@ -763,7 +765,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
     setNuevaColSeccion(sec)
     setNuevaColMoneda(sec === 'azul' ? 'USD' : 'BS')
     setNuevaColMontoDefecto('')
-    setNuevaColFechaEmision(new Date().toISOString().slice(0, 10))
+    setNuevaColFechaEmision(getHoyVE())
     setNuevaColFechaLimite('')
     setNuevaColAplicarATodos(true)
     setNuevaColAlcance('todos')
@@ -1381,9 +1383,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
     setGenerandoPdf(true)
     try {
       const filtroAplicar = filtroDirecto || carteleraFiltro
-      const tasaVal = (resumen?.tasaBcvActual && Number(resumen.tasaBcvActual) > 1)
-        ? Number(resumen.tasaBcvActual)
-        : (config?.tasa_bcv_actual && Number(config.tasa_bcv_actual) > 1 ? Number(config.tasa_bcv_actual) : 859.06)
+      const tasaVal = getTasaBcvNumerica(resumen?.tasaBcvActual, config?.tasa_bcv_actual)
 
       const doc = generarCarteleraAscensorPDF({
         nombreEdificio: config?.nombre_edificio || 'Condominio',
@@ -2490,7 +2490,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
                   const hasLim = evs.some(e => e.tipoEvento === 'vencimiento')
                   const hasEm = evs.some(e => e.tipoEvento === 'emision')
                   const isSel = diaEventoSeleccionado === c.fechaIso
-                  const isHoy = c.fechaIso === new Date().toISOString().slice(0, 10)
+                  const isHoy = c.fechaIso === getHoyVE()
                   return (
                     <button
                       key={c.fechaIso}
@@ -5694,7 +5694,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
                   <div>
                     <strong style={{ color: '#fff' }}>Pago Móvil:</strong> {config?.pago_movil_banco || config?.banco || 'Bicentenario'}<br />
                     <strong style={{ color: '#fff' }}>Teléfono:</strong> {config?.pago_movil_telefono || 'No configurado'}<br />
-                    <strong style={{ color: '#fff' }}>Tasa BCV:</strong> Bs. {fmtBs(resumen?.tasaBcvActual || 859.06)}/USD
+                    <strong style={{ color: '#fff' }}>Tasa BCV:</strong> Bs. {fmtBs(getTasaBcvNumerica(resumen?.tasaBcvActual))}/USD
                   </div>
                 </div>
               </div>

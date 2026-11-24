@@ -3,6 +3,8 @@ import { appCache } from './cacheService'
 import { notificarApartamento } from './notificacionesService'
 import { despacharEmailPagoAprobado } from './emailService'
 import { registrarEventoAuditoria } from './auditoriaService'
+import { fetchAllSupabasePages } from './supabasePagination'
+import { getHoyVE } from '../utils/fechaVE'
 
 export type TasaRiesgoMora = 'azul' | 'amarillo' | 'rojo' | 'morado'
 
@@ -27,14 +29,10 @@ export interface DesgloseReciboItem {
 export type EstadoVigenciaCuota = 'programada' | 'vigente' | 'vencida'
 
 /**
- * Fecha local actual en formato YYYY-MM-DD (evita desfases de zona horaria UTC al caer la tarde).
+ * Fecha local actual de Venezuela (UTC-4) en formato YYYY-MM-DD (evita desfases nocturnos UTC).
  */
 export function obtenerFechaHoyLocalIso(): string {
-  const d = new Date()
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
+  return getHoyVE()
 }
 
 /**
@@ -704,7 +702,7 @@ export async function obtenerDeudaMoraApartamento(
           estado: todoSolventado ? 'solventado' : (cuotasEspecialesList.length > 0 || recs.length > 0 ? 'activo' : (moraRow?.estado || 'activo')),
           conceptos_detalle: moraRow?.conceptos_detalle || '',
           observaciones: moraRow?.observaciones || '',
-          fecha_corte: moraRow?.fecha_corte || new Date().toISOString().slice(0, 10),
+          fecha_corte: moraRow?.fecha_corte || getHoyVE(),
           origen: moraRow ? 'deuda_manual' : 'recibo_emitido',
           monto_manual_usd: Number(manualUsd.toFixed(2)),
           monto_manual_bs: Number(manualBs.toFixed(2)),
@@ -1115,7 +1113,7 @@ function construirListaDeudoresDesdeDatos(params: {
       estado: tieneDeuda ? 'activo' : 'solventado',
       conceptos_detalle: conceptosDetalleTexto,
       observaciones: moraRow?.observaciones || '',
-      fecha_corte: moraRow?.fecha_corte || new Date().toISOString().slice(0, 10),
+      fecha_corte: moraRow?.fecha_corte || getHoyVE(),
       origen: moraRow ? 'deuda_manual' : 'recibo_emitido',
       created_at: moraRow?.created_at || recs[0]?.emitido_at || new Date().toISOString(),
       updated_at: moraRow?.updated_at || new Date().toISOString(),
@@ -1166,10 +1164,13 @@ export async function obtenerDeudasMora(
           supabase
             .from('deudas_mora')
             .select('*, apartamentos(id, numero, piso, propietario_nombre, telefono_contacto)'),
-          supabase
-            .from('recibos_generados')
-            .select('id, apartamento_id, mes_facturado, total_usd, total_bs, estado, emitido_at, data_json')
-            .order('mes_facturado', { ascending: true }),
+          fetchAllSupabasePages((from, to) =>
+            supabase
+              .from('recibos_generados')
+              .select('id, apartamento_id, mes_facturado, total_usd, total_bs, estado, emitido_at, data_json')
+              .order('mes_facturado', { ascending: true })
+              .range(from, to)
+          ),
           supabase
             .from('apartamentos')
             .select('id, numero, piso, propietario_nombre, telefono_contacto')
@@ -1270,7 +1271,7 @@ export async function guardarDeudaMora(item: Partial<DeudaMoraItem>): Promise<{ 
       estado: item.estado || 'activo',
       conceptos_detalle: item.conceptos_detalle || '',
       observaciones: item.observaciones || '',
-      fecha_corte: item.fecha_corte || new Date().toISOString().slice(0, 10),
+      fecha_corte: item.fecha_corte || getHoyVE(),
       created_at: item.created_at || new Date().toISOString(),
       updated_at: new Date().toISOString()
     }

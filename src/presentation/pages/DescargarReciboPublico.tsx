@@ -10,6 +10,7 @@ import {
 } from '../../utils/reciboPdfGenerator'
 import { esReciboIndexado } from '../../utils/indexacionHelper'
 import { formatAlicuotaPct } from '../../utils/alicuota'
+import { getTasaBcvNumerica } from '../../utils/tasaBcvHelper'
 
 const MESES = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -477,7 +478,7 @@ export const DescargarReciboPublico: React.FC = () => {
                 Bs. {fmtBs(recibo.total_bs)}
               </div>
               <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>
-                Tasa Oficial BCV: <strong>{fmtBs(recibo.tasa_bcv || config?.tasa_bcv_actual || 859.06)} Bs/$</strong> · Alícuota: {formatAlicuotaPct(recibo.alicuota)}
+                Tasa Oficial BCV: <strong>{fmtBs(getTasaBcvNumerica(recibo.tasa_bcv, config?.tasa_bcv_actual))} Bs/$</strong> · Alícuota: {formatAlicuotaPct(recibo.alicuota)}
               </div>
             </div>
           </div>

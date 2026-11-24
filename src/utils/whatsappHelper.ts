@@ -1,3 +1,5 @@
+import { getTasaBcvNumerica } from './tasaBcvHelper'
+
 /**
  * Helper centralizado para generar mensajes profesionales y abrir WhatsApp
  * con 1 solo clic para recibos, cobranza de mora y constancias de pago.
@@ -108,7 +110,7 @@ export function generarMensajeCobroRecibo(datos: DatosCobroRecibo): string {
 
   const tasaBcvReal = (datos.tasaBcv && datos.tasaBcv > 1)
     ? datos.tasaBcv
-    : (datos.totalUsd > 0 && datos.totalBs > 0 ? parseFloat((datos.totalBs / datos.totalUsd).toFixed(4)) : 859.06)
+    : getTasaBcvNumerica(datos.totalUsd > 0 && datos.totalBs > 0 ? parseFloat((datos.totalBs / datos.totalUsd).toFixed(4)) : null)
 
   return `🏢 *${edificio.toUpperCase()}*
 📄 *AVISO DE COBRO — RECIBO DE CONDOMINIO*

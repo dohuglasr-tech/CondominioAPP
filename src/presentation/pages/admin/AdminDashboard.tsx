@@ -9,6 +9,9 @@ import { PublicarAvisoModal } from '../../components/PublicarAvisoModal'
 import { BotonLimpiarCache } from '../../components/BotonLimpiarCache'
 import { ModalRecibosSolventes, ReciboSolventeItem } from '../../components/ModalRecibosSolventes'
 import { ModalTimelineAprobaciones } from '../../components/ModalTimelineAprobaciones'
+import { fetchAllSupabasePages } from '../../../data/supabasePagination'
+import { getMesActualVE } from '../../../utils/fechaVE'
+import { getTasaBcvNumerica } from '../../../utils/tasaBcvHelper'
 
 const LIGHT_ACCENT_MAP: Record<string, string> = {
   '#f59e0b': '#b45309',
@@ -137,11 +140,8 @@ export const AdminDashboard: React.FC = () => {
   const navigate = useNavigate()
   const { rate, loading: loadingRate, error: errorRate } = useBcvRate()
 
-  // Determinar mes actual por defecto (YYYY-MM)
-  const hoy = new Date()
-  const anioActual = hoy.getFullYear()
-  const mesActualNum = String(hoy.getMonth() + 1).padStart(2, '0')
-  const mesActualKey = `${anioActual}-${mesActualNum}`
+  // Determinar mes actual por defecto (YYYY-MM) en hora de Venezuela (UTC-4)
+  const mesActualKey = getMesActualVE()
 
   const [mesSeleccionado, setMesSeleccionado] = useState<string>(mesActualKey)
   const [mesesDisponibles, setMesesDisponibles] = useState<string[]>([mesActualKey])
@@ -152,6 +152,7 @@ export const AdminDashboard: React.FC = () => {
   const [propuestasActivas, setPropuestasActivas] = useState(0)
   const [actividad, setActividad] = useState<ActividadItem[]>([])
   const [todosLosPagos, setTodosLosPagos] = useState<any[]>([])
+  const [serverKpis, setServerKpis] = useState<any>(null)
   const [gastosMesBs, setGastosMesBs] = useState<number>(0)
 
   // Ocultar/mostrar saldo
@@ -174,42 +175,62 @@ export const AdminDashboard: React.FC = () => {
   const cargarMetricas = useCallback(async (forceRefresh = false) => {
     try {
       const data = await appCache.fetch(
-        'admin_dashboard_metricas',
+        `admin_dashboard_metricas_${mesSeleccionado}`,
         async () => {
-          const [aptRes, pagosRes, recibosRes, gastosRes, falRes, propRes, moraRes] = await Promise.all([
+          const [kpiRpcRes, aptRes, pagosRes, recibosRes, gastosRes, falRes, propRes, moraRes] = await Promise.all([
+            supabase.rpc('get_admin_dashboard_kpis', { p_mes: mesSeleccionado }),
             supabase.from('apartamentos').select('id, numero, propietario_nombre').order('numero'),
-            supabase.from('pagos_reportados').select(`
-              id,
-              monto_bs,
-              referencia,
-              estado,
-              created_at,
-              fecha_pago,
-              notas_admin,
-              apartamento:apartamento_id ( numero ),
-              residente:reportado_por ( nombre_completo )
-            `).order('created_at', { ascending: false }),
-            supabase.from('recibos_generados').select('*').order('mes_facturado', { ascending: false }),
+            fetchAllSupabasePages((from, to) =>
+              supabase
+                .from('pagos_reportados')
+                .select(`
+                  id,
+                  apartamento_id,
+                  monto_bs,
+                  monto_usd,
+                  referencia,
+                  estado,
+                  created_at,
+                  fecha_pago,
+                  notas_admin,
+                  metodo,
+                  apartamento:apartamento_id ( numero ),
+                  residente:reportado_por ( nombre_completo )
+                `)
+                .order('created_at', { ascending: false })
+                .range(from, to)
+            ),
+            fetchAllSupabasePages((from, to) =>
+              supabase
+                .from('recibos_generados')
+                .select('id, apartamento_id, mes_facturado, total_usd, total_bs, tasa_bcv, estado, emitido_at, created_at, data_json')
+                .order('mes_facturado', { ascending: false })
+                .range(from, to)
+            ),
             supabase.from('gastos_comunes').select('monto_usd, monto_bs, mes_aplicacion'),
-            supabase.from('falencias').select('*', { count: 'exact', head: true }),
-            supabase.from('propuestas').select('*', { count: 'exact', head: true }).eq('estado', 'activa'),
-            supabase.from('deudas_mora').select('*').eq('estado', 'solventado')
+            supabase.from('falencias').select('id', { count: 'exact', head: true }),
+            supabase.from('propuestas').select('id', { count: 'exact', head: true }).eq('estado', 'activa'),
+            supabase.from('deudas_mora').select('id, apartamento_id, monto_usd, monto_bs, updated_at, created_at').eq('estado', 'solventado')
           ])
 
+          const kpis = !kpiRpcRes.error ? kpiRpcRes.data : null
+
           return {
+            kpis,
             aptList: aptRes.data || [],
-            aptCount: (aptRes.data || []).length,
+            aptCount: kpis?.total_apartamentos ?? (aptRes.data || []).length,
             pagosList: pagosRes.data || [],
             recibosList: recibosRes.data || [],
             gastosList: gastosRes.data || [],
-            falCount: falRes.count ?? 0,
-            propCount: propRes.count ?? 0,
+            falCount: kpis?.reportes_averias ?? falRes.count ?? 0,
+            propCount: kpis?.votaciones_activas ?? propRes.count ?? 0,
             moraSolventadaList: moraRes.data || []
           }
         },
         { ttlMs: 2 * 60 * 1000, tags: ['apartamentos', 'pagos', 'recibos', 'gastos', 'falencias', 'mora'], forceRefresh }
       )
 
+      setServerKpis(data.kpis || null)
       setApartamentosCount(data.aptCount)
       setReportesAbiertos(data.falCount)
       setPropuestasActivas(data.propCount)
@@ -217,7 +238,7 @@ export const AdminDashboard: React.FC = () => {
 
       // Gastos del mes
       let totalGastosBs = 0
-      const currentRate = rate && rate > 1 ? rate : 859.06
+      const currentRate = getTasaBcvNumerica(rate)
       if (data.gastosList) {
         data.gastosList.forEach((g: any) => {
           const mesGasto = (g.mes_aplicacion || '').substring(0, 7)
@@ -232,9 +253,12 @@ export const AdminDashboard: React.FC = () => {
       }
       setGastosMesBs(totalGastosBs)
 
-      // Meses disponibles
+      // Meses disponibles (combinando RPC sin tope de 1,000 filas + lista local)
       const mesesSet = new Set<string>()
       mesesSet.add(mesActualKey)
+      if (Array.isArray(data.kpis?.meses_disponibles)) {
+        data.kpis.meses_disponibles.forEach((m: string) => { if (m) mesesSet.add(m) })
+      }
       ;(data.recibosList || []).forEach((r: any) => {
         if (r.mes_facturado) {
           const mKey = r.mes_facturado.substring(0, 7)
@@ -473,7 +497,7 @@ export const AdminDashboard: React.FC = () => {
           mes_key: '2025',
           monto_usd: Number(m.monto_usd || 0),
           monto_bs: Number(m.monto_bs || 0),
-          tasa_bcv: 859.06,
+          tasa_bcv: getTasaBcvNumerica(rate),
           estado: 'solvente',
           referencia: 'CONCIL-MORA',
           metodo: 'Convenio / Solvencia Total',
@@ -525,23 +549,28 @@ export const AdminDashboard: React.FC = () => {
       }
     })
 
-    const totalUsdMes = rate > 0 ? recaudadoMesBs / rate : 0
-    const totalUsdHistorico = rate > 0 ? recaudadoTotalBs / rate : 0
+    const activeRate = getTasaBcvNumerica(rate)
+    const finalPendientes = serverKpis?.pagos_pendientes ?? pendientesTotal
+    const finalRecaudadoMesBs = serverKpis?.recaudado_mes_bs !== undefined ? Number(serverKpis.recaudado_mes_bs) : recaudadoMesBs
+    const finalRecaudadoTotalBs = serverKpis?.total_historico_bs !== undefined ? Number(serverKpis.total_historico_bs) : recaudadoTotalBs
+
+    const totalUsdMes = activeRate > 0 ? finalRecaudadoMesBs / activeRate : 0
+    const totalUsdHistorico = activeRate > 0 ? finalRecaudadoTotalBs / activeRate : 0
     const totalSolventes = listaSolventes.length
     const totalSolventesMes = listaSolventes.filter(i => i.mes_key === mesSeleccionado).length
 
     return {
-      pendientesTotal,
+      pendientesTotal: finalPendientes,
       aprobadosMes,
-      recaudadoMesBs,
+      recaudadoMesBs: finalRecaudadoMesBs,
       totalUsdMes,
       aprobadosTotal,
-      recaudadoTotalBs,
+      recaudadoTotalBs: finalRecaudadoTotalBs,
       totalUsdHistorico,
       totalSolventes,
       totalSolventesMes
     }
-  }, [todosLosPagos, listaSolventes, mesSeleccionado, rate])
+  }, [todosLosPagos, listaSolventes, mesSeleccionado, rate, serverKpis])
 
   useEffect(() => {
     cargarMetricas()
@@ -1656,7 +1685,7 @@ export const AdminDashboard: React.FC = () => {
         isOpen={modalSolventesOpen}
         onClose={() => setModalSolventesOpen(false)}
         items={listaSolventes}
-        tasaBcv={rate || 859.06}
+        tasaBcv={getTasaBcvNumerica(rate)}
       />
 
       {/* Modal de Historial y Timeline Completo de Aprobaciones */}
@@ -1664,7 +1693,7 @@ export const AdminDashboard: React.FC = () => {
         isOpen={modalTimelineOpen}
         onClose={() => setModalTimelineOpen(false)}
         items={actividad}
-        tasaBcv={rate || 859.06}
+        tasaBcv={getTasaBcvNumerica(rate)}
         onNavigateToRecibos={() => navigate('/admin/recibos')}
         onNavigateToCalendario={() => navigate('/admin/calendario-deudas')}
       />

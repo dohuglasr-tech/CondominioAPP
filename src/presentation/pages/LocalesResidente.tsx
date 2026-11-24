@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react'
 import { useAuth } from '../../application/contexts/AuthContext'
 import { LocalComercial, obtenerLocales, suscribirLocales } from '../../data/localesService'
 import { useBcvRate } from '../../data/useBcvRate'
+import { getTasaBcvNumerica } from '../../utils/tasaBcvHelper'
 
 const fmtBs = (n: number) => (n || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtUsd = (n: number) => (n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -63,14 +64,14 @@ export const LocalesResidente: React.FC = () => {
   const localesConDeuda = useMemo(() => locales.filter(l => (Number(l.deuda_actual_usd) || 0) > 0), [locales])
 
   const totalCuotaMensualUsd = useMemo(() => localesActivos.reduce((s, l) => s + (Number(l.monto_usd) || 0), 0), [localesActivos])
-  const totalCuotaMensualBs  = useMemo(() => localesActivos.reduce((s, l) => s + (Number(l.monto_bs) || (Number(l.monto_usd) * (tasaBcv || 859.06))), 0), [localesActivos, tasaBcv])
+  const totalCuotaMensualBs  = useMemo(() => localesActivos.reduce((s, l) => s + (Number(l.monto_bs) || (Number(l.monto_usd) * getTasaBcvNumerica(tasaBcv))), 0), [localesActivos, tasaBcv])
 
   const totalDeudaEdificioLocalesUsd = useMemo(() => locales.reduce((s, l) => s + (Number(l.deuda_actual_usd) || 0), 0), [locales])
-  const totalDeudaEdificioLocalesBs  = useMemo(() => locales.reduce((s, l) => s + (Number(l.deuda_actual_bs) || (Number(l.deuda_actual_usd) * (tasaBcv || 859.06))), 0), [locales, tasaBcv])
+  const totalDeudaEdificioLocalesBs  = useMemo(() => locales.reduce((s, l) => s + (Number(l.deuda_actual_bs) || (Number(l.deuda_actual_usd) * getTasaBcvNumerica(tasaBcv))), 0), [locales, tasaBcv])
 
   // Total deuda del residente en sus locales asignados
   const totalDeudaMisLocalesUsd = misLocales.reduce((acc, l) => acc + (Number(l.deuda_actual_usd) || 0), 0)
-  const totalDeudaMisLocalesBs  = misLocales.reduce((acc, l) => acc + (Number(l.deuda_actual_bs) || (Number(l.deuda_actual_usd) * (tasaBcv || 859.06))), 0)
+  const totalDeudaMisLocalesBs  = misLocales.reduce((acc, l) => acc + (Number(l.deuda_actual_bs) || (Number(l.deuda_actual_usd) * getTasaBcvNumerica(tasaBcv))), 0)
 
   // Locales filtrados para la vista de lectura general
   const localesFiltrados = useMemo(() => {
@@ -291,7 +292,7 @@ export const LocalesResidente: React.FC = () => {
                 {misLocales.map(loc => {
                   const tieneDeuda = (Number(loc.deuda_actual_usd) || 0) > 0
                   const garantiaUsd = Number(loc.deposito_garantia_usd) || 0
-                  const garantiaBs  = garantiaUsd * (tasaBcv || 859.06)
+                  const garantiaBs  = garantiaUsd * getTasaBcvNumerica(tasaBcv)
 
                   return (
                     <div
@@ -351,7 +352,7 @@ export const LocalesResidente: React.FC = () => {
                               ${fmtUsd(loc.monto_usd)} USD
                             </div>
                             <div style={{ color: '#94a3b8', fontSize: '11px' }}>
-                              Bs. {fmtBs(loc.monto_bs || (loc.monto_usd * (tasaBcv || 859.06)))}
+                              Bs. {fmtBs(loc.monto_bs || (loc.monto_usd * getTasaBcvNumerica(tasaBcv)))}
                             </div>
                             <span style={{ fontSize: '10px', color: '#64748b', fontWeight: 600, display: 'block', marginTop: '2px', textTransform: 'capitalize' }}>
                               Cuota {loc.tipo_cuota}
@@ -388,7 +389,7 @@ export const LocalesResidente: React.FC = () => {
                               {tieneDeuda ? `$${fmtUsd(loc.deuda_actual_usd)} USD` : '$0.00'}
                             </div>
                             <div style={{ color: tieneDeuda ? '#fca5a5' : '#86efac', fontSize: '11px' }}>
-                              {tieneDeuda ? `Bs. ${fmtBs(loc.deuda_actual_bs || (loc.deuda_actual_usd * (tasaBcv || 859.06)))}` : 'Al día'}
+                              {tieneDeuda ? `Bs. ${fmtBs(loc.deuda_actual_bs || (loc.deuda_actual_usd * getTasaBcvNumerica(tasaBcv)))}` : 'Al día'}
                             </div>
                             <span style={{ fontSize: '10px', color: tieneDeuda ? '#ef4444' : '#4ade80', fontWeight: 700, display: 'block', marginTop: '2px' }}>
                               {tieneDeuda ? 'Cargado en Recibo' : 'Sin pendientes'}
@@ -660,7 +661,7 @@ export const LocalesResidente: React.FC = () => {
                               ${fmtUsd(loc.monto_usd)} USD
                             </div>
                             <div style={{ color: '#94a3b8', fontSize: '11px' }}>
-                              Bs. {fmtBs(loc.monto_bs || (loc.monto_usd * (tasaBcv || 859.06)))}
+                              Bs. {fmtBs(loc.monto_bs || (loc.monto_usd * getTasaBcvNumerica(tasaBcv)))}
                             </div>
                           </td>
 
@@ -816,7 +817,7 @@ export const LocalesResidente: React.FC = () => {
                   ${fmtUsd(localSeleccionado.monto_usd)} USD
                 </div>
                 <div style={{ color: '#94a3b8', fontSize: '11px' }}>
-                  Bs. {fmtBs(localSeleccionado.monto_bs || (localSeleccionado.monto_usd * (tasaBcv || 859.06)))}
+                  Bs. {fmtBs(localSeleccionado.monto_bs || (localSeleccionado.monto_usd * getTasaBcvNumerica(tasaBcv)))}
                 </div>
               </div>
 
@@ -828,7 +829,7 @@ export const LocalesResidente: React.FC = () => {
                 </div>
                 <div style={{ color: '#fdba74', fontSize: '11px' }}>
                   {(localSeleccionado.deposito_garantia_usd || 0) > 0
-                    ? `Bs. ${fmtBs((localSeleccionado.deposito_garantia_usd || 0) * (tasaBcv || 859.06))}`
+                    ? `Bs. ${fmtBs((localSeleccionado.deposito_garantia_usd || 0) * getTasaBcvNumerica(tasaBcv))}`
                     : 'Sin depósito'}
                 </div>
               </div>
@@ -848,7 +849,7 @@ export const LocalesResidente: React.FC = () => {
                 </div>
                 <div style={{ color: Number(localSeleccionado.deuda_actual_usd) > 0 ? '#fca5a5' : '#86efac', fontSize: '11px' }}>
                   {Number(localSeleccionado.deuda_actual_usd) > 0
-                    ? `Bs. ${fmtBs(localSeleccionado.deuda_actual_bs || ((localSeleccionado.deuda_actual_usd || 0) * (tasaBcv || 859.06)))}`
+                    ? `Bs. ${fmtBs(localSeleccionado.deuda_actual_bs || ((localSeleccionado.deuda_actual_usd || 0) * getTasaBcvNumerica(tasaBcv)))}`
                     : 'Sin saldo deudor'}
                 </div>
               </div>
