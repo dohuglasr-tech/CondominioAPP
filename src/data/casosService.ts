@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { getHoyVE } from '../utils/fechaVE'
+import { getErrorMessage } from '../utils/logger'
 
 export type TipoCaso = 'multa' | 'acuerdo_pago' | 'alquiler_local' | 'asignacion' | 'ingreso_externo'
 export type EstadoCaso = 'abierto' | 'en_proceso' | 'resuelto' | 'cancelado'
@@ -257,7 +258,7 @@ export async function obtenerCasos(): Promise<{ data: CasoComunidad[]; error: st
 
     saveLocalCache(mapped)
     return { data: mapped, error: null, fromDb: true }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.warn('[casosService] Excepción obteniendo casos:', err)
     return { data: getLocalCache(), error: null, fromDb: false }
   }
@@ -330,8 +331,8 @@ export async function guardarCaso(caso: Partial<CasoComunidad>): Promise<{ data:
     }
 
     return { data: nuevoCaso, error: null }
-  } catch (err: any) {
-    return { data: null, error: err.message || 'Error guardando caso' }
+  } catch (err: unknown) {
+    return { data: null, error: getErrorMessage(err) || 'Error guardando caso' }
   }
 }
 
@@ -344,7 +345,7 @@ export async function eliminarCaso(id: string): Promise<{ success: boolean; erro
       await supabase.from('casos_comunidad').delete().eq('id', id)
     }
     return { success: true, error: null }
-  } catch (err: any) {
-    return { success: false, error: err.message || 'Error eliminando caso' }
+  } catch (err: unknown) {
+    return { success: false, error: getErrorMessage(err) || 'Error eliminando caso' }
   }
 }

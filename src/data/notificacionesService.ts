@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { logger } from '../utils/logger'
 
 // ── Tipos ────────────────────────────────────────────────────────────────────
 export type TipoNotificacion =
@@ -162,7 +163,7 @@ export function mostrarNotificacionLocal(titulo: string, cuerpo: string, link = 
 
     // Auto-cerrar tras 6 segundos
     setTimeout(() => {
-      try { n.close() } catch {}
+      try { n.close() } catch (err) { logger.debug('notificacionesService', 'Fallback controlado', err) }
     }, 6000)
   } catch (e) {
     console.warn('[Notificaciones] No se pudo mostrar notificación nativa:', e)

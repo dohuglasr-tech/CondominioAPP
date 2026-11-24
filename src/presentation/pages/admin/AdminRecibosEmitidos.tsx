@@ -23,6 +23,8 @@ import { generarInformeGestionPDF, DatosInformeGestion } from '../../../utils/in
 import { esReciboIndexado } from '../../../utils/indexacionHelper'
 import { fetchAllSupabasePages } from '../../../data/supabasePagination'
 import { getTasaBcvNumerica } from '../../../utils/tasaBcvHelper'
+import { ReciboDetalleModal } from './recibos-emitidos/ReciboDetalleModal'
+import { ReciboConfirmModals } from './recibos-emitidos/ReciboConfirmModals'
 
 interface ReciboEmitido {
   id: string
@@ -1132,7 +1134,7 @@ export const AdminRecibosEmitidos: React.FC = () => {
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(8)
     doc.setTextColor(...cAccent)
-    doc.text('JUNTA DE CONDOMINIO OCUTUY 5 · INFORME DE COBRANZA Y CARTERA', 14, 12)
+    doc.text(`${(config?.nombre_edificio || 'JUNTA DE CONDOMINIO').toUpperCase()} · INFORME DE COBRANZA Y CARTERA`, 14, 12)
 
     doc.setFontSize(15)
     doc.setTextColor(255, 255, 255)
@@ -2458,540 +2460,52 @@ export const AdminRecibosEmitidos: React.FC = () => {
         </>
       )}
 
-      {/* ── MODAL: DETALLE DEL RECIBO EMITIDO ── */}
-      {reciboModal && (
-        <div style={{
-          position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(4px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '20px'
-        }}>
-          <div style={{
-            backgroundColor: '#141414', border: '1px solid #2a2a2a', borderRadius: '16px',
-            maxWidth: '650px', width: '100%', maxHeight: '90vh', overflowY: 'auto', padding: '24px',
-            boxShadow: '0 25px 60px rgba(0,0,0,0.8)'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid #222', paddingBottom: '14px', marginBottom: '16px' }}>
-              <div>
-                <span style={{ color: 'var(--color-accent, #f97316)', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase' }}>
-                  Detalle del Recibo Emitido
-                </span>
-                <h2 style={{ fontSize: '20px', fontWeight: 800, margin: '2px 0 0' }}>
-                  Apartamento {reciboModal.apartamento?.numero} — {mesLabelActivo}
-                </h2>
-                <p style={{ color: '#888', fontSize: '12px', margin: '2px 0 0' }}>
-                  Propietario: {reciboModal.apartamento?.propietario_nombre || 'Sin registrar'} · Alícuota: {formatAlicuotaPct(reciboModal.alicuota)}
-                </p>
-              </div>
-              <button
-                onClick={() => setReciboModal(null)}
-                style={{ background: 'transparent', border: 'none', color: '#888', fontSize: '20px', cursor: 'pointer' }}
-              >
-                ✕
-              </button>
-            </div>
+      <ReciboDetalleModal
+        reciboModal={reciboModal}
+        mesLabelActivo={mesLabelActivo}
+        enviandoEmailId={enviandoEmailId}
+        onClose={() => setReciboModal(null)}
+        onCambiarEstado={cambiarEstadoRecibo}
+        onSolicitarEliminar={(r) => {
+          setReciboParaEliminar(r)
+          setMotivoEliminarRecibo('')
+          setModalEliminarReciboOpen(true)
+        }}
+        onWhatsApp={handleWhatsAppRecibo}
+        onEmail={handleEmailRecibo}
+        onDescargarPdf={descargarPDFReciboEmitido}
+      />
 
-            {/* Totalizadores en Modal */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '16px' }}>
-              <div style={{ backgroundColor: '#0a0a0a', padding: '10px 14px', borderRadius: '10px', border: '1px solid #1e1e1e' }}>
-                <div style={{ color: '#888', fontSize: '10px', textTransform: 'uppercase', fontWeight: 600 }}>Total USD a Pagar</div>
-                <div style={{ color: 'var(--color-accent, #f97316)', fontSize: '20px', fontWeight: 900 }}>$ {fmtUsd(reciboModal.total_usd)}</div>
-              </div>
-              <div style={{ backgroundColor: '#0a0a0a', padding: '10px 14px', borderRadius: '10px', border: '1px solid #1e1e1e' }}>
-                <div style={{ color: '#888', fontSize: '10px', textTransform: 'uppercase', fontWeight: 600 }}>Total en Bolívares</div>
-                <div style={{ color: '#10b981', fontSize: '20px', fontWeight: 900 }}>Bs. {fmtBs(reciboModal.total_bs)}</div>
-              </div>
-            </div>
-
-            {/* Desglose de Gastos */}
-            <div style={{ marginBottom: '16px' }}>
-              <h4 style={{ fontSize: '12px', color: '#cbd5e1', fontWeight: 700, margin: '0 0 8px' }}>
-                Desglose de Gastos Comunes
-              </h4>
-              <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid #1e1e1e', borderRadius: '8px' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
-                  <tbody>
-                    {(reciboModal.data_json?.gastos || []).map((g, idx) => (
-                      <tr key={idx} style={{ borderBottom: '1px solid #1a1a1a', backgroundColor: idx % 2 === 0 ? '#0f0f0f' : '#0a0a0a' }}>
-                        <td style={{ padding: '6px 10px', color: '#ccc' }}>{g.descripcion}</td>
-                        <td style={{ padding: '6px 10px', textAlign: 'right', color: '#10b981' }}>{fmtBs(g.monto_bs)} Bs</td>
-                        <td style={{ padding: '6px 10px', textAlign: 'right', color: '#fff', fontWeight: 600 }}>$ {fmtUsd(g.monto_usd)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Notas del Recibo */}
-            {reciboModal.data_json?.notas_residentes && (
-              <div style={{ marginBottom: '18px', backgroundColor: '#0a0a0a', border: '1px solid #1e1e1e', borderRadius: '10px', padding: '12px' }}>
-                <div style={{ color: 'var(--color-accent, #f97316)', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px' }}>
-                  Notas para los Residentes emitidas en este recibo:
-                </div>
-                <div style={{ color: '#94a3b8', fontSize: '11px', whiteSpace: 'pre-line', lineHeight: '1.4' }}>
-                  {reciboModal.data_json.notas_residentes}
-                </div>
-              </div>
-            )}
-
-            {/* Botones de acción */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #222', paddingTop: '14px', flexWrap: 'wrap', gap: '10px' }}>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <button
-                  onClick={() => cambiarEstadoRecibo(reciboModal)}
-                  style={{
-                    backgroundColor: reciboModal.estado === 'pagado' ? '#ef444420' : '#10b98120',
-                    color: reciboModal.estado === 'pagado' ? '#ef4444' : '#10b981',
-                    border: reciboModal.estado === 'pagado' ? '1px solid #ef444440' : '1px solid #10b98140',
-                    padding: '8px 14px', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '12px'
-                  }}
-                >
-                  {reciboModal.estado === 'pagado' ? 'Marcar como Pendiente' : 'Marcar como Pagado'}
-                </button>
-
-                <button
-                  onClick={() => {
-                    setReciboParaEliminar(reciboModal)
-                    setMotivoEliminarRecibo('')
-                    setModalEliminarReciboOpen(true)
-                  }}
-                  style={{
-                    backgroundColor: 'rgba(239, 68, 68, 0.15)',
-                    color: '#ef4444',
-                    border: '1px solid rgba(239, 68, 68, 0.35)',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    cursor: 'pointer',
-                    fontWeight: 700,
-                    fontSize: '12px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px'
-                  }}
-                  title="Retirar deuda y anular este recibo"
-                >
-                  <span>🗑️</span> Retirar Deuda
-                </button>
-              </div>
-
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <button
-                  onClick={() => setReciboModal(null)}
-                  style={{
-                    backgroundColor: '#1f2937', color: '#ccc', border: '1px solid #374151',
-                    padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: 600
-                  }}
-                >
-                  Cerrar
-                </button>
-                <button
-                  onClick={() => handleWhatsAppRecibo(reciboModal)}
-                  style={{
-                    backgroundColor: '#16a34a', color: '#fff', border: 'none',
-                    padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: 700,
-                    display: 'flex', alignItems: 'center', gap: '6px'
-                  }}
-                  title="Enviar por WhatsApp con 1 clic"
-                >
-                  <span>📲</span> {reciboModal.estado === 'pagado' ? 'Solvencia WhatsApp' : 'Enviar por WhatsApp'}
-                </button>
-                <button
-                  onClick={() => handleEmailRecibo(reciboModal)}
-                  disabled={enviandoEmailId === reciboModal.id}
-                  style={{
-                    backgroundColor: '#2563eb', color: '#fff', border: 'none',
-                    padding: '8px 16px', borderRadius: '8px', cursor: enviandoEmailId === reciboModal.id ? 'wait' : 'pointer',
-                    fontSize: '12px', fontWeight: 700,
-                    display: 'flex', alignItems: 'center', gap: '6px'
-                  }}
-                  title="Enviar por correo electrónico al residente"
-                >
-                  <span>📧</span> {enviandoEmailId === reciboModal.id ? 'Enviando...' : (reciboModal.estado === 'pagado' ? 'Enviar Solvencia Email' : 'Enviar por Correo')}
-                </button>
-                <button
-                  onClick={() => descargarPDFReciboEmitido(reciboModal)}
-                  style={{
-                    backgroundColor: 'var(--color-accent, #f97316)', color: '#fff', border: 'none',
-                    padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: 700,
-                    display: 'flex', alignItems: 'center', gap: '6px'
-                  }}
-                >
-                  <span>📥</span> Descargar PDF
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── MODAL DE CONFIRMACIÓN 1: ELIMINAR EMISIÓN COMPLETA DEL MES ── */}
-      {modalEliminarEmisionOpen && (
-        <div style={{
-          position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(6px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: '20px'
-        }}>
-          <div style={{
-            backgroundColor: '#111318', border: '2px solid #ef4444', borderRadius: '20px',
-            maxWidth: '540px', width: '100%', padding: '26px', boxShadow: '0 25px 60px rgba(239, 68, 68, 0.25)'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
-              <div style={{
-                width: '46px', height: '46px', borderRadius: '12px',
-                backgroundColor: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.35)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px'
-              }}>
-                🗑️
-              </div>
-              <div>
-                <h3 style={{ color: '#fff', fontSize: '18px', fontWeight: 800, margin: 0 }}>
-                  Retirar Deuda y Eliminar Emisión Completa
-                </h3>
-                <span style={{ color: '#ef4444', fontSize: '12px', fontWeight: 700 }}>
-                  Mes a anular: {mesLabelActivo}
-                </span>
-              </div>
-            </div>
-
-            <p style={{ color: '#cbd5e1', fontSize: '13px', lineHeight: 1.45, margin: '0 0 16px' }}>
-              Esta acción eliminará <strong>en su totalidad la emisión de recibos de {mesLabelActivo}</strong> para todos los <strong>{recibos.length} apartamentos</strong>, retirando una deuda total de <strong style={{ color: 'var(--color-accent, #f97316)' }}>$ {fmtUsd(stats.totalFacturadoUsd)} USD (Bs. {fmtBs(stats.totalFacturadoBs)})</strong>.
-            </p>
-
-            <div style={{
-              backgroundColor: 'rgba(234, 179, 8, 0.1)',
-              border: '1px solid rgba(234, 179, 8, 0.3)',
-              borderRadius: '12px',
-              padding: '12px 14px',
-              marginBottom: '16px',
-              fontSize: '12px',
-              color: '#fef08a',
-              lineHeight: 1.4
-            }}>
-              🛡️ <strong>REGISTRO INMUTABLE DE AUDITORÍA:</strong><br />
-              Para garantizar la transparencia ante la comunidad y los auditores, este movimiento quedará grabado permanentemente con tu nombre, sello de tiempo, monto exacto y el motivo que especifiques.
-            </div>
-
-            {/* Motivo obligatorio */}
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', color: '#94a3b8', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', marginBottom: '6px' }}>
-                Motivo / Justificación obligatoria de la anulación:
-              </label>
-              <textarea
-                value={motivoEliminarEmision}
-                onChange={e => setMotivoEliminarEmision(e.target.value)}
-                placeholder="Ej: Se detectó error en la alícuota de gas común. Se anula la emisión para corregir los gastos y reemitir nuevamente."
-                rows={3}
-                style={{
-                  width: '100%',
-                  backgroundColor: '#090a0d',
-                  border: '1px solid #334155',
-                  borderRadius: '10px',
-                  padding: '10px 12px',
-                  color: '#fff',
-                  fontSize: '12.5px',
-                  outline: 'none',
-                  boxSizing: 'border-box'
-                }}
-              />
-            </div>
-
-            {/* Confirmación escribiendo ELIMINAR */}
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', color: '#ef4444', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', marginBottom: '6px' }}>
-                Escribe la palabra "ELIMINAR" para confirmar:
-              </label>
-              <input
-                type="text"
-                value={palabraConfirmacion}
-                onChange={e => setPalabraConfirmacion(e.target.value)}
-                placeholder="ELIMINAR"
-                style={{
-                  width: '100%',
-                  backgroundColor: '#090a0d',
-                  border: '1px solid #ef444450',
-                  borderRadius: '10px',
-                  padding: '10px 12px',
-                  color: '#fff',
-                  fontSize: '13px',
-                  fontWeight: 800,
-                  letterSpacing: '1px',
-                  outline: 'none',
-                  boxSizing: 'border-box'
-                }}
-              />
-            </div>
-
-            {/* Botones */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-              <button
-                onClick={() => setModalEliminarEmisionOpen(false)}
-                disabled={eliminandoEmision}
-                style={{
-                  backgroundColor: '#1f2937', color: '#94a3b8', border: '1px solid #374151',
-                  padding: '10px 18px', borderRadius: '10px', fontSize: '13px', fontWeight: 600, cursor: 'pointer'
-                }}
-              >
-                Cancelar
-              </button>
-
-              <button
-                onClick={handleConfirmarEliminarEmision}
-                disabled={eliminandoEmision || palabraConfirmacion.trim().toUpperCase() !== 'ELIMINAR' || motivoEliminarEmision.trim().length < 8}
-                style={{
-                  backgroundColor: (palabraConfirmacion.trim().toUpperCase() === 'ELIMINAR' && motivoEliminarEmision.trim().length >= 8) ? '#dc2626' : '#451a1a',
-                  color: (palabraConfirmacion.trim().toUpperCase() === 'ELIMINAR' && motivoEliminarEmision.trim().length >= 8) ? '#fff' : '#888',
-                  border: 'none',
-                  padding: '10px 20px',
-                  borderRadius: '10px',
-                  fontSize: '13px',
-                  fontWeight: 800,
-                  cursor: (palabraConfirmacion.trim().toUpperCase() === 'ELIMINAR' && motivoEliminarEmision.trim().length >= 8) ? 'pointer' : 'not-allowed',
-                  boxShadow: '0 4px 14px rgba(220, 38, 38, 0.4)'
-                }}
-              >
-                {eliminandoEmision ? 'Eliminando y auditando...' : 'Confirmar y Retirar Emisión'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── MODAL DE CONFIRMACIÓN 2: RETIRAR DEUDA DE APTO INDIVIDUAL ── */}
-      {modalEliminarReciboOpen && reciboParaEliminar && (
-        <div style={{
-          position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(6px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: '20px'
-        }}>
-          <div style={{
-            backgroundColor: '#111318', border: '2px solid var(--color-accent, #f97316)', borderRadius: '20px',
-            maxWidth: '500px', width: '100%', padding: '24px', boxShadow: 'var(--color-brand-shadow, 0 25px 60px rgba(249, 115, 22, 0.25))'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
-              <div style={{
-                width: '44px', height: '44px', borderRadius: '12px',
-                backgroundColor: 'var(--color-accent-light, rgba(249, 115, 22, 0.15))', border: '1px solid var(--color-accent-glow, rgba(249, 115, 22, 0.35))',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px'
-              }}>
-                📄
-              </div>
-              <div>
-                <h3 style={{ color: '#fff', fontSize: '18px', fontWeight: 800, margin: 0 }}>
-                  Retirar Deuda - Apto {reciboParaEliminar.apartamento?.numero}
-                </h3>
-                <span style={{ color: 'var(--color-accent, #f97316)', fontSize: '12px', fontWeight: 700 }}>
-                  Mes: {mesLabelActivo}
-                </span>
-              </div>
-            </div>
-
-            <p style={{ color: '#cbd5e1', fontSize: '13px', lineHeight: 1.45, margin: '0 0 14px' }}>
-              Se anulará el recibo emitido y se retirará la deuda del <strong>Apartamento {reciboParaEliminar.apartamento?.numero}</strong> por un monto de <strong style={{ color: 'var(--color-accent, #f97316)' }}>$ {fmtUsd(reciboParaEliminar.total_usd)} USD (Bs. {fmtBs(reciboParaEliminar.total_bs)})</strong>. El apartamento quedará sin deuda para este mes.
-            </p>
-
-            <div style={{
-              backgroundColor: 'var(--color-accent-light, rgba(249, 115, 22, 0.08))',
-              border: '1px solid var(--color-accent-glow, rgba(249, 115, 22, 0.25))',
-              borderRadius: '10px',
-              padding: '10px 12px',
-              marginBottom: '16px',
-              fontSize: '11.5px',
-              color: '#fed7aa'
-            }}>
-              🛡️ <strong>REGISTRO EN AUDITORÍA:</strong> Este retiro quedará guardado para los arqueos del edificio.
-            </div>
-
-            {/* Motivo obligatorio */}
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', color: '#94a3b8', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', marginBottom: '6px' }}>
-                Motivo del retiro de deuda:
-              </label>
-              <textarea
-                value={motivoEliminarRecibo}
-                onChange={e => setMotivoEliminarRecibo(e.target.value)}
-                placeholder="Ej: Cobro indebido corregido / Pago reportado por adelantado verificado / Condonación autorizada por la junta."
-                rows={2}
-                style={{
-                  width: '100%',
-                  backgroundColor: '#090a0d',
-                  border: '1px solid #334155',
-                  borderRadius: '10px',
-                  padding: '9px 12px',
-                  color: '#fff',
-                  fontSize: '12.5px',
-                  outline: 'none',
-                  boxSizing: 'border-box'
-                }}
-              />
-            </div>
-
-            {/* Botones */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-              <button
-                onClick={() => {
-                  setModalEliminarReciboOpen(false)
-                  setReciboParaEliminar(null)
-                }}
-                disabled={eliminandoRecibo}
-                style={{
-                  backgroundColor: '#1f2937', color: '#94a3b8', border: '1px solid #374151',
-                  padding: '9px 16px', borderRadius: '10px', fontSize: '13px', fontWeight: 600, cursor: 'pointer'
-                }}
-              >
-                Cancelar
-              </button>
-
-              <button
-                onClick={handleConfirmarEliminarRecibo}
-                disabled={eliminandoRecibo || motivoEliminarRecibo.trim().length < 6}
-                style={{
-                  backgroundColor: motivoEliminarRecibo.trim().length >= 6 ? 'var(--color-accent-hover, #ea580c)' : '#451a1a',
-                  color: motivoEliminarRecibo.trim().length >= 6 ? '#fff' : '#888',
-                  border: 'none',
-                  padding: '9px 18px',
-                  borderRadius: '10px',
-                  fontSize: '13px',
-                  fontWeight: 800,
-                  cursor: motivoEliminarRecibo.trim().length >= 6 ? 'pointer' : 'not-allowed'
-                }}
-              >
-                {eliminandoRecibo ? 'Retirando...' : 'Confirmar y Retirar Deuda'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── MODAL DE CONFIRMACIÓN 3: MARCAR TODOS COMO PAGADOS (HISTÓRICO) ── */}
-      {modalBulkPagadosOpen && (
-        <div style={{
-          position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(6px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: '20px'
-        }}>
-          <div style={{
-            backgroundColor: '#111318', border: '2px solid #10b981', borderRadius: '20px',
-            maxWidth: '520px', width: '100%', padding: '26px', boxShadow: '0 25px 60px rgba(16, 185, 129, 0.25)'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
-              <div style={{
-                width: '46px', height: '46px', borderRadius: '12px',
-                backgroundColor: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.35)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px'
-              }}>
-                🏛️
-              </div>
-              <div>
-                <h3 style={{ color: '#fff', fontSize: '18px', fontWeight: 800, margin: 0 }}>
-                  Marcar Todos como Pagados
-                </h3>
-                <span style={{ color: '#10b981', fontSize: '12px', fontWeight: 700 }}>
-                  Mes: {mesLabelActivo} ({recibos.length} apartamentos)
-                </span>
-              </div>
-            </div>
-
-            <p style={{ color: '#cbd5e1', fontSize: '13px', lineHeight: 1.5, margin: '0 0 16px' }}>
-              ¿Deseas marcar todos los recibos de este mes histórico como <strong>PAGADOS</strong>?
-              <br /><br />
-              Esta herramienta acelera la carga de la administración anterior si la mayoría de los residentes estaban al día. Luego podrás alternar individualmente los pocos que hayan quedado en mora.
-            </p>
-
-            <div style={{
-              backgroundColor: 'rgba(16, 185, 129, 0.08)',
-              border: '1px solid rgba(16, 185, 129, 0.25)',
-              borderRadius: '10px',
-              padding: '10px 14px',
-              marginBottom: '20px',
-              fontSize: '12px',
-              color: '#a7f3d0'
-            }}>
-              🛡️ Se actualizarán de inmediato las cuentas de los copropietarios y se registrará en el Historial de Auditoría.
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-              <button
-                onClick={() => setModalBulkPagadosOpen(false)}
-                disabled={ejecutandoBulk}
-                style={{
-                  backgroundColor: '#1f2937', color: '#94a3b8', border: '1px solid #374151',
-                  padding: '9px 16px', borderRadius: '10px', fontSize: '13px', fontWeight: 600, cursor: 'pointer'
-                }}
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={() => ejecutarBulkEstado('pagado')}
-                disabled={ejecutandoBulk}
-                style={{
-                  backgroundColor: '#10b981', color: '#fff', border: 'none',
-                  padding: '9px 20px', borderRadius: '10px', fontSize: '13px', fontWeight: 800, cursor: 'pointer',
-                  boxShadow: '0 4px 14px rgba(16, 185, 129, 0.4)'
-                }}
-              >
-                {ejecutandoBulk ? 'Actualizando...' : '✓ Confirmar y Marcar Todos Pagados'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── MODAL DE CONFIRMACIÓN 4: MARCAR TODOS EN MORA (HISTÓRICO) ── */}
-      {modalBulkMoraOpen && (
-        <div style={{
-          position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(6px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: '20px'
-        }}>
-          <div style={{
-            backgroundColor: '#111318', border: '2px solid #ef4444', borderRadius: '20px',
-            maxWidth: '520px', width: '100%', padding: '26px', boxShadow: '0 25px 60px rgba(239, 68, 68, 0.25)'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
-              <div style={{
-                width: '46px', height: '46px', borderRadius: '12px',
-                backgroundColor: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.35)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px'
-              }}>
-                ⚠️
-              </div>
-              <div>
-                <h3 style={{ color: '#fff', fontSize: '18px', fontWeight: 800, margin: 0 }}>
-                  Marcar Todos en Mora / Pendiente
-                </h3>
-                <span style={{ color: '#f87171', fontSize: '12px', fontWeight: 700 }}>
-                  Mes: {mesLabelActivo} ({recibos.length} apartamentos)
-                </span>
-              </div>
-            </div>
-
-            <p style={{ color: '#cbd5e1', fontSize: '13px', lineHeight: 1.5, margin: '0 0 16px' }}>
-              ¿Deseas marcar todos los recibos de este mes como <strong>EN MORA (Pendientes)</strong>?
-              <br /><br />
-              Todos los apartamentos figurarán con deuda pendiente de este mes hasta que sean marcados como pagados.
-            </p>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-              <button
-                onClick={() => setModalBulkMoraOpen(false)}
-                disabled={ejecutandoBulk}
-                style={{
-                  backgroundColor: '#1f2937', color: '#94a3b8', border: '1px solid #374151',
-                  padding: '9px 16px', borderRadius: '10px', fontSize: '13px', fontWeight: 600, cursor: 'pointer'
-                }}
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={() => ejecutarBulkEstado('pendiente')}
-                disabled={ejecutandoBulk}
-                style={{
-                  backgroundColor: '#ef4444', color: '#fff', border: 'none',
-                  padding: '9px 20px', borderRadius: '10px', fontSize: '13px', fontWeight: 800, cursor: 'pointer',
-                  boxShadow: '0 4px 14px rgba(239, 68, 68, 0.4)'
-                }}
-              >
-                {ejecutandoBulk ? 'Actualizando...' : '⚠️ Confirmar y Marcar en Mora'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ReciboConfirmModals
+        mesLabelActivo={mesLabelActivo}
+        totalRecibos={recibos.length}
+        totalFacturadoUsd={stats.totalFacturadoUsd}
+        totalFacturadoBs={stats.totalFacturadoBs}
+        modalEliminarEmisionOpen={modalEliminarEmisionOpen}
+        motivoEliminarEmision={motivoEliminarEmision}
+        palabraConfirmacion={palabraConfirmacion}
+        eliminandoEmision={eliminandoEmision}
+        onChangeMotivoEliminarEmision={setMotivoEliminarEmision}
+        onChangePalabraConfirmacion={setPalabraConfirmacion}
+        onCloseEliminarEmision={() => setModalEliminarEmisionOpen(false)}
+        onConfirmarEliminarEmision={handleConfirmarEliminarEmision}
+        modalEliminarReciboOpen={modalEliminarReciboOpen}
+        reciboParaEliminar={reciboParaEliminar}
+        motivoEliminarRecibo={motivoEliminarRecibo}
+        eliminandoRecibo={eliminandoRecibo}
+        onChangeMotivoEliminarRecibo={setMotivoEliminarRecibo}
+        onCloseEliminarRecibo={() => {
+          setModalEliminarReciboOpen(false)
+          setReciboParaEliminar(null)
+        }}
+        onConfirmarEliminarRecibo={handleConfirmarEliminarRecibo}
+        modalBulkPagadosOpen={modalBulkPagadosOpen}
+        modalBulkMoraOpen={modalBulkMoraOpen}
+        ejecutandoBulk={ejecutandoBulk}
+        onCloseBulkPagados={() => setModalBulkPagadosOpen(false)}
+        onCloseBulkMora={() => setModalBulkMoraOpen(false)}
+        onEjecutarBulkEstado={ejecutarBulkEstado}
+      />
 
       {/* ── MODAL PRINCIPAL: ENVIAR EMAILS (AUTOMÁTICO / MANUAL CON EXCEL) ── */}
       {modalEnviarEmailsOpen && (() => {

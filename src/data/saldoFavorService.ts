@@ -3,6 +3,7 @@ import { registrarEventoAuditoria } from './auditoriaService'
 import { appCache } from './cacheService'
 import { getHoyVE } from '../utils/fechaVE'
 import { getTasaBcvNumerica } from '../utils/tasaBcvHelper'
+import { getErrorMessage } from '../utils/logger'
 
 export interface SaldoApartamento {
   apartamento_id: string
@@ -110,9 +111,15 @@ export async function obtenerSaldoAFavorApartamento(
           Boolean(moraRes.data && moraRes.data.estado === 'activo' && ((Number(moraRes.data.monto_bs) || 0) > 0.05 || (Number(moraRes.data.monto_usd) || 0) > 0.05))
 
         // Consultar retiros previos de saldo a favor registrados en auditoría
-        const retirosApto = retirosRes.data || []
-        const totalRetiradoUsd = retirosApto.reduce((sum: number, l: any) => sum + (Number(l.monto_usd) || 0), 0)
-        const totalRetiradoBs = retirosApto.reduce((sum: number, l: any) => {
+        interface AuditoriaRetiroRow {
+          monto_usd?: number | string | null
+          monto_bs?: number | string | null
+          tipo_accion?: string | null
+          apartamento_id?: string | null
+        }
+        const retirosApto = (retirosRes.data || []) as AuditoriaRetiroRow[]
+        const totalRetiradoUsd = retirosApto.reduce((sum: number, l) => sum + (Number(l.monto_usd) || 0), 0)
+        const totalRetiradoBs = retirosApto.reduce((sum: number, l) => {
           if (l.monto_bs && Number(l.monto_bs) > 0) return sum + Number(l.monto_bs)
           return sum + (Number(l.monto_usd || 0) * tasa)
         }, 0)
@@ -195,9 +202,33 @@ export async function obtenerTodosLosSaldosAFavor(
             .eq('estado', 'activo'),
         ])
 
+        interface PagoGlobalRow {
+          apartamento_id?: string | null
+          monto_usd?: number | string | null
+          monto_bs?: number | string | null
+        }
+        interface ReciboGlobalRow {
+          apartamento_id?: string | null
+          estado?: string | null
+          total_usd?: number | string | null
+          total_bs?: number | string | null
+          data_json?: { monto_original_usd?: number | string | null; monto_original_bs?: number | string | null } | null
+        }
+        interface MoraGlobalRow {
+          apartamento_id?: string | null
+          monto_usd?: number | string | null
+          monto_bs?: number | string | null
+        }
+        interface RetiroGlobalRow {
+          tipo_accion?: string | null
+          apartamento_id?: string | null
+          monto_usd?: number | string | null
+          monto_bs?: number | string | null
+        }
+
         const pagosUsdPorApto = new Map<string, number>()
         const pagosBsPorApto = new Map<string, number>()
-          ; (pagosRes.data || []).forEach((p: any) => {
+          ; ((pagosRes.data || []) as PagoGlobalRow[]).forEach((p) => {
             const aptoId = p.apartamento_id
             if (!aptoId) return
             const mUsd = Number(p.monto_usd) || 0
@@ -224,7 +255,7 @@ export async function obtenerTodosLosSaldosAFavor(
         const facturadoBsPorApto = new Map<string, number>()
         const aptosConPendientes = new Set<string>()
 
-          ; (recibosRes.data || []).forEach((r: any) => {
+          ; ((recibosRes.data || []) as ReciboGlobalRow[]).forEach((r) => {
             const aptoId = r.apartamento_id
             if (!aptoId) return
             if (r.estado === 'pendiente') {
@@ -250,7 +281,7 @@ export async function obtenerTodosLosSaldosAFavor(
             facturadoBsPorApto.set(aptoId, (facturadoBsPorApto.get(aptoId) || 0) + addBs)
           })
 
-          ; (moraRes.data || []).forEach((m: any) => {
+          ; ((moraRes.data || []) as MoraGlobalRow[]).forEach((m) => {
             if (!m.apartamento_id) return
             if ((Number(m.monto_bs) || 0) > 0.05 || (Number(m.monto_usd) || 0) > 0.05) {
               aptosConPendientes.add(m.apartamento_id)
@@ -259,7 +290,7 @@ export async function obtenerTodosLosSaldosAFavor(
 
         const retiradoUsdPorApto = new Map<string, number>()
         const retiradoBsPorApto = new Map<string, number>()
-          ; ((retirosRes?.data as any[]) || []).forEach((l) => {
+          ; ((retirosRes?.data as RetiroGlobalRow[]) || []).forEach((l) => {
             if (l.tipo_accion === 'RETIRO_SALDO_A_FAVOR' && l.apartamento_id) {
               const mUsd = Number(l.monto_usd) || 0
               const mBs = Number(l.monto_bs) || (mUsd * tasa)
@@ -379,9 +410,9 @@ export async function retirarSaldoAFavorApartamento(params: {
     appCache.invalidateTags(['saldos', `saldo_${params.apartamento_id}`])
 
     return { success: true }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[SaldoFavorService] Error retirando saldo:', err)
-    return { success: false, error: err.message || 'Error inesperado al retirar saldo.' }
+    return { success: false, error: getErrorMessage(err) || 'Error inesperado al retirar saldo.' }
   }
 }
 
@@ -582,9 +613,9 @@ export async function abonarSaldoAFavorApartamento(params: {
     appCache.invalidateTags(['saldos', 'recibos', 'pagos', 'mora', 'apartamentos', `saldo_${params.apartamento_id}`])
 
     return { success: true, amortizadoUsd }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[SaldoFavorService] Error abonando saldo a favor:', err)
-    return { success: false, error: err.message || 'Error inesperado al abonar saldo.' }
+    return { success: false, error: getErrorMessage(err) || 'Error inesperado al abonar saldo.' }
   }
 }
 
@@ -700,9 +731,9 @@ export async function aplicarSaldoAFavorADeuda(params: {
     appCache.invalidateTags(['saldos', 'recibos', 'pagos', 'mora', 'apartamentos', `saldo_${params.apartamento_id}`])
 
     return { success: true, amortizadoUsd }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[SaldoFavorService] Error aplicando saldo a deuda:', err)
-    return { success: false, error: err.message || 'Error inesperado al aplicar saldo a la deuda.' }
+    return { success: false, error: getErrorMessage(err) || 'Error inesperado al aplicar saldo a la deuda.' }
   }
 }
 

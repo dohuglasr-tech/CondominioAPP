@@ -1,4 +1,5 @@
 import { getTasaBcvNumerica } from './tasaBcvHelper'
+import { getActiveEdificioNombre } from '../data/tenantContext'
 
 /**
  * Helper centralizado para generar mensajes profesionales y abrir WhatsApp
@@ -96,7 +97,7 @@ const fmtUsd = (n: number) => (Number(n) || 0).toLocaleString('en-US', { minimum
  * 1. Genera mensaje de cobro / emisión de Recibo de Condominio
  */
 export function generarMensajeCobroRecibo(datos: DatosCobroRecibo): string {
-  const edificio = datos.edificioNombre || 'Residencias Ocutuy 5'
+  const edificio = datos.edificioNombre || getActiveEdificioNombre('Condominio Domus')
   const banco = datos.bancoNombre || 'Banco Bicentenario'
   const cuenta = datos.cuentaNumero || '0175-0525-4100-7575-1351'
   const titular = datos.titularNombre || 'Zoraya Almeida'
@@ -144,7 +145,7 @@ _Agradecemos de antemano su puntual colaboración para el correcto funcionamient
  * 2. Genera mensaje formal de Cobranza de Mora / Cartera Vencida
  */
 export function generarMensajeCobroMora(datos: DatosCobroMora): string {
-  const edificio = datos.edificioNombre || 'Residencias Ocutuy 5'
+  const edificio = datos.edificioNombre || getActiveEdificioNombre('Condominio Domus')
   const banco = datos.bancoNombre || 'Banco Bicentenario'
   const cuenta = datos.cuentaNumero || '0175-0525-4100-7575-1351'
   const titular = datos.titularNombre || 'Zoraya Almeida'
@@ -190,7 +191,7 @@ _Le invitamos a ponerse al día o contactar a la Junta de Condominio para acorda
  * 3. Genera constancia de Recibo Pagado y Solvente
  */
 export function generarMensajeReciboPagado(datos: DatosReciboPagado): string {
-  const edificio = datos.edificioNombre || 'Residencias Ocutuy 5'
+  const edificio = datos.edificioNombre || getActiveEdificioNombre('Condominio Domus')
   const portal = datos.portalUrl || DEFAULT_PORTAL_URL
 
   const saludo = datos.propietarioNombre
@@ -219,7 +220,7 @@ _¡Muchas gracias por su compromiso y puntualidad con el edificio!_`
  * 4. Genera constancia de Recibo de Pago de Deuda Atrasada
  */
 export function generarMensajePagoDeudaAtrasada(datos: DatosPagoDeudaAtrasada): string {
-  const edificio = datos.edificioNombre || 'Residencias Ocutuy 5'
+  const edificio = datos.edificioNombre || getActiveEdificioNombre('Condominio Domus')
   const portal = datos.portalUrl || DEFAULT_PORTAL_URL
 
   const saludo = datos.propietarioNombre

@@ -205,7 +205,7 @@ export function GastosPanel({ onClose }: Props) {
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(22);
     doc.setFont("helvetica", "bold");
-    doc.text("Condominio Torre 5", 14, 22);
+    doc.text(config?.nombre_edificio || "Condominio Domus", 14, 22);
 
     doc.setFontSize(11);
     doc.setFont("helvetica", "normal");
@@ -258,7 +258,7 @@ export function GastosPanel({ onClose }: Props) {
     const finalY = (doc as any).lastAutoTable.finalY || 100;
     doc.setFontSize(10);
     doc.setTextColor(120, 120, 120);
-    doc.text("Documento generado automáticamente por el sistema del Condominio Torre 5.", 14, finalY + 15);
+    doc.text(`Documento generado automáticamente por el sistema de ${config?.nombre_edificio || 'Domus'}.`, 14, finalY + 15);
 
     doc.save(`Relacion_Gastos_${mesActual}.pdf`);
   };

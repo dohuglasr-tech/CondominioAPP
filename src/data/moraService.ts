@@ -5,6 +5,8 @@ import { despacharEmailPagoAprobado } from './emailService'
 import { registrarEventoAuditoria } from './auditoriaService'
 import { fetchAllSupabasePages } from './supabasePagination'
 import { getHoyVE } from '../utils/fechaVE'
+import { getActiveEdificioNombre } from './tenantContext'
+import { logger, getErrorMessage } from '../utils/logger'
 
 export type TasaRiesgoMora = 'azul' | 'amarillo' | 'rojo' | 'morado'
 
@@ -483,7 +485,7 @@ export async function obtenerDeudaMoraApartamento(
           configRows.forEach((cfgRow: any) => {
             if (!cfgRow?.descripcion) return
             let cfgObj: any = null
-            try { cfgObj = JSON.parse(cfgRow.descripcion) } catch {}
+            try { cfgObj = JSON.parse(cfgRow.descripcion) } catch (err) { logger.debug('moraService', 'Fallback controlado', err) }
             if (!cfgObj) return
 
             const matchAnio = String(cfgRow.tipo || '').match(/config_calendario_mora_(\d{4})/)
@@ -542,7 +544,7 @@ export async function obtenerDeudaMoraApartamento(
             if (moraRow.conceptos_detalle.startsWith('{')) {
               conceptosHist = JSON.parse(moraRow.conceptos_detalle)
             }
-          } catch (e) {}
+          } catch (err) { logger.debug('moraService', 'Fallback controlado', err) }
         }
 
         const esMoraSolventada = moraRow?.estado === 'solventado'
@@ -782,7 +784,7 @@ function construirListaDeudoresDesdeDatos(params: {
       const matchAnio = String(row.tipo || '').match(/config_calendario_mora_(\d{4})/)
       const anioCfg = matchAnio ? Number(matchAnio[1]) : 2026
       configsCalendario.push({ anio: anioCfg, config: parsed })
-    } catch (e) {}
+    } catch (err) { logger.debug('moraService', 'Fallback controlado', err) }
   })
 
   const mesesNombres = [
@@ -810,7 +812,7 @@ function construirListaDeudoresDesdeDatos(params: {
         if (moraRow.conceptos_detalle.startsWith('{')) {
           conceptosHist = JSON.parse(moraRow.conceptos_detalle)
         }
-      } catch (e) {}
+      } catch (err) { logger.debug('moraService', 'Fallback controlado', err) }
     }
 
     const esMoraSolventada = moraRow?.estado === 'solventado'
@@ -1200,7 +1202,7 @@ export async function obtenerDeudasMora(
 
         saveLocalMoraCache(listaDeudores)
         return { data: listaDeudores, error: null, fromDb: true }
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.warn('[moraService] Excepción obteniendo deudas:', err)
         return { data: getLocalMoraCache(), error: null, fromDb: false }
       }
@@ -1241,7 +1243,7 @@ export async function obtenerDeudasMoraComunitaria(
         }
 
         return { data: [], error: null, fromDb: true }
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.warn('[moraService] Excepción obteniendo mora comunitaria:', err)
         return { data: getLocalMoraCache(), error: null, fromDb: false }
       }
@@ -1332,8 +1334,8 @@ export async function guardarDeudaMora(item: Partial<DeudaMoraItem>): Promise<{ 
     appCache.invalidateTags(['mora', 'recibos'])
 
     return { data: nuevoItem, error: null }
-  } catch (err: any) {
-    return { data: null, error: err.message || 'Error guardando registro de mora' }
+  } catch (err: unknown) {
+    return { data: null, error: getErrorMessage(err) || 'Error guardando registro de mora' }
   }
 }
 
@@ -1350,8 +1352,8 @@ export async function eliminarDeudaMora(id: string): Promise<{ success: boolean;
     appCache.invalidateTags(['mora', 'recibos'])
 
     return { success: true, error: null }
-  } catch (err: any) {
-    return { success: false, error: err.message || 'Error eliminando registro' }
+  } catch (err: unknown) {
+    return { success: false, error: getErrorMessage(err) || 'Error eliminando registro' }
   }
 }
 
@@ -1670,7 +1672,7 @@ export async function marcarDeudaMoraComoPagada(
         destinatarioEmail: emailPropietario,
         apartamentoNumero,
         propietarioNombre: nombrePropietario || aptoInfo?.propietario_nombre,
-        edificioNombre: edificioNombre || 'Residencias Ocutuy 5',
+        edificioNombre: edificioNombre || getActiveEdificioNombre('Condominio Domus'),
         montoUsd,
         montoBs,
         referencia: referencia || 'PAGO-DEUDA-ATRASADA',
@@ -1698,9 +1700,9 @@ export async function marcarDeudaMoraComoPagada(
     appCache.invalidateTags(['mora', 'recibos', 'pagos', 'apartamentos', 'auditoria', 'saldos'])
 
     return { success: true, reciboId: reciboFinalId, error: null }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[moraService] Error en marcarDeudaMoraComoPagada:', err)
-    return { success: false, error: err.message || 'Error al procesar el pago de la deuda' }
+    return { success: false, error: getErrorMessage(err) || 'Error al procesar el pago de la deuda' }
   }
 }
 

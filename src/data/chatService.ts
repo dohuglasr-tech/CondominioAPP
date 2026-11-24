@@ -1,5 +1,7 @@
 import { supabase } from './supabase'
 import { notificarTodos } from './notificacionesService'
+import { getActiveEdificioNombre } from './tenantContext'
+import { getErrorMessage } from '../utils/logger'
 
 export interface ChatMensaje {
   id: string
@@ -234,9 +236,9 @@ export async function obtenerMensajes(limite: number = 80): Promise<{ data: Chat
     }).reverse() // Cronológico: más antiguo primero, más nuevo al final
 
     return { data: mensajes, error: null }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[ChatService] Error cargando mensajes:', err)
-    return { data: [], error: err.message || 'Error al obtener mensajes' }
+    return { data: [], error: getErrorMessage(err) || 'Error al obtener mensajes' }
   }
 }
 
@@ -345,7 +347,7 @@ export async function enviarMensajeDesdeAdmin(
     contenido: contenidoLimpio,
     created_at: ahora,
     autor_id: null,
-    autor_nombre: esAnuncio ? '📣 ANUNCIO OFICIAL' : 'Administración Torre 5',
+    autor_nombre: esAnuncio ? '📣 ANUNCIO OFICIAL' : `Administración ${getActiveEdificioNombre('Condominio')}`,
     autor_rol: 'administrador',
     apartamento_numero: null,
     es_admin: true,

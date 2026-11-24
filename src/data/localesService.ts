@@ -43,7 +43,7 @@ const LOCALES_SEMILLA: LocalComercial[] = [
     arrendatario_nombre: 'Inversiones Los Andes C.A.',
     arrendatario_cedula: 'J-40987654-1',
     arrendatario_telefono: '0414-2345678',
-    arrendatario_email: 'minimarket.ocutuy@gmail.com',
+    arrendatario_email: 'local.pb1@domus.ve',
     tipo_cuota: 'fija',
     monto_usd: 80,
     monto_bs: 0,

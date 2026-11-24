@@ -8,6 +8,8 @@ import { clasificarCuotaExtraordinaria, obtenerFechaHoyLocalIso } from './moraSe
 import { fetchAllSupabasePages } from './supabasePagination'
 import { getHoyVE } from '../utils/fechaVE'
 import { getTasaBcvNumerica } from '../utils/tasaBcvHelper'
+import { getActiveEdificioId } from './tenantContext'
+import { logger, getErrorMessage } from '../utils/logger'
 
 export interface ReciboMesItem {
   id: string
@@ -248,6 +250,170 @@ function sanitizarConfiguracion(parsed: any, defaultConfig: ConfiguracionCalenda
   }
 }
 
+const UUID_REGEXP_REL = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+async function obtenerEdificioIdRelacional(): Promise<string | null> {
+  const active = getActiveEdificioId()
+  if (active) return active
+  try {
+    const { data } = await supabase
+      .from('configuracion_edificio')
+      .select('id')
+      .limit(1)
+      .maybeSingle()
+    return data?.id || null
+  } catch {
+    return null
+  }
+}
+
+async function fusionarAsignacionesRelacionalesEnConfig(
+  config: ConfiguracionCalendario,
+  anio: number
+): Promise<ConfiguracionCalendario> {
+  try {
+    const { data: cuotasRel, error: errCuotas } = await supabase
+      .from('cuotas_extraordinarias')
+      .select('id, columna_id, titulo, descripcion, moneda, monto_defecto, fecha_emision, fecha_limite, seccion, orden, activa')
+      .eq('anio', anio)
+      .eq('activa', true)
+
+    if (errCuotas || !cuotasRel || cuotasRel.length === 0) return config
+
+    const cuotaIdToCol = new Map<string, any>()
+    const colsExistentes = new Set((config.columnas || []).map(c => c.id))
+    const columnasActualizadas = [...(config.columnas || [])]
+
+    cuotasRel.forEach(c => {
+      cuotaIdToCol.set(c.id, c)
+      if (!colsExistentes.has(c.columna_id)) {
+        columnasActualizadas.push({
+          id: c.columna_id,
+          titulo: c.titulo,
+          seccion: (c.seccion === 'azul' ? 'azul' : 'naranja'),
+          moneda: (c.moneda === 'BS' ? 'BS' : 'USD'),
+          tipo: 'cuota_especial',
+          orden: Number(c.orden || 0),
+          esPersonalizada: true,
+          montoDefecto: Number(c.monto_defecto || 0),
+          descripcion: c.descripcion || undefined,
+          fechaEmision: c.fecha_emision || undefined,
+          fechaLimite: c.fecha_limite || undefined
+        })
+      }
+    })
+
+    const { data: asigs, error: errAsig } = await supabase
+      .from('cuotas_extraordinarias_asignaciones')
+      .select('cuota_id, apartamento_id, monto_asignado, monto_abonado, moneda, estado, es_adelanto, pagos_aplicados_ids')
+      .in('cuota_id', cuotasRel.map(c => c.id))
+
+    if (errAsig || !asigs || asigs.length === 0) {
+      return { ...config, columnas: columnasActualizadas }
+    }
+
+    const celdas = { ...(config.valoresCeldasPersonalizadas || {}) }
+    for (const a of asigs) {
+      const col = cuotaIdToCol.get(a.cuota_id)
+      if (!col || !a.apartamento_id) continue
+      if (!celdas[a.apartamento_id]) celdas[a.apartamento_id] = {}
+      const prev = celdas[a.apartamento_id][col.columna_id] as any
+      celdas[a.apartamento_id][col.columna_id] = {
+        ...(prev || {}),
+        monto: Number(a.monto_asignado ?? prev?.monto ?? col.monto_defecto ?? 0),
+        estado: a.estado === 'pagado' ? 'pagado' : 'pendiente',
+        moneda: (a.moneda === 'BS' ? 'BS' : 'USD'),
+        ...(prev?.montoOriginal !== undefined
+          ? { montoOriginal: prev.montoOriginal }
+          : (Number(col.monto_defecto) > 0 ? { montoOriginal: Number(col.monto_defecto) } : {})),
+        ...(Number(a.monto_abonado) > 0 ? { abonado: Number(a.monto_abonado) } : {}),
+        ...(a.es_adelanto ? { pagadoPorAdelantado: true } : {}),
+        ...(Array.isArray(a.pagos_aplicados_ids) && a.pagos_aplicados_ids.length > 0
+          ? { pagosAplicadosIds: a.pagos_aplicados_ids }
+          : {})
+      }
+    }
+
+    return {
+      ...config,
+      columnas: columnasActualizadas,
+      valoresCeldasPersonalizadas: celdas
+    }
+  } catch {
+    return config
+  }
+}
+
+async function sincronizarCuotasRelacionalesDesdeConfig(
+  config: ConfiguracionCalendario,
+  anio: number
+): Promise<void> {
+  try {
+    const edificioId = await obtenerEdificioIdRelacional()
+    if (!edificioId) return
+
+    const colsObjetivo = (config.columnas || []).filter(
+      c => c.esPersonalizada || c.tipo === 'cuota_especial' || c.tipo === 'historico'
+    )
+    if (colsObjetivo.length === 0) return
+
+    const cuotasPayload = colsObjetivo.map((c, idx) => ({
+      edificio_id: edificioId,
+      anio,
+      columna_id: c.id,
+      titulo: c.titulo || 'Cuota Extraordinaria',
+      descripcion: c.descripcion || null,
+      moneda: c.moneda === 'BS' ? 'BS' : 'USD',
+      monto_defecto: Number(c.montoDefecto || 0),
+      fecha_emision: c.fechaEmision || null,
+      fecha_limite: c.fechaLimite || null,
+      seccion: c.seccion === 'azul' ? 'azul' : 'naranja',
+      orden: Number(c.orden ?? idx),
+      activa: true,
+      updated_at: new Date().toISOString()
+    }))
+
+    const { data: cuotasUpserted, error: errCuotas } = await supabase
+      .from('cuotas_extraordinarias')
+      .upsert(cuotasPayload, { onConflict: 'edificio_id,anio,columna_id' })
+      .select('id, columna_id, moneda')
+
+    if (errCuotas || !cuotasUpserted || cuotasUpserted.length === 0) return
+
+    const colIdToCuota = new Map<string, { id: string; moneda: string }>()
+    cuotasUpserted.forEach(c => colIdToCuota.set(c.columna_id, { id: c.id, moneda: c.moneda }))
+
+    const asigPayload: any[] = []
+    Object.entries(config.valoresCeldasPersonalizadas || {}).forEach(([aptoId, cols]) => {
+      if (!UUID_REGEXP_REL.test(aptoId) || !cols) return
+      Object.entries(cols).forEach(([colId, val]: [string, any]) => {
+        const meta = colIdToCuota.get(colId)
+        if (!meta || !val) return
+        asigPayload.push({
+          edificio_id: edificioId,
+          cuota_id: meta.id,
+          apartamento_id: aptoId,
+          monto_asignado: Number(val.monto ?? 0),
+          monto_abonado: Number(val.abonado ?? 0),
+          moneda: (val.moneda === 'BS' || val.moneda === 'USD') ? val.moneda : meta.moneda,
+          estado: val.estado === 'pagado' ? 'pagado' : 'pendiente',
+          es_adelanto: Boolean(val.pagadoPorAdelantado),
+          pagos_aplicados_ids: Array.isArray(val.pagosAplicadosIds) ? val.pagosAplicadosIds : [],
+          updated_at: new Date().toISOString()
+        })
+      })
+    })
+
+    if (asigPayload.length > 0) {
+      await supabase
+        .from('cuotas_extraordinarias_asignaciones')
+        .upsert(asigPayload, { onConflict: 'cuota_id,apartamento_id' })
+    }
+  } catch {
+    // No bloquear escritura principal si tablas relacionales aún no existen o usuario es residente
+  }
+}
+
 export async function obtenerConfiguracionCalendario(anio: number = 2026): Promise<ConfiguracionCalendario> {
   const defaultConfig = obtenerConfiguracionPorDefecto(anio)
   const dbTipo = anio === 2026 ? 'config_calendario_mora' : `config_calendario_mora_${anio}`
@@ -264,7 +430,8 @@ export async function obtenerConfiguracionCalendario(anio: number = 2026): Promi
     if (data?.descripcion) {
       try {
         const parsed = JSON.parse(data.descripcion)
-        const res = sanitizarConfiguracion(parsed, defaultConfig)
+        const baseRes = sanitizarConfiguracion(parsed, defaultConfig)
+        const res = await fusionarAsignacionesRelacionalesEnConfig(baseRes, anio)
         localStorage.setItem(storageKey, JSON.stringify(res))
         return res
       } catch (e) {
@@ -302,7 +469,7 @@ export async function obtenerConfiguracionCalendario(anio: number = 2026): Promi
         if (parsed && typeof parsed === 'object') {
           return sanitizarConfiguracion(parsed, defaultConfig)
         }
-      } catch (e) {}
+      } catch (err) { logger.debug('calendarioDeudasService', 'Fallback controlado', err) }
     }
   } catch (err) {
     console.warn(`[calendarioDeudasService] Error cargando config ${anio}:`, err)
@@ -340,15 +507,15 @@ function mergearConfiguracionCalendario(
   }
 
   const cuotasMap = new Map<string, FilaCuotaEspecial>()
-  ;(remota.filasCuotasEspeciales || []).forEach(f => cuotasMap.set(f.id, f))
-  ;(localPatch.filasCuotasEspeciales || []).forEach(f => {
-    const prev = cuotasMap.get(f.id)
-    cuotasMap.set(f.id, prev ? {
-      ...prev,
-      ...f,
-      valoresPorApto: { ...(prev.valoresPorApto || {}), ...(f.valoresPorApto || {}) }
-    } : f)
-  })
+    ; (remota.filasCuotasEspeciales || []).forEach(f => cuotasMap.set(f.id, f))
+    ; (localPatch.filasCuotasEspeciales || []).forEach(f => {
+      const prev = cuotasMap.get(f.id)
+      cuotasMap.set(f.id, prev ? {
+        ...prev,
+        ...f,
+        valoresPorApto: { ...(prev.valoresPorApto || {}), ...(f.valoresPorApto || {}) }
+      } : f)
+    })
 
   return {
     ...base,
@@ -380,7 +547,7 @@ export async function guardarConfiguracionCalendario(
       if (existente?.descripcion) {
         try {
           baseRemota = sanitizarConfiguracion(JSON.parse(existente.descripcion), defaultConfig)
-        } catch {}
+        } catch (err) { logger.debug('calendarioDeudasService', 'Fallback controlado', err) }
       }
 
       const nueva = mergearConfiguracionCalendario(baseRemota, config, attempt > 0)
@@ -425,6 +592,7 @@ export async function guardarConfiguracionCalendario(
         if (insErr) throw insErr
       }
 
+      await sincronizarCuotasRelacionalesDesdeConfig(nueva, anio).catch(() => { })
       appCache.invalidateTags(['recibos', 'saldos', 'mora', 'calendario_config', `calendario_${anio}`, `calendario_matriz_${anio}`])
       return { success: true, data: nueva, error: null }
     }
@@ -434,9 +602,9 @@ export async function guardarConfiguracionCalendario(
       data: await obtenerConfiguracionCalendario(anio),
       error: 'Conflicto de edición concurrente en calendario. Por favor recarga e intenta de nuevo.'
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error(`[calendarioDeudasService] Error guardando config ${anio}:`, err)
-    return { success: false, data: await obtenerConfiguracionCalendario(anio), error: err.message }
+    return { success: false, data: await obtenerConfiguracionCalendario(anio), error: getErrorMessage(err) }
   }
 }
 
@@ -661,15 +829,15 @@ export async function obtenerMatrizCalendario(
               if (moraRow.conceptos_detalle.startsWith('{')) {
                 conceptosHist = JSON.parse(moraRow.conceptos_detalle)
               }
-            } catch (e) {}
+            } catch (err) { logger.debug('calendarioDeudasService', 'Fallback controlado', err) }
           }
 
           const es2026 = anioSeleccionado === 2026
           const esMoraSolventada = moraRow?.estado === 'solventado'
           const deudaBase2025 = (es2026 && !esMoraSolventada) ? Number(conceptosHist.deuda_2025 || (moraRow?.monto_bs && !conceptosHist.deuda_2025 ? moraRow.monto_bs : 0)) : 0
-          const cableViajero  = (es2026 && !esMoraSolventada) ? Number(conceptosHist.cable_viajero || 0) : 0
-          const guaya         = (es2026 && !esMoraSolventada) ? Number(conceptosHist.guaya || 0) : 0
-          const arreglo       = (es2026 && !esMoraSolventada) ? Number(conceptosHist.arreglo || 0) : 0
+          const cableViajero = (es2026 && !esMoraSolventada) ? Number(conceptosHist.cable_viajero || 0) : 0
+          const guaya = (es2026 && !esMoraSolventada) ? Number(conceptosHist.guaya || 0) : 0
+          const arreglo = (es2026 && !esMoraSolventada) ? Number(conceptosHist.arreglo || 0) : 0
 
           const colsParaApto = configCalendario.columnas || []
           const mDeuda: 'USD' | 'BS' = es2026 ? ((conceptosHist.deuda_2025_moneda as ('USD' | 'BS')) || colsParaApto.find(c => c.id === 'deuda_2025')?.moneda || 'BS') : 'BS'
@@ -773,51 +941,51 @@ export async function obtenerMatrizCalendario(
         const filasPersonalizadasList: FilaCalendarioApto[] = (configCalendario.filasPersonalizadas || [])
           .filter(f => !(configCalendario.filasOcultasIds || []).includes(f.id))
           .map(filaPers => {
-          const celdasPers = configCalendario.valoresCeldasPersonalizadas?.[filaPers.id] || {}
-          let sumPendienteBs = 0
-          let sumPendienteUsd = 0
-          let mesesConDeuda = 0
-          const colsParaPers = configCalendario.columnas || []
-          const hoyIsoPers = obtenerFechaHoyLocalIso()
+            const celdasPers = configCalendario.valoresCeldasPersonalizadas?.[filaPers.id] || {}
+            let sumPendienteBs = 0
+            let sumPendienteUsd = 0
+            let mesesConDeuda = 0
+            const colsParaPers = configCalendario.columnas || []
+            const hoyIsoPers = obtenerFechaHoyLocalIso()
 
-          colsParaPers.forEach((col: ColumnaCalendarioConfig) => {
-            if (col.tipo === 'cuota_especial') {
-              const estadoVigencia = clasificarCuotaExtraordinaria(col.fechaEmision, col.fechaLimite, hoyIsoPers)
-              if (estadoVigencia === 'programada') return
-              const val = celdasPers[col.id] ?? (col.montoDefecto ? { monto: col.montoDefecto, estado: 'pendiente' } : null)
-              if (val && val.estado === 'pendiente' && val.monto > 0) {
-                if (col.moneda === 'USD') sumPendienteUsd += val.monto
-                else sumPendienteBs += val.monto
-                mesesConDeuda += 1
+            colsParaPers.forEach((col: ColumnaCalendarioConfig) => {
+              if (col.tipo === 'cuota_especial') {
+                const estadoVigencia = clasificarCuotaExtraordinaria(col.fechaEmision, col.fechaLimite, hoyIsoPers)
+                if (estadoVigencia === 'programada') return
+                const val = celdasPers[col.id] ?? (col.montoDefecto ? { monto: col.montoDefecto, estado: 'pendiente' } : null)
+                if (val && val.estado === 'pendiente' && val.monto > 0) {
+                  if (col.moneda === 'USD') sumPendienteUsd += val.monto
+                  else sumPendienteBs += val.monto
+                  mesesConDeuda += 1
+                }
               }
+            })
+
+            const tieneDeudaTotal = sumPendienteBs > 0.01 || sumPendienteUsd > 0.01
+
+            return {
+              apartamento_id: filaPers.id,
+              apartamento_numero: filaPers.numero,
+              piso: null,
+              alicuota: filaPers.alicuota || 0.0159,
+              propietario_nombre: filaPers.propietario || 'Fila Personalizada',
+              telefono: null,
+              email: null,
+              deuda_base_2025: 0,
+              cable_viajero: 0,
+              guaya: 0,
+              arreglo: 0,
+              meses: {},
+              valores_personalizados: celdasPers,
+              total_bs: Number(sumPendienteBs.toFixed(2)),
+              total_usd: Number(sumPendienteUsd.toFixed(2)),
+              meses_con_deuda: mesesConDeuda,
+              estado_solvente: !tieneDeudaTotal,
+              saldo_a_favor_usd: 0,
+              saldo_a_favor_bs: 0,
+              esPersonalizada: true
             }
           })
-
-          const tieneDeudaTotal = sumPendienteBs > 0.01 || sumPendienteUsd > 0.01
-
-          return {
-            apartamento_id: filaPers.id,
-            apartamento_numero: filaPers.numero,
-            piso: null,
-            alicuota: filaPers.alicuota || 0.0159,
-            propietario_nombre: filaPers.propietario || 'Fila Personalizada',
-            telefono: null,
-            email: null,
-            deuda_base_2025: 0,
-            cable_viajero: 0,
-            guaya: 0,
-            arreglo: 0,
-            meses: {},
-            valores_personalizados: celdasPers,
-            total_bs: Number(sumPendienteBs.toFixed(2)),
-            total_usd: Number(sumPendienteUsd.toFixed(2)),
-            meses_con_deuda: mesesConDeuda,
-            estado_solvente: !tieneDeudaTotal,
-            saldo_a_favor_usd: 0,
-            saldo_a_favor_bs: 0,
-            esPersonalizada: true
-          }
-        })
 
         const filas = [...filasAptos, ...filasPersonalizadasList]
 
@@ -852,7 +1020,7 @@ export async function obtenerMatrizCalendario(
           configuracion: configCalendario,
           error: null
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error('[calendarioDeudasService] Error cargando matriz:', err)
         return {
           filas: [],
@@ -871,7 +1039,7 @@ export async function obtenerMatrizCalendario(
             tasaBcvActual: getTasaBcvNumerica()
           },
           configuracion: CONFIGURACION_CALENDARIO_DEFECTO,
-          error: err.message || 'Error consultando calendario de mora'
+          error: getErrorMessage(err) || 'Error consultando calendario de mora'
         }
       }
     },
@@ -924,11 +1092,11 @@ export async function guardarMontoReciboPersonalizado(params: EditarMontoCuotaPa
       if (edifConfig?.tasa_bcv_actual && Number(edifConfig.tasa_bcv_actual) > 0) {
         tasaBcvAplicada = Number(edifConfig.tasa_bcv_actual)
       }
-    } catch (e) {}
+    } catch (err) { logger.debug('calendarioDeudasService', 'Fallback controlado', err) }
 
     const montoNum = parsearMontoFlexible(nuevoMonto, moneda)
     const montoUsd = moneda === 'USD' ? montoNum : Number((montoNum / tasaBcvAplicada).toFixed(2))
-    const montoBs  = moneda === 'BS'  ? montoNum : Number((montoNum * tasaBcvAplicada).toFixed(2))
+    const montoBs = moneda === 'BS' ? montoNum : Number((montoNum * tasaBcvAplicada).toFixed(2))
     const fechaEfectiva = fechaPago || getHoyVE()
 
     // 1. Localizar recibo existente por ID o por (apartamento_id, mes_facturado)
@@ -1104,16 +1272,16 @@ export async function guardarMontoReciboPersonalizado(params: EditarMontoCuotaPa
       monto_bs: montoBs,
       motivo: `Edición manual de cuota ${mesLabel}`,
       autor_nombre: autorNombre || 'Administrador'
-    }).catch(() => {})
+    }).catch(() => { })
 
     // 5. Invalida todas las etiquetas de caché para sincronización total inmediata
     appCache.invalidateTags(['recibos', 'saldos', 'mora', 'apartamentos', 'calendario_config', 'pagos'])
     appCache.invalidatePattern(/^calendario_matriz/)
 
     return { success: true, error: null }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[calendarioDeudasService] Error guardando monto personalizado:', err)
-    return { success: false, error: err.message || 'Error guardando monto' }
+    return { success: false, error: getErrorMessage(err) || 'Error guardando monto' }
   }
 }
 
@@ -1240,9 +1408,9 @@ export async function guardarConceptosHistoricos(params: {
     appCache.invalidateTags(['mora', 'saldos', 'apartamentos'])
 
     return { success: true, error: null }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[calendarioDeudasService] Error guardando histórico:', err)
-    return { success: false, error: err.message || 'Error guardando datos históricos' }
+    return { success: false, error: getErrorMessage(err) || 'Error guardando datos históricos' }
   }
 }
 
@@ -1267,8 +1435,8 @@ export async function guardarFilaCuotaEspecial(
 
     await guardarConfiguracionCalendario(config)
     return { success: true, error: null }
-  } catch (err: any) {
-    return { success: false, error: err.message || 'Error guardando cuota especial' }
+  } catch (err: unknown) {
+    return { success: false, error: getErrorMessage(err) || 'Error guardando cuota especial' }
   }
 }
 
@@ -1283,8 +1451,8 @@ export async function eliminarFilaCuotaEspecial(
     config.filasCuotasEspeciales = (config.filasCuotasEspeciales || []).filter(f => f.id !== cuotaId)
     await guardarConfiguracionCalendario(config)
     return { success: true, error: null }
-  } catch (err: any) {
-    return { success: false, error: err.message || 'Error eliminando cuota especial' }
+  } catch (err: unknown) {
+    return { success: false, error: getErrorMessage(err) || 'Error eliminando cuota especial' }
   }
 }
 
@@ -1325,10 +1493,10 @@ export async function guardarCeldaPersonalizada(params: {
       ...(montoOrig > 0 ? { montoOriginal: montoOrig } : {}),
       ...(params.estado === 'pagado'
         ? {
-            abonado: Math.max(Number(prev?.abonado || 0), montoOrig || montoNum),
-            pagadoPorAdelantado: Boolean(prev?.pagadoPorAdelantado || esFuturaCol),
-            ultimaFechaAbono: hoyIsoCell
-          }
+          abonado: Math.max(Number(prev?.abonado || 0), montoOrig || montoNum),
+          pagadoPorAdelantado: Boolean(prev?.pagadoPorAdelantado || esFuturaCol),
+          ultimaFechaAbono: hoyIsoCell
+        }
         : (prev?.abonado ? { abonado: prev.abonado } : {}))
     }
 
@@ -1354,7 +1522,7 @@ export async function guardarCeldaPersonalizada(params: {
           try {
             const { data: edCfg } = await supabase.from('configuracion_edificio').select('tasa_bcv_actual').limit(1).maybeSingle()
             if (edCfg?.tasa_bcv_actual && Number(edCfg.tasa_bcv_actual) > 1) tasa = Number(edCfg.tasa_bcv_actual)
-          } catch {}
+          } catch (err) { logger.debug('calendarioDeudasService', 'Fallback controlado', err) }
           const montoBs = monedaFinal === 'BS' ? montoNum : Number((montoNum * tasa).toFixed(2))
           const montoUsd = monedaFinal === 'USD' ? montoNum : Number((montoNum / tasa).toFixed(2))
           const ref = (params.referencia || '').trim() || `CUOTA-${anio}-${params.columnaId.slice(-6).toUpperCase()}`
@@ -1410,8 +1578,8 @@ export async function guardarCeldaPersonalizada(params: {
       window.dispatchEvent(new CustomEvent('condominio_cuotas_updated'))
     }
     return { success: true, error: null }
-  } catch (err: any) {
-    return { success: false, error: err.message || 'Error guardando celda' }
+  } catch (err: unknown) {
+    return { success: false, error: getErrorMessage(err) || 'Error guardando celda' }
   }
 }
 
@@ -1456,8 +1624,8 @@ export async function guardarCeldaPersonalizadaMasiva(params: {
       window.dispatchEvent(new CustomEvent('condominio_cuotas_updated'))
     }
     return { success: true, afectados: targetIds.length, error: null }
-  } catch (err: any) {
-    return { success: false, afectados: 0, error: err.message || 'Error guardando celdas masivamente' }
+  } catch (err: unknown) {
+    return { success: false, afectados: 0, error: getErrorMessage(err) || 'Error guardando celdas masivamente' }
   }
 }
 
@@ -1581,8 +1749,8 @@ export async function agregarColumnaPersonalizada(params: {
       window.dispatchEvent(new CustomEvent('condominio_cuotas_updated'))
     }
     return { success: true, nuevaColumna: nuevaCol, error: null }
-  } catch (err: any) {
-    return { success: false, nuevaColumna: null, error: err.message || 'Error agregando columna' }
+  } catch (err: unknown) {
+    return { success: false, nuevaColumna: null, error: getErrorMessage(err) || 'Error agregando columna' }
   }
 }
 
@@ -1719,8 +1887,8 @@ export async function editarColumnaPersonalizada(params: {
       window.dispatchEvent(new CustomEvent('condominio_cuotas_updated'))
     }
     return { success: true, error: null }
-  } catch (err: any) {
-    return { success: false, error: err.message || 'Error editando cuota extraordinaria' }
+  } catch (err: unknown) {
+    return { success: false, error: getErrorMessage(err) || 'Error editando cuota extraordinaria' }
   }
 }
 
@@ -1862,9 +2030,9 @@ export async function liquidarCuotasEspecialesDesdePago(params: {
       liquidadoUsd: Number(liquidadoUsd.toFixed(2)),
       error: null
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[calendarioDeudasService] Error liquidando cuotas especiales:', err)
-    return { liquidadoBs: 0, liquidadoUsd: 0, error: err.message }
+    return { liquidadoBs: 0, liquidadoUsd: 0, error: getErrorMessage(err) }
   }
 }
 
@@ -1893,70 +2061,70 @@ export async function obtenerEventosCalendarioCuotas(anioFilter?: number): Promi
       return 'proximo'
     }
 
-    ;(configRows || []).forEach(row => {
-      if (!row?.descripcion) return
-      let cfg: any = null
-      try { cfg = JSON.parse(row.descripcion) } catch {}
-      if (!cfg || !Array.isArray(cfg.columnas)) return
+      ; (configRows || []).forEach(row => {
+        if (!row?.descripcion) return
+        let cfg: any = null
+        try { cfg = JSON.parse(row.descripcion) } catch (err) { logger.debug('calendarioDeudasService', 'Fallback controlado', err) }
+        if (!cfg || !Array.isArray(cfg.columnas)) return
 
-      const matchAnio = String(row.tipo || '').match(/config_calendario_mora_(\d{4})/)
-      const anio = matchAnio ? Number(matchAnio[1]) : 2026
-      if (anioFilter && anio !== anioFilter) return
+        const matchAnio = String(row.tipo || '').match(/config_calendario_mora_(\d{4})/)
+        const anio = matchAnio ? Number(matchAnio[1]) : 2026
+        if (anioFilter && anio !== anioFilter) return
 
-      const valoresCeldas = cfg.valoresCeldasPersonalizadas || {}
-      cfg.columnas.forEach((col: ColumnaCalendarioConfig) => {
-        if (col.tipo !== 'cuota_especial') return
-        if (!col.fechaEmision && !col.fechaLimite) return
+        const valoresCeldas = cfg.valoresCeldasPersonalizadas || {}
+        cfg.columnas.forEach((col: ColumnaCalendarioConfig) => {
+          if (col.tipo !== 'cuota_especial') return
+          if (!col.fechaEmision && !col.fechaLimite) return
 
-        let asignados = 0
-        let pendientes = 0
-        let pagados = 0
-        ;(aptosDb || []).forEach(a => {
-          const val = valoresCeldas[a.id]?.[col.id] ?? (col.montoDefecto ? { monto: col.montoDefecto, estado: 'pendiente' } : null)
-          if (val && Number(val.monto || 0) > 0) {
-            asignados++
-            if (val.estado === 'pagado') pagados++
-            else pendientes++
+          let asignados = 0
+          let pendientes = 0
+          let pagados = 0
+            ; (aptosDb || []).forEach(a => {
+              const val = valoresCeldas[a.id]?.[col.id] ?? (col.montoDefecto ? { monto: col.montoDefecto, estado: 'pendiente' } : null)
+              if (val && Number(val.monto || 0) > 0) {
+                asignados++
+                if (val.estado === 'pagado') pagados++
+                else pendientes++
+              }
+            })
+
+          if (col.fechaEmision) {
+            eventos.push({
+              id: `ev_em_${anio}_${col.id}`,
+              columnaId: col.id,
+              anio,
+              titulo: col.titulo,
+              descripcion: col.descripcion,
+              tipoEvento: 'emision',
+              fecha: col.fechaEmision,
+              moneda: col.moneda,
+              montoDefecto: Number(col.montoDefecto || 0),
+              totalAptosAsignados: asignados || totalAptos,
+              totalAptosPendientes: pendientes,
+              totalAptosPagados: pagados,
+              estado: calcularEstado(col.fechaEmision, pendientes, asignados)
+            })
+          }
+
+          if (col.fechaLimite) {
+            eventos.push({
+              id: `ev_lim_${anio}_${col.id}`,
+              columnaId: col.id,
+              anio,
+              titulo: col.titulo,
+              descripcion: col.descripcion,
+              tipoEvento: 'vencimiento',
+              fecha: col.fechaLimite,
+              moneda: col.moneda,
+              montoDefecto: Number(col.montoDefecto || 0),
+              totalAptosAsignados: asignados || totalAptos,
+              totalAptosPendientes: pendientes,
+              totalAptosPagados: pagados,
+              estado: calcularEstado(col.fechaLimite, pendientes, asignados)
+            })
           }
         })
-
-        if (col.fechaEmision) {
-          eventos.push({
-            id: `ev_em_${anio}_${col.id}`,
-            columnaId: col.id,
-            anio,
-            titulo: col.titulo,
-            descripcion: col.descripcion,
-            tipoEvento: 'emision',
-            fecha: col.fechaEmision,
-            moneda: col.moneda,
-            montoDefecto: Number(col.montoDefecto || 0),
-            totalAptosAsignados: asignados || totalAptos,
-            totalAptosPendientes: pendientes,
-            totalAptosPagados: pagados,
-            estado: calcularEstado(col.fechaEmision, pendientes, asignados)
-          })
-        }
-
-        if (col.fechaLimite) {
-          eventos.push({
-            id: `ev_lim_${anio}_${col.id}`,
-            columnaId: col.id,
-            anio,
-            titulo: col.titulo,
-            descripcion: col.descripcion,
-            tipoEvento: 'vencimiento',
-            fecha: col.fechaLimite,
-            moneda: col.moneda,
-            montoDefecto: Number(col.montoDefecto || 0),
-            totalAptosAsignados: asignados || totalAptos,
-            totalAptosPendientes: pendientes,
-            totalAptosPagados: pagados,
-            estado: calcularEstado(col.fechaLimite, pendientes, asignados)
-          })
-        }
       })
-    })
 
     eventos.sort((a, b) => a.fecha.localeCompare(b.fecha))
     return eventos
@@ -1988,8 +2156,8 @@ export async function cambiarSeccionColumna(
 
     await guardarConfiguracionCalendario(config, anio)
     return { success: true, error: null }
-  } catch (err: any) {
-    return { success: false, error: err.message || 'Error cambiando sección de columna' }
+  } catch (err: unknown) {
+    return { success: false, error: getErrorMessage(err) || 'Error cambiando sección de columna' }
   }
 }
 
@@ -2013,8 +2181,8 @@ export async function cambiarMonedaColumna(
     await guardarConfiguracionCalendario(config, anio)
     appCache.invalidateTags(['calendario_config', 'mora', `calendario_${anio}`])
     return { success: true, error: null }
-  } catch (err: any) {
-    return { success: false, error: err.message || 'Error cambiando moneda de columna' }
+  } catch (err: unknown) {
+    return { success: false, error: getErrorMessage(err) || 'Error cambiando moneda de columna' }
   }
 }
 
@@ -2046,8 +2214,8 @@ export async function moverColumnaPosicion(
 
     await guardarConfiguracionCalendario(config, anio)
     return { success: true, error: null }
-  } catch (err: any) {
-    return { success: false, error: err.message || 'Error moviendo columna' }
+  } catch (err: unknown) {
+    return { success: false, error: getErrorMessage(err) || 'Error moviendo columna' }
   }
 }
 
@@ -2061,8 +2229,8 @@ export async function eliminarColumna(colId: string, anio: number = 2026): Promi
     config.columnas.forEach((c, i) => { c.orden = i + 1 })
     await guardarConfiguracionCalendario(config, anio)
     return { success: true, error: null }
-  } catch (err: any) {
-    return { success: false, error: err.message || 'Error eliminando columna' }
+  } catch (err: unknown) {
+    return { success: false, error: getErrorMessage(err) || 'Error eliminando columna' }
   }
 }
 
@@ -2075,8 +2243,8 @@ export async function restablecerColumnasPorDefecto(anio: number = 2026): Promis
     config.columnas = obtenerColumnasPorDefecto(anio)
     await guardarConfiguracionCalendario(config, anio)
     return { success: true, error: null }
-  } catch (err: any) {
-    return { success: false, error: err.message || 'Error restableciendo columnas' }
+  } catch (err: unknown) {
+    return { success: false, error: getErrorMessage(err) || 'Error restableciendo columnas' }
   }
 }
 
@@ -2104,8 +2272,8 @@ export async function editarColumna(params: {
     config.columnas = cols
     await guardarConfiguracionCalendario(config, anio)
     return { success: true, error: null }
-  } catch (err: any) {
-    return { success: false, error: err.message || 'Error editando columna' }
+  } catch (err: unknown) {
+    return { success: false, error: getErrorMessage(err) || 'Error editando columna' }
   }
 }
 
@@ -2131,8 +2299,8 @@ export async function agregarFilaPersonalizada(params: {
     config.filasPersonalizadas.push(nuevaFila)
     await guardarConfiguracionCalendario(config, anio)
     return { success: true, fila: nuevaFila, error: null }
-  } catch (err: any) {
-    return { success: false, fila: null, error: err.message || 'Error agregando fila' }
+  } catch (err: unknown) {
+    return { success: false, fila: null, error: getErrorMessage(err) || 'Error agregando fila' }
   }
 }
 
@@ -2152,8 +2320,8 @@ export async function ocultarOEliminarFila(filaId: string, anio: number = 2026):
     }
     await guardarConfiguracionCalendario(config, anio)
     return { success: true, error: null }
-  } catch (err: any) {
-    return { success: false, error: err.message || 'Error ocultando fila' }
+  } catch (err: unknown) {
+    return { success: false, error: getErrorMessage(err) || 'Error ocultando fila' }
   }
 }
 
@@ -2167,8 +2335,8 @@ export async function restaurarFilaOculta(filaId: string, anio: number = 2026): 
     config.filasOcultasIds = config.filasOcultasIds.filter(id => id !== filaId)
     await guardarConfiguracionCalendario(config, anio)
     return { success: true, error: null }
-  } catch (err: any) {
-    return { success: false, error: err.message || 'Error restaurando fila' }
+  } catch (err: unknown) {
+    return { success: false, error: getErrorMessage(err) || 'Error restaurando fila' }
   }
 }
 
@@ -2282,7 +2450,7 @@ export async function sincronizarDatosExcelOficial(autorNombre?: string): Promis
 
         const tasaRef = getTasaBcvNumerica()
         const montoUsd = mDef.moneda === 'USD' ? montoReal : Number((montoReal / tasaRef).toFixed(2))
-        const montoBs  = mDef.moneda === 'BS' ? montoReal : Number((montoReal * tasaRef).toFixed(2))
+        const montoBs = mDef.moneda === 'BS' ? montoReal : Number((montoReal * tasaRef).toFixed(2))
 
         const { data: recExistente } = await supabase
           .from('recibos_generados')
@@ -2332,8 +2500,8 @@ export async function sincronizarDatosExcelOficial(autorNombre?: string): Promis
     appCache.invalidateTags(['recibos', 'saldos', 'mora', 'apartamentos'])
 
     return { success: true, registrosSincronizados: totalRecibosCargados, error: null }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[sincronizarDatosExcelOficial] Error:', err)
-    return { success: false, registrosSincronizados: 0, error: err.message || 'Error sincronizando Excel' }
+    return { success: false, registrosSincronizados: 0, error: getErrorMessage(err) || 'Error sincronizando Excel' }
   }
 }

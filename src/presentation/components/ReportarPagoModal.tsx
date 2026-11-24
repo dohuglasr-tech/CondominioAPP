@@ -9,7 +9,7 @@ import { obtenerJunta, MiembroJunta } from '../../data/juntaService'
 import { useAuth } from '../../application/contexts/AuthContext'
 import { ConfigEdificio, supabase } from '../../data/supabase'
 import {
-  obtenerGasServicioData,
+  obtenerResumenGasApartamento,
   obtenerTodasLasDeudasGasApartamento,
   reportarPagoGasResidente,
   encodePagoMeta,
@@ -224,7 +224,7 @@ export function ReportarPagoModal({
         const [moraRes, saldoRes, gasRes] = await Promise.all([
           obtenerDeudasMora(true, true),
           obtenerSaldoAFavorApartamento(apartamentoId).catch(() => null),
-          obtenerGasServicioData(true).catch(() => null)
+          obtenerResumenGasApartamento(apartamentoId, aptoNumero, true).catch(() => null)
         ])
         if (!mounted) return
 

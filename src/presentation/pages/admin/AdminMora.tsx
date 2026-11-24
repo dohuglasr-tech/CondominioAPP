@@ -1493,7 +1493,7 @@ export const AdminMora: React.FC = () => {
           }}>
             <div style={{ textAlign: 'center', borderBottom: '2px solid #222', paddingBottom: '16px', marginBottom: '20px' }}>
               <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 700, color: '#555' }}>
-                JUNTA DE CONDOMINIO — EDIFICIO TORRE 5
+                JUNTA DE CONDOMINIO — {(config?.nombre_edificio || 'CONDOMINIO DOMUS').toUpperCase()}
               </div>
               <h2 style={{ margin: '8px 0 0', fontSize: '20px', fontWeight: 800, color: '#000' }}>
                 {citacionModal.tasa_riesgo === 'azul'

@@ -152,7 +152,7 @@ export async function generarPDFRecibo(
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(8)
   doc.setTextColor(...cAccent)
-  doc.text('JUNTA DE CONDOMINIO OCUTUY 5', 18, 14)
+  doc.text((config.nombre_edificio || 'JUNTA DE CONDOMINIO').toUpperCase(), 18, 14)
 
   doc.setFontSize(tituloDoc ? 13 : 16)
   doc.setTextColor(255, 255, 255)
@@ -180,19 +180,19 @@ export async function generarPDFRecibo(
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(7.5)
   doc.setTextColor(203, 213, 225)
-  doc.text('DIRECCIÓN: URBANIZACIÓN CASA BLANCA, RESIDENCIAS OCUTUY 5', 18, 27)
+  doc.text(`DIRECCIÓN: ${(config.direccion || config.nombre_edificio || 'ADMINISTRACIÓN').toUpperCase()}`, 18, 27)
 
   // Datos fiscales y contacto (Lado derecho)
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(8.5)
   doc.setTextColor(...cAccent)
-  doc.text(`RIF: ${config.rif || 'J-296749485'}`, 198, 14, { align: 'right' })
+  doc.text(`RIF: ${config.rif || 'J-00000000-0'}`, 198, 14, { align: 'right' })
 
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(7.5)
   doc.setTextColor(226, 232, 240)
-  doc.text(`CORREO: ${config.email_contacto || 'juntacondominioocutuy5@gmail.com'}`, 198, 20, { align: 'right' })
-  doc.text(`EDIFICIO: ${config.nombre_edificio || 'RESIDENCIAS OCUTUY 5'}`, 198, 26, { align: 'right' })
+  doc.text(`CORREO: ${config.email_contacto || 'administracion@domus.ve'}`, 198, 20, { align: 'right' })
+  doc.text(`EDIFICIO: ${(config.nombre_edificio || 'CONDOMINIO DOMUS').toUpperCase()}`, 198, 26, { align: 'right' })
 
   // ── 2. CUADRO DE INFORMACIÓN DEL INMUEBLE (Formato Excel Imagen 2) ──
   autoTable(doc, {
@@ -507,7 +507,7 @@ export async function generarPDFRecibo(
   // ── 9. FOOTER ──
   doc.setFontSize(6)
   doc.setTextColor(148, 163, 184)
-  doc.text(`Generado el ${new Date().toLocaleDateString('es-VE')} · Sistema de Gestión de Condominios · Residencias Ocutuy 5`, 105, 292, { align: 'center' })
+  doc.text(`Generado el ${new Date().toLocaleDateString('es-VE')} · Sistema de Gestión de Condominios · ${config.nombre_edificio || 'Domus'}`, 105, 292, { align: 'center' })
 
   return doc
 }

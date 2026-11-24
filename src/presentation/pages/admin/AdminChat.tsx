@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../../data/supabase'
+import { getActiveEdificioNombre } from '../../../data/tenantContext'
 import {
   ChatMensaje,
   ChatEstadoConfig,
@@ -405,7 +406,7 @@ export const AdminChat: React.FC = () => {
             gap: '12px'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '13px', fontWeight: 700, color: '#e4e4e7' }}>Canal Torre 5</span>
+              <span style={{ fontSize: '13px', fontWeight: 700, color: '#e4e4e7' }}>Canal {getActiveEdificioNombre('Comunitario')}</span>
               <span style={{ fontSize: '11px', color: '#71717a' }}>({mensajesFiltrados.length} mensajes)</span>
             </div>
 
@@ -530,7 +531,7 @@ export const AdminChat: React.FC = () => {
                           }}>
                             {isAnuncio ? '📢 ANUNCIO OFICIAL' : '🛡️ ADMINISTRACIÓN'}
                           </span>
-                          <strong style={{ color: '#93c5fd' }}>Torre 5</strong>
+                          <strong style={{ color: '#93c5fd' }}>{getActiveEdificioNombre('Administración')}</strong>
                         </>
                       ) : (
                         <>

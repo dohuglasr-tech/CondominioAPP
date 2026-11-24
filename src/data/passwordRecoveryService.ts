@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { getBasePortalUrl } from './emailService'
+import { getErrorMessage } from '../utils/logger'
 
 export interface ResolveResidentResult {
   success: boolean
@@ -97,11 +98,11 @@ export async function sendResidentPasswordReset(identifier: string): Promise<Res
       success: false,
       error: edgeError?.message || edgeData?.error || 'No se pudo procesar la solicitud de recuperación. Intenta nuevamente.',
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[passwordRecoveryService] Excepción enviando reset:', err)
     return {
       success: false,
-      error: err?.message || 'Error inesperado al solicitar el restablecimiento.',
+      error: getErrorMessage(err) || 'Error inesperado al solicitar el restablecimiento.',
     }
   }
 }
@@ -159,7 +160,7 @@ export async function verifyResidentRecoveryOtp(
     }
 
     return { success: true, hasSession: true }
-  } catch (err: any) {
-    return { success: false, error: err?.message || 'Error verificando el código.' }
+  } catch (err: unknown) {
+    return { success: false, error: getErrorMessage(err) || 'Error verificando el código.' }
   }
 }

@@ -10,6 +10,7 @@ import {
 } from '../../data/chatService'
 import { useAuth } from '../../application/contexts/AuthContext'
 import { useTheme } from '../../application/contexts/ThemeContext'
+import { getActiveEdificioNombre } from '../../data/tenantContext'
 import { useNavigate } from 'react-router-dom'
 
 interface ChatPanelProps {
@@ -660,7 +661,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onClose }) => {
                       color: isAdmin ? '#93c5fd' : (isMe ? 'var(--color-accent, #fdba74)' : '#e4e4e7'),
                       fontSize: '12px'
                     }}>
-                      {isAdmin ? 'Administración Torre 5' : (isMe ? `Tú (${m.autor_nombre})` : m.autor_nombre)}
+                      {isAdmin ? `Administración ${getActiveEdificioNombre('Condominio')}` : (isMe ? `Tú (${m.autor_nombre})` : m.autor_nombre)}
                     </span>
 
                     <span>•</span>

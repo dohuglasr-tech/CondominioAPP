@@ -1,4 +1,5 @@
 import { supabase, ConfigEdificio } from './supabase'
+import { logger } from '../utils/logger'
 
 export interface TenantInfo {
   id: string
@@ -12,7 +13,7 @@ export interface TenantInfo {
 
 /**
  * Convierte un nombre de edificio a un slug limpio para subdominios o URLs.
- * Ejemplo: "Condominio Ocutuy 5" -> "ocutuy5" o "ocutuy-5"
+ * Ejemplo: "Residencial Los Robles" -> "los-robles"
  */
 export function slugifyBuildingName(name: string): string {
   if (!name) return ''
@@ -29,10 +30,10 @@ export function slugifyBuildingName(name: string): string {
 /**
  * Detecta el subdominio o tenant actual desde la URL.
  * Soporta:
- * 1. Subdominios reales: ocutuy5.domus.ve, torre-avila.domus.ve
- * 2. Subdominios locales: ocutuy5.localhost:3000
- * 3. Parámetro de búsqueda: ?edificio=ocutuy5 o ?tenant=ocutuy5
- * 4. Rutas directas: /e/ocutuy5 o /e/ocutuy5/login
+ * 1. Subdominios reales: los-robles.domus.ve, torre-avila.domus.ve
+ * 2. Subdominios locales: los-robles.localhost:3000
+ * 3. Parámetro de búsqueda: ?edificio=los-robles o ?tenant=los-robles
+ * 4. Rutas directas: /e/los-robles o /e/los-robles/login
  */
 export function extractTenantSubdomain(): string | null {
   if (typeof window === 'undefined') return null
@@ -56,13 +57,13 @@ export function extractTenantSubdomain(): string | null {
     return null
   }
 
-  // Soporte para subdominio en localhost: ej. "ocutuy5.localhost"
+  // Soporte para subdominio en localhost: ej. "los-robles.localhost"
   if (hostname.endsWith('.localhost')) {
     const sub = hostname.replace('.localhost', '')
     if (sub && sub !== 'www' && sub !== 'app') return sub
   }
 
-  // Dominios de producción: ej. "ocutuy5.domus.ve" o "ocutuy5.domus-ve.vercel.app"
+  // Dominios de producción: ej. "los-robles.domus.ve" o "los-robles.domus-ve.vercel.app"
   const parts = hostname.split('.')
 
   // Si tiene al menos 3 partes (subdominio.dominio.tld)
@@ -90,14 +91,14 @@ export async function resolveTenantBuilding(slugOrId?: string | null): Promise<C
   try {
     const { data: sessionRes } = await supabase.auth.getSession()
     hasSession = Boolean(sessionRes?.session?.user)
-  } catch {}
+  } catch (err) { logger.debug('tenantService', 'Fallback controlado', err) }
 
   const cacheKey = `${hasSession ? 'tenant_config_auth_' : 'tenant_config_pub_'}${target}`
   const cached = sessionStorage.getItem(cacheKey)
   if (cached) {
     try {
       return JSON.parse(cached)
-    } catch {}
+    } catch (err) { logger.debug('tenantService', 'Fallback controlado', err) }
   }
 
   if (!hasSession) {
@@ -112,7 +113,7 @@ export async function resolveTenantBuilding(slugOrId?: string | null): Promise<C
       if (!rpcErr && !rpcData) {
         return null
       }
-    } catch {}
+    } catch (err) { logger.debug('tenantService', 'Fallback controlado', err) }
   }
 
   try {
@@ -129,7 +130,7 @@ export async function resolveTenantBuilding(slugOrId?: string | null): Promise<C
         sessionStorage.setItem(cacheKey, JSON.stringify(bySlug))
         return bySlug
       }
-    } catch {}
+    } catch (err) { logger.debug('tenantService', 'Fallback controlado', err) }
 
     // 2. Intentar buscar por UUID directo si el target tiene formato UUID
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(target)

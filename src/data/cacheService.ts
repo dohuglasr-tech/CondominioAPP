@@ -9,6 +9,7 @@
  */
 
 import { supabase } from './supabase'
+import { logger, getErrorMessage } from '../utils/logger'
 
 export interface CacheEntry<T> {
   data: T
@@ -103,7 +104,7 @@ class CacheService {
         if (persistSession && typeof window !== 'undefined') {
           try {
             sessionStorage.setItem(`app_cache_${key}`, JSON.stringify(entry))
-          } catch {}
+          } catch (err) { logger.debug('cacheService', 'Fallback controlado', err) }
         }
 
         return result
@@ -124,7 +125,7 @@ class CacheService {
     if (typeof window !== 'undefined') {
       try {
         sessionStorage.removeItem(`app_cache_${key}`)
-      } catch {}
+      } catch (err) { logger.debug('cacheService', 'Fallback controlado', err) }
     }
     this.notify(key)
   }
@@ -146,7 +147,7 @@ class CacheService {
       if (typeof window !== 'undefined') {
         try {
           sessionStorage.removeItem(`app_cache_${k}`)
-        } catch {}
+        } catch (err) { logger.debug('cacheService', 'Fallback controlado', err) }
       }
     }
 
@@ -170,7 +171,7 @@ class CacheService {
         if (typeof window !== 'undefined') {
           try {
             sessionStorage.removeItem(`app_cache_${key}`)
-          } catch {}
+          } catch (err) { logger.debug('cacheService', 'Fallback controlado', err) }
         }
       }
     }
@@ -195,7 +196,7 @@ class CacheService {
           if (k && k.startsWith('app_cache_')) keysToRemove.push(k)
         }
         keysToRemove.forEach((k) => sessionStorage.removeItem(k))
-      } catch {}
+      } catch (err) { logger.debug('cacheService', 'Fallback controlado', err) }
     }
     this.notify('*')
   }
@@ -286,7 +287,7 @@ export async function purgarCacheLocalNavegador(recargar: boolean = false): Prom
     if (typeof window !== 'undefined') {
       try {
         sessionStorage.clear()
-      } catch {}
+      } catch (err) { logger.debug('cacheService', 'Fallback controlado', err) }
     }
 
     // 2. Limpiar CacheStorage del navegador (caches de Service Worker y assets antiguos)
@@ -294,7 +295,7 @@ export async function purgarCacheLocalNavegador(recargar: boolean = false): Prom
       try {
         const names = await caches.keys()
         await Promise.all(names.map((name) => caches.delete(name).catch(() => false)))
-      } catch {}
+      } catch (err) { logger.debug('cacheService', 'Fallback controlado', err) }
     }
 
     // 3. Forzar actualización de Service Workers registrados
@@ -302,7 +303,7 @@ export async function purgarCacheLocalNavegador(recargar: boolean = false): Prom
       try {
         const registrations = await navigator.serviceWorker.getRegistrations()
         await Promise.all(registrations.map((reg) => reg.update().catch(() => {})))
-      } catch {}
+      } catch (err) { logger.debug('cacheService', 'Fallback controlado', err) }
     }
   } catch (err) {
     console.warn('[CacheService] Error durante purga local:', err)
@@ -330,7 +331,7 @@ export async function purgarCacheGlobalTotal(adminNombre?: string): Promise<{ ok
     if (typeof window !== 'undefined') {
       try {
         sessionStorage.clear()
-      } catch {}
+      } catch (err) { logger.debug('cacheService', 'Fallback controlado', err) }
     }
 
     // 2. Limpiar CacheStorage del navegador (caches de Service Worker y assets antiguos)
@@ -338,7 +339,7 @@ export async function purgarCacheGlobalTotal(adminNombre?: string): Promise<{ ok
       try {
         const names = await caches.keys()
         await Promise.all(names.map((name) => caches.delete(name).catch(() => false)))
-      } catch {}
+      } catch (err) { logger.debug('cacheService', 'Fallback controlado', err) }
     }
 
     // 3. Forzar actualización de Service Workers registrados
@@ -346,7 +347,7 @@ export async function purgarCacheGlobalTotal(adminNombre?: string): Promise<{ ok
       try {
         const registrations = await navigator.serviceWorker.getRegistrations()
         await Promise.all(registrations.map((reg) => reg.update().catch(() => {})))
-      } catch {}
+      } catch (err) { logger.debug('cacheService', 'Fallback controlado', err) }
     }
 
     // 4. Invalida todas las etiquetas en memoria
@@ -387,7 +388,7 @@ export async function purgarCacheGlobalTotal(adminNombre?: string): Promise<{ ok
     } finally {
       try {
         await supabase.removeChannel(channel)
-      } catch {}
+      } catch (err) { logger.debug('cacheService', 'Fallback controlado', err) }
     }
 
     // 6. Actualizar configuracion_edificio.updated_at para disparar postgres_changes en todos los clientes
@@ -412,12 +413,12 @@ export async function purgarCacheGlobalTotal(adminNombre?: string): Promise<{ ok
         autor_nombre: adminNombre || 'Administrador',
         created_at: ahoraIso,
       }])
-    } catch {}
+    } catch (err) { logger.debug('cacheService', 'Fallback controlado', err) }
 
     return { ok: true }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[CacheService] Error al purgar caché global:', err)
-    return { ok: false, error: err?.message || 'Error desconocido' }
+    return { ok: false, error: getErrorMessage(err) || 'Error desconocido' }
   }
 }
 

@@ -194,11 +194,11 @@ export async function generarPDFNormas(datos: DatosNormasCondominio): Promise<Js
   const cAccent: [number, number, number] = [249, 115, 22]   // Brand Orange
   const cSlateLine: [number, number, number] = [226, 232, 240]
 
-  const nombreEdificio = (datos.nombreEdificio || 'Residencias Ocutuy 5').trim()
-  const rif = (datos.rif || 'J-296749485').trim()
-  const direccion = (datos.direccion || 'Urbanización Casa Blanca, Residencias Ocutuy 5').trim()
-  const ciudad = (datos.ciudad || 'Charallave, Miranda').trim()
-  const email = (datos.emailContacto || 'juntacondominioocutuy5@gmail.com').trim()
+  const nombreEdificio = (datos.nombreEdificio || 'Condominio Domus').trim()
+  const rif = (datos.rif || 'J-00000000-0').trim()
+  const direccion = (datos.direccion || 'Dirección del Condominio').trim()
+  const ciudad = (datos.ciudad || '').trim()
+  const email = (datos.emailContacto || 'administracion@domus.ve').trim()
   const fechaStr = datos.fechaEmision || new Date().toLocaleDateString('es-VE', { year: 'numeric', month: 'long', day: 'numeric' })
 
   // Función para dibujar encabezado de la Página 1 (idéntico al de recibos)

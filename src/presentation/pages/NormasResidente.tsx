@@ -50,11 +50,11 @@ export const NormasResidente: React.FC = () => {
 
   const datosEdificio: DatosNormasCondominio = useMemo(() => {
     return {
-      nombreEdificio: c?.nombre_edificio || c?.nombre || p?.edificio?.nombre || 'Residencias Ocutuy 5',
-      rif: c?.rif || 'J-296749485',
-      direccion: c?.direccion || 'Urbanización Casa Blanca, Residencias Ocutuy 5',
-      ciudad: c?.ciudad || 'Charallave, Miranda',
-      emailContacto: c?.email_contacto || 'juntacondominioocutuy5@gmail.com',
+      nombreEdificio: c?.nombre_edificio || c?.nombre || p?.edificio?.nombre || 'Condominio Domus',
+      rif: c?.rif || 'J-00000000-0',
+      direccion: c?.direccion || 'Dirección del Condominio',
+      ciudad: c?.ciudad || '',
+      emailContacto: c?.email_contacto || 'administracion@domus.ve',
       telefono: c?.telefono || adminMiembro?.telefono || null,
       administradorNombre: adminMiembro?.nombre || 'Dohuglas Guevara',
       presidenteNombre: presidenteMiembro?.nombre || 'Rafael Eduardo Malvares',

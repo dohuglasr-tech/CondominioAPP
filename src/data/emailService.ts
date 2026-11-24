@@ -4,6 +4,7 @@ import type { DatosCartaSolvencia } from '../utils/solvenciaPdfGenerator'
 import { generarCodigoSolvencia, formatearFechaIso } from '../utils/solvenciaPdfGenerator'
 import { formatAlicuotaPct } from '../utils/alicuota'
 import { getTasaBcvNumerica } from '../utils/tasaBcvHelper'
+import { logger, getErrorMessage } from '../utils/logger'
 
 /**
  * Servicio centralizado para el envío automático de correos electrónicos:
@@ -120,7 +121,7 @@ export interface DatosEmailRecordatorioRecibo {
 }
 
 export const DEFAULT_PORTAL_URL = 'https://domus-ve.vercel.app'
-export const DEFAULT_EDIFICIO = 'Residencias Ocutuy 5'
+export const DEFAULT_EDIFICIO = 'Condominio Domus'
 export const DEFAULT_BANCO = 'Banco Bicentenario'
 export const DEFAULT_CUENTA = '0175-0525-4100-7575-1351'
 export const DEFAULT_TITULAR = 'Zoraya Almeida'
@@ -755,7 +756,7 @@ export async function enviarEmail(params: {
         try {
           const body = await (error as any).context.json()
           if (body?.error) errMsg = body.error
-        } catch {}
+        } catch (err) { logger.debug('emailService', 'Fallback controlado', err) }
       }
       if (errMsg.includes('only send testing emails to your own email address')) {
         return {
@@ -765,7 +766,7 @@ export async function enviarEmail(params: {
       }
       return { ok: false, error: errMsg }
     }
-  } catch (edgeErr: any) {
+  } catch (edgeErr: unknown) {
     console.debug('[EmailService] Error invocando Edge Function, probando envío directo:', edgeErr)
   }
 
@@ -774,7 +775,7 @@ export async function enviarEmail(params: {
   if (resendApiKey) {
     try {
       const payload: Record<string, any> = {
-        from: 'Residencias Ocutuy 5 <onboarding@resend.dev>',
+        from: `${DEFAULT_EDIFICIO} <onboarding@resend.dev>`,
         to,
         subject,
         html,
@@ -801,8 +802,8 @@ export async function enviarEmail(params: {
         }
       }
       return { ok: false, error: resData?.message || 'Error en servicio Resend' }
-    } catch (err: any) {
-      return { ok: false, error: err?.message || 'Error de conexión enviando email' }
+    } catch (err: unknown) {
+      return { ok: false, error: getErrorMessage(err) || 'Error de conexión enviando email' }
     }
   }
 

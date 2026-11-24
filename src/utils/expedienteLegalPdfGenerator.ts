@@ -201,7 +201,7 @@ export async function generarExpedienteLegalPDF(datos: ExpedienteLegalAptoData):
   doc.setFontSize(6.8)
   doc.setTextColor(71, 85, 105)
   const rifText = datos.edificio.rif ? `RIF: ${datos.edificio.rif} · ` : ''
-  const dirText = datos.edificio.direccion ? `Ubicación: ${datos.edificio.direccion}` : 'Residencias Ocutuy 5'
+  const dirText = datos.edificio.direccion ? `Ubicación: ${datos.edificio.direccion}` : (datos.edificio.nombre || 'Condominio Domus')
   const contactText = datos.edificio.emailContacto ? ` · Contacto: ${datos.edificio.emailContacto}` : ''
   doc.text(`${rifText}${dirText}${contactText}`, 17, currentY + 4.3)
 

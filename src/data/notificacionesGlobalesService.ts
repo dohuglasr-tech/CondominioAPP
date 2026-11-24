@@ -5,6 +5,7 @@ import {
   CategoriaComunicadoGlobal,
   generarHtmlNotificacionGlobal
 } from './emailService'
+import { logger, getErrorMessage } from '../utils/logger'
 
 export type OrigenAudienciaGlobal = 'bd' | 'ultimo_recibo' | 'excel'
 
@@ -218,8 +219,8 @@ async function invocarEdgeEmail(payload: {
       ok: true,
       bccSupported: Boolean(data?.bccSupported)
     }
-  } catch (err: any) {
-    return { ok: false, error: err?.message || 'Excepción de red al enviar correo' }
+  } catch (err: unknown) {
+    return { ok: false, error: getErrorMessage(err) || 'Excepción de red al enviar correo' }
   }
 }
 
@@ -437,7 +438,7 @@ export async function obtenerHistorialNotificacionesGlobales(): Promise<Historia
 
     return data.map((row: any) => {
       let parsed: any = {}
-      try { parsed = JSON.parse(row.descripcion || '{}') } catch {}
+      try { parsed = JSON.parse(row.descripcion || '{}') } catch (err) { logger.debug('notificacionesGlobalesService', 'Fallback controlado', err) }
       return {
         id: row.id,
         asunto: parsed.asunto || row.titulo || 'Comunicado Global',
@@ -513,7 +514,7 @@ export async function guardarDestinatariosUltimoReciboEnviado(params: {
 
   try {
     localStorage.setItem(LOCAL_KEY_ULTIMO_ENVIO_RECIBOS, JSON.stringify(payload))
-  } catch {}
+  } catch (err) { logger.debug('notificacionesGlobalesService', 'Fallback controlado', err) }
 
   try {
     const { data: existente } = await supabase
@@ -573,13 +574,13 @@ export async function obtenerDestinatariosUltimoReciboEnviado(): Promise<Resumen
 
     let parsedReg: any = null
     if (regRow?.descripcion) {
-      try { parsedReg = JSON.parse(regRow.descripcion) } catch {}
+      try { parsedReg = JSON.parse(regRow.descripcion) } catch (err) { logger.debug('notificacionesGlobalesService', 'Fallback controlado', err) }
     }
     if (!parsedReg) {
       try {
         const rawLocal = localStorage.getItem(LOCAL_KEY_ULTIMO_ENVIO_RECIBOS)
         if (rawLocal) parsedReg = JSON.parse(rawLocal)
-      } catch {}
+      } catch (err) { logger.debug('notificacionesGlobalesService', 'Fallback controlado', err) }
     }
 
     if (parsedReg && Array.isArray(parsedReg.destinatarios) && parsedReg.destinatarios.length > 0) {
@@ -1018,13 +1019,13 @@ export async function parsearExcelCorreos(
     )
 
     return { destinatarios, totalFilas, descartados, duplicados }
-  } catch (err: any) {
+  } catch (err: unknown) {
     return {
       destinatarios: [],
       totalFilas: 0,
       descartados: 0,
       duplicados: 0,
-      error: err?.message || 'Error leyendo el archivo Excel'
+      error: getErrorMessage(err) || 'Error leyendo el archivo Excel'
     }
   }
 }

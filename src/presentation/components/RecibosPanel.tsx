@@ -329,10 +329,10 @@ export function RecibosPanel({ onClose }: Props) {
       }))
 
       const configData: ReciboConfigData = {
-        nombre_edificio: config?.nombre_edificio || 'RESIDENCIAS OCUTUY 5',
-        rif: config?.rif || 'J-296749485',
-        direccion: config?.direccion || 'URBANIZACIÓN CASA BLANCA, RESIDENCIAS OCUTUY 5',
-        email_contacto: config?.email_contacto || 'juntacondominioocutuy5@gmail.com',
+        nombre_edificio: config?.nombre_edificio || 'CONDOMINIO DOMUS',
+        rif: config?.rif || 'J-00000000-0',
+        direccion: config?.direccion || 'Dirección registrada del edificio',
+        email_contacto: config?.email_contacto || 'administracion@domus.ve',
         banco: config?.banco,
         cuenta_bancaria: config?.cuenta_bancaria,
         titular_cuenta: config?.titular_cuenta,
@@ -348,13 +348,13 @@ export function RecibosPanel({ onClose }: Props) {
 
       const pagoInfo: ReciboPagoInfo | undefined = estaPagado
         ? {
-            estado: 'pagado',
-            fecha_pago: pagoAprobado?.fecha_pago || recibo.data_json?.pago_info?.fecha_pago || pagoAprobado?.created_at || (esHistorico ? recibo.mes_facturado : undefined),
-            banco: pagoAprobado?.banco_origen || recibo.data_json?.pago_info?.banco || config?.banco || (esHistorico ? 'Administración Anterior' : 'Bicentenario'),
-            referencia: pagoAprobado?.referencia || recibo.data_json?.pago_info?.referencia || (esDeudaAtrasada ? 'PAGO DEUDA ATRASADA' : esHistorico ? 'REGISTRO HISTÓRICO' : 'VALIDADO'),
-            monto_bs: pagoAprobado?.monto_bs || recibo.data_json?.pago_info?.monto_bs || recibo.total_bs,
-            monto_usd: pagoAprobado?.monto_usd || recibo.data_json?.pago_info?.monto_usd || recibo.total_usd,
-          }
+          estado: 'pagado',
+          fecha_pago: pagoAprobado?.fecha_pago || recibo.data_json?.pago_info?.fecha_pago || pagoAprobado?.created_at || (esHistorico ? recibo.mes_facturado : undefined),
+          banco: pagoAprobado?.banco_origen || recibo.data_json?.pago_info?.banco || config?.banco || (esHistorico ? 'Administración Anterior' : 'Bicentenario'),
+          referencia: pagoAprobado?.referencia || recibo.data_json?.pago_info?.referencia || (esDeudaAtrasada ? 'PAGO DEUDA ATRASADA' : esHistorico ? 'REGISTRO HISTÓRICO' : 'VALIDADO'),
+          monto_bs: pagoAprobado?.monto_bs || recibo.data_json?.pago_info?.monto_bs || recibo.total_bs,
+          monto_usd: pagoAprobado?.monto_usd || recibo.data_json?.pago_info?.monto_usd || recibo.total_usd,
+        }
         : undefined
 
       const docTitulo = esDeudaAtrasada ? (recibo.data_json?.titulo_recibo || 'RECIBO DE PAGO DE DEUDA ATRASADA') : undefined
@@ -449,7 +449,7 @@ export function RecibosPanel({ onClose }: Props) {
           <button
             onClick={() => {
               if (onClose && typeof onClose === 'function') {
-                try { onClose() } catch (_) {}
+                try { onClose() } catch (_) { }
               }
               navigate('/')
             }}
@@ -636,740 +636,663 @@ export function RecibosPanel({ onClose }: Props) {
           ) : (
             <>
 
-            {/* Selector de Estado: Por Pagar (Mora) / Todos / Pagados */}
-            <div style={{
-              display: 'flex',
-              gap: '8px',
-              marginBottom: '14px',
-              flexWrap: 'wrap'
-            }}>
-              <button
-                onClick={() => setFiltroEstado('pendientes')}
-                style={{
-                  background: filtroEstado === 'pendientes'
-                    ? 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)'
-                    : 'rgba(239, 68, 68, 0.1)',
-                  color: filtroEstado === 'pendientes' ? '#fff' : '#f87171',
-                  border: filtroEstado === 'pendientes' ? 'none' : '1px solid rgba(239, 68, 68, 0.3)',
-                  padding: '8px 16px',
-                  borderRadius: '10px',
-                  fontSize: '12px',
-                  fontWeight: 800,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  boxShadow: filtroEstado === 'pendientes' ? '0 2px 12px rgba(239, 68, 68, 0.4)' : 'none'
-                }}
-              >
-                <span>⚠️ Por Pagar / Mora</span>
-                <span style={{
-                  background: filtroEstado === 'pendientes' ? 'rgba(0,0,0,0.3)' : 'rgba(239, 68, 68, 0.25)',
-                  padding: '2px 8px',
-                  borderRadius: '999px',
-                  fontSize: '11px',
-                  fontWeight: 900
-                }}>
-                  {conteoPendientes}
-                </span>
-              </button>
-
-              <button
-                onClick={() => setFiltroEstado('todos')}
-                style={{
-                  background: filtroEstado === 'todos'
-                    ? 'rgba(255, 255, 255, 0.18)'
-                    : 'rgba(255, 255, 255, 0.05)',
-                  color: filtroEstado === 'todos' ? '#fff' : '#94a3b8',
-                  border: '1px solid rgba(255, 255, 255, 0.1)',
-                  padding: '8px 14px',
-                  borderRadius: '10px',
-                  fontSize: '12px',
-                  fontWeight: filtroEstado === 'todos' ? 800 : 600,
-                  cursor: 'pointer'
-                }}
-              >
-                Todos ({recibos.length + (deudaMoraManual ? 1 : 0)})
-              </button>
-
-              <button
-                onClick={() => setFiltroEstado('pagados')}
-                style={{
-                  background: filtroEstado === 'pagados'
-                    ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
-                    : 'rgba(16, 185, 129, 0.1)',
-                  color: filtroEstado === 'pagados' ? '#fff' : '#34d399',
-                  border: filtroEstado === 'pagados' ? 'none' : '1px solid rgba(16, 185, 129, 0.3)',
-                  padding: '8px 14px',
-                  borderRadius: '10px',
-                  fontSize: '12px',
-                  fontWeight: filtroEstado === 'pagados' ? 800 : 600,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px'
-                }}
-              >
-                <span>✓ Pagados</span>
-                <span style={{
-                  background: filtroEstado === 'pagados' ? 'rgba(0,0,0,0.3)' : 'rgba(16, 185, 129, 0.25)',
-                  padding: '2px 8px',
-                  borderRadius: '999px',
-                  fontSize: '11px',
-                  fontWeight: 900
-                }}>
-                  {conteoPagados}
-                </span>
-              </button>
-            </div>
-
-            {/* Barra de Filtros por Año y por Mes */}
-            <div style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: '10px',
-              padding: '12px 16px',
-              background: 'rgba(255, 255, 255, 0.03)',
-              borderRadius: '14px',
-              border: '1px solid rgba(255, 255, 255, 0.08)',
-              marginBottom: '10px'
-            }}>
-              {/* Pestañas de Años */}
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
-                <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', marginRight: '4px' }}>
-                  Año:
-                </span>
-                {aniosDisponibles.map(anio => (
-                  <button
-                    key={anio}
-                    onClick={() => setFiltroAnio(anio)}
-                    style={{
-                      background: filtroAnio === anio
-                        ? 'var(--color-brand-gradient, linear-gradient(135deg, #f97316 0%, #ea580c 100%))'
-                        : 'rgba(255, 255, 255, 0.06)',
-                      color: filtroAnio === anio ? '#fff' : '#cbd5e1',
-                      border: 'none',
-                      padding: '6px 14px',
-                      borderRadius: '8px',
-                      fontSize: '12px',
-                      fontWeight: filtroAnio === anio ? 800 : 600,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '5px',
-                      transition: 'all 0.15s ease'
-                    }}
-                  >
-                    <span>📅</span>
-                    <span>{anio}</span>
-                  </button>
-                ))}
+              {/* Selector de Estado: Por Pagar (Mora) / Todos / Pagados */}
+              <div style={{
+                display: 'flex',
+                gap: '8px',
+                marginBottom: '14px',
+                flexWrap: 'wrap'
+              }}>
                 <button
-                  onClick={() => setFiltroAnio('todos')}
+                  onClick={() => setFiltroEstado('pendientes')}
                   style={{
-                    background: filtroAnio === 'todos' ? 'rgba(255, 255, 255, 0.18)' : 'rgba(255, 255, 255, 0.04)',
-                    color: filtroAnio === 'todos' ? '#fff' : '#94a3b8',
-                    border: 'none',
-                    padding: '6px 12px',
-                    borderRadius: '8px',
+                    background: filtroEstado === 'pendientes'
+                      ? 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)'
+                      : 'rgba(239, 68, 68, 0.1)',
+                    color: filtroEstado === 'pendientes' ? '#fff' : '#f87171',
+                    border: filtroEstado === 'pendientes' ? 'none' : '1px solid rgba(239, 68, 68, 0.3)',
+                    padding: '8px 16px',
+                    borderRadius: '10px',
                     fontSize: '12px',
-                    fontWeight: filtroAnio === 'todos' ? 700 : 500,
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    boxShadow: filtroEstado === 'pendientes' ? '0 2px 12px rgba(239, 68, 68, 0.4)' : 'none'
+                  }}
+                >
+                  <span>⚠️ Por Pagar / Mora</span>
+                  <span style={{
+                    background: filtroEstado === 'pendientes' ? 'rgba(0,0,0,0.3)' : 'rgba(239, 68, 68, 0.25)',
+                    padding: '2px 8px',
+                    borderRadius: '999px',
+                    fontSize: '11px',
+                    fontWeight: 900
+                  }}>
+                    {conteoPendientes}
+                  </span>
+                </button>
+
+                <button
+                  onClick={() => setFiltroEstado('todos')}
+                  style={{
+                    background: filtroEstado === 'todos'
+                      ? 'rgba(255, 255, 255, 0.18)'
+                      : 'rgba(255, 255, 255, 0.05)',
+                    color: filtroEstado === 'todos' ? '#fff' : '#94a3b8',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    padding: '8px 14px',
+                    borderRadius: '10px',
+                    fontSize: '12px',
+                    fontWeight: filtroEstado === 'todos' ? 800 : 600,
                     cursor: 'pointer'
                   }}
                 >
-                  Todos
+                  Todos ({recibos.length + (deudaMoraManual ? 1 : 0)})
+                </button>
+
+                <button
+                  onClick={() => setFiltroEstado('pagados')}
+                  style={{
+                    background: filtroEstado === 'pagados'
+                      ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
+                      : 'rgba(16, 185, 129, 0.1)',
+                    color: filtroEstado === 'pagados' ? '#fff' : '#34d399',
+                    border: filtroEstado === 'pagados' ? 'none' : '1px solid rgba(16, 185, 129, 0.3)',
+                    padding: '8px 14px',
+                    borderRadius: '10px',
+                    fontSize: '12px',
+                    fontWeight: filtroEstado === 'pagados' ? 800 : 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  <span>✓ Pagados</span>
+                  <span style={{
+                    background: filtroEstado === 'pagados' ? 'rgba(0,0,0,0.3)' : 'rgba(16, 185, 129, 0.25)',
+                    padding: '2px 8px',
+                    borderRadius: '999px',
+                    fontSize: '11px',
+                    fontWeight: 900
+                  }}>
+                    {conteoPagados}
+                  </span>
                 </button>
               </div>
 
-              {/* Selector de Mes */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>
-                  Mes:
-                </span>
-                <select
-                  value={filtroMes}
-                  onChange={e => setFiltroMes(e.target.value)}
-                  style={{
-                    background: '#131720',
-                    border: '1px solid rgba(255, 255, 255, 0.15)',
-                    color: '#fff',
-                    padding: '6px 12px',
-                    borderRadius: '8px',
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    cursor: 'pointer'
-                  }}
-                >
-                  <option value="todos">Todos los meses</option>
-                  <option value="01">Enero</option>
-                  <option value="02">Febrero</option>
-                  <option value="03">Marzo</option>
-                  <option value="04">Abril</option>
-                  <option value="05">Mayo</option>
-                  <option value="06">Junio</option>
-                  <option value="07">Julio</option>
-                  <option value="08">Agosto</option>
-                  <option value="09">Septiembre</option>
-                  <option value="10">Octubre</option>
-                  <option value="11">Noviembre</option>
-                  <option value="12">Diciembre</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Si tiene Deuda Atrasada / Mora manual y no está filtrando solo pagados */}
-            {deudaMoraManual && filtroEstado !== 'pagados' && (
+              {/* Barra de Filtros por Año y por Mes */}
               <div style={{
-                background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(185, 28, 28, 0.12) 100%)',
-                border: '1px solid rgba(239, 68, 68, 0.4)',
-                borderLeftWidth: '5px',
-                borderLeftColor: '#ef4444',
-                borderRadius: '16px',
-                padding: '20px',
-                marginBottom: '16px',
-                boxShadow: '0 4px 20px rgba(0, 0, 0, 0.35)'
+                display: 'flex',
+                flexWrap: 'wrap',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '10px',
+                padding: '12px 16px',
+                background: 'rgba(255, 255, 255, 0.03)',
+                borderRadius: '14px',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                marginBottom: '10px'
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', marginBottom: '10px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontSize: '20px' }}>⚠️</span>
-                    <h3 style={{ color: '#fff', fontSize: '16px', fontWeight: 800, margin: 0 }}>
-                      Deuda Atrasada Registrada (Mora Pendiente)
-                    </h3>
-                  </div>
-                  <span style={{
-                    background: 'rgba(239, 68, 68, 0.25)',
-                    color: '#f87171',
-                    border: '1px solid rgba(239, 68, 68, 0.4)',
-                    padding: '3px 10px',
-                    borderRadius: '999px',
-                    fontSize: '11px',
-                    fontWeight: 800
-                  }}>
-                    {deudaMoraManual.meses_deuda > 1 ? `${deudaMoraManual.meses_deuda} meses atrasados` : 'Pendiente al Cobro'}
+                {/* Pestañas de Años */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
+                  <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', marginRight: '4px' }}>
+                    Año:
                   </span>
+                  {aniosDisponibles.map(anio => (
+                    <button
+                      key={anio}
+                      onClick={() => setFiltroAnio(anio)}
+                      style={{
+                        background: filtroAnio === anio
+                          ? 'var(--color-brand-gradient, linear-gradient(135deg, #f97316 0%, #ea580c 100%))'
+                          : 'rgba(255, 255, 255, 0.06)',
+                        color: filtroAnio === anio ? '#fff' : '#cbd5e1',
+                        border: 'none',
+                        padding: '6px 14px',
+                        borderRadius: '8px',
+                        fontSize: '12px',
+                        fontWeight: filtroAnio === anio ? 800 : 600,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      <span>📅</span>
+                      <span>{anio}</span>
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => setFiltroAnio('todos')}
+                    style={{
+                      background: filtroAnio === 'todos' ? 'rgba(255, 255, 255, 0.18)' : 'rgba(255, 255, 255, 0.04)',
+                      color: filtroAnio === 'todos' ? '#fff' : '#94a3b8',
+                      border: 'none',
+                      padding: '6px 12px',
+                      borderRadius: '8px',
+                      fontSize: '12px',
+                      fontWeight: filtroAnio === 'todos' ? 700 : 500,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Todos
+                  </button>
                 </div>
-                <p style={{ color: '#cbd5e1', fontSize: '13px', margin: '0 0 14px', lineHeight: 1.4 }}>
-                  {deudaMoraManual.conceptos_detalle || 'Deuda acumulada registrada por la administración'}
-                  {deudaMoraManual.observaciones ? ` · ${deudaMoraManual.observaciones}` : ''}
-                </p>
+
+                {/* Selector de Mes */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>
+                    Mes:
+                  </span>
+                  <select
+                    value={filtroMes}
+                    onChange={e => setFiltroMes(e.target.value)}
+                    style={{
+                      background: '#131720',
+                      border: '1px solid rgba(255, 255, 255, 0.15)',
+                      color: '#fff',
+                      padding: '6px 12px',
+                      borderRadius: '8px',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <option value="todos">Todos los meses</option>
+                    <option value="01">Enero</option>
+                    <option value="02">Febrero</option>
+                    <option value="03">Marzo</option>
+                    <option value="04">Abril</option>
+                    <option value="05">Mayo</option>
+                    <option value="06">Junio</option>
+                    <option value="07">Julio</option>
+                    <option value="08">Agosto</option>
+                    <option value="09">Septiembre</option>
+                    <option value="10">Octubre</option>
+                    <option value="11">Noviembre</option>
+                    <option value="12">Diciembre</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Si tiene Deuda Atrasada / Mora manual y no está filtrando solo pagados */}
+              {deudaMoraManual && filtroEstado !== 'pagados' && (
                 <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-                  gap: '12px',
-                  padding: '12px 14px',
-                  background: 'rgba(0, 0, 0, 0.25)',
-                  borderRadius: '12px'
+                  background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(185, 28, 28, 0.12) 100%)',
+                  border: '1px solid rgba(239, 68, 68, 0.4)',
+                  borderLeftWidth: '5px',
+                  borderLeftColor: '#ef4444',
+                  borderRadius: '16px',
+                  padding: '20px',
+                  marginBottom: '16px',
+                  boxShadow: '0 4px 20px rgba(0, 0, 0, 0.35)'
                 }}>
-                  <div>
-                    <span style={{ color: '#94a3b8', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase' }}>
-                      Monto en Bolívares
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', marginBottom: '10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '20px' }}>⚠️</span>
+                      <h3 style={{ color: '#fff', fontSize: '16px', fontWeight: 800, margin: 0 }}>
+                        Deuda Atrasada Registrada (Mora Pendiente)
+                      </h3>
+                    </div>
+                    <span style={{
+                      background: 'rgba(239, 68, 68, 0.25)',
+                      color: '#f87171',
+                      border: '1px solid rgba(239, 68, 68, 0.4)',
+                      padding: '3px 10px',
+                      borderRadius: '999px',
+                      fontSize: '11px',
+                      fontWeight: 800
+                    }}>
+                      {deudaMoraManual.meses_deuda > 1 ? `${deudaMoraManual.meses_deuda} meses atrasados` : 'Pendiente al Cobro'}
                     </span>
-                    <div style={{ color: '#38bdf8', fontSize: '18px', fontWeight: 800, marginTop: '2px' }}>
-                      Bs. {fmtBs(deudaMoraManual.monto_bs)}
-                    </div>
                   </div>
-                  {Number(deudaMoraManual.monto_usd) > 0 && (
-                    <div>
-                      <span style={{ color: '#94a3b8', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase' }}>
-                        Monto en Dólares ($)
-                      </span>
-                      <div style={{ color: '#fff', fontSize: '18px', fontWeight: 800, marginTop: '2px' }}>
-                        ${fmtUsd(deudaMoraManual.monto_usd)}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {recibosFiltrados.length === 0 ? (
-              <div style={{
-                textAlign: 'center',
-                padding: '40px 20px',
-                background: 'rgba(255, 255, 255, 0.02)',
-                borderRadius: '16px',
-                border: '1px dashed rgba(255, 255, 255, 0.1)',
-                margin: '10px 0'
-              }}>
-                <div style={{ fontSize: '32px', marginBottom: '8px' }}>📂</div>
-                <div style={{ color: '#fff', fontSize: '14px', fontWeight: 700 }}>
-                  No hay recibos para los filtros seleccionados
-                </div>
-                <div style={{ color: '#94a3b8', fontSize: '12px', marginTop: '4px' }}>
-                  Prueba cambiando el año o mes en los filtros superiores.
-                </div>
-              </div>
-            ) : (
-              recibosFiltrados.map((recibo) => {
-              const { mesLabel, anio } = parseMesFacturado(recibo.mes_facturado)
-              const esHistorico = !esReciboIndexado(recibo, config?.fecha_inicio_gestion)
-              const esDeudaAtrasada = Boolean(recibo.data_json?.es_recibo_deuda_atrasada)
-              const estaPagado = recibo.estado === 'pagado'
-              const enRevision = !estaPagado && !!pagoEnRevision
-              const isExpanded = expandedReciboId === recibo.id
-
-              const gastos = recibo.data_json?.gastos || []
-              const cargos = recibo.data_json?.cargos_especiales || []
-
-              return (
-                <div
-                  key={recibo.id}
-                  style={{
-                    background: 'linear-gradient(180deg, #131720 0%, #0c0f15 100%)',
-                    border: estaPagado
-                      ? '1px solid rgba(34, 197, 94, 0.35)'
-                      : enRevision
-                      ? '1px solid rgba(245, 158, 11, 0.35)'
-                      : '1px solid var(--border-accent, rgba(249, 115, 22, 0.35))',
-                    borderLeftWidth: '5px',
-                    borderLeftColor: estaPagado ? '#22c55e' : enRevision ? '#f59e0b' : 'var(--color-accent, #f97316)',
-                    borderRadius: '16px',
-                    padding: '20px',
-                    boxShadow: '0 4px 20px rgba(0, 0, 0, 0.35)',
-                    transition: 'border-color 0.2s'
-                  }}
-                >
-                  {/* Encabezado del Recibo */}
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    justifyContent: 'space-between',
-                    flexWrap: 'wrap',
-                    gap: '10px'
-                  }}>
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontSize: '18px' }}>{esDeudaAtrasada ? '📜' : '📄'}</span>
-                        <h2 style={{ color: '#fff', fontSize: '17px', fontWeight: 800, margin: 0 }}>
-                          {esDeudaAtrasada ? 'Recibo de Pago de Deuda Atrasada' : `Recibo ${mesLabel} ${anio}`}
-                        </h2>
-                      </div>
-                      <p style={{ color: '#94a3b8', fontSize: '11px', margin: '4px 0 0' }}>
-                        {esDeudaAtrasada ? (
-                          <>Validación de deuda histórica liquidada · Conciliado con la administración</>
-                        ) : esHistorico ? (
-                          <>Emitido el {formatFecha(recibo.emitido_at || recibo.mes_facturado)} · Gastos manuales de administración anterior (Sin anclaje a tasa BCV actual)</>
-                        ) : (
-                          <>Emitido el {formatFecha(recibo.emitido_at || recibo.mes_facturado)} · Tasa BCV: {fmtBs(getTasaBcvNumerica(recibo.tasa_bcv, config?.tasa_bcv_actual, recibo.total_usd > 0 ? parseFloat((recibo.total_bs / recibo.total_usd).toFixed(4)) : null))} Bs/$</>
-                        )}
-                      </p>
-                    </div>
-
-                    {/* Badge de Estado */}
-                    <div>
-                      {estaPagado ? (
-                        <span style={{
-                          display: 'inline-flex', alignItems: 'center', gap: '5px',
-                          background: 'rgba(34, 197, 94, 0.15)', color: '#22c55e',
-                          border: '1px solid rgba(34, 197, 94, 0.3)',
-                          padding: '4px 10px', borderRadius: '999px',
-                          fontSize: '11px', fontWeight: 800
-                        }}>
-                          ✓ Pagado y Solvente {esDeudaAtrasada ? <span style={{ opacity: 0.9, fontSize: '9.5px', marginLeft: '3px' }}>(Deuda Atrasada)</span> : esHistorico ? <span style={{ opacity: 0.8, fontSize: '9.5px', marginLeft: '3px' }}>(Histórico)</span> : null}
-                        </span>
-                      ) : enRevision ? (
-                        <span style={{
-                          display: 'inline-flex', alignItems: 'center', gap: '5px',
-                          background: 'rgba(245, 158, 11, 0.15)', color: '#fbbf24',
-                          border: '1px solid rgba(245, 158, 11, 0.3)',
-                          padding: '4px 10px', borderRadius: '999px',
-                          fontSize: '11px', fontWeight: 800
-                        }}>
-                          ⏳ Pago en Revisión
-                        </span>
-                      ) : (
-                        <span style={{
-                          display: 'inline-flex', alignItems: 'center', gap: '5px',
-                          background: 'rgba(239, 68, 68, 0.15)', color: '#f87171',
-                          border: '1px solid rgba(239, 68, 68, 0.3)',
-                          padding: '4px 10px', borderRadius: '999px',
-                          fontSize: '11px', fontWeight: 800
-                        }}>
-                          ⚠️ Pendiente de Pago
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Montos y Alícuota */}
+                  <p style={{ color: '#cbd5e1', fontSize: '13px', margin: '0 0 14px', lineHeight: 1.4 }}>
+                    {deudaMoraManual.conceptos_detalle || 'Deuda acumulada registrada por la administración'}
+                    {deudaMoraManual.observaciones ? ` · ${deudaMoraManual.observaciones}` : ''}
+                  </p>
                   <div style={{
                     display: 'grid',
                     gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
                     gap: '12px',
-                    margin: '16px 0',
                     padding: '12px 14px',
-                    background: 'rgba(255, 255, 255, 0.03)',
-                    borderRadius: '12px',
-                    border: '1px solid rgba(255, 255, 255, 0.05)'
+                    background: 'rgba(0, 0, 0, 0.25)',
+                    borderRadius: '12px'
                   }}>
                     <div>
-                      <span style={{ color: '#82828e', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase' }}>
-                        Total Cuota ($ USD)
+                      <span style={{ color: '#94a3b8', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase' }}>
+                        Monto en Bolívares
                       </span>
-                      <div style={{ color: '#fff', fontSize: '18px', fontWeight: 800, marginTop: '2px' }}>
-                        ${fmtUsd(recibo.total_usd)}
+                      <div style={{ color: '#38bdf8', fontSize: '18px', fontWeight: 800, marginTop: '2px' }}>
+                        Bs. {fmtBs(deudaMoraManual.monto_bs)}
                       </div>
                     </div>
-                    <div>
-                      <span style={{ color: '#82828e', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase' }}>
-                        Total Cuota (Bs)
-                      </span>
-                      <div style={{ color: '#38bdf8', fontSize: '16px', fontWeight: 800, marginTop: '2px' }}>
-                        Bs. {fmtBs(recibo.total_bs)}
+                    {Number(deudaMoraManual.monto_usd) > 0 && (
+                      <div>
+                        <span style={{ color: '#94a3b8', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase' }}>
+                          Monto en Dólares ($)
+                        </span>
+                        <div style={{ color: '#fff', fontSize: '18px', fontWeight: 800, marginTop: '2px' }}>
+                          ${fmtUsd(deudaMoraManual.monto_usd)}
+                        </div>
                       </div>
-                    </div>
-                    <div>
-                      <span style={{ color: '#82828e', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase' }}>
-                        Alícuota Aplicada
-                      </span>
-                      <div style={{ color: 'var(--color-accent, #f97316)', fontSize: '14px', fontWeight: 800, marginTop: '2px' }}>
-                        {formatAlicuotaPct(recibo.alicuota)}
-                      </div>
-                    </div>
-                    <div>
-                      <span style={{ color: '#82828e', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase' }}>
-                        Fondo Reserva
-                      </span>
-                      <div style={{ color: '#cbd5e1', fontSize: '14px', fontWeight: 700, marginTop: '2px' }}>
-                        {recibo.fondo_reserva_pct}%
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Descuento por Donación de Espacios Comunes */}
-                  {Number(recibo.data_json?.ahorro_donaciones_usd || 0) > 0 && (
-                    <div style={{
-                      backgroundColor: 'rgba(34, 197, 94, 0.08)',
-                      border: '1px solid rgba(34, 197, 94, 0.3)',
-                      borderRadius: '10px',
-                      padding: '8px 12px',
-                      marginBottom: '14px',
-                      fontSize: '12px',
-                      color: '#86efac',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      flexWrap: 'wrap',
-                      gap: '8px'
-                    }}>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span>🎁</span>
-                        <strong>Ahorro por uso de espacios comunes:</strong> Descuento aplicado directamente a tu cuota.
-                      </span>
-                      <span style={{ color: '#4ade80', fontWeight: 800 }}>
-                        -${fmtUsd(recibo.data_json?.ahorro_donaciones_usd || 0)} USD (-Bs. {fmtBs(recibo.data_json?.ahorro_donaciones_bs || 0)})
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Abonos parciales recibidos en este recibo */}
-                  {!estaPagado && Boolean(recibo.data_json?.abonos?.length) && (
-                    <div style={{
-                      backgroundColor: 'rgba(56, 189, 248, 0.08)',
-                      border: '1px solid rgba(56, 189, 248, 0.3)',
-                      borderRadius: '10px',
-                      padding: '10px 14px',
-                      marginBottom: '14px',
-                      fontSize: '12px',
-                      color: '#7dd3fc',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      flexWrap: 'wrap',
-                      gap: '8px'
-                    }}>
-                      <span>
-                        💸 <strong>Abono amortizado:</strong> Bs. {fmtBs((recibo.data_json?.abonos || []).reduce((s: number, a: any) => s + (Number(a.monto_bs) || 0), 0))}
-                        {recibo.data_json?.monto_original_usd ? ` (Total inicial: $${fmtUsd(recibo.data_json.monto_original_usd)} USD)` : ''}
-                      </span>
-                      <span style={{ color: '#38bdf8', fontWeight: 800 }}>
-                        Saldo adeudado {esHistorico ? 'fijo' : 'indexado'}: {esHistorico ? `Bs. ${fmtBs(recibo.total_bs)}` : `$${fmtUsd(recibo.total_usd)} USD`}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Deducción de Saldo a Favor si aplica en recibo pendiente */}
-                  {!estaPagado && saldoAFavor > 0 && (
-                    <div style={{
-                      backgroundColor: 'rgba(34, 197, 94, 0.08)',
-                      border: '1px dashed rgba(34, 197, 94, 0.35)',
-                      borderRadius: '10px',
-                      padding: '10px 14px',
-                      marginBottom: '14px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      flexWrap: 'wrap',
-                      gap: '8px',
-                      fontSize: '12px'
-                    }}>
-                      <span style={{ color: '#86efac' }}>
-                        💚 Saldo a favor a aplicar: <strong>-${fmtUsd(Math.min(saldoAFavor, recibo.total_usd))} USD</strong>
-                      </span>
-                      <span style={{ color: '#4ade80', fontWeight: 800 }}>
-                        Monto neto a transferir: ${fmtUsd(Math.max(0, recibo.total_usd - saldoAFavor))} USD
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Detalles de Pago y Validación */}
-                  {recibo.data_json?.pago_info && (
-                    <div style={{
-                      backgroundColor: 'rgba(34, 197, 94, 0.07)',
-                      border: '1px solid rgba(34, 197, 94, 0.25)',
-                      borderRadius: '12px',
-                      padding: '10px 14px',
-                      marginBottom: '14px',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '4px'
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', fontWeight: 800, color: '#4ade80', textTransform: 'uppercase' }}>
-                        <span>🧾</span> Comprobante de Pago Validado
-                      </div>
-                      <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', fontSize: '12px', color: '#e2e8f0' }}>
-                        {recibo.data_json.pago_info.fecha_pago && (
-                          <span>Fecha: <strong>{recibo.data_json.pago_info.fecha_pago}</strong></span>
-                        )}
-                        {recibo.data_json.pago_info.banco && (
-                          <span>Método: <strong>{recibo.data_json.pago_info.banco}</strong></span>
-                        )}
-                        {recibo.data_json.pago_info.referencia && (
-                          <span>Referencia: <strong style={{ color: '#67e8f9' }}>{recibo.data_json.pago_info.referencia}</strong></span>
-                        )}
-                        {recibo.data_json.pago_info.monto_usd && (
-                          <span style={{ color: '#4ade80', fontWeight: 700 }}>
-                            Monto: ${fmtUsd(recibo.data_json.pago_info.monto_usd)} USD
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Mensaje descriptivo según estado */}
-                  <div style={{ marginBottom: '16px' }}>
-                    {estaPagado ? (
-                      <p style={{ margin: 0, fontSize: '12px', color: '#86efac', lineHeight: 1.4 }}>
-                        ✓ Pago conciliado por la administración. Tu recibo oficial con sello de solvencia está listo para descargar.
-                      </p>
-                    ) : enRevision ? (
-                      <p style={{ margin: 0, fontSize: '12px', color: '#fde047', lineHeight: 1.4 }}>
-                        ⏳ Tienes un pago reportado (Ref: <strong>{pagoEnRevision?.referencia}</strong>) en proceso de conciliación. Al ser aprobado por el administrador, se habilitará la constancia de pago con solvencia.
-                      </p>
-                    ) : (
-                      <p style={{ margin: 0, fontSize: '12px', color: '#cbd5e1', lineHeight: 1.4 }}>
-                        Tienes este recibo al cobro. Realiza tu pago mediante transferencia o pago móvil y repórtalo para mantener la solvencia de tu apartamento.
-                      </p>
                     )}
                   </div>
+                </div>
+              )}
 
-                  {/* Botones de Acción */}
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
-                    {/* Botón Descargar PDF Oficial: es el mismo del admin */}
-                    <button
-                      onClick={() => handleDescargarPDF(recibo)}
-                      disabled={descargandoId === recibo.id}
+              {recibosFiltrados.length === 0 ? (
+                <div style={{
+                  textAlign: 'center',
+                  padding: '40px 20px',
+                  background: 'rgba(255, 255, 255, 0.02)',
+                  borderRadius: '16px',
+                  border: '1px dashed rgba(255, 255, 255, 0.1)',
+                  margin: '10px 0'
+                }}>
+                  <div style={{ fontSize: '32px', marginBottom: '8px' }}>📂</div>
+                  <div style={{ color: '#fff', fontSize: '14px', fontWeight: 700 }}>
+                    No hay recibos para los filtros seleccionados
+                  </div>
+                  <div style={{ color: '#94a3b8', fontSize: '12px', marginTop: '4px' }}>
+                    Prueba cambiando el año o mes en los filtros superiores.
+                  </div>
+                </div>
+              ) : (
+                recibosFiltrados.map((recibo) => {
+                  const { mesLabel, anio } = parseMesFacturado(recibo.mes_facturado)
+                  const esHistorico = !esReciboIndexado(recibo, config?.fecha_inicio_gestion)
+                  const esDeudaAtrasada = Boolean(recibo.data_json?.es_recibo_deuda_atrasada)
+                  const estaPagado = recibo.estado === 'pagado'
+                  const enRevision = !estaPagado && !!pagoEnRevision
+                  const isExpanded = expandedReciboId === recibo.id
+
+                  const gastos = recibo.data_json?.gastos || []
+                  const cargos = recibo.data_json?.cargos_especiales || []
+
+                  return (
+                    <div
+                      key={recibo.id}
                       style={{
-                        background: estaPagado
-                          ? 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)'
-                          : 'rgba(255, 255, 255, 0.08)',
-                        border: estaPagado ? 'none' : '1px solid rgba(255, 255, 255, 0.16)',
-                        color: '#fff',
-                        borderRadius: '10px',
-                        padding: '9px 16px',
-                        fontSize: '12px',
-                        fontWeight: 700,
-                        cursor: descargandoId === recibo.id ? 'wait' : 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        boxShadow: estaPagado ? '0 3px 12px rgba(34, 197, 94, 0.35)' : 'none'
+                        background: 'linear-gradient(180deg, #131720 0%, #0c0f15 100%)',
+                        border: estaPagado
+                          ? '1px solid rgba(34, 197, 94, 0.35)'
+                          : enRevision
+                            ? '1px solid rgba(245, 158, 11, 0.35)'
+                            : '1px solid var(--border-accent, rgba(249, 115, 22, 0.35))',
+                        borderLeftWidth: '5px',
+                        borderLeftColor: estaPagado ? '#22c55e' : enRevision ? '#f59e0b' : 'var(--color-accent, #f97316)',
+                        borderRadius: '16px',
+                        padding: '20px',
+                        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.35)',
+                        transition: 'border-color 0.2s'
                       }}
                     >
-                      <span>📥</span>
-                      <span>
-                        {descargandoId === recibo.id
-                          ? 'Generando PDF...'
-                          : estaPagado
-                          ? 'Descargar Recibo Oficial (PDF)'
-                          : 'Descargar Aviso de Cobro (PDF)'}
-                      </span>
-                    </button>
-
-                    {/* Botón Verde Enviar / Compartir por WhatsApp */}
-                    <button
-                      type="button"
-                      onClick={() => handleCompartirWhatsApp(recibo)}
-                      style={{
-                        background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.2) 0%, rgba(22, 163, 74, 0.3) 100%)',
-                        border: '1px solid rgba(34, 197, 94, 0.5)',
-                        color: '#4ade80',
-                        borderRadius: '10px',
-                        padding: '9px 16px',
-                        fontSize: '12px',
-                        fontWeight: 700,
-                        cursor: 'pointer',
+                      {/* Encabezado del Recibo */}
+                      <div style={{
                         display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        boxShadow: '0 2px 10px rgba(34, 197, 94, 0.25)',
-                        transition: 'all 0.2s ease'
-                      }}
-                      title="Enviar recibo con datos de pago por WhatsApp con 1 solo clic"
-                    >
-                      <span>📲</span>
-                      <span>{estaPagado ? 'Compartir Solvencia WhatsApp' : 'Enviar por WhatsApp'}</span>
-                    </button>
+                        alignItems: 'flex-start',
+                        justifyContent: 'space-between',
+                        flexWrap: 'wrap',
+                        gap: '10px'
+                      }}>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontSize: '18px' }}>{esDeudaAtrasada ? '📜' : '📄'}</span>
+                            <h2 style={{ color: '#fff', fontSize: '17px', fontWeight: 800, margin: 0 }}>
+                              {esDeudaAtrasada ? 'Recibo de Pago de Deuda Atrasada' : `Recibo ${mesLabel} ${anio}`}
+                            </h2>
+                          </div>
+                          <p style={{ color: '#94a3b8', fontSize: '11px', margin: '4px 0 0' }}>
+                            {esDeudaAtrasada ? (
+                              <>Validación de deuda histórica liquidada · Conciliado con la administración</>
+                            ) : esHistorico ? (
+                              <>Emitido el {formatFecha(recibo.emitido_at || recibo.mes_facturado)} · Gastos manuales de administración anterior (Sin anclaje a tasa BCV actual)</>
+                            ) : (
+                              <>Emitido el {formatFecha(recibo.emitido_at || recibo.mes_facturado)} · Tasa BCV: {fmtBs(getTasaBcvNumerica(recibo.tasa_bcv, config?.tasa_bcv_actual, recibo.total_usd > 0 ? parseFloat((recibo.total_bs / recibo.total_usd).toFixed(4)) : null))} Bs/$</>
+                            )}
+                          </p>
+                        </div>
 
-                    {/* Si está pendiente, botón para reportar pago */}
-                    {!estaPagado && !enRevision && (
-                      <button
-                        onClick={() => setReportarModalOpen(true)}
-                        style={{
-                          background: 'var(--color-brand-gradient, linear-gradient(135deg, var(--color-accent, #f97316) 0%, var(--color-accent-hover, #ea580c) 100%))',
-                          border: 'none',
-                          color: '#fff',
+                        {/* Badge de Estado */}
+                        <div>
+                          {estaPagado ? (
+                            <span style={{
+                              display: 'inline-flex', alignItems: 'center', gap: '5px',
+                              background: 'rgba(34, 197, 94, 0.15)', color: '#22c55e',
+                              border: '1px solid rgba(34, 197, 94, 0.3)',
+                              padding: '4px 10px', borderRadius: '999px',
+                              fontSize: '11px', fontWeight: 800
+                            }}>
+                              ✓ Pagado y Solvente {esDeudaAtrasada ? <span style={{ opacity: 0.9, fontSize: '9.5px', marginLeft: '3px' }}>(Deuda Atrasada)</span> : esHistorico ? <span style={{ opacity: 0.8, fontSize: '9.5px', marginLeft: '3px' }}>(Histórico)</span> : null}
+                            </span>
+                          ) : enRevision ? (
+                            <span style={{
+                              display: 'inline-flex', alignItems: 'center', gap: '5px',
+                              background: 'rgba(245, 158, 11, 0.15)', color: '#fbbf24',
+                              border: '1px solid rgba(245, 158, 11, 0.3)',
+                              padding: '4px 10px', borderRadius: '999px',
+                              fontSize: '11px', fontWeight: 800
+                            }}>
+                              ⏳ Pago en Revisión
+                            </span>
+                          ) : (
+                            <span style={{
+                              display: 'inline-flex', alignItems: 'center', gap: '5px',
+                              background: 'rgba(239, 68, 68, 0.15)', color: '#f87171',
+                              border: '1px solid rgba(239, 68, 68, 0.3)',
+                              padding: '4px 10px', borderRadius: '999px',
+                              fontSize: '11px', fontWeight: 800
+                            }}>
+                              ⚠️ Pendiente de Pago
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Montos y Alícuota */}
+                      <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                        gap: '12px',
+                        margin: '16px 0',
+                        padding: '12px 14px',
+                        background: 'rgba(255, 255, 255, 0.03)',
+                        borderRadius: '12px',
+                        border: '1px solid rgba(255, 255, 255, 0.05)'
+                      }}>
+                        <div>
+                          <span style={{ color: '#82828e', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase' }}>
+                            Total Cuota ($ USD)
+                          </span>
+                          <div style={{ color: '#fff', fontSize: '18px', fontWeight: 800, marginTop: '2px' }}>
+                            ${fmtUsd(recibo.total_usd)}
+                          </div>
+                        </div>
+                        <div>
+                          <span style={{ color: '#82828e', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase' }}>
+                            Total Cuota (Bs)
+                          </span>
+                          <div style={{ color: '#38bdf8', fontSize: '16px', fontWeight: 800, marginTop: '2px' }}>
+                            Bs. {fmtBs(recibo.total_bs)}
+                          </div>
+                        </div>
+                        <div>
+                          <span style={{ color: '#82828e', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase' }}>
+                            Alícuota Aplicada
+                          </span>
+                          <div style={{ color: 'var(--color-accent, #f97316)', fontSize: '14px', fontWeight: 800, marginTop: '2px' }}>
+                            {formatAlicuotaPct(recibo.alicuota)}
+                          </div>
+                        </div>
+                        <div>
+                          <span style={{ color: '#82828e', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase' }}>
+                            Fondo Reserva
+                          </span>
+                          <div style={{ color: '#cbd5e1', fontSize: '14px', fontWeight: 700, marginTop: '2px' }}>
+                            {recibo.fondo_reserva_pct}%
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Descuento por Donación de Espacios Comunes */}
+                      {Number(recibo.data_json?.ahorro_donaciones_usd || 0) > 0 && (
+                        <div style={{
+                          backgroundColor: 'rgba(34, 197, 94, 0.08)',
+                          border: '1px solid rgba(34, 197, 94, 0.3)',
                           borderRadius: '10px',
-                          padding: '9px 16px',
+                          padding: '8px 12px',
+                          marginBottom: '14px',
                           fontSize: '12px',
-                          fontWeight: 800,
-                          cursor: 'pointer',
+                          color: '#86efac',
                           display: 'flex',
                           alignItems: 'center',
-                          gap: '6px',
-                          boxShadow: 'var(--color-brand-shadow, 0 3px 12px rgba(234, 88, 12, 0.4))'
-                        }}
-                      >
-                        <span>💳</span>
-                        <span>Reportar Pago</span>
-                      </button>
-                    )}
+                          justifyContent: 'space-between',
+                          flexWrap: 'wrap',
+                          gap: '8px'
+                        }}>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span>🎁</span>
+                            <strong>Ahorro por uso de espacios comunes:</strong> Descuento aplicado directamente a tu cuota.
+                          </span>
+                          <span style={{ color: '#4ade80', fontWeight: 800 }}>
+                            -${fmtUsd(recibo.data_json?.ahorro_donaciones_usd || 0)} USD (-Bs. {fmtBs(recibo.data_json?.ahorro_donaciones_bs || 0)})
+                          </span>
+                        </div>
+                      )}
 
-                    {/* Ver detalle y desglose de gastos */}
-                    <button
-                      onClick={() => setExpandedReciboId(isExpanded ? null : recibo.id)}
-                      style={{
-                        background: 'transparent',
-                        border: '1px solid rgba(255, 255, 255, 0.12)',
-                        color: '#94a3b8',
-                        borderRadius: '10px',
-                        padding: '9px 14px',
-                        fontSize: '12px',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        marginLeft: 'auto',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px'
-                      }}
-                    >
-                      <span>{isExpanded ? '▲' : '🔍'}</span>
-                      <span>{isExpanded ? 'Ocultar Desglose' : 'Ver Desglose de Gastos'}</span>
-                    </button>
-                  </div>
+                      {/* Abonos parciales recibidos en este recibo */}
+                      {!estaPagado && Boolean(recibo.data_json?.abonos?.length) && (
+                        <div style={{
+                          backgroundColor: 'rgba(56, 189, 248, 0.08)',
+                          border: '1px solid rgba(56, 189, 248, 0.3)',
+                          borderRadius: '10px',
+                          padding: '10px 14px',
+                          marginBottom: '14px',
+                          fontSize: '12px',
+                          color: '#7dd3fc',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          flexWrap: 'wrap',
+                          gap: '8px'
+                        }}>
+                          <span>
+                            💸 <strong>Abono amortizado:</strong> Bs. {fmtBs((recibo.data_json?.abonos || []).reduce((s: number, a: any) => s + (Number(a.monto_bs) || 0), 0))}
+                            {recibo.data_json?.monto_original_usd ? ` (Total inicial: $${fmtUsd(recibo.data_json.monto_original_usd)} USD)` : ''}
+                          </span>
+                          <span style={{ color: '#38bdf8', fontWeight: 800 }}>
+                            Saldo adeudado {esHistorico ? 'fijo' : 'indexado'}: {esHistorico ? `Bs. ${fmtBs(recibo.total_bs)}` : `$${fmtUsd(recibo.total_usd)} USD`}
+                          </span>
+                        </div>
+                      )}
 
-                  {/* Desglose Expandido (Gastos Comunes del Edificio) */}
-                  {isExpanded && (
-                    <div style={{
-                      marginTop: '16px',
-                      paddingTop: '16px',
-                      borderTop: '1px solid rgba(255, 255, 255, 0.08)'
-                    }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                        <span style={{ color: 'var(--color-accent, #f97316)', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase' }}>
-                          Gastos Comunes del Edificio ({gastos.length})
-                        </span>
-                        <span style={{ color: '#64748b', fontSize: '11px' }}>
-                          Total Edificio: ${fmtUsd(recibo.total_gastos_usd)}
-                        </span>
+                      {/* Deducción de Saldo a Favor si aplica en recibo pendiente */}
+                      {!estaPagado && saldoAFavor > 0 && (
+                        <div style={{
+                          backgroundColor: 'rgba(34, 197, 94, 0.08)',
+                          border: '1px dashed rgba(34, 197, 94, 0.35)',
+                          borderRadius: '10px',
+                          padding: '10px 14px',
+                          marginBottom: '14px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          flexWrap: 'wrap',
+                          gap: '8px',
+                          fontSize: '12px'
+                        }}>
+                          <span style={{ color: '#86efac' }}>
+                            💚 Saldo a favor a aplicar: <strong>-${fmtUsd(Math.min(saldoAFavor, recibo.total_usd))} USD</strong>
+                          </span>
+                          <span style={{ color: '#4ade80', fontWeight: 800 }}>
+                            Monto neto a transferir: ${fmtUsd(Math.max(0, recibo.total_usd - saldoAFavor))} USD
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Detalles de Pago y Validación */}
+                      {recibo.data_json?.pago_info && (
+                        <div style={{
+                          backgroundColor: 'rgba(34, 197, 94, 0.07)',
+                          border: '1px solid rgba(34, 197, 94, 0.25)',
+                          borderRadius: '12px',
+                          padding: '10px 14px',
+                          marginBottom: '14px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '4px'
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', fontWeight: 800, color: '#4ade80', textTransform: 'uppercase' }}>
+                            <span>🧾</span> Comprobante de Pago Validado
+                          </div>
+                          <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', fontSize: '12px', color: '#e2e8f0' }}>
+                            {recibo.data_json.pago_info.fecha_pago && (
+                              <span>Fecha: <strong>{recibo.data_json.pago_info.fecha_pago}</strong></span>
+                            )}
+                            {recibo.data_json.pago_info.banco && (
+                              <span>Método: <strong>{recibo.data_json.pago_info.banco}</strong></span>
+                            )}
+                            {recibo.data_json.pago_info.referencia && (
+                              <span>Referencia: <strong style={{ color: '#67e8f9' }}>{recibo.data_json.pago_info.referencia}</strong></span>
+                            )}
+                            {recibo.data_json.pago_info.monto_usd && (
+                              <span style={{ color: '#4ade80', fontWeight: 700 }}>
+                                Monto: ${fmtUsd(recibo.data_json.pago_info.monto_usd)} USD
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Mensaje descriptivo según estado */}
+                      <div style={{ marginBottom: '16px' }}>
+                        {estaPagado ? (
+                          <p style={{ margin: 0, fontSize: '12px', color: '#86efac', lineHeight: 1.4 }}>
+                            ✓ Pago conciliado por la administración. Tu recibo oficial con sello de solvencia está listo para descargar.
+                          </p>
+                        ) : enRevision ? (
+                          <p style={{ margin: 0, fontSize: '12px', color: '#fde047', lineHeight: 1.4 }}>
+                            ⏳ Tienes un pago reportado (Ref: <strong>{pagoEnRevision?.referencia}</strong>) en proceso de conciliación. Al ser aprobado por el administrador, se habilitará la constancia de pago con solvencia.
+                          </p>
+                        ) : (
+                          <p style={{ margin: 0, fontSize: '12px', color: '#cbd5e1', lineHeight: 1.4 }}>
+                            Tienes este recibo al cobro. Realiza tu pago mediante transferencia o pago móvil y repórtalo para mantener la solvencia de tu apartamento.
+                          </p>
+                        )}
                       </div>
 
-                      {gastos.length === 0 ? (
-                        <p style={{ color: '#64748b', fontSize: '12px', margin: 0 }}>
-                          No hay gastos detallados registrados en este recibo.
-                        </p>
-                      ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                          {gastos.map((g, idx) => (
-                            <div
-                              key={idx}
-                              style={{
-                                display: 'flex',
-                                justifyContent: 'space-between',
-                                alignItems: 'center',
-                                padding: '6px 10px',
-                                background: idx % 2 === 0 ? 'rgba(255, 255, 255, 0.02)' : 'transparent',
-                                borderRadius: '6px',
-                                fontSize: '12px'
-                              }}
-                            >
-                              <span style={{ color: '#cbd5e1' }}>{g.descripcion}</span>
-                              <div style={{ display: 'flex', gap: '12px', textAlign: 'right' }}>
-                                <span style={{ color: '#38bdf8' }}>Bs. {fmtBs(g.monto_bs)}</span>
-                                <span style={{ color: '#fff', fontWeight: 700 }}>${fmtUsd(g.monto_usd)}</span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {Boolean(recibo.data_json?.donaciones_espacios_comunes?.length) && (
-                        <div style={{ marginTop: '12px', backgroundColor: 'rgba(34, 197, 94, 0.05)', border: '1px solid rgba(34, 197, 94, 0.2)', borderRadius: '8px', padding: '10px 12px' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                            <span style={{ color: '#4ade80', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                              <span>🏢</span> Donación por uso de espacios exclusivos (Descontadas de Gastos)
-                            </span>
-                            <span style={{ color: '#86efac', fontSize: '11px', fontWeight: 800 }}>
-                              Total Edificio: -${fmtUsd(recibo.data_json?.total_donaciones_usd || 0)} USD
-                            </span>
-                          </div>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                            {recibo.data_json?.donaciones_espacios_comunes?.map((d: any, idx: number) => (
-                              <div
-                                key={idx}
-                                style={{
-                                  display: 'flex',
-                                  justifyContent: 'space-between',
-                                  alignItems: 'center',
-                                  fontSize: '11.5px',
-                                  color: '#cbd5e1'
-                                }}
-                              >
-                                <span>📍 {d.nombreEspacio}: {d.concepto}</span>
-                                <div style={{ display: 'flex', gap: '10px', color: '#4ade80', fontWeight: 700 }}>
-                                  <span>-Bs. {fmtBs(d.monto_bs)}</span>
-                                  <span>-${fmtUsd(d.monto_usd)}</span>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {recibo.data_json?.destino_fondos_locales === 'fondo_reserva' && Number(recibo.data_json?.total_locales_usd) > 0 && (
-                        <div style={{ marginTop: '12px', backgroundColor: 'rgba(249, 115, 22, 0.05)', border: '1px solid rgba(249, 115, 22, 0.2)', borderRadius: '8px', padding: '10px 12px' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ color: 'var(--color-accent, #f97316)', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                              <span>🏦</span> Donación por uso de espacios exclusivos (Destinado al Fondo de Reserva)
-                            </span>
-                            <span style={{ color: '#fdba74', fontSize: '11px', fontWeight: 800 }}>
-                              Total Recaudado: +${fmtUsd(recibo.data_json?.total_locales_usd || 0)} USD
-                            </span>
-                          </div>
-                        </div>
-                      )}
-
-                      {cargos.length > 0 && (
-                        <div style={{ marginTop: '12px' }}>
-                          <span style={{ color: '#ef4444', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase' }}>
-                            Cargos Especiales de tu Apartamento
+                      {/* Botones de Acción */}
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+                        {/* Botón Descargar PDF Oficial: es el mismo del admin */}
+                        <button
+                          onClick={() => handleDescargarPDF(recibo)}
+                          disabled={descargandoId === recibo.id}
+                          style={{
+                            background: estaPagado
+                              ? 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)'
+                              : 'rgba(255, 255, 255, 0.08)',
+                            border: estaPagado ? 'none' : '1px solid rgba(255, 255, 255, 0.16)',
+                            color: '#fff',
+                            borderRadius: '10px',
+                            padding: '9px 16px',
+                            fontSize: '12px',
+                            fontWeight: 700,
+                            cursor: descargandoId === recibo.id ? 'wait' : 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            boxShadow: estaPagado ? '0 3px 12px rgba(34, 197, 94, 0.35)' : 'none'
+                          }}
+                        >
+                          <span>📥</span>
+                          <span>
+                            {descargandoId === recibo.id
+                              ? 'Generando PDF...'
+                              : estaPagado
+                                ? 'Descargar Recibo Oficial (PDF)'
+                                : 'Descargar Aviso de Cobro (PDF)'}
                           </span>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '6px' }}>
-                            {cargos.map((c, idx) => {
-                              const esEspacioExclusivo = c.tipo === 'donacion_espacio_exclusivo' || c.tipo === 'espacio_exclusivo'
-                              return (
+                        </button>
+
+                        {/* Botón Verde Enviar / Compartir por WhatsApp */}
+                        <button
+                          type="button"
+                          onClick={() => handleCompartirWhatsApp(recibo)}
+                          style={{
+                            background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.2) 0%, rgba(22, 163, 74, 0.3) 100%)',
+                            border: '1px solid rgba(34, 197, 94, 0.5)',
+                            color: '#4ade80',
+                            borderRadius: '10px',
+                            padding: '9px 16px',
+                            fontSize: '12px',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            boxShadow: '0 2px 10px rgba(34, 197, 94, 0.25)',
+                            transition: 'all 0.2s ease'
+                          }}
+                          title="Enviar recibo con datos de pago por WhatsApp con 1 solo clic"
+                        >
+                          <span>📲</span>
+                          <span>{estaPagado ? 'Compartir Solvencia WhatsApp' : 'Enviar por WhatsApp'}</span>
+                        </button>
+
+                        {/* Si está pendiente, botón para reportar pago */}
+                        {!estaPagado && !enRevision && (
+                          <button
+                            onClick={() => setReportarModalOpen(true)}
+                            style={{
+                              background: 'var(--color-brand-gradient, linear-gradient(135deg, var(--color-accent, #f97316) 0%, var(--color-accent-hover, #ea580c) 100%))',
+                              border: 'none',
+                              color: '#fff',
+                              borderRadius: '10px',
+                              padding: '9px 16px',
+                              fontSize: '12px',
+                              fontWeight: 800,
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              boxShadow: 'var(--color-brand-shadow, 0 3px 12px rgba(234, 88, 12, 0.4))'
+                            }}
+                          >
+                            <span>💳</span>
+                            <span>Reportar Pago</span>
+                          </button>
+                        )}
+
+                        {/* Ver detalle y desglose de gastos */}
+                        <button
+                          onClick={() => setExpandedReciboId(isExpanded ? null : recibo.id)}
+                          style={{
+                            background: 'transparent',
+                            border: '1px solid rgba(255, 255, 255, 0.12)',
+                            color: '#94a3b8',
+                            borderRadius: '10px',
+                            padding: '9px 14px',
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            marginLeft: 'auto',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px'
+                          }}
+                        >
+                          <span>{isExpanded ? '▲' : '🔍'}</span>
+                          <span>{isExpanded ? 'Ocultar Desglose' : 'Ver Desglose de Gastos'}</span>
+                        </button>
+                      </div>
+
+                      {/* Desglose Expandido (Gastos Comunes del Edificio) */}
+                      {isExpanded && (
+                        <div style={{
+                          marginTop: '16px',
+                          paddingTop: '16px',
+                          borderTop: '1px solid rgba(255, 255, 255, 0.08)'
+                        }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                            <span style={{ color: 'var(--color-accent, #f97316)', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase' }}>
+                              Gastos Comunes del Edificio ({gastos.length})
+                            </span>
+                            <span style={{ color: '#64748b', fontSize: '11px' }}>
+                              Total Edificio: ${fmtUsd(recibo.total_gastos_usd)}
+                            </span>
+                          </div>
+
+                          {gastos.length === 0 ? (
+                            <p style={{ color: '#64748b', fontSize: '12px', margin: 0 }}>
+                              No hay gastos detallados registrados en este recibo.
+                            </p>
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                              {gastos.map((g, idx) => (
                                 <div
                                   key={idx}
                                   style={{
@@ -1377,33 +1300,110 @@ export function RecibosPanel({ onClose }: Props) {
                                     justifyContent: 'space-between',
                                     alignItems: 'center',
                                     padding: '6px 10px',
-                                    background: esEspacioExclusivo ? 'rgba(56, 189, 248, 0.08)' : 'rgba(239, 68, 68, 0.05)',
-                                    border: `1px solid ${esEspacioExclusivo ? 'rgba(56, 189, 248, 0.25)' : 'rgba(239, 68, 68, 0.2)'}`,
+                                    background: idx % 2 === 0 ? 'rgba(255, 255, 255, 0.02)' : 'transparent',
                                     borderRadius: '6px',
                                     fontSize: '12px'
                                   }}
                                 >
-                                  <span style={{ color: esEspacioExclusivo ? '#38bdf8' : '#fca5a5', fontWeight: esEspacioExclusivo ? 700 : 500 }}>
-                                    {esEspacioExclusivo ? '🏢 Donación por uso de espacios exclusivos: ' : ''}{c.descripcion} {!esEspacioExclusivo && `(${c.tipo})`}
-                                  </span>
-                                  <span style={{ color: esEspacioExclusivo ? '#38bdf8' : '#ef4444', fontWeight: 700 }}>
-                                    ${fmtUsd(c.monto_usd)}
-                                  </span>
+                                  <span style={{ color: '#cbd5e1' }}>{g.descripcion}</span>
+                                  <div style={{ display: 'flex', gap: '12px', textAlign: 'right' }}>
+                                    <span style={{ color: '#38bdf8' }}>Bs. {fmtBs(g.monto_bs)}</span>
+                                    <span style={{ color: '#fff', fontWeight: 700 }}>${fmtUsd(g.monto_usd)}</span>
+                                  </div>
                                 </div>
-                              )
-                            })}
-                          </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {Boolean(recibo.data_json?.donaciones_espacios_comunes?.length) && (
+                            <div style={{ marginTop: '12px', backgroundColor: 'rgba(34, 197, 94, 0.05)', border: '1px solid rgba(34, 197, 94, 0.2)', borderRadius: '8px', padding: '10px 12px' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                                <span style={{ color: '#4ade80', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  <span>🏢</span> Donación por uso de espacios exclusivos (Descontadas de Gastos)
+                                </span>
+                                <span style={{ color: '#86efac', fontSize: '11px', fontWeight: 800 }}>
+                                  Total Edificio: -${fmtUsd(recibo.data_json?.total_donaciones_usd || 0)} USD
+                                </span>
+                              </div>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                {recibo.data_json?.donaciones_espacios_comunes?.map((d: any, idx: number) => (
+                                  <div
+                                    key={idx}
+                                    style={{
+                                      display: 'flex',
+                                      justifyContent: 'space-between',
+                                      alignItems: 'center',
+                                      fontSize: '11.5px',
+                                      color: '#cbd5e1'
+                                    }}
+                                  >
+                                    <span>📍 {d.nombreEspacio}: {d.concepto}</span>
+                                    <div style={{ display: 'flex', gap: '10px', color: '#4ade80', fontWeight: 700 }}>
+                                      <span>-Bs. {fmtBs(d.monto_bs)}</span>
+                                      <span>-${fmtUsd(d.monto_usd)}</span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {recibo.data_json?.destino_fondos_locales === 'fondo_reserva' && Number(recibo.data_json?.total_locales_usd) > 0 && (
+                            <div style={{ marginTop: '12px', backgroundColor: 'rgba(249, 115, 22, 0.05)', border: '1px solid rgba(249, 115, 22, 0.2)', borderRadius: '8px', padding: '10px 12px' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ color: 'var(--color-accent, #f97316)', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  <span>🏦</span> Donación por uso de espacios exclusivos (Destinado al Fondo de Reserva)
+                                </span>
+                                <span style={{ color: '#fdba74', fontSize: '11px', fontWeight: 800 }}>
+                                  Total Recaudado: +${fmtUsd(recibo.data_json?.total_locales_usd || 0)} USD
+                                </span>
+                              </div>
+                            </div>
+                          )}
+
+                          {cargos.length > 0 && (
+                            <div style={{ marginTop: '12px' }}>
+                              <span style={{ color: '#ef4444', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase' }}>
+                                Cargos Especiales de tu Apartamento
+                              </span>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '6px' }}>
+                                {cargos.map((c, idx) => {
+                                  const esEspacioExclusivo = c.tipo === 'donacion_espacio_exclusivo' || c.tipo === 'espacio_exclusivo'
+                                  return (
+                                    <div
+                                      key={idx}
+                                      style={{
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'center',
+                                        padding: '6px 10px',
+                                        background: esEspacioExclusivo ? 'rgba(56, 189, 248, 0.08)' : 'rgba(239, 68, 68, 0.05)',
+                                        border: `1px solid ${esEspacioExclusivo ? 'rgba(56, 189, 248, 0.25)' : 'rgba(239, 68, 68, 0.2)'}`,
+                                        borderRadius: '6px',
+                                        fontSize: '12px'
+                                      }}
+                                    >
+                                      <span style={{ color: esEspacioExclusivo ? '#38bdf8' : '#fca5a5', fontWeight: esEspacioExclusivo ? 700 : 500 }}>
+                                        {esEspacioExclusivo ? '🏢 Donación por uso de espacios exclusivos: ' : ''}{c.descripcion} {!esEspacioExclusivo && `(${c.tipo})`}
+                                      </span>
+                                      <span style={{ color: esEspacioExclusivo ? '#38bdf8' : '#ef4444', fontWeight: 700 }}>
+                                        ${fmtUsd(c.monto_usd)}
+                                      </span>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
-                  )}
-                </div>
-              )
-            }))}
-          </>
-        )}
-      </div>
-    ) : (
+                  )
+                }))}
+            </>
+          )}
+        </div>
+      ) : (
         /* ── PESTAÑA 2: HISTORIAL DE PAGOS REPORTADOS ──────────────────────── */
         pagos.length === 0 ? (
           <div style={{
@@ -1445,14 +1445,14 @@ export function RecibosPanel({ onClose }: Props) {
               const estadoColor = pago.estado === 'aprobado'
                 ? '#22c55e'
                 : pago.estado === 'rechazado'
-                ? '#ef4444'
-                : '#f59e0b'
+                  ? '#ef4444'
+                  : '#f59e0b'
 
               const estadoLabel = pago.estado === 'aprobado'
                 ? '✅ Aprobado'
                 : pago.estado === 'rechazado'
-                ? '❌ Rechazado'
-                : '⏳ En Revisión'
+                  ? '❌ Rechazado'
+                  : '⏳ En Revisión'
 
               return (
                 <div

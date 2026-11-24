@@ -122,7 +122,7 @@ export const Layout: React.FC = () => {
   const p = perfil as any
   const c = config as any
 
-  const edificioNombre = c?.nombre_edificio || c?.nombre || p?.edificio?.nombre || 'Residencias Ocutuy 5'
+  const edificioNombre = c?.nombre_edificio || c?.nombre || p?.edificio?.nombre || 'Condominio Domus'
   const edificioLogo   = c?.logo_url || p?.edificio?.logo || ''
   const aptoNumero     = p?.apartamento?.numero || p?.apartamentos?.numero || p?.apartamento_id || ''
   const apartamentoId  = p?.apartamento_id || p?.apartamento?.id || ''

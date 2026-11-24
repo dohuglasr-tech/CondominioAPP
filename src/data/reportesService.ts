@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
 import { notificarApartamento } from './notificacionesService'
 import { comprimirImagen } from '../utils/imageCompressor'
+import { logger, getErrorMessage } from '../utils/logger'
 
 // ── Tipos y Enums ────────────────────────────────────────────────────────────
 export type CategoriaReporte =
@@ -321,11 +322,11 @@ export async function obtenerReportesResidente(
       // Guardar en cache local para uso offline
       try {
         localStorage.setItem(LOCAL_STORAGE_KEY_REPORTES, JSON.stringify(mapped))
-      } catch {}
+      } catch (err) { logger.debug('reportesService', 'Fallback controlado', err) }
 
       return { data: filtrados, error: null }
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.warn('[ReportesService] Excepción al leer de Supabase, usando respaldo local:', err)
   }
 
@@ -336,7 +337,7 @@ export async function obtenerReportesResidente(
       const parsed: ReporteItem[] = JSON.parse(raw)
       return { data: parsed, error: null }
     }
-  } catch {}
+  } catch (err) { logger.debug('reportesService', 'Fallback controlado', err) }
 
   return { data: [], error: null }
 }
@@ -386,11 +387,11 @@ export async function obtenerTodosLosReportesAdmin(): Promise<{ data: ReporteIte
 
       try {
         localStorage.setItem(LOCAL_STORAGE_KEY_REPORTES, JSON.stringify(mapped))
-      } catch {}
+      } catch (err) { logger.debug('reportesService', 'Fallback controlado', err) }
 
       return { data: mapped, error: null }
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.warn('[ReportesService] Excepción al leer de Supabase (Admin):', err)
   }
 
@@ -400,7 +401,7 @@ export async function obtenerTodosLosReportesAdmin(): Promise<{ data: ReporteIte
     if (raw) {
       return { data: JSON.parse(raw), error: null }
     }
-  } catch {}
+  } catch (err) { logger.debug('reportesService', 'Fallback controlado', err) }
 
   return { data: [], error: null }
 }
@@ -472,16 +473,16 @@ export async function crearReporte(params: {
       const raw = localStorage.getItem(LOCAL_STORAGE_KEY_REPORTES)
       const list: ReporteItem[] = raw ? JSON.parse(raw) : []
       localStorage.setItem(LOCAL_STORAGE_KEY_REPORTES, JSON.stringify([itemCreado, ...list]))
-    } catch {}
+    } catch (err) { logger.debug('reportesService', 'Fallback controlado', err) }
 
     if (insertError) {
       console.warn('[ReportesService] Insert falló en DB por RLS, guardado localmente:', insertError.message)
     }
 
     return { data: itemCreado, error: null }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[ReportesService] Excepción al crear reporte:', err)
-    return { data: null, error: err.message || 'Error de conexión al enviar reporte.' }
+    return { data: null, error: getErrorMessage(err) || 'Error de conexión al enviar reporte.' }
   }
 }
 
@@ -544,16 +545,16 @@ export async function actualizarEstadoReporte(params: {
         )
         localStorage.setItem(LOCAL_STORAGE_KEY_REPORTES, JSON.stringify(updatedList))
       }
-    } catch {}
+    } catch (err) { logger.debug('reportesService', 'Fallback controlado', err) }
 
     if (updateError) {
       console.warn('[ReportesService] Error en DB update (falencias):', updateError.message)
     }
 
     return { error: null }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[ReportesService] Excepción al actualizar reporte:', err)
-    return { error: err.message || 'No se pudo actualizar el reporte.' }
+    return { error: getErrorMessage(err) || 'No se pudo actualizar el reporte.' }
   }
 }
 
@@ -569,10 +570,10 @@ export async function eliminarReporte(reporteId: string): Promise<{ error: strin
         const updated = list.filter((r) => r.id !== reporteId)
         localStorage.setItem(LOCAL_STORAGE_KEY_REPORTES, JSON.stringify(updated))
       }
-    } catch {}
+    } catch (err) { logger.debug('reportesService', 'Fallback controlado', err) }
 
     return { error: null }
-  } catch (err: any) {
-    return { error: err.message || 'Error eliminando reporte.' }
+  } catch (err: unknown) {
+    return { error: getErrorMessage(err) || 'Error eliminando reporte.' }
   }
 }

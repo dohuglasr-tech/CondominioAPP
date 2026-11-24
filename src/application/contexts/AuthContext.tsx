@@ -4,6 +4,7 @@ import { supabase, Perfil, ConfigEdificio, Rol } from '../../data/supabase'
 import { appCache } from '../../data/cacheService'
 import { applyTheme } from '../../utils/themeManager'
 import { extractTenantSubdomain, resolveTenantBuilding } from '../../data/tenantService'
+import { setActiveEdificioConfig, setActiveEdificioId } from '../../data/tenantContext'
 import { esTasaBcvValida, getTasaBcvNumerica, guardarUltimaTasaBcvConocida } from '../../utils/tasaBcvHelper'
 
 
@@ -80,6 +81,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             tenantBuilding.tasa_bcv_actual = getTasaBcvNumerica(tenantBuilding.tasa_bcv_actual)
           }
           setConfig(tenantBuilding)
+          setActiveEdificioConfig(tenantBuilding)
           applyTheme(tenantBuilding.color_primario)
           return
         }
@@ -87,6 +89,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       // 2. Si se especifica un edificio explícito (ej. desde el perfil del usuario autenticado)
       if (explicitBuildingId) {
+        setActiveEdificioId(explicitBuildingId)
         const tenantBuilding = await resolveTenantBuilding(explicitBuildingId)
         if (tenantBuilding) {
           if (esTasaBcvValida(tenantBuilding.tasa_bcv_actual)) {
@@ -95,6 +98,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             tenantBuilding.tasa_bcv_actual = getTasaBcvNumerica(tenantBuilding.tasa_bcv_actual)
           }
           setConfig(tenantBuilding)
+          setActiveEdificioConfig(tenantBuilding)
           applyTheme(tenantBuilding.color_primario)
           return
         }
@@ -147,6 +151,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       )
       if (data) {
         setConfig(data)
+        setActiveEdificioConfig(data)
         applyTheme(data.color_primario)
 
 
@@ -319,7 +324,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             if (newConfig.color_primario) {
               applyTheme(newConfig.color_primario)
             }
-            setConfig(prev => (prev ? { ...prev, ...newConfig } : newConfig))
+            setConfig(prev => {
+              const merged = prev ? { ...prev, ...newConfig } : newConfig
+              setActiveEdificioConfig(merged)
+              return merged
+            })
           }
         }
       )
@@ -423,6 +432,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = async () => {
     clearPasswordRecovery()
     lastLoadedUserIdRef.current = null
+    setActiveEdificioConfig(null)
+    setActiveEdificioId(null)
     await supabase.auth.signOut()
     setPerfil(null)
     setSession(null)

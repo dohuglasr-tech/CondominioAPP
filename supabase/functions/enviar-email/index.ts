@@ -10,7 +10,7 @@
 //
 // Métodos soportados automáticamente:
 //   A. Gmail SMTP (100% libre de bloqueos, sin necesidad de dominio):
-//      Variables: GMAIL_USER (ej. juntacondominioocutuy5@gmail.com)
+//      Variables: GMAIL_USER (ej. junta.condominio@gmail.com)
 //                 GMAIL_APP_PASSWORD (contraseña de aplicación de 16 caracteres)
 //
 //   B. Google Apps Script Web App:

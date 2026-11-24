@@ -136,7 +136,7 @@ export async function registrarEventoAuditoria(
       console.warn('[Auditoria] No se pudo insertar en DB (puede requerir migración SQL):', error.message)
       return { success: true, log: logCompleto, error: error.message }
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.warn('[Auditoria] Error comunicando con Supabase:', err)
   }
 

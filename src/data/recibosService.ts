@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { getErrorMessage } from '../utils/logger'
 
 export interface Pago {
   id: string
@@ -54,8 +55,8 @@ export async function obtenerPagos(apartamentoId: string): Promise<{ data: Pago[
     })
 
     return { data: pagosMapeados, error: null }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[RecibosService] Excepción al obtener pagos:', err)
-    return { data: [], error: err.message }
+    return { data: [], error: getErrorMessage(err) }
   }
 }

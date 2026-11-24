@@ -5,6 +5,7 @@ import { appCache } from './cacheService'
 import { limpiarCacheMora } from './moraService'
 import { getHoyVE } from '../utils/fechaVE'
 import { getTasaBcvNumerica } from '../utils/tasaBcvHelper'
+import { logger, getErrorMessage } from '../utils/logger'
 
 export interface DatosPagoAprobado {
   id: string
@@ -101,8 +102,27 @@ export async function aplicarPagoConPrelacion(
         .order('mes_facturado', { ascending: true })
     ])
 
+    interface ReciboPrelacionRow {
+      id: string
+      apartamento_id: string
+      mes_facturado: string
+      tasa_bcv?: number | null
+      total_usd: number
+      total_bs: number
+      estado: string
+      es_indexado?: boolean | null
+      emitido_at?: string | null
+      data_json?: {
+        pago_info?: { pago_id?: string }
+        abonos?: Array<{ pago_id?: string;[key: string]: unknown }>
+        monto_original_usd?: number | null
+        monto_original_bs?: number | null
+        [key: string]: unknown
+      } | null
+    }
+
     const moraRow = moraRes.data
-    const todosRecibos = allRecibosRes.data || []
+    const todosRecibos = (allRecibosRes.data || []) as ReciboPrelacionRow[]
 
     if (pago.id) {
       let yaAplicadoEnMora = false
@@ -112,14 +132,14 @@ export async function aplicarPagoConPrelacion(
           if (Array.isArray(parsedMora?.pagos_aplicados_ids) && parsedMora.pagos_aplicados_ids.includes(pago.id)) {
             yaAplicadoEnMora = true
           }
-        } catch {}
+        } catch (err) { logger.debug('pagosPrelacionService', 'Fallback controlado', err) }
       }
 
-      const yaAplicadoEnRecibo = todosRecibos.some((r: any) => {
+      const yaAplicadoEnRecibo = todosRecibos.some((r) => {
         const pInfoId = r?.data_json?.pago_info?.pago_id
         if (pInfoId === pago.id) return true
         const abonos = Array.isArray(r?.data_json?.abonos) ? r.data_json.abonos : []
-        return abonos.some((a: any) => a?.pago_id === pago.id)
+        return abonos.some((a) => a?.pago_id === pago.id)
       })
 
       if (yaAplicadoEnMora || yaAplicadoEnRecibo) {
@@ -129,7 +149,7 @@ export async function aplicarPagoConPrelacion(
     }
 
     // 2. Filtrar recibos pendientes ordenados por mes_facturado ASC (más antiguos primero)
-    const recibos = todosRecibos.filter((r: any) => r.estado === 'pendiente')
+    const recibos = todosRecibos.filter((r) => r.estado === 'pendiente')
 
     // Separar recibos en: No Indexados (fijos en Bs) vs Indexados (en USD)
     const recibosNoIndexados = recibos.filter(r => !esReciboIndexado(r, fechaInicioGestion))
@@ -149,17 +169,17 @@ export async function aplicarPagoConPrelacion(
         const tieneUsd = Number(moraRow.monto_usd || 0) > 0.05
         const nuevoEstado = tieneUsd ? 'activo' : 'solventado'
 
-        let conceptosHist: any = {}
+        let conceptosHist: Record<string, unknown> = {}
         if (moraRow.conceptos_detalle) {
           try {
             if (moraRow.conceptos_detalle.startsWith('{')) {
-              conceptosHist = JSON.parse(moraRow.conceptos_detalle)
+              conceptosHist = JSON.parse(moraRow.conceptos_detalle) as Record<string, unknown>
             }
-          } catch (_) {}
+          } catch (err) { logger.debug('pagosPrelacionService', 'Fallback controlado', err) }
         }
         conceptosHist.deuda_2025 = 0
         conceptosHist.actualizado_at = new Date().toISOString()
-        const prevPagosIds = Array.isArray(conceptosHist.pagos_aplicados_ids) ? conceptosHist.pagos_aplicados_ids : []
+        const prevPagosIds = Array.isArray(conceptosHist.pagos_aplicados_ids) ? (conceptosHist.pagos_aplicados_ids as string[]) : []
         if (pago.id && !prevPagosIds.includes(pago.id)) {
           conceptosHist.pagos_aplicados_ids = [...prevPagosIds, pago.id]
         }
@@ -181,11 +201,11 @@ export async function aplicarPagoConPrelacion(
       } else {
         // Abono parcial a la deuda en Bs de la mora
         const saldoRestanteBs = Number((moraBs - remanenteBs).toFixed(2))
-        let conceptosHist: any = {}
+        let conceptosHist: Record<string, unknown> = {}
         if (moraRow.conceptos_detalle && String(moraRow.conceptos_detalle).startsWith('{')) {
-          try { conceptosHist = JSON.parse(moraRow.conceptos_detalle) } catch {}
+          try { conceptosHist = JSON.parse(moraRow.conceptos_detalle) as Record<string, unknown> } catch (err) { logger.debug('pagosPrelacionService', 'Fallback controlado', err) }
         }
-        const prevPagosIds = Array.isArray(conceptosHist.pagos_aplicados_ids) ? conceptosHist.pagos_aplicados_ids : []
+        const prevPagosIds = Array.isArray(conceptosHist.pagos_aplicados_ids) ? (conceptosHist.pagos_aplicados_ids as string[]) : []
         if (pago.id && !prevPagosIds.includes(pago.id)) {
           conceptosHist.pagos_aplicados_ids = [...prevPagosIds, pago.id]
         }
@@ -362,13 +382,13 @@ export async function aplicarPagoConPrelacion(
       const moraValorBs = moraUsd * tasa
 
       if (remanenteBs >= moraValorBs - 0.05) {
-        let conceptosHist: any = {}
+        let conceptosHist: Record<string, unknown> = {}
         if (moraRow.conceptos_detalle) {
           try {
             if (moraRow.conceptos_detalle.startsWith('{')) {
-              conceptosHist = JSON.parse(moraRow.conceptos_detalle)
+              conceptosHist = JSON.parse(moraRow.conceptos_detalle) as Record<string, unknown>
             }
-          } catch (_) {}
+          } catch (err) { logger.debug('pagosPrelacionService', 'Fallback controlado', err) }
         }
         conceptosHist.cable_viajero = 0
         conceptosHist.guaya = 0
@@ -445,12 +465,12 @@ export async function aplicarPagoConPrelacion(
     appCache.invalidateTags(['recibos', 'saldos', 'mora', 'pagos', `recibo_${aptoId}`, `pago_${aptoId}`])
 
     return resultado
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[pagosPrelacionService] Error en cascada de pagos:', err)
     return {
       ...resultado,
       success: false,
-      error: err?.message || 'Error procesando la prelación del pago'
+      error: getErrorMessage(err) || 'Error procesando la prelación del pago'
     }
   }
 }

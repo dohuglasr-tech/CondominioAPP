@@ -543,7 +543,7 @@ export const AdminRecibos: React.FC = () => {
                 destinatarioEmail: emailDestino,
                 apartamentoNumero: aptoNum,
                 propietarioNombre: nombreDestino,
-                edificioNombre: config?.nombre_edificio || 'Residencias Ocutuy 5',
+                edificioNombre: config?.nombre_edificio || 'Condominio Domus',
                 montoUsd: montoFinalUsd,
                 montoBs: montoFinalBs,
                 referencia: pagoDb?.referencia || selected?.numero_referencia || pagoObj?.numero_referencia || 'S/R',

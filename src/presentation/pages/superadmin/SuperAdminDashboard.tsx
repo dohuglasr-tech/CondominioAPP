@@ -2598,7 +2598,7 @@ export const SuperAdminDashboard: React.FC = () => {
                           slug: autoSlug
                         })
                       }}
-                      placeholder="Ej: Condominio Ocutuy 6"
+                      placeholder="Ej: Residencial Los Robles"
                       style={{
                         width: '100%', boxSizing: 'border-box', background: '#070a10',
                         border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '8px',
@@ -2609,7 +2609,7 @@ export const SuperAdminDashboard: React.FC = () => {
 
                   <div>
                     <label style={{ display: 'block', color: '#94a3b8', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>
-                      Subdominio Asignado * (ej: ocutuy5)
+                      Subdominio Asignado * (ej: los-robles)
                     </label>
                     <div style={{
                       display: 'flex', alignItems: 'center', background: '#070a10',
@@ -2623,7 +2623,7 @@ export const SuperAdminDashboard: React.FC = () => {
                           ...buildingForm,
                           slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '')
                         })}
-                        placeholder="ocutuy5"
+                        placeholder="los-robles"
                         style={{
                           flex: 1, background: 'transparent', border: 'none',
                           color: '#38bdf8', padding: '10px', fontSize: '13px', fontFamily: 'monospace', fontWeight: 700

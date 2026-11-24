@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { appCache } from './cacheService'
+import { getErrorMessage } from '../utils/logger'
 
 export type CategoriaOrganigrama = 'administracion' | 'junta_directiva' | 'comite_vocal' | 'operativo'
 
@@ -234,7 +235,7 @@ export async function obtenerJunta(forceRefresh = false): Promise<{ data: Miembr
 
         saveLocalJuntaCache(mapped)
         return { data: mapped, error: null, fromDb: true }
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.warn('[juntaService] Excepción obteniendo junta:', err)
         return { data: getLocalJuntaCache(), error: null, fromDb: false }
       }
@@ -321,8 +322,8 @@ export async function guardarMiembroJunta(item: Partial<MiembroJunta>): Promise<
     appCache.invalidateTags(['junta'])
 
     return { data: nuevoMiembro, error: null }
-  } catch (err: any) {
-    return { data: null, error: err.message || 'Error guardando miembro' }
+  } catch (err: unknown) {
+    return { data: null, error: getErrorMessage(err) || 'Error guardando miembro' }
   }
 }
 
@@ -346,7 +347,7 @@ export async function eliminarMiembroJunta(id: string): Promise<{ success: boole
     }
 
     return { success: true, error: null }
-  } catch (err: any) {
-    return { success: false, error: err.message || 'Error eliminando miembro' }
+  } catch (err: unknown) {
+    return { success: false, error: getErrorMessage(err) || 'Error eliminando miembro' }
   }
 }

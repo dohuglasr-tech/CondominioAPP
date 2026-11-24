@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
 import { appCache } from './cacheService'
 import { slugifyBuildingName } from './tenantService'
+import { logger, getErrorMessage } from '../utils/logger'
 
 export interface TableStats {
   name: string
@@ -338,12 +339,12 @@ export async function createBuilding(
         registro_id: newId,
         fecha_hora: new Date().toISOString()
       }])
-    } catch {}
+    } catch (err) { logger.debug('superAdminService', 'Fallback controlado', err) }
 
     appCache.invalidateTags(['config', 'apartamentos'])
     return { success: true, data }
-  } catch (err: any) {
-    return { success: false, error: err.message || 'Error creando edificio' }
+  } catch (err: unknown) {
+    return { success: false, error: getErrorMessage(err) || 'Error creando edificio' }
   }
 }
 
@@ -376,12 +377,12 @@ export async function updateBuilding(
         registro_id: buildingId,
         fecha_hora: new Date().toISOString()
       }])
-    } catch {}
+    } catch (err) { logger.debug('superAdminService', 'Fallback controlado', err) }
 
     appCache.invalidateTags(['config', 'apartamentos'])
     return { success: true }
-  } catch (err: any) {
-    return { success: false, error: err.message || 'Error actualizando edificio' }
+  } catch (err: unknown) {
+    return { success: false, error: getErrorMessage(err) || 'Error actualizando edificio' }
   }
 }
 
@@ -510,11 +511,11 @@ export async function superAdminUpdateUserProfile(
         usuario_id: userId,
         fecha_hora: new Date().toISOString()
       }])
-    } catch {}
+    } catch (err) { logger.debug('superAdminService', 'Fallback controlado', err) }
 
     return { success: true }
-  } catch (err: any) {
-    return { success: false, error: err.message || 'Error actualizando usuario' }
+  } catch (err: unknown) {
+    return { success: false, error: getErrorMessage(err) || 'Error actualizando usuario' }
   }
 }
 
@@ -536,8 +537,8 @@ export async function superAdminChangePassword(
       return { success: false, error: data.error || 'No se pudo cambiar la contraseña' }
     }
     return { success: true }
-  } catch (err: any) {
-    return { success: false, error: err.message || 'Error ejecutando cambio de clave' }
+  } catch (err: unknown) {
+    return { success: false, error: getErrorMessage(err) || 'Error ejecutando cambio de clave' }
   }
 }
 
@@ -566,8 +567,8 @@ export async function updateUserRole(
     }])
 
     return { success: true }
-  } catch (err: any) {
-    return { success: false, error: err.message || 'Error actualizando rol' }
+  } catch (err: unknown) {
+    return { success: false, error: getErrorMessage(err) || 'Error actualizando rol' }
   }
 }
 
@@ -596,8 +597,8 @@ export async function toggleUserStatus(
     }])
 
     return { success: true }
-  } catch (err: any) {
-    return { success: false, error: err.message || 'Error modificando estado' }
+  } catch (err: unknown) {
+    return { success: false, error: getErrorMessage(err) || 'Error modificando estado' }
   }
 }
 
@@ -717,8 +718,8 @@ export async function updateEmergencySettings(params: {
 
     appCache.invalidateTags(['config'])
     return { success: true }
-  } catch (err: any) {
-    return { success: false, error: err.message || 'Error guardando emergencia' }
+  } catch (err: unknown) {
+    return { success: false, error: getErrorMessage(err) || 'Error guardando emergencia' }
   }
 }
 
@@ -744,8 +745,8 @@ export async function forceBcvRate(rate: number): Promise<{ success: boolean; er
     if (error) throw error
     appCache.invalidateTags(['config', 'tasa_bcv'])
     return { success: true }
-  } catch (err: any) {
-    return { success: false, error: err.message || 'Error forzando tasa BCV' }
+  } catch (err: unknown) {
+    return { success: false, error: getErrorMessage(err) || 'Error forzando tasa BCV' }
   }
 }
 
@@ -1079,7 +1080,7 @@ export async function runComprehensiveDiagnostic(): Promise<SystemDiagnosticRepo
       }
     }
     storageUsageKb = Math.round(totalLen / 1024)
-  } catch {}
+  } catch (err) { logger.debug('superAdminService', 'Fallback controlado', err) }
 
   if (storageUsageKb > 4000) {
     findings.push({
@@ -1153,7 +1154,7 @@ export async function runComprehensiveDiagnostic(): Promise<SystemDiagnosticRepo
         recommendation: 'Ninguna acción requerida.'
       })
     }
-  } catch {}
+  } catch (err) { logger.debug('superAdminService', 'Fallback controlado', err) }
 
   // 10. Detección de Residentes Huérfanos (Sin Apartamento Vinculado)
   const { data: orphanResidents } = await supabase

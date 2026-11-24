@@ -2,6 +2,7 @@ import { supabase } from './supabase'
 import { appCache } from './cacheService'
 import { comprimirImagen } from '../utils/imageCompressor'
 import { getHoyVE } from '../utils/fechaVE'
+import { getErrorMessage } from '../utils/logger'
 
 export interface ReportePagoPayload {
   apartamento_id: string
@@ -116,9 +117,9 @@ export async function reportarPago(payload: ReportePagoPayload): Promise<{ id?: 
     appCache.invalidateTags(['pagos', 'saldos', 'recibos', 'mora', 'gas', 'deudas_gas'])
 
     return { id: insertedRow?.id, error: null }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[PagosService] Excepción al reportar pago:', err)
-    return { error: err.message || 'Error de conexión. Intenta de nuevo.' }
+    return { error: getErrorMessage(err) || 'Error de conexión. Intenta de nuevo.' }
   }
 }
 /**

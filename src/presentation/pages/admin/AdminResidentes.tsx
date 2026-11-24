@@ -595,9 +595,9 @@ export const AdminResidentes: React.FC = () => {
     }
 
     // 6. Configuración del Edificio
-    const nombreEdificio = config?.nombre_edificio || 'Residencias Ocutuy 5'
+    const nombreEdificio = config?.nombre_edificio || 'Condominio Domus'
     const rifEdificio = config?.rif || 'J-12345678-9'
-    const direccionEdificio = config?.direccion || 'Urbanización Casa Blanca, Residencias Ocutuy 5'
+    const direccionEdificio = config?.direccion || 'Dirección del Condominio'
 
     return {
       edificio: {

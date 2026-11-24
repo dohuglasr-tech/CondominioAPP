@@ -183,7 +183,7 @@ export const AdminLayout: React.FC = () => {
   const [pendingCount, setPendingCount] = useState<number>(0)
   const [drawerOpen, setDrawerOpen] = useState(false)
 
-  const edificioNombre = config?.nombre_edificio || 'Residencias Ocutuy 5'
+  const edificioNombre = config?.nombre_edificio || 'Condominio Domus'
   const edificioLogo = config?.logo_url || null
 
   // Cargar pagos pendientes

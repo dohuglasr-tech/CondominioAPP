@@ -33,6 +33,9 @@ import { clasificarCuotaExtraordinaria, obtenerFechaHoyLocalIso } from '../../..
 import { useAuth } from '../../../application/contexts/AuthContext'
 import { SkeletonTable } from '../../components/Skeleton'
 import { generarCarteleraAscensorPDF } from '../../../utils/carteleraAscensorPdfGenerator'
+import { CalendarioEditarTituloModal } from './calendario/CalendarioEditarTituloModal'
+import { CalendarioOrganizarColumnasModal } from './calendario/CalendarioOrganizarColumnasModal'
+import { CalendarioCarteleraModal } from './calendario/CalendarioCarteleraModal'
 import { despacharEmailPagoAprobado } from '../../../data/emailService'
 import { supabase } from '../../../data/supabase'
 
@@ -473,7 +476,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
         destinatarioEmail: emailDest,
         apartamentoNumero: modalApto.apartamento_numero,
         propietarioNombre: modalApto.propietario_nombre || `Propietario Apto ${modalApto.apartamento_numero}`,
-        edificioNombre: config?.nombre_edificio || 'Residencias Ocutuy 5',
+        edificioNombre: config?.nombre_edificio || 'Condominio Domus',
         mesLabel: modalCol.label,
         anio: modalCol.anio,
         montoUsd: nuevoMontoUsd,
@@ -626,7 +629,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
               destinatarioEmail: modalDestinatarioEmail.trim(),
               apartamentoNumero: modalApto.apartamento_numero,
               propietarioNombre: modalApto.propietario_nombre || `Propietario Apto ${modalApto.apartamento_numero}`,
-              edificioNombre: config?.nombre_edificio || 'Residencias Ocutuy 5',
+              edificioNombre: config?.nombre_edificio || 'Condominio Domus',
               mesLabel: modalCol.label,
               anio: modalCol.anio,
               montoUsd: nuevoMontoUsd,
@@ -3604,78 +3607,15 @@ export const AdminCalendarioDeudas: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL EDITAR TÍTULO DE SECCIÓN */}
-      {modalEditarTituloOpen && (
-        <div className="calendario-modal-overlay" style={{
-          position: 'fixed',
-          inset: 0,
-          backgroundColor: 'rgba(0,0,0,0.75)',
-          backdropFilter: 'blur(5px)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 99999,
-          padding: '20px'
-        }}>
-          <div className="calendario-modal-card" style={{
-            backgroundColor: '#111827',
-            border: '1px solid #374151',
-            borderRadius: '16px',
-            width: '100%',
-            maxWidth: '480px',
-            boxShadow: '0 25px 60px rgba(0,0,0,0.8)',
-            overflow: 'hidden'
-          }}>
-            <div className="calendario-modal-header" style={{ padding: '18px 24px', borderBottom: '1px solid #1f2937', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: '#fff' }}>
-                ✏️ Editar Título: {seccionTituloEditando === 'naranja' ? 'Deudas Pasadas' : 'Calendario Mensual'}
-              </h3>
-              <button onClick={() => setModalEditarTituloOpen(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '20px', cursor: 'pointer' }}>
-                ✕
-              </button>
-            </div>
-            <div className="calendario-modal-body" style={{ padding: '24px' }}>
-              <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '8px', fontWeight: 700 }}>
-                Texto del Encabezado
-              </label>
-              <input
-                type="text"
-                value={nuevoTituloInput}
-                onChange={e => setNuevoTituloInput(e.target.value)}
-                placeholder="Ej: DEUDAS PASADAS / CONCEPTOS EXTRAORDINARIOS (BS)"
-                style={{
-                  width: '100%',
-                  backgroundColor: '#030712',
-                  border: '1px solid #374151',
-                  borderRadius: '8px',
-                  padding: '10px 12px',
-                  color: '#fff',
-                  fontSize: '13px',
-                  fontWeight: 600,
-                  boxSizing: 'border-box'
-                }}
-              />
-            </div>
-            <div className="calendario-modal-footer" style={{ padding: '16px 24px', backgroundColor: '#030712', borderTop: '1px solid #1f2937', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-              <button
-                type="button"
-                onClick={() => setModalEditarTituloOpen(false)}
-                style={{ padding: '9px 16px', backgroundColor: 'transparent', color: '#cbd5e1', border: '1px solid #374151', borderRadius: '8px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={handleGuardarNuevoTitulo}
-                disabled={procesandoAccion}
-                style={{ padding: '9px 20px', backgroundColor: 'var(--color-accent, #f97316)', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: procesandoAccion ? 'not-allowed' : 'pointer' }}
-              >
-                {procesandoAccion ? 'Guardando...' : 'Guardar Título'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <CalendarioEditarTituloModal
+        open={modalEditarTituloOpen}
+        seccionTituloEditando={seccionTituloEditando}
+        nuevoTituloInput={nuevoTituloInput}
+        procesandoAccion={procesandoAccion}
+        onChangeTitulo={setNuevoTituloInput}
+        onClose={() => setModalEditarTituloOpen(false)}
+        onSave={handleGuardarNuevoTitulo}
+      />
 
       {/* MODAL CREAR / EDITAR CUOTA EXTRAOFICIAL (COLUMNA VERTICAL) */}
       {modalNuevaColumnaOpen && (
@@ -4057,252 +3997,18 @@ export const AdminCalendarioDeudas: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL GESTIONAR Y QUITAR COLUMNAS (VERTICALES) */}
-      {modalOrganizarColumnasOpen && (
-        <div className="calendario-modal-overlay" style={{
-          position: 'fixed',
-          inset: 0,
-          backgroundColor: 'rgba(0,0,0,0.75)',
-          backdropFilter: 'blur(5px)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 99999,
-          padding: '20px'
-        }}>
-          <div className="calendario-modal-card" style={{
-            backgroundColor: '#111827',
-            border: '1px solid #374151',
-            borderRadius: '16px',
-            width: '100%',
-            maxWidth: '820px',
-            maxHeight: '85vh',
-            boxShadow: '0 25px 60px rgba(0,0,0,0.8)',
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden'
-          }}>
-            <div className="calendario-modal-header" style={{ padding: '18px 24px', borderBottom: '1px solid #1f2937', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: '#fff' }}>
-                  ⚙️ Gestionar y Quitar Columnas (Verticales)
-                </h3>
-                <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#94a3b8' }}>
-                  Mueve columnas entre "Deudas Pasadas" y el "Calendario Mensual", reordena su posición o quítalas a tu antojo
-                </p>
-              </div>
-              <button onClick={() => setModalOrganizarColumnasOpen(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '20px', cursor: 'pointer' }}>
-                ✕
-              </button>
-            </div>
-
-            <div className="calendario-modal-body calendario-organizar-grid" style={{ padding: '20px 24px', overflowY: 'auto', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', flex: 1 }}>
-              {/* Sección Deudas Pasadas */}
-              <div style={{ backgroundColor: '#090d16', border: '1px solid rgba(234, 88, 12, 0.3)', borderRadius: '12px', padding: '16px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', borderBottom: '1px solid rgba(234, 88, 12, 0.2)', paddingBottom: '8px' }}>
-                  <span style={{ fontSize: '13px', fontWeight: 800, color: '#fb923c' }}>
-                    🏛️ Deudas Pasadas ({columnasNaranja.length})
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => handleAbrirCrearColumna('naranja')}
-                    style={{ background: 'rgba(234, 88, 12, 0.2)', border: '1px solid rgba(234, 88, 12, 0.4)', color: '#fb923c', padding: '2px 8px', borderRadius: '4px', fontSize: '10px', fontWeight: 700, cursor: 'pointer' }}
-                  >
-                    + Agregar
-                  </button>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {columnasNaranja.length === 0 ? (
-                    <div style={{ color: '#64748b', fontSize: '12px', textAlign: 'center', padding: '20px' }}>
-                      No hay columnas en esta sección.
-                    </div>
-                  ) : (
-                    columnasNaranja.map((c) => (
-                      <div
-                        key={c.id}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          padding: '8px 10px',
-                          backgroundColor: '#111827',
-                          border: '1px solid #1f2937',
-                          borderRadius: '8px',
-                          fontSize: '12px'
-                        }}
-                      >
-                        <div>
-                          <span style={{ fontWeight: 700, color: c.tipo === 'cuota_especial' ? '#facc15' : '#fff' }}>{c.titulo}</span>
-                          <span style={{ marginLeft: '6px', fontSize: '10px', color: '#94a3b8' }}>({c.moneda})</span>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          <button
-                            type="button"
-                            onClick={() => handleMoverColumna(c.id, 'izquierda')}
-                            style={{ background: '#1f2937', border: 'none', color: '#cbd5e1', borderRadius: '4px', padding: '4px 6px', cursor: 'pointer', fontSize: '10px' }}
-                            title="Mover columna a la izquierda"
-                          >
-                            ◀
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleMoverColumna(c.id, 'derecha')}
-                            style={{ background: '#1f2937', border: 'none', color: '#cbd5e1', borderRadius: '4px', padding: '4px 6px', cursor: 'pointer', fontSize: '10px' }}
-                            title="Mover columna a la derecha"
-                          >
-                            ▶
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleCambiarSeccion(c.id, 'azul')}
-                            style={{
-                              background: 'rgba(59, 130, 246, 0.2)',
-                              border: '1px solid rgba(59, 130, 246, 0.4)',
-                              color: '#60a5fa',
-                              borderRadius: '4px',
-                              padding: '4px 8px',
-                              cursor: 'pointer',
-                              fontSize: '11px',
-                              fontWeight: 700
-                            }}
-                            title="Pasar esta columna al Calendario Mensual"
-                          >
-                            ➔ Calendario
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleEliminarColumnaClick(c.id, c.titulo)}
-                            style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '2px 4px', fontSize: '12px' }}
-                            title="Quitar columna vertical de la tabla"
-                          >
-                            🗑️
-                          </button>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-
-              {/* Sección Calendario Mensual */}
-              <div style={{ backgroundColor: '#090d16', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '12px', padding: '16px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', borderBottom: '1px solid rgba(59, 130, 246, 0.2)', paddingBottom: '8px' }}>
-                  <span style={{ fontSize: '13px', fontWeight: 800, color: '#60a5fa' }}>
-                    📅 Calendario Mensual ({columnasAzul.length})
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => handleAbrirCrearColumna('azul')}
-                    style={{ background: 'rgba(59, 130, 246, 0.2)', border: '1px solid rgba(59, 130, 246, 0.4)', color: '#60a5fa', padding: '2px 8px', borderRadius: '4px', fontSize: '10px', fontWeight: 700, cursor: 'pointer' }}
-                  >
-                    + Agregar
-                  </button>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {columnasAzul.length === 0 ? (
-                    <div style={{ color: '#64748b', fontSize: '12px', textAlign: 'center', padding: '20px' }}>
-                      No hay columnas en esta sección.
-                    </div>
-                  ) : (
-                    columnasAzul.map((c) => (
-                      <div
-                        key={c.id}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          padding: '8px 10px',
-                          backgroundColor: '#111827',
-                          border: '1px solid #1f2937',
-                          borderRadius: '8px',
-                          fontSize: '12px'
-                        }}
-                      >
-                        <div>
-                          <span style={{ fontWeight: 700, color: c.tipo === 'cuota_especial' ? '#facc15' : '#fff' }}>{c.titulo}</span>
-                          <span style={{ marginLeft: '6px', fontSize: '10px', color: '#94a3b8' }}>({c.moneda})</span>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          <button
-                            type="button"
-                            onClick={() => handleMoverColumna(c.id, 'izquierda')}
-                            style={{ background: '#1f2937', border: 'none', color: '#cbd5e1', borderRadius: '4px', padding: '4px 6px', cursor: 'pointer', fontSize: '10px' }}
-                            title="Mover columna a la izquierda"
-                          >
-                            ◀
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleMoverColumna(c.id, 'derecha')}
-                            style={{ background: '#1f2937', border: 'none', color: '#cbd5e1', borderRadius: '4px', padding: '4px 6px', cursor: 'pointer', fontSize: '10px' }}
-                            title="Mover columna a la derecha"
-                          >
-                            ▶
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleCambiarSeccion(c.id, 'naranja')}
-                            style={{
-                              background: 'rgba(234, 88, 12, 0.2)',
-                              border: '1px solid rgba(234, 88, 12, 0.4)',
-                              color: '#fb923c',
-                              borderRadius: '4px',
-                              padding: '4px 8px',
-                              cursor: 'pointer',
-                              fontSize: '11px',
-                              fontWeight: 700
-                            }}
-                            title="Pasar esta columna a Deudas Pasadas"
-                          >
-                            ➔ Deudas Pasadas
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleEliminarColumnaClick(c.id, c.titulo)}
-                            style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '2px 4px', fontSize: '12px' }}
-                            title="Quitar columna vertical de la tabla"
-                          >
-                            🗑️
-                          </button>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="calendario-modal-footer" style={{ padding: '16px 24px', backgroundColor: '#030712', borderTop: '1px solid #1f2937', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <button
-                type="button"
-                onClick={handleRestablecerColumnas}
-                disabled={procesandoAccion}
-                style={{
-                  padding: '9px 16px',
-                  backgroundColor: 'rgba(239, 68, 68, 0.12)',
-                  color: '#f87171',
-                  border: '1px solid rgba(239, 68, 68, 0.3)',
-                  borderRadius: '8px',
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  cursor: procesandoAccion ? 'not-allowed' : 'pointer'
-                }}
-                title="Restablece las columnas originales por defecto"
-              >
-                🔄 Restablecer Columnas Originales
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setModalOrganizarColumnasOpen(false)}
-                style={{ padding: '9px 24px', backgroundColor: '#374151', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}
-              >
-                Cerrar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <CalendarioOrganizarColumnasModal
+        open={modalOrganizarColumnasOpen}
+        columnasNaranja={columnasNaranja}
+        columnasAzul={columnasAzul}
+        procesandoAccion={procesandoAccion}
+        onClose={() => setModalOrganizarColumnasOpen(false)}
+        onAbrirCrearColumna={handleAbrirCrearColumna}
+        onMoverColumna={handleMoverColumna}
+        onCambiarSeccion={handleCambiarSeccion}
+        onEliminarColumna={handleEliminarColumnaClick}
+        onRestablecerColumnas={handleRestablecerColumnas}
+      />
 
       {/* MODAL EDITAR MONTO DE CELDA EN COLUMNA PERSONALIZADA (CUOTA ESPECIAL) */}
       {modalCeldaPersonalizadaOpen && celdaPersApto && celdaPersCol && (
@@ -5420,337 +5126,27 @@ export const AdminCalendarioDeudas: React.FC = () => {
         </div>
       )}
 
-      {/* ── Modal Configuración y Descarga de Cartelera Ascensor (PDF Carta) ── */}
-      {modalCarteleraOpen && (
-        <div
-          className="calendario-modal-overlay"
-          onClick={() => setModalCarteleraOpen(false)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.82)',
-            backdropFilter: 'blur(6px)',
-            zIndex: 100000,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '16px'
-          }}
-        >
-          <div
-            className="calendario-modal-card"
-            onClick={e => e.stopPropagation()}
-            style={{
-              backgroundColor: '#111827',
-              border: '1px solid #374151',
-              borderRadius: '18px',
-              width: '100%',
-              maxWidth: '560px',
-              maxHeight: '90vh',
-              overflow: 'hidden',
-              display: 'flex',
-              flexDirection: 'column',
-              boxShadow: '0 25px 60px rgba(0, 0, 0, 0.85), 0 0 30px rgba(249, 115, 22, 0.12)'
-            }}
-          >
-            {/* Header del modal */}
-            <div style={{
-              padding: '18px 24px',
-              backgroundColor: '#0f172a',
-              borderBottom: '1px solid #1e293b',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span style={{ fontSize: '24px' }}>🖨️</span>
-                <div>
-                  <h3 style={{ margin: 0, color: '#fff', fontSize: '16px', fontWeight: 800 }}>
-                    Cartelera Informativa para el Ascensor
-                  </h3>
-                  <p style={{ margin: '3px 0 0', color: 'var(--color-accent, #f97316)', fontSize: '11.5px', fontWeight: 600 }}>
-                    Tamaño Carta · {carteleraOrientacion === 'landscape' ? 'Horizontal (Apaisado)' : 'Vertical'} · {carteleraPaginas} {carteleraPaginas === 1 ? 'Hoja' : 'Hojas'}
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setModalCarteleraOpen(false)}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: '#94a3b8',
-                  fontSize: '20px',
-                  cursor: 'pointer',
-                  padding: '4px 8px',
-                  borderRadius: '6px'
-                }}
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Cuerpo del modal */}
-            <div style={{ padding: '20px 24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {/* Opciones de Orientación y División de Páginas */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                {/* Selector de Orientación */}
-                <div>
-                  <label style={{ display: 'block', color: '#cbd5e1', fontSize: '12px', fontWeight: 700, marginBottom: '6px' }}>
-                    Orientación de Impresión:
-                  </label>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
-                    <button
-                      type="button"
-                      onClick={() => setCarteleraOrientacion('portrait')}
-                      style={{
-                        padding: '9px 8px',
-                        borderRadius: '9px',
-                        border: `1.5px solid ${carteleraOrientacion === 'portrait' ? 'var(--color-accent, #f97316)' : '#374151'}`,
-                        backgroundColor: carteleraOrientacion === 'portrait' ? 'rgba(249, 115, 22, 0.12)' : '#030712',
-                        color: carteleraOrientacion === 'portrait' ? '#fff' : '#94a3b8',
-                        cursor: 'pointer',
-                        textAlign: 'center',
-                        fontSize: '11.5px',
-                        fontWeight: 700,
-                        transition: 'all 0.15s ease'
-                      }}
-                    >
-                      📄 Vertical
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCarteleraOrientacion('landscape')}
-                      style={{
-                        padding: '9px 8px',
-                        borderRadius: '9px',
-                        border: `1.5px solid ${carteleraOrientacion === 'landscape' ? 'var(--color-accent, #f97316)' : '#374151'}`,
-                        backgroundColor: carteleraOrientacion === 'landscape' ? 'rgba(249, 115, 22, 0.12)' : '#030712',
-                        color: carteleraOrientacion === 'landscape' ? '#fff' : '#94a3b8',
-                        cursor: 'pointer',
-                        textAlign: 'center',
-                        fontSize: '11.5px',
-                        fontWeight: 700,
-                        transition: 'all 0.15s ease'
-                      }}
-                    >
-                      📑 Horizontal
-                    </button>
-                  </div>
-                </div>
-
-                {/* Selector de Hojas / División Mural */}
-                <div>
-                  <label style={{ display: 'block', color: '#cbd5e1', fontSize: '12px', fontWeight: 700, marginBottom: '6px' }}>
-                    Distribución de Hojas:
-                  </label>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
-                    {[
-                      { num: 1, label: '1 Hoja', sub: 'Compacta' },
-                      { num: 2, label: '2 Hojas', sub: 'Mediana' },
-                      { num: 3, label: '3 Hojas', sub: 'Mural / Grande' }
-                    ].map(opt => (
-                      <button
-                        key={opt.num}
-                        type="button"
-                        onClick={() => setCarteleraPaginas(opt.num as any)}
-                        style={{
-                          padding: '7px 4px',
-                          borderRadius: '9px',
-                          border: `1.5px solid ${carteleraPaginas === opt.num ? 'var(--color-accent, #f97316)' : '#374151'}`,
-                          backgroundColor: carteleraPaginas === opt.num ? 'rgba(249, 115, 22, 0.12)' : '#030712',
-                          color: carteleraPaginas === opt.num ? '#fff' : '#94a3b8',
-                          cursor: 'pointer',
-                          textAlign: 'center',
-                          transition: 'all 0.15s ease'
-                        }}
-                      >
-                        <div style={{ fontWeight: 700, fontSize: '11.5px' }}>{opt.label}</div>
-                        <div style={{ fontSize: '9.5px', color: '#64748b' }}>{opt.sub}</div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Banner Explicativo de la Configuración Seleccionada */}
-              <div style={{
-                backgroundColor: carteleraPaginas === 3 ? 'rgba(249, 115, 22, 0.1)' : 'rgba(59, 130, 246, 0.08)',
-                border: `1px solid ${carteleraPaginas === 3 ? 'rgba(249, 115, 22, 0.35)' : 'rgba(59, 130, 246, 0.25)'}`,
-                borderRadius: '10px',
-                padding: '11px 14px',
-                fontSize: '11.5px',
-                color: carteleraPaginas === 3 ? '#fdba74' : '#93c5fd',
-                lineHeight: 1.45
-              }}>
-                {carteleraPaginas === 1 && (
-                  <span>📄 <strong>Modo 1 Hoja (Compacto):</strong> Todos los 62 apartamentos caben en 1 sola hoja Carta sin márgenes, con 2 columnas paralelas en vertical (o 3 en horizontal) y datos bancarios al pie.</span>
-                )}
-                {carteleraPaginas === 2 && (
-                  <span>📑 <strong>Modo 2 Hojas (Legibilidad Media):</strong> Divide el edificio en dos hojas con letra más grande (7.5pt). Página 1: KPIs y mitad de apartamentos; Página 2: segunda mitad y cuentas bancarias.</span>
-                )}
-                {carteleraPaginas === 3 && (
-                  <span>🖼️ <strong>Modo 3 Hojas (Unión Mural para Ascensor):</strong> Genera 3 hojas continuas con <strong>letra extra-grande (8.5pt)</strong> y alto contraste. Diseñado especialmente para que el administrador pegue las 3 hojas unidas en el ascensor y la información se lea fácilmente desde lejos.</span>
-                )}
-              </div>
-
-              {/* Filtro de Apartamentos */}
-              <div>
-                <label style={{ display: 'block', color: '#cbd5e1', fontSize: '12px', fontWeight: 700, marginBottom: '6px' }}>
-                  Inmuebles a incluir en la Cartelera:
-                </label>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
-                  {[
-                    { id: 'todos', label: '🏢 Todos', sub: `${filas.length} Aptos` },
-                    { id: 'con_deuda', label: '🔴 Solo Deuda', sub: `${filas.filter(f => !f.estado_solvente).length} Morosos` },
-                    { id: 'solventes', label: '🟢 Solo Solventes', sub: `${filas.filter(f => f.estado_solvente).length} Al día` }
-                  ].map(opt => (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      onClick={() => setCarteleraFiltro(opt.id as any)}
-                      style={{
-                        padding: '10px 8px',
-                        borderRadius: '10px',
-                        border: `1.5px solid ${carteleraFiltro === opt.id ? 'var(--color-accent, #f97316)' : '#374151'}`,
-                        backgroundColor: carteleraFiltro === opt.id ? 'rgba(249, 115, 22, 0.12)' : '#030712',
-                        color: carteleraFiltro === opt.id ? '#fff' : '#94a3b8',
-                        cursor: 'pointer',
-                        textAlign: 'center',
-                        transition: 'all 0.15s ease'
-                      }}
-                    >
-                      <div style={{ fontWeight: 700, fontSize: '12px' }}>{opt.label}</div>
-                      <div style={{ fontSize: '10px', color: '#64748b', marginTop: '2px' }}>{opt.sub}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Título de la Cartelera */}
-              <div>
-                <label style={{ display: 'block', color: '#cbd5e1', fontSize: '12px', fontWeight: 700, marginBottom: '6px' }}>
-                  Título del Boletín:
-                </label>
-                <input
-                  type="text"
-                  value={carteleraTitulo}
-                  onChange={e => setCarteleraTitulo(e.target.value)}
-                  style={{
-                    width: '100%',
-                    backgroundColor: '#030712',
-                    border: '1px solid #374151',
-                    borderRadius: '8px',
-                    padding: '9px 12px',
-                    color: '#fff',
-                    fontSize: '13px',
-                    boxSizing: 'border-box'
-                  }}
-                  placeholder="Ej: BOLETÍN INFORMATIVO DE COBRANZA Y SOLVENCIA"
-                />
-              </div>
-
-              {/* Mensaje de la Comunidad */}
-              <div>
-                <label style={{ display: 'block', color: '#cbd5e1', fontSize: '12px', fontWeight: 700, marginBottom: '6px' }}>
-                  Mensaje Institucional / Llamado al Pago:
-                </label>
-                <textarea
-                  rows={3}
-                  value={carteleraMensaje}
-                  onChange={e => setCarteleraMensaje(e.target.value)}
-                  style={{
-                    width: '100%',
-                    backgroundColor: '#030712',
-                    border: '1px solid #374151',
-                    borderRadius: '8px',
-                    padding: '9px 12px',
-                    color: '#fff',
-                    fontSize: '12px',
-                    lineHeight: 1.4,
-                    boxSizing: 'border-box',
-                    resize: 'vertical'
-                  }}
-                  placeholder="Mensaje para los residentes que se leerá en el ascensor..."
-                />
-              </div>
-
-              {/* Vista previa de datos bancarios incluidos */}
-              <div style={{
-                backgroundColor: '#030712',
-                border: '1px solid #1f2937',
-                borderRadius: '10px',
-                padding: '12px 14px'
-              }}>
-                <div style={{ fontSize: '11px', fontWeight: 700, color: '#fb923c', marginBottom: '6px' }}>
-                  💳 CUENTAS BANCARIAS INCLUIDAS EN EL PIE DEL PDF:
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '11px', color: '#94a3b8' }}>
-                  <div>
-                    <strong style={{ color: '#fff' }}>Banco:</strong> {config?.banco || 'Bicentenario'}<br />
-                    <strong style={{ color: '#fff' }}>Titular:</strong> {config?.titular_cuenta || config?.nombre_edificio || 'Junta Condominio'}<br />
-                    <strong style={{ color: '#fff' }}>Cédula/RIF:</strong> {config?.cedula_cuenta || config?.rif || 'No registrado'}
-                  </div>
-                  <div>
-                    <strong style={{ color: '#fff' }}>Pago Móvil:</strong> {config?.pago_movil_banco || config?.banco || 'Bicentenario'}<br />
-                    <strong style={{ color: '#fff' }}>Teléfono:</strong> {config?.pago_movil_telefono || 'No configurado'}<br />
-                    <strong style={{ color: '#fff' }}>Tasa BCV:</strong> Bs. {fmtBs(getTasaBcvNumerica(resumen?.tasaBcvActual))}/USD
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Footer con botón de descarga */}
-            <div style={{
-              padding: '16px 24px',
-              backgroundColor: '#0f172a',
-              borderTop: '1px solid #1e293b',
-              display: 'flex',
-              justifyContent: 'flex-end',
-              gap: '12px'
-            }}>
-              <button
-                type="button"
-                onClick={() => setModalCarteleraOpen(false)}
-                style={{
-                  padding: '10px 18px',
-                  backgroundColor: 'transparent',
-                  color: '#cbd5e1',
-                  border: '1px solid #374151',
-                  borderRadius: '10px',
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  cursor: 'pointer'
-                }}
-              >
-                Cerrar
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleDescargarCarteleraPdf()}
-                disabled={generandoPdf}
-                style={{
-                  padding: '10px 22px',
-                  backgroundColor: 'var(--color-accent, #f97316)',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '10px',
-                  fontSize: '13px',
-                  fontWeight: 800,
-                  cursor: generandoPdf ? 'not-allowed' : 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  boxShadow: '0 4px 15px rgba(249, 115, 22, 0.35)'
-                }}
-              >
-                {generandoPdf ? '⏳ Generando PDF Carta...' : '📥 Descargar PDF para Imprimir (Carta)'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <CalendarioCarteleraModal
+        open={modalCarteleraOpen}
+        carteleraOrientacion={carteleraOrientacion}
+        carteleraPaginas={carteleraPaginas}
+        carteleraFiltro={carteleraFiltro}
+        carteleraTitulo={carteleraTitulo}
+        carteleraMensaje={carteleraMensaje}
+        totalFilas={filas.length}
+        totalMorosos={filas.filter(f => !f.estado_solvente).length}
+        totalSolventes={filas.filter(f => f.estado_solvente).length}
+        config={config}
+        tasaBcvActual={resumen?.tasaBcvActual}
+        generandoPdf={generandoPdf}
+        onClose={() => setModalCarteleraOpen(false)}
+        onChangeOrientacion={setCarteleraOrientacion}
+        onChangePaginas={setCarteleraPaginas}
+        onChangeFiltro={setCarteleraFiltro}
+        onChangeTitulo={setCarteleraTitulo}
+        onChangeMensaje={setCarteleraMensaje}
+        onDescargarPdf={() => handleDescargarCarteleraPdf()}
+      />
     </div>
   )
 }

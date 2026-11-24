@@ -2,6 +2,7 @@ import { supabase } from './supabase'
 import { appCache } from './cacheService'
 import { registrarEventoAuditoria } from './auditoriaService'
 import { guardarUltimaTasaBcvConocida } from '../utils/tasaBcvHelper'
+import { logger, getErrorMessage } from '../utils/logger'
 
 export interface BcvApiResponse {
   tasa: number
@@ -50,8 +51,8 @@ export async function consultarTasaBcvEnVivo(): Promise<BcvApiResponse | null> {
       fechaActualizacion: json.fechaActualizacion || new Date().toISOString(),
       fuente: 'Banco Central de Venezuela (vía DolarAPI Oficial)'
     }
-  } catch (err: any) {
-    console.warn('[BCV Service] Error consultando API en vivo:', err.message || err)
+  } catch (err: unknown) {
+    console.warn('[BCV Service] Error consultando API en vivo:', getErrorMessage(err) || err)
     return null
   } finally {
     clearTimeout(timeoutId)
@@ -116,12 +117,12 @@ export async function guardarTasaBcvEnDb(
         datos_anteriores: { tasa_bcv: tasaAnterior },
         datos_nuevos: { tasa_bcv: nuevaTasa, fecha_actualizacion: fecha }
       })
-    } catch {}
+    } catch (err) { logger.debug('bcvService', 'Fallback controlado', err) }
 
     return { ok: true }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[BCV Service] Error guardando tasa:', err)
-    return { ok: false, error: err.message || 'Error al persistir tasa en la base de datos' }
+    return { ok: false, error: getErrorMessage(err) || 'Error al persistir tasa en la base de datos' }
   }
 }
 
@@ -156,7 +157,7 @@ export async function sincronizarTasaBcvConApi(
     if (config?.tasa_bcv_actual) {
       tasaActualDb = Number(config.tasa_bcv_actual)
     }
-  } catch {}
+  } catch (err) { logger.debug('bcvService', 'Fallback controlado', err) }
 
   const huboCambio = Math.abs(tasaActualDb - apiData.tasa) > 0.0001
 
@@ -248,8 +249,8 @@ export async function sincronizarTasaBcvDiariaAuto(
       if (typeof localStorage !== 'undefined') localStorage.removeItem(STORAGE_KEY)
       return { sincronizado: false, motivo: resultado.mensaje || 'Error consultando API oficial.' }
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.warn('[BCV Service] Error en sincronización diaria automática:', err)
-    return { sincronizado: false, motivo: err?.message || 'Excepción no controlada' }
+    return { sincronizado: false, motivo: getErrorMessage(err) || 'Excepción no controlada' }
   }
 }

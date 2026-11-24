@@ -3,6 +3,8 @@ import { appCache } from './cacheService'
 import { despacharEmailCuotaGas } from './emailService'
 import { getHoyVE, getMesActualVE } from '../utils/fechaVE'
 import { getTasaBcvNumerica } from '../utils/tasaBcvHelper'
+import { getActiveEdificioId } from './tenantContext'
+import { logger, getErrorMessage } from '../utils/logger'
 
 export interface DatosPagoGas {
   banco: string
@@ -146,6 +148,7 @@ export interface DetallePagoAptoGas {
   referencia?: string
   comprobanteUrl?: string
   observaciones?: string
+  pagosAplicadosIds?: string[]
 }
 
 export interface JornadaRecaudacionGas {
@@ -244,7 +247,7 @@ export const DEFAULT_GAS_CONFIG: TanqueGasConfig = {
     banco: 'Banco de Venezuela (0102)',
     telefono: '',
     rifCedula: '',
-    titular: 'Junta de Condominio Torre 5',
+    titular: 'Junta de Condominio',
     tipoCuenta: 'Pago Móvil / Corriente',
     nota: 'Colocar en concepto o referencia: Gas Apto XXX'
   }
@@ -319,7 +322,7 @@ export function limpiarCacheLocalGas() {
     localStorage.removeItem('condominio_gas_servicio_v1')
     localStorage.removeItem('condominio_gas_servicio_v2')
     localStorage.removeItem(STORAGE_GAS_KEY)
-  } catch (e) {}
+  } catch (err) { logger.debug('gasService', 'Fallback controlado', err) }
 }
 
 function matchAptoEnGas(
@@ -384,7 +387,7 @@ async function buscarFilaGasPago(
 
   for (const r of rows) {
     let parsed: any = {}
-    try { parsed = JSON.parse(r.descripcion || '{}') } catch {}
+    try { parsed = JSON.parse(r.descripcion || '{}') } catch (err) { logger.debug('gasService', 'Fallback controlado', err) }
     const jIdRow = parsed.jornadaId || ''
     const matchesJornada = jIdRow === jornadaId || (typeof r.titulo === 'string' && r.titulo.includes(jornadaId))
     if (!matchesJornada) continue
@@ -416,7 +419,7 @@ async function buscarFilaDeudaAnteriorGas(
 
   for (const r of rows) {
     let parsed: any = {}
-    try { parsed = JSON.parse(r.descripcion || '{}') } catch {}
+    try { parsed = JSON.parse(r.descripcion || '{}') } catch (err) { logger.debug('gasService', 'Fallback controlado', err) }
     const pseudoDetalle: DetallePagoAptoGas = {
       apartamentoId: parsed.apartamentoId || r.apartamento_id || '',
       apartamentoNumero: parsed.apartamentoNumero || r.titulo?.replace(/^Deuda Anterior Gas Apto\s*/i, '') || '',
@@ -618,20 +621,31 @@ export async function obtenerGasServicioData(forceRefresh: boolean = false): Pro
 
         const tasaBcv = getTasaBcvNumerica(configEdificio?.tasa_bcv_actual)
 
-        // 3. Consultar todas las filas relacionales de gas en casos_comunidad
-        const { data: rows, error } = await supabase
-          .from('casos_comunidad')
-          .select('id, apartamento_id, tipo, titulo, descripcion, monto_usd, monto_bs, moneda, estado, involucrado_nombre, involucrado_contacto, fecha, fecha_vencimiento, comprobante_url, notas_admin, created_at, updated_at')
-          .in('tipo', [
-            TIPO_GAS_CONFIG,
-            TIPO_GAS_LLENADO,
-            TIPO_GAS_JORNADA,
-            TIPO_GAS_PAGO,
-            TIPO_GAS_EVENTO,
-            TIPO_GAS_DEUDA_ANTERIOR,
-            DB_LEGACY_TIPO
-          ])
-          .order('created_at', { ascending: false })
+        // 3. Consultar filas de gas en casos_comunidad + tablas relacionales normalizadas
+        const [casosRes, campanasRes, asigsRes] = await Promise.all([
+          supabase
+            .from('casos_comunidad')
+            .select('id, apartamento_id, tipo, titulo, descripcion, monto_usd, monto_bs, moneda, estado, involucrado_nombre, involucrado_contacto, fecha, fecha_vencimiento, comprobante_url, notas_admin, created_at, updated_at')
+            .in('tipo', [
+              TIPO_GAS_CONFIG,
+              TIPO_GAS_LLENADO,
+              TIPO_GAS_JORNADA,
+              TIPO_GAS_PAGO,
+              TIPO_GAS_EVENTO,
+              TIPO_GAS_DEUDA_ANTERIOR,
+              DB_LEGACY_TIPO
+            ])
+            .order('created_at', { ascending: false }),
+          supabase
+            .from('gas_campanas')
+            .select('id, codigo, titulo, mes, es_especial, moneda_principal, monto_por_apto_usd, monto_por_apto_bs, fecha_inicio, fecha_limite, estado, meta_json')
+            .order('created_at', { ascending: false }),
+          supabase
+            .from('gas_asignaciones')
+            .select('campana_id, apartamento_id, monto_usd, monto_bs, monto_abonado_usd, monto_abonado_bs, estado, pago_reportado_id, fecha_pago, referencia, metodo_pago, pagos_aplicados_ids, observaciones')
+        ])
+
+        const { data: rows, error } = casosRes
 
         if (error) {
           console.warn('[gasService] Error leyendo casos_comunidad:', error.message)
@@ -744,7 +758,7 @@ export async function obtenerGasServicioData(forceRefresh: boolean = false): Pro
             let meta: any = {}
             try {
               meta = JSON.parse(r.descripcion || '{}')
-            } catch {}
+            } catch (err) { logger.debug('gasService', 'Fallback controlado', err) }
             return {
               id: r.id,
               titulo: r.titulo || meta.titulo || 'Recaudación de Gas',
@@ -764,6 +778,34 @@ export async function obtenerGasServicioData(forceRefresh: boolean = false): Pro
           })
         } else if (legacyData?.jornadas && legacyData.jornadas.length > 0) {
           jornadas = legacyData.jornadas
+        }
+
+        // Fusionar campañas relacionales de gas_campanas si existen
+        const campanaRelById = new Map<string, string>()
+        if (!campanasRes.error && campanasRes.data && campanasRes.data.length > 0) {
+          campanasRes.data.forEach((c: any) => {
+            const jId = c.codigo || c.id
+            campanaRelById.set(c.id, jId)
+            const meta = (c.meta_json && typeof c.meta_json === 'object') ? c.meta_json : {}
+            if (!jornadas.some(j => j.id === jId)) {
+              jornadas.push({
+                id: jId,
+                titulo: c.titulo || 'Recaudación de Gas',
+                esEspecial: Boolean(c.es_especial),
+                mes: c.mes || getMesActualVE(),
+                fechaInicio: c.fecha_inicio || getHoyVE(),
+                fechaLimite: c.fecha_limite || '',
+                monedaPrincipal: (c.moneda_principal === 'USD' ? 'USD' : 'BS'),
+                costoPorAptoBs: Number(c.monto_por_apto_bs ?? 0),
+                costoPorAptoUsd: Number(c.monto_por_apto_usd ?? 0),
+                metaTotalBs: Number(meta.metaTotalBs ?? 0),
+                metaTotalUsd: Number(meta.metaTotalUsd ?? 0),
+                estado: (c.estado as any) || 'activa',
+                activa: c.estado === 'activa',
+                pagos: {}
+              })
+            }
+          })
         }
 
         // 3.4 Conectar Pagos de Apartamentos a sus respectivas Jornadas
@@ -803,6 +845,37 @@ export async function obtenerGasServicioData(forceRefresh: boolean = false): Pro
           })
         }
 
+        // 3.4b Overlay de asignaciones normalizadas desde gas_asignaciones
+        if (!asigsRes.error && asigsRes.data && asigsRes.data.length > 0) {
+          const aptoNumById = new Map((aptosDb || []).map(a => [a.id, a.numero]))
+          asigsRes.data.forEach((asig: any) => {
+            const jCodigo = campanaRelById.get(asig.campana_id)
+            if (!jCodigo) return
+            const targetJornada = jornadas.find(j => j.id === jCodigo)
+            if (!targetJornada || !asig.apartamento_id) return
+            const prevPago = targetJornada.pagos[asig.apartamento_id]
+            targetJornada.pagos[asig.apartamento_id] = {
+              ...(prevPago || {}),
+              apartamentoId: asig.apartamento_id,
+              apartamentoNumero: prevPago?.apartamentoNumero || aptoNumById.get(asig.apartamento_id) || '',
+              estado: (asig.estado as EstadoPagoGas) || prevPago?.estado || 'pendiente',
+              fechaPago: asig.fecha_pago || prevPago?.fechaPago,
+              moneda: targetJornada.monedaPrincipal,
+              montoBs: Number(asig.monto_bs ?? prevPago?.montoBs ?? targetJornada.costoPorAptoBs),
+              montoUsd: Number(asig.monto_usd ?? prevPago?.montoUsd ?? targetJornada.costoPorAptoUsd),
+              abonoBs: Number(asig.monto_abonado_bs || 0) > 0 ? Number(asig.monto_abonado_bs) : prevPago?.abonoBs,
+              abonoUsd: Number(asig.monto_abonado_usd || 0) > 0 ? Number(asig.monto_abonado_usd) : prevPago?.abonoUsd,
+              pagoReportadoId: asig.pago_reportado_id || prevPago?.pagoReportadoId,
+              pagosAplicadosIds: Array.isArray(asig.pagos_aplicados_ids) && asig.pagos_aplicados_ids.length > 0
+                ? asig.pagos_aplicados_ids
+                : prevPago?.pagosAplicadosIds,
+              metodoPago: (asig.metodo_pago as any) || prevPago?.metodoPago,
+              referencia: asig.referencia || prevPago?.referencia,
+              observaciones: asig.observaciones || prevPago?.observaciones
+            }
+          })
+        }
+
         // Sincronizar todos los apartamentos del edificio en las jornadas activas
         sincronizarAptosEnJornadas({ config, llenados, jornadas, eventosCalendario: [], deudasAnteriores: {}, updatedAt: '' }, aptosDb || [])
 
@@ -813,7 +886,7 @@ export async function obtenerGasServicioData(forceRefresh: boolean = false): Pro
             let ev: any = {}
             try {
               ev = JSON.parse(r.descripcion || '{}')
-            } catch {}
+            } catch (err) { logger.debug('gasService', 'Fallback controlado', err) }
             return {
               id: r.id,
               fecha: r.fecha || ev.fecha || getHoyVE(),
@@ -874,14 +947,14 @@ export async function obtenerGasServicioData(forceRefresh: boolean = false): Pro
 
         saveLocalGasCache(resultado)
         return { data: resultado, error: null, fromDb: true }
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error('[gasService] Error en obtenerGasServicioData:', err)
         const cached = getLocalGasCache()
         if (cached) {
           return { data: cached, error: null, fromDb: false }
         }
         const fallback = generarDatosSemillaGas()
-        return { data: fallback, error: err?.message || 'Error cargando datos de gas', fromDb: false }
+        return { data: fallback, error: getErrorMessage(err) || 'Error cargando datos de gas', fromDb: false }
       }
     },
     { ttlMs: 15 * 1000, tags: ['gas'], forceRefresh }
@@ -891,6 +964,111 @@ export async function obtenerGasServicioData(forceRefresh: boolean = false): Pro
 /**
  * Guarda los datos de gas relacionales en Supabase por fila independiente
  */
+async function obtenerEdificioIdGasRelacional(): Promise<string | null> {
+  const active = getActiveEdificioId()
+  if (active) return active
+  try {
+    const { data } = await supabase
+      .from('configuracion_edificio')
+      .select('id')
+      .limit(1)
+      .maybeSingle()
+    return data?.id || null
+  } catch {
+    return null
+  }
+}
+
+async function sincronizarCampanaGasRelacional(
+  jornada: {
+    id: string
+    titulo: string
+    mes: string
+    esEspecial?: boolean
+    monedaPrincipal: 'BS' | 'USD'
+    costoPorAptoUsd: number
+    costoPorAptoBs: number
+    fechaInicio?: string
+    fechaLimite?: string
+    estado: string
+    metaTotalBs?: number
+    metaTotalUsd?: number
+  },
+  edificioIdInput?: string | null
+): Promise<string | null> {
+  try {
+    const edificioId = edificioIdInput || (await obtenerEdificioIdGasRelacional())
+    if (!edificioId) return null
+
+    const { data, error } = await supabase
+      .from('gas_campanas')
+      .upsert(
+        {
+          edificio_id: edificioId,
+          codigo: jornada.id,
+          titulo: jornada.titulo,
+          mes: jornada.mes || getMesActualVE(),
+          es_especial: Boolean(jornada.esEspecial),
+          moneda_principal: jornada.monedaPrincipal === 'USD' ? 'USD' : 'BS',
+          monto_por_apto_usd: Number(jornada.costoPorAptoUsd || 0),
+          monto_por_apto_bs: Number(jornada.costoPorAptoBs || 0),
+          fecha_inicio: jornada.fechaInicio || getHoyVE(),
+          fecha_limite: jornada.fechaLimite || null,
+          estado: ['activa', 'cerrada', 'archivada'].includes(jornada.estado) ? jornada.estado : 'activa',
+          meta_json: {
+            metaTotalBs: Number(jornada.metaTotalBs || 0),
+            metaTotalUsd: Number(jornada.metaTotalUsd || 0)
+          },
+          updated_at: new Date().toISOString()
+        },
+        { onConflict: 'edificio_id,codigo' }
+      )
+      .select('id')
+      .maybeSingle()
+
+    return error ? null : (data?.id || null)
+  } catch {
+    return null
+  }
+}
+
+async function sincronizarAsignacionGasRelacional(
+  jornada: JornadaRecaudacionGas,
+  detalle: Partial<DetallePagoAptoGas> & { apartamentoId?: string }
+): Promise<void> {
+  try {
+    if (!detalle.apartamentoId || !esUUIDValido(detalle.apartamentoId)) return
+    const edificioId = await obtenerEdificioIdGasRelacional()
+    if (!edificioId) return
+
+    const campanaId = await sincronizarCampanaGasRelacional(jornada, edificioId)
+    if (!campanaId) return
+
+    await supabase.from('gas_asignaciones').upsert(
+      {
+        edificio_id: edificioId,
+        campana_id: campanaId,
+        apartamento_id: detalle.apartamentoId,
+        monto_usd: Number(detalle.montoUsd ?? jornada.costoPorAptoUsd ?? 0),
+        monto_bs: Number(detalle.montoBs ?? jornada.costoPorAptoBs ?? 0),
+        monto_abonado_usd: Number(detalle.abonoUsd ?? 0),
+        monto_abonado_bs: Number(detalle.abonoBs ?? 0),
+        estado: detalle.estado || 'pendiente',
+        pago_reportado_id: detalle.pagoReportadoId && esUUIDValido(detalle.pagoReportadoId) ? detalle.pagoReportadoId : null,
+        fecha_pago: detalle.fechaPago || null,
+        referencia: detalle.referencia || null,
+        metodo_pago: detalle.metodoPago || null,
+        pagos_aplicados_ids: Array.isArray(detalle.pagosAplicadosIds) ? detalle.pagosAplicadosIds : [],
+        observaciones: detalle.observaciones || null,
+        updated_at: new Date().toISOString()
+      },
+      { onConflict: 'campana_id,apartamento_id' }
+    )
+  } catch {
+    // Fallback silencioso para pre-migración
+  }
+}
+
 export async function guardarGasServicioData(
   data: GasServicioData
 ): Promise<{ success: boolean; error: string | null }> {
@@ -915,7 +1093,7 @@ export async function guardarGasServicioData(
         try {
           const remoteCfg = JSON.parse(existingCfg.descripcion)
           mergedConfig = { ...remoteCfg, ...data.config, datosPago: { ...(remoteCfg.datosPago || {}), ...(data.config.datosPago || {}) } }
-        } catch {}
+        } catch (err) { logger.debug('gasService', 'Fallback controlado', err) }
       }
 
       if (existingCfg?.id) {
@@ -997,6 +1175,38 @@ export async function guardarGasServicioData(
         updated_at: new Date().toISOString()
       })
 
+      // Sincronizar campaña y asignaciones relacionales (no bloqueante)
+      const campanaRelId = await sincronizarCampanaGasRelacional(j).catch(() => null)
+      if (campanaRelId && j.pagos) {
+        const edIdRel = await obtenerEdificioIdGasRelacional()
+        if (edIdRel) {
+          const batchAsigs = Object.values(j.pagos)
+            .filter(p => esUUIDValido(p.apartamentoId))
+            .map(p => ({
+              edificio_id: edIdRel,
+              campana_id: campanaRelId,
+              apartamento_id: p.apartamentoId,
+              monto_usd: Number(p.montoUsd ?? j.costoPorAptoUsd ?? 0),
+              monto_bs: Number(p.montoBs ?? j.costoPorAptoBs ?? 0),
+              monto_abonado_usd: Number(p.abonoUsd ?? 0),
+              monto_abonado_bs: Number(p.abonoBs ?? 0),
+              estado: p.estado || 'pendiente',
+              pago_reportado_id: p.pagoReportadoId && esUUIDValido(p.pagoReportadoId) ? p.pagoReportadoId : null,
+              fecha_pago: p.fechaPago || null,
+              referencia: p.referencia || null,
+              metodo_pago: p.metodoPago || null,
+              pagos_aplicados_ids: Array.isArray(p.pagosAplicadosIds) ? p.pagosAplicadosIds : [],
+              observaciones: p.observaciones || null,
+              updated_at: new Date().toISOString()
+            }))
+          if (batchAsigs.length > 0) {
+            await supabase
+              .from('gas_asignaciones')
+              .upsert(batchAsigs, { onConflict: 'campana_id,apartamento_id' })
+          }
+        }
+      }
+
       // Guardar pagos confirmados de esta jornada
       if (j.pagos) {
         for (const [key, p] of Object.entries(j.pagos)) {
@@ -1056,9 +1266,9 @@ export async function guardarGasServicioData(
     }
 
     return { success: true, error: null }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[gasService] Error en guardarGasServicioData:', err)
-    return { success: false, error: err.message }
+    return { success: false, error: getErrorMessage(err) }
   }
 }
 
@@ -1123,9 +1333,9 @@ export async function reiniciarDatosGasAFabrica(): Promise<{
     }
 
     return { success: true, data: limpia, error: null }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[gasService] Error reiniciando gas a fábrica:', err)
-    return { success: false, data: generarDatosSemillaGas(), error: err.message }
+    return { success: false, data: generarDatosSemillaGas(), error: getErrorMessage(err) }
   }
 }
 
@@ -1203,9 +1413,9 @@ export async function actualizarConfigTanque(
     }
 
     return { success: true, data: actual, error: null }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[gasService] Error actualizando config del tanque:', err)
-    return { success: false, error: err.message }
+    return { success: false, error: getErrorMessage(err) }
   }
 }
 
@@ -1274,9 +1484,9 @@ export async function registrarLlenado(
     // 4. Recargar datos frescos
     const { data: frescos } = await obtenerGasServicioData(true)
     return { success: true, data: frescos, error: null }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[gasService] Error registrando llenado:', err)
-    return { success: false, error: err.message }
+    return { success: false, error: getErrorMessage(err) }
   }
 }
 
@@ -1302,9 +1512,9 @@ export async function eliminarLlenado(
 
     const { data: frescos } = await obtenerGasServicioData(true)
     return { success: true, data: frescos, error: null }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[gasService] Error eliminando llenado:', err)
-    return { success: false, error: err.message }
+    return { success: false, error: getErrorMessage(err) }
   }
 }
 
@@ -1441,6 +1651,8 @@ export async function togglePagoApartamento(
       })
     }
 
+    await sincronizarAsignacionGasRelacional(jornada, detalleCompleto).catch(() => {})
+
     appCache.invalidate('gas_servicio_data_global')
     appCache.invalidateTags(['gas', 'deudas_gas', 'saldos', 'recibos', 'mora', 'pagos'])
 
@@ -1450,9 +1662,9 @@ export async function togglePagoApartamento(
 
     const { data: frescos } = await obtenerGasServicioData(true)
     return { success: true, data: frescos, error: null }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[gasService] Error en togglePagoApartamento:', err)
-    return { success: false, error: err.message }
+    return { success: false, error: getErrorMessage(err) }
   }
 }
 
@@ -1481,9 +1693,9 @@ export async function guardarEventoCalendario(
 
     const { data: frescos } = await obtenerGasServicioData(true)
     return { success: true, data: frescos, error: null }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[gasService] Error en guardarEventoCalendario:', err)
-    return { success: false, error: err.message }
+    return { success: false, error: getErrorMessage(err) }
   }
 }
 
@@ -1497,9 +1709,9 @@ export async function eliminarEventoCalendario(
     await supabase.from('casos_comunidad').delete().eq('id', eventoId)
     const { data: frescos } = await obtenerGasServicioData(true)
     return { success: true, data: frescos, error: null }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[gasService] Error en eliminarEventoCalendario:', err)
-    return { success: false, error: err.message }
+    return { success: false, error: getErrorMessage(err) }
   }
 }
 
@@ -1607,6 +1819,9 @@ export async function crearOActualizarCuotaGas(
       updated_at: new Date().toISOString()
     })
 
+    // Sincronizar campaña en tabla relacional gas_campanas
+    await sincronizarCampanaGasRelacional(metaJornada).catch(() => null)
+
     // Guardar fila gas_config
     const { data: cfgRows } = await supabase
       .from('casos_comunidad')
@@ -1674,9 +1889,9 @@ export async function crearOActualizarCuotaGas(
       correosEnviados,
       emailsEnviados: correosEnviados
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[gasService] Error en crearOActualizarCuotaGas:', err)
-    return { success: false, error: err.message }
+    return { success: false, error: getErrorMessage(err) }
   }
 }
 
@@ -1717,7 +1932,7 @@ export async function reportarPagoGasResidente(
       const existingDeudaRow = await buscarFilaDeudaAnteriorGas(params.apartamentoId, cleanNum)
       let parsedExisting: any = {}
       if (existingDeudaRow?.descripcion) {
-        try { parsedExisting = JSON.parse(existingDeudaRow.descripcion) } catch {}
+        try { parsedExisting = JSON.parse(existingDeudaRow.descripcion) } catch (err) { logger.debug('gasService', 'Fallback controlado', err) }
       }
 
       const rowId = existingDeudaRow?.id || generarUUID()
@@ -1776,7 +1991,7 @@ export async function reportarPagoGasResidente(
     const existingRow = await buscarFilaGasPago(jornada.id, params.apartamentoId, cleanNum)
     let existingParsed: any = {}
     if (existingRow?.descripcion) {
-      try { existingParsed = JSON.parse(existingRow.descripcion) } catch {}
+      try { existingParsed = JSON.parse(existingRow.descripcion) } catch (err) { logger.debug('gasService', 'Fallback controlado', err) }
     }
 
     let montoBs = params.montoBs || 0
@@ -1830,6 +2045,8 @@ export async function reportarPagoGasResidente(
       updated_at: new Date().toISOString()
     })
 
+    await sincronizarAsignacionGasRelacional(jornada, detallePago).catch(() => {})
+
     // Solo registrar evento definitivo de recaudación si el estado ya es 'pagado'
     if (estadoDestino === 'pagado') {
       const evPagoId = generarUUID()
@@ -1864,9 +2081,9 @@ export async function reportarPagoGasResidente(
 
     const { data: frescos } = await obtenerGasServicioData(true)
     return { success: true, data: frescos, error: null }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[gasService] Error en reportarPagoGasResidente:', err)
-    return { success: false, error: err.message }
+    return { success: false, error: getErrorMessage(err) }
   }
 }
 
@@ -1930,7 +2147,7 @@ export async function aprobarPagoGasDesdeReporte(params: {
         if (!existingRow) continue
 
         let parsed: any = {}
-        try { parsed = JSON.parse(existingRow.descripcion || '{}') } catch {}
+        try { parsed = JSON.parse(existingRow.descripcion || '{}') } catch (err) { logger.debug('gasService', 'Fallback controlado', err) }
 
         // Idempotencia (evita doble aplicación total o parcial del mismo pagoReportadoId)
         const pagosPrevIdsAnt: string[] = Array.isArray(parsed.pagosAplicadosIds) ? parsed.pagosAplicadosIds : []
@@ -2055,7 +2272,7 @@ export async function aprobarPagoGasDesdeReporte(params: {
       const existingRow = await buscarFilaGasPago(jornada.id, params.apartamentoId, cleanNum)
       let parsed: any = {}
       if (existingRow?.descripcion) {
-        try { parsed = JSON.parse(existingRow.descripcion) } catch {}
+        try { parsed = JSON.parse(existingRow.descripcion) } catch (err) { logger.debug('gasService', 'Fallback controlado', err) }
       }
 
       // Idempotencia: si este pagoReportadoId ya se aplicó (total o parcialmente), omitir
@@ -2104,6 +2321,8 @@ export async function aprobarPagoGasDesdeReporte(params: {
           fecha: fechaPago,
           updated_at: new Date().toISOString()
         })
+
+        await sincronizarAsignacionGasRelacional(jornada, detalleFinal).catch(() => {})
 
         const evId = generarUUID()
         await supabase.from('casos_comunidad').insert({
@@ -2175,6 +2394,8 @@ export async function aprobarPagoGasDesdeReporte(params: {
           updated_at: new Date().toISOString()
         })
 
+        await sincronizarAsignacionGasRelacional(jornada, detalleParcial).catch(() => {})
+
         const evId = generarUUID()
         await supabase.from('casos_comunidad').insert({
           id: evId,
@@ -2219,9 +2440,9 @@ export async function aprobarPagoGasDesdeReporte(params: {
       liquidadoUsd: Number(liquidadoUsd.toFixed(2)),
       error: null
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[gasService] Error en aprobarPagoGasDesdeReporte:', err)
-    return { success: false, liquidadoBs: 0, liquidadoUsd: 0, error: err.message }
+    return { success: false, liquidadoBs: 0, liquidadoUsd: 0, error: getErrorMessage(err) }
   }
 }
 
@@ -2245,7 +2466,7 @@ export async function rechazarPagoGasDesdeReporte(params: {
 
     for (const r of (pagoRows || [])) {
       let parsed: any = {}
-      try { parsed = JSON.parse(r.descripcion || '{}') } catch {}
+      try { parsed = JSON.parse(r.descripcion || '{}') } catch (err) { logger.debug('gasService', 'Fallback controlado', err) }
       const matchId = parsed.pagoReportadoId === params.pagoReportadoId
       const matchApto = matchAptoEnGas(
         {
@@ -2282,7 +2503,7 @@ export async function rechazarPagoGasDesdeReporte(params: {
     const deudaAntRow = await buscarFilaDeudaAnteriorGas(params.apartamentoId, cleanNum)
     if (deudaAntRow) {
       let parsedAnt: any = {}
-      try { parsedAnt = JSON.parse(deudaAntRow.descripcion || '{}') } catch {}
+      try { parsedAnt = JSON.parse(deudaAntRow.descripcion || '{}') } catch (err) { logger.debug('gasService', 'Fallback controlado', err) }
       if (parsedAnt.pagoReportadoId === params.pagoReportadoId || deudaAntRow.estado === 'en_verificacion') {
         parsedAnt.estado = 'pendiente'
         parsedAnt.referencia = undefined
@@ -2306,9 +2527,9 @@ export async function rechazarPagoGasDesdeReporte(params: {
     }
 
     return { success: true, error: null }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[gasService] Error en rechazarPagoGasDesdeReporte:', err)
-    return { success: false, error: err.message }
+    return { success: false, error: getErrorMessage(err) }
   }
 }
 
@@ -2402,9 +2623,9 @@ export async function guardarDeudaAnteriorGas(params: {
 
     const { data: frescos } = await obtenerGasServicioData(true)
     return { success: true, data: frescos, error: null }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[gasService] Error guardando deuda anterior gas:', err)
-    return { success: false, error: err.message }
+    return { success: false, error: getErrorMessage(err) }
   }
 }
 
@@ -2449,9 +2670,9 @@ export async function eliminarDeudaAnteriorGas(
 
     const { data: frescos } = await obtenerGasServicioData(true)
     return { success: true, data: frescos, error: null }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[gasService] Error eliminando deuda anterior gas:', err)
-    return { success: false, error: err.message }
+    return { success: false, error: getErrorMessage(err) }
   }
 }
 
@@ -2586,9 +2807,9 @@ export async function guardarDeudaMesGas(params: {
 
     const { data: frescos } = await obtenerGasServicioData(true)
     return { success: true, data: frescos, error: null }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[gasService] Error en guardarDeudaMesGas:', err)
-    return { success: false, error: err.message }
+    return { success: false, error: getErrorMessage(err) }
   }
 }
 
@@ -2727,9 +2948,9 @@ export async function guardarCuotaMesEdificioGas(params: {
 
     const { data: frescos } = await obtenerGasServicioData(true)
     return { success: true, data: frescos, error: null }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[gasService] Error en guardarCuotaMesEdificioGas:', err)
-    return { success: false, error: err.message }
+    return { success: false, error: getErrorMessage(err) }
   }
 }
 
@@ -2795,9 +3016,9 @@ export async function eliminarDeudaMesGas(
 
     const { data: frescos } = await obtenerGasServicioData(true)
     return { success: true, data: frescos, error: null }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[gasService] Error en eliminarDeudaMesGas:', err)
-    return { success: false, error: err.message }
+    return { success: false, error: getErrorMessage(err) }
   }
 }
 
@@ -2883,9 +3104,9 @@ export async function eliminarTodasLasDeudasGasApartamento(
 
     const { data: frescos } = await obtenerGasServicioData(true)
     return { success: true, data: frescos, error: null }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[gasService] Error en eliminarTodasLasDeudasGasApartamento:', err)
-    return { success: false, error: err.message }
+    return { success: false, error: getErrorMessage(err) }
   }
 }
 
@@ -2912,9 +3133,9 @@ export async function eliminarDeudaAnteriorEdificioGas(): Promise<{
 
     const { data: frescos } = await obtenerGasServicioData(true)
     return { success: true, data: frescos, error: null }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[gasService] Error en eliminarDeudaAnteriorEdificioGas:', err)
-    return { success: false, error: err.message }
+    return { success: false, error: getErrorMessage(err) }
   }
 }
 
@@ -2959,7 +3180,7 @@ export async function eliminarDeudaMesEdificioGas(
       if (pagosPendientes && pagosPendientes.length > 0) {
         for (const p of pagosPendientes) {
           let desc: any = {}
-          try { desc = JSON.parse(p.descripcion) } catch {}
+          try { desc = JSON.parse(p.descripcion) } catch (err) { logger.debug('gasService', 'Fallback controlado', err) }
           desc.estado = 'pagado'
           desc.montoBs = 0
           desc.montoUsd = 0
@@ -2988,9 +3209,9 @@ export async function eliminarDeudaMesEdificioGas(
 
     const { data: frescos } = await obtenerGasServicioData(true)
     return { success: true, data: frescos, error: null }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[gasService] Error en eliminarDeudaMesEdificioGas:', err)
-    return { success: false, error: err.message }
+    return { success: false, error: getErrorMessage(err) }
   }
 }
 
@@ -3041,7 +3262,7 @@ export async function eliminarTodasLasDeudasGasEdificio(): Promise<{
     if (pagosPendientes && pagosPendientes.length > 0) {
       for (const p of pagosPendientes) {
         let desc: any = {}
-        try { desc = JSON.parse(p.descripcion) } catch {}
+        try { desc = JSON.parse(p.descripcion) } catch (err) { logger.debug('gasService', 'Fallback controlado', err) }
         desc.estado = 'pagado'
         desc.montoBs = 0
         desc.montoUsd = 0
@@ -3069,9 +3290,9 @@ export async function eliminarTodasLasDeudasGasEdificio(): Promise<{
 
     const { data: frescos } = await obtenerGasServicioData(true)
     return { success: true, data: frescos, error: null }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[gasService] Error en eliminarTodasLasDeudasGasEdificio:', err)
-    return { success: false, error: err.message }
+    return { success: false, error: getErrorMessage(err) }
   }
 }
 
@@ -3402,6 +3623,150 @@ export function obtenerTodasLasDeudasGasApartamento(
     cuotaActiva,
     datosBancarios
   }
+}
+
+/**
+ * Consulta ligera de gas enfocada únicamente en un apartamento usando tablas relacionales
+ * (`gas_campanas` + `gas_asignaciones`) con fallback transparente a `obtenerGasServicioData`.
+ */
+export async function obtenerResumenGasApartamento(
+  apartamentoId?: string | null,
+  aptoNumero?: string | null,
+  forceRefresh: boolean = false
+): Promise<{
+  data: GasServicioData
+  error: string | null
+  fromDb: boolean
+}> {
+  if (!apartamentoId || !esUUIDValido(apartamentoId)) {
+    return obtenerGasServicioData(forceRefresh)
+  }
+
+  return appCache.fetch(
+    `gas_resumen_apto_${apartamentoId}`,
+    async () => {
+      try {
+        const [edCfgRes, cfgCasosRes, campanasRes, asigsRes] = await Promise.all([
+          supabase.from('configuracion_edificio').select('tasa_bcv_actual').limit(1).maybeSingle(),
+          supabase
+            .from('casos_comunidad')
+            .select('id, apartamento_id, tipo, titulo, descripcion, monto_usd, monto_bs, moneda, estado, fecha')
+            .in('tipo', [TIPO_GAS_CONFIG, TIPO_GAS_DEUDA_ANTERIOR]),
+          supabase
+            .from('gas_campanas')
+            .select('id, codigo, titulo, mes, es_especial, moneda_principal, monto_por_apto_usd, monto_por_apto_bs, fecha_inicio, fecha_limite, estado, meta_json')
+            .order('created_at', { ascending: false }),
+          supabase
+            .from('gas_asignaciones')
+            .select('campana_id, apartamento_id, monto_usd, monto_bs, monto_abonado_usd, monto_abonado_bs, estado, pago_reportado_id, fecha_pago, referencia, metodo_pago, pagos_aplicados_ids, observaciones')
+            .eq('apartamento_id', apartamentoId)
+        ])
+
+        if (campanasRes.error || !campanasRes.data || campanasRes.data.length === 0) {
+          return obtenerGasServicioData(forceRefresh)
+        }
+
+        const tasaBcv = getTasaBcvNumerica(edCfgRes.data?.tasa_bcv_actual)
+        const casos = cfgCasosRes.data || []
+        const configRow = casos.find(r => r.tipo === TIPO_GAS_CONFIG)
+        let config: TanqueGasConfig = { ...DEFAULT_GAS_CONFIG, tasaBcv }
+        if (configRow?.descripcion) {
+          try {
+            config = { ...DEFAULT_GAS_CONFIG, ...JSON.parse(configRow.descripcion), tasaBcv }
+          } catch (err) { logger.debug('gasService', 'Fallback controlado', err) }
+        }
+
+        const asigByCampana = new Map<string, any>()
+        ;(asigsRes.data || []).forEach((a: any) => asigByCampana.set(a.campana_id, a))
+
+        const cleanNum = String(aptoNumero || '').trim()
+        const jornadas: JornadaRecaudacionGas[] = campanasRes.data.map((c: any) => {
+          const jId = c.codigo || c.id
+          const meta = (c.meta_json && typeof c.meta_json === 'object') ? c.meta_json : {}
+          const asig = asigByCampana.get(c.id)
+          const pagos: Record<string, DetallePagoAptoGas> = {}
+          pagos[apartamentoId] = {
+            apartamentoId,
+            apartamentoNumero: cleanNum,
+            estado: (asig?.estado as EstadoPagoGas) || 'pendiente',
+            fechaPago: asig?.fecha_pago || undefined,
+            moneda: (c.moneda_principal === 'USD' ? 'USD' : 'BS'),
+            montoBs: Number(asig?.monto_bs ?? c.monto_por_apto_bs ?? config.costoPorAptoDefectoBs ?? 0),
+            montoUsd: Number(asig?.monto_usd ?? c.monto_por_apto_usd ?? config.costoPorAptoDefectoUsd ?? 0),
+            abonoBs: Number(asig?.monto_abonado_bs || 0) > 0 ? Number(asig.monto_abonado_bs) : undefined,
+            abonoUsd: Number(asig?.monto_abonado_usd || 0) > 0 ? Number(asig.monto_abonado_usd) : undefined,
+            pagoReportadoId: asig?.pago_reportado_id || undefined,
+            pagosAplicadosIds: Array.isArray(asig?.pagos_aplicados_ids) ? asig.pagos_aplicados_ids : undefined,
+            metodoPago: asig?.metodo_pago || undefined,
+            referencia: asig?.referencia || undefined,
+            observaciones: asig?.observaciones || undefined
+          }
+
+          return {
+            id: jId,
+            titulo: c.titulo || 'Recaudación de Gas',
+            esEspecial: Boolean(c.es_especial),
+            mes: c.mes || getMesActualVE(),
+            fechaInicio: c.fecha_inicio || getHoyVE(),
+            fechaLimite: c.fecha_limite || '',
+            monedaPrincipal: (c.moneda_principal === 'USD' ? 'USD' : 'BS'),
+            costoPorAptoBs: Number(c.monto_por_apto_bs ?? 0),
+            costoPorAptoUsd: Number(c.monto_por_apto_usd ?? 0),
+            metaTotalBs: Number(meta.metaTotalBs ?? 0),
+            metaTotalUsd: Number(meta.metaTotalUsd ?? 0),
+            estado: (c.estado as any) || 'activa',
+            activa: c.estado === 'activa',
+            pagos
+          }
+        })
+
+        const deudasAnteriores: Record<string, DeudaAnteriorGas> = {}
+        casos
+          .filter(r => r.tipo === TIPO_GAS_DEUDA_ANTERIOR)
+          .forEach(r => {
+            try {
+              const parsed = JSON.parse(r.descripcion || '{}')
+              const aId = parsed.apartamentoId || r.apartamento_id || ''
+              const aNum = parsed.apartamentoNumero || r.titulo?.replace(/^Deuda Anterior Gas Apto\s*/i, '') || ''
+              if (aId !== apartamentoId && (!cleanNum || aNum !== cleanNum)) return
+              const key = aId || aNum
+              if (!key) return
+              deudasAnteriores[key] = {
+                id: r.id,
+                apartamentoId: aId,
+                apartamentoNumero: aNum,
+                montoBs: Number(r.monto_bs ?? parsed.montoBs ?? 0),
+                montoUsd: Number(r.monto_usd ?? parsed.montoUsd ?? 0),
+                moneda: (r.moneda as any) || parsed.moneda || 'BS',
+                estado: (r.estado as any) || parsed.estado || 'pendiente',
+                abonoBs: parsed.abonoBs !== undefined ? Number(parsed.abonoBs) : undefined,
+                abonoUsd: parsed.abonoUsd !== undefined ? Number(parsed.abonoUsd) : undefined,
+                pagoReportadoId: parsed.pagoReportadoId,
+                referencia: parsed.referencia,
+                nota: parsed.nota || '',
+                fecha: r.fecha || parsed.fecha
+              }
+            } catch (err) { logger.debug('gasService', 'Fallback controlado', err) }
+          })
+
+        return {
+          data: {
+            config,
+            llenados: [],
+            jornadas,
+            eventosCalendario: [],
+            deudasAnteriores,
+            updatedAt: new Date().toISOString()
+          },
+          error: null,
+          fromDb: true
+        }
+      } catch {
+        return obtenerGasServicioData(forceRefresh)
+      }
+    },
+    { ttlMs: 15 * 1000, tags: ['gas', 'deudas_gas'], forceRefresh }
+  )
 }
 
 /**

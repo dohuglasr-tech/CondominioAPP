@@ -634,7 +634,7 @@ export const AdminDashboard: React.FC = () => {
       `}</style>
 
       {/* ═════════════════════════════════════════════════════════════════ */}
-      {/* ── MOBILE DASHBOARD (CONDOMINIO TORRE 5) ─────────────────────── */}
+      {/* ── MOBILE DASHBOARD MULTI-EDIFICIO ───────────────────────────── */}
       {/* ═════════════════════════════════════════════════════════════════ */}
       <div className="admin-mobile-view">
         {/* TARJETA PRINCIPAL: TOTAL RECAUDADO ESTE MES */}

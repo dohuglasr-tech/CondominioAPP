@@ -66,7 +66,7 @@ const PLANTILLAS_RAPIDAS: Array<{
 
 export const AdminNotificacionesGlobales: React.FC = () => {
   const { config, perfil } = useAuth()
-  const edificioNombre = config?.nombre_edificio || 'Residencias Ocutuy 5'
+  const edificioNombre = config?.nombre_edificio || 'Condominio Domus'
   const remitenteNombre = perfil?.nombre_completo
     ? `${perfil.nombre_completo} · Administración`
     : 'Junta de Condominio y Administración'

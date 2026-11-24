@@ -1526,26 +1526,26 @@ export const AdminGenerarRecibos: React.FC = () => {
                     {/* Lado izquierdo */}
                     <div style={{ borderLeft:'3px solid var(--color-accent, #f97316)', paddingLeft:'12px' }}>
                       <div style={{ color:'var(--color-accent, #f97316)', fontSize:'11px', fontWeight800:800, letterSpacing:'0.5px', textTransform:'uppercase' } as any}>
-                        JUNTA DE CONDOMINIO OCUTUY 5
+                        {config.nombre_edificio ? `JUNTA DE CONDOMINIO ${config.nombre_edificio.toUpperCase()}` : 'JUNTA DE CONDOMINIO'}
                       </div>
                       <h2 style={{ color:'#ffffff', fontSize:'22px', fontWeight:900, margin:'2px 0 4px', letterSpacing:'-0.5px' }}>
                         RECIBO DE CONDOMINIO
                       </h2>
                       <div style={{ color:'#94a3b8', fontSize:'10px' }}>
-                        DIRECCIÓN: URBANIZACIÓN CASA BLANCA, RESIDENCIAS OCUTUY 5
+                        DIRECCIÓN: {(config.direccion || config.nombre_edificio || 'ADMINISTRACIÓN').toUpperCase()}
                       </div>
                     </div>
 
                     {/* Lado derecho */}
                     <div style={{ textAlign:'right', fontSize:'10px', color:'#cbd5e1' }}>
                       <div style={{ color:'var(--color-accent, #f97316)', fontWeight:800, fontSize:'12px' }}>
-                        RIF: {config.rif || 'J-296749485'}
+                        RIF: {config.rif || 'J-00000000-0'}
                       </div>
                       <div style={{ marginTop:'2px' }}>
-                        CORREO: {config.email_contacto || 'juntacondominioocutuy5@gmail.com'}
+                        CORREO: {config.email_contacto || 'administracion@domus.ve'}
                       </div>
                       <div style={{ color:'#94a3b8', marginTop:'2px' }}>
-                        EDIFICIO: {config.nombre_edificio || 'RESIDENCIAS OCUTUY 5'}
+                        EDIFICIO: {(config.nombre_edificio || 'CONDOMINIO DOMUS').toUpperCase()}
                       </div>
                     </div>
                   </div>
@@ -1824,7 +1824,7 @@ export const AdminGenerarRecibos: React.FC = () => {
 
                     {/* Pie de página sutil */}
                     <div style={{ textAlign:'center', marginTop:'14px', fontSize:'8.5px', color:'#94a3b8' }}>
-                      Generado el {new Date().toLocaleDateString('es-VE')} · Sistema de Gestión de Condominios · Residencias Ocutuy 5
+                      Generado el {new Date().toLocaleDateString('es-VE')} · Sistema de Gestión de Condominios · {config.nombre_edificio || 'Domus'}
                     </div>
                   </div>
                 </div>

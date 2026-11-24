@@ -19,7 +19,7 @@
 //   SUPABASE_URL              → URL del proyecto
 //   SUPABASE_SERVICE_ROLE_KEY → Para bypasear RLS
 //   RESEND_API_KEY            → API Key de resend.com
-//   EMAIL_FROM                → ej: "Torre 5 <no-reply@torre5.com>"
+//   EMAIL_FROM                → ej: "Domus Condominio <no-reply@domus.ve>"
 // ============================================================
 
 // @ts-ignore: Deno URL import

@@ -1,0 +1,234 @@
+/* ════════════════════════════════════════════════════════════════
+   MICRO-ANIMACIONES PREMIUM — "GUAO" EFFECTS
+   ════════════════════════════════════════════════════════════════ */
+
+/* ── Slide Up suave (entrada de páginas y tarjetas) ────────── */
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-slide-up {
+  animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* ── Modal: entrada cinematográfica ─────────────────────────── */
+@keyframes modalOverlayIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes modalSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(40px) scale(0.95);
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+@keyframes modalSlideOut {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(30px) scale(0.97);
+    filter: blur(4px);
+  }
+}
+
+.modal-overlay {
+  animation: modalOverlayIn 0.3s ease both;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+.modal-card {
+  animation: modalSlideIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: 0.05s;
+}
+.modal-card.closing {
+  animation: modalSlideOut 0.25s ease both;
+}
+
+/* ── Éxito: entrada triunfal ───────────────────────────────── */
+@keyframes successPop {
+  0%   { opacity: 0; transform: scale(0.5); }
+  50%  { transform: scale(1.15); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes checkDraw {
+  0%   { stroke-dashoffset: 50; opacity: 0; }
+  50%  { opacity: 1; }
+  100% { stroke-dashoffset: 0; opacity: 1; }
+}
+.animate-success-pop {
+  animation: successPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* ── Ripple effect para botones (JavaScript lo activa) ─────── */
+@keyframes rippleEffect {
+  from {
+    transform: scale(0);
+    opacity: 0.35;
+  }
+  to {
+    transform: scale(4);
+    opacity: 0;
+  }
+}
+.ripple-container {
+  position: relative;
+  overflow: hidden;
+}
+.ripple-container .ripple {
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+  pointer-events: none;
+  animation: rippleEffect 0.6s ease-out forwards;
+}
+
+/* ── Hover Glow para tarjetas interactivas ──────────────────── */
+@keyframes subtleGlow {
+  0%   { box-shadow: 0 0 0 rgba(249, 115, 22, 0); }
+  100% { box-shadow: 0 0 20px rgba(249, 115, 22, 0.1); }
+}
+.card-interactive {
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+              background 0.2s ease,
+              border-color 0.2s ease,
+              box-shadow 0.3s ease;
+}
+.card-interactive:hover {
+  transform: translateY(-3px);
+  border-color: rgba(255, 255, 255, 0.16);
+  box-shadow: 0 16px 36px -4px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+.card-interactive:active {
+  transform: translateY(0) scale(0.985);
+  transition-duration: 0.1s;
+}
+
+/* ── Botón primario premium (naranja) ───────────────────────── */
+.btn-premium {
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.3s ease,
+              background-color 0.2s ease;
+}
+.btn-premium:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 25px rgba(249, 115, 22, 0.5);
+}
+.btn-premium:active:not(:disabled) {
+  transform: translateY(0) scale(0.97);
+  transition-duration: 0.1s;
+}
+
+/* Shimmer sweep en hover */
+.btn-premium::before {
+  content: '';
+  position: absolute;
+  top: 0; left: -100%;
+  width: 100%; height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.15) 50%,
+    transparent 100%
+  );
+  transition: left 0.5s ease;
+}
+.btn-premium:hover::before {
+  left: 100%;
+}
+
+/* ── Stagger children (entrada escalonada de tarjetas) ──────── */
+.stagger-children > * {
+  opacity: 0;
+  animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.stagger-children > *:nth-child(1) { animation-delay: 0.00s; }
+.stagger-children > *:nth-child(2) { animation-delay: 0.06s; }
+.stagger-children > *:nth-child(3) { animation-delay: 0.12s; }
+.stagger-children > *:nth-child(4) { animation-delay: 0.18s; }
+.stagger-children > *:nth-child(5) { animation-delay: 0.24s; }
+.stagger-children > *:nth-child(6) { animation-delay: 0.30s; }
+.stagger-children > *:nth-child(7) { animation-delay: 0.36s; }
+
+/* ── Focus ring premium ────────────────────────────────────── */
+.input-premium:focus {
+  border-color: var(--color-accent, #f97316);
+  box-shadow: 0 0 0 3px var(--color-accent-glow, rgba(249, 115, 22, 0.15)),
+              0 0 15px var(--color-accent-light, rgba(249, 115, 22, 0.1));
+}
+
+/* ── Transición suave de páginas ───────────────────────────── */
+@keyframes pageEnter {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.page-enter {
+  animation: pageEnter 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* ── Toast notification slide ─────────────────────────────── */
+@keyframes toastIn {
+  from { transform: translateY(-100%) scale(0.95); opacity: 0; }
+  to   { transform: translateY(0) scale(1); opacity: 1; }
+}
+@keyframes toastOut {
+  from { transform: translateY(0); opacity: 1; }
+  to   { transform: translateY(-100%); opacity: 0; }
+}
+
+/* ── Hover icon bounce ────────────────────────────────────── */
+@keyframes iconBounce {
+  0%, 100% { transform: translateY(0); }
+  40%      { transform: translateY(-3px); }
+  60%      { transform: translateY(-1px); }
+}
+.icon-bounce:hover {
+  animation: iconBounce 0.4s ease;
+}
+
+/* ── Esqueletos de Carga (Skeleton Loader) ─────────────────── */
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    #171717 0%,
+    #242424 50%,
+    #171717 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.6s ease-in-out infinite;
+}
+
+@keyframes skeleton-pulse {
+  0%, 100% {
+    opacity: 0.95;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.skeleton-pulse {
+  animation: skeleton-pulse 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+

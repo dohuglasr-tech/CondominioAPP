@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from './supabase'
 import { appCache } from './cacheService'
 import { consultarTasaBcvEnVivo, sincronizarTasaBcvConApi } from './bcvService'
+import { logger, getErrorMessage } from '../utils/logger'
 
 export interface BcvRateState {
   rate: number
@@ -56,7 +57,7 @@ export function useBcvRate(): BcvRateState {
                 lastUpdate: configData.tasa_bcv_actualizada || new Date().toISOString(),
               }
             }
-          } catch {}
+          } catch (err) { logger.debug('useBcvRate', 'Fallback controlado', err) }
 
           // 2. Fallback de emergencia: Solo si la base de datos no tiene tasa configurada
           try {
@@ -67,7 +68,7 @@ export function useBcvRate(): BcvRateState {
                 lastUpdate: apiRes.fechaActualizacion
               }
             }
-          } catch {}
+          } catch (err) { logger.debug('useBcvRate', 'Fallback controlado', err) }
 
           return {
             rate: 866.56,
@@ -85,9 +86,9 @@ export function useBcvRate(): BcvRateState {
         error: null,
       })
       return { ok: true, rate: rateData.rate }
-    } catch (err: any) {
-      setData((prev) => ({ ...prev, loading: false, syncing: false, error: err.message }))
-      return { ok: false, rate: 866.56, error: err.message }
+    } catch (err: unknown) {
+      setData((prev) => ({ ...prev, loading: false, syncing: false, error: getErrorMessage(err) }))
+      return { ok: false, rate: 866.56, error: getErrorMessage(err) }
     }
   }, [])
 

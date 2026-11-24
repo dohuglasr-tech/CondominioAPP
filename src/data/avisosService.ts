@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { notificarTodos } from './notificacionesService'
+import { getErrorMessage } from '../utils/logger'
 
 export type TipoAviso = 'urgente' | 'mantenimiento' | 'info'
 
@@ -105,8 +106,8 @@ export async function publicarAvisoComunidad(params: {
     }).catch(() => {})
 
     return { data, error: null }
-  } catch (err: any) {
-    return { data: null, error: err.message || 'Error al publicar aviso' }
+  } catch (err: unknown) {
+    return { data: null, error: getErrorMessage(err) || 'Error al publicar aviso' }
   }
 }
 
@@ -122,7 +123,7 @@ export async function eliminarAvisoComunidad(avisoId: string): Promise<{ error: 
 
     if (error) return { error: error.message }
     return { error: null }
-  } catch (err: any) {
-    return { error: err.message || 'Error al eliminar aviso' }
+  } catch (err: unknown) {
+    return { error: getErrorMessage(err) || 'Error al eliminar aviso' }
   }
 }

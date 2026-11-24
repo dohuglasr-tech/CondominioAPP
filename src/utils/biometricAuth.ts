@@ -9,6 +9,8 @@
  * - Windows (Windows Hello)
  */
 
+import { getActiveEdificioNombre } from '../data/tenantContext'
+
 export interface BiometricSupport {
   supported: boolean
   label: string
@@ -214,7 +216,7 @@ export async function enrollBiometrics(
     // Configuración RP
     const isIp = /^(\d{1,3}\.){3}\d{1,3}$/.test(window.location.hostname)
     const rp: PublicKeyCredentialRpEntity = {
-      name: 'Torre 5 Residencias',
+      name: getActiveEdificioNombre('Domus Condominio'),
     }
     if (!isIp && window.location.hostname) {
       rp.id = window.location.hostname

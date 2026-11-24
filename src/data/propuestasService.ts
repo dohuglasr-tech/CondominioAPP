@@ -1,3 +1,4 @@
+import { getErrorMessage } from '../utils/logger'
 // supabase import reservado para cuando se conecte la DB
 // import { supabase } from './supabase'
 
@@ -52,8 +53,8 @@ export async function obtenerPropuestasActivas(): Promise<{ data: Propuesta[]; e
     ]
 
     return { data: mockPropuestas, error: null }
-  } catch (err: any) {
-    return { data: [], error: err.message }
+  } catch (err: unknown) {
+    return { data: [], error: getErrorMessage(err) }
   }
 }
 
@@ -62,7 +63,7 @@ export async function emitirVoto(_propuestaId: string, _opcionId: string, _apart
     // Insert en tabla `votos_propuestas`
     // const { error } = await supabase.from('votos_propuestas').insert({ propuesta_id: propuestaId, opcion_id: opcionId, apartamento_id: apartamentoId })
     return { success: true, error: null }
-  } catch (err: any) {
-    return { success: false, error: err.message }
+  } catch (err: unknown) {
+    return { success: false, error: getErrorMessage(err) }
   }
 }
