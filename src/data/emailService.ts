@@ -122,10 +122,10 @@ export interface DatosEmailRecordatorioRecibo {
 
 export const DEFAULT_PORTAL_URL = 'https://domus-ve.vercel.app'
 export const DEFAULT_EDIFICIO = 'Condominio Domus'
-export const DEFAULT_BANCO = 'Banco Bicentenario'
-export const DEFAULT_CUENTA = '0175-0525-4100-7575-1351'
-export const DEFAULT_TITULAR = 'Zoraya Almeida'
-export const DEFAULT_RIF = 'V-6089037'
+export const DEFAULT_BANCO = 'Banco por configurar'
+export const DEFAULT_CUENTA = 'Cuenta bancaria por configurar'
+export const DEFAULT_TITULAR = 'Titular por configurar'
+export const DEFAULT_RIF = 'RIF/Cédula por configurar'
 
 export function getBasePortalUrl(): string {
   if (typeof window !== 'undefined' && window.location?.origin) {

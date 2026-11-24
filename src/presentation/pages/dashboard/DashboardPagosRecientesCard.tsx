@@ -1,5 +1,5 @@
 import React from 'react'
-import { parsePagoMeta } from '../../../data/gasService'
+import { parsePagoMeta } from '../../../utils/pagoMeta'
 
 export interface DashboardPagoItem {
   id: string

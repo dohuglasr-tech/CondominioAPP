@@ -81,11 +81,11 @@ async function obtenerDatosEmail(pago: PagoRecord) {
   // Obtener número y edificio_id del apartamento
   const { data: apto } = await supabase
     .from("apartamentos")
-    .select("*")
+    .select("id, numero, edificio_id")
     .eq("id", pago.apartamento_id)
     .maybeSingle();
 
-  const aptoEdificioId = (apto as any)?.edificio_id || null;
+  const aptoEdificioId = apto?.edificio_id || null;
 
   // Obtener configuración del edificio correspondiente (soporta multiedificio)
   let configQuery = supabase
@@ -104,6 +104,7 @@ async function obtenerDatosEmail(pago: PagoRecord) {
     numeroApto: apto?.numero ?? "N/A",
     nombreEdificio: config?.nombre_edificio ?? "Domus Condominio",
     tasaBcv: config?.tasa_bcv_actual ?? 0,
+    edificioId: aptoEdificioId,
   };
 }
 
@@ -332,12 +333,14 @@ async function crearNotificacionInApp(
   apartamentoId: string,
   aprobado: boolean,
   apto: string,
-  monto: number | null
+  monto: number | null,
+  edificioId: string | null = null
 ): Promise<void> {
   if (!apartamentoId) return;
   const montoStr = monto ? `$${Number(monto).toFixed(2)}` : "";
   await supabase.from("notificaciones").insert({
     apartamento_id: apartamentoId,
+    ...(edificioId ? { edificio_id: edificioId } : {}),
     titulo: aprobado ? "✅ Pago Confirmado" : "⚠️ Pago Rechazado",
     cuerpo: aprobado
       ? `Tu pago ${montoStr} para el Apto. ${apto} ha sido aprobado.`
@@ -392,7 +395,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // Obtener datos del residente y edificio
-    const { emailDestino, nombreResidente, numeroApto, nombreEdificio, tasaBcv } =
+    const { emailDestino, nombreResidente, numeroApto, nombreEdificio, tasaBcv, edificioId } =
       await obtenerDatosEmail(record);
 
     if (!emailDestino) {
@@ -407,7 +410,8 @@ Deno.serve(async (req: Request) => {
       record.apartamento_id,
       aprobado,
       numeroApto,
-      record.monto_usd
+      record.monto_usd,
+      edificioId
     );
 
     // Enviar email si hay dirección

@@ -41,7 +41,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 async function fetchTasaDolarAPI(): Promise<number | null> {
   try {
     const res = await fetch(BCV_API_PRIMARY, {
-      headers: { "Accept": "application/json", "User-Agent": "Torre5-App/1.0" },
+      headers: { "Accept": "application/json", "User-Agent": "Domus-App/1.0" },
       signal: AbortSignal.timeout(8000),
     });
     if (!res.ok) return null;

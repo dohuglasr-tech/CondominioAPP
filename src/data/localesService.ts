@@ -235,19 +235,18 @@ export async function obtenerLocales(): Promise<LocalComercial[]> {
         if (!error && (!data || data.length === 0)) {
           const cache = getLocalCache()
           if (cache.length > 0) {
-            for (const loc of cache) {
-              try {
+            try {
+              const seedPayloads = cache.map((loc) => {
                 let aptoId = loc.apartamento_id
                 if (!aptoId && loc.apartamento_numero && aptos) {
                   const matchedApto = aptos.find(a => a.numero === loc.apartamento_numero)
                   if (matchedApto) aptoId = matchedApto.id
                 }
-
-                const payload = mapLocalToCaso({ ...loc, apartamento_id: aptoId })
-                await supabase.from('casos_comunidad').insert(payload)
-              } catch (e) {
-                console.warn('[localesService] Error sembrando local inicial en DB:', e)
-              }
+                return mapLocalToCaso({ ...loc, apartamento_id: aptoId })
+              })
+              await supabase.from('casos_comunidad').insert(seedPayloads)
+            } catch (e) {
+              console.warn('[localesService] Error sembrando locales iniciales en DB:', e)
             }
 
             const { data: recargados } = await supabase

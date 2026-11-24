@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { useTheme } from '../../application/contexts/ThemeContext'
 import { supabase } from '../../data/supabase'
+import { logger } from '../../utils/logger'
 import {
   Notificacion,
   obtenerNotificaciones,
@@ -184,7 +185,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
 
     return () => {
       if (channel) {
-        try { supabase.removeChannel(channel) } catch {}
+        try { supabase.removeChannel(channel) } catch (err) { logger.debug('NotificationBell', 'Fallback limpiando canal realtime', err) }
       }
     }
   }, [apartamentoId])

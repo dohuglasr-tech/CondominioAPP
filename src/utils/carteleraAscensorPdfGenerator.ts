@@ -319,8 +319,8 @@ export async function generarCarteleraAscensorPDF(datos: DatosCarteleraAscensor)
     // ─────────────────────────────────────────────────────────────────────────
     // 4. CONSTRUCCIÓN DE COLUMNAS DE LA TABLA
     // ─────────────────────────────────────────────────────────────────────────
-    let tableHeaders: string[] = []
-    let columnStylesMap: Record<number, any> = {}
+    let tableHeaders: string[]
+    let columnStylesMap: Record<number, any>
 
     if (isLandscape) {
       // MODO HORIZONTAL: Matriz completa del Calendario con los 12 meses

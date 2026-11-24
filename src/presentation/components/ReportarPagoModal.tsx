@@ -8,6 +8,7 @@ import { obtenerDeudasMora, DesgloseConceptoItem, formatearFechaCortaEs } from '
 import { obtenerJunta, MiembroJunta } from '../../data/juntaService'
 import { useAuth } from '../../application/contexts/AuthContext'
 import { ConfigEdificio, supabase } from '../../data/supabase'
+import { logger } from '../../utils/logger'
 import {
   obtenerResumenGasApartamento,
   obtenerTodasLasDeudasGasApartamento,
@@ -269,7 +270,9 @@ export function ReportarPagoModal({
                 }
               })
             }
-          } catch (_) {}
+          } catch (err) {
+            logger.debug('ReportarPagoModal', 'Fallback cargando recibos pendientes', err)
+          }
         }
 
         // Cargar cuotas de gas pendientes
@@ -658,7 +661,9 @@ export function ReportarPagoModal({
       const res = await obtenerJunta()
       const admins = (res.data || []).filter(m => m.categoria === 'administracion')
       setAdminContacts(admins.length > 0 ? admins : (res.data || []).slice(0, 2))
-    } catch { }
+    } catch (err) {
+      logger.debug('ReportarPagoModal', 'Fallback cargando contactos admin', err)
+    }
     finally { setLoadingJunta(false) }
   }
 

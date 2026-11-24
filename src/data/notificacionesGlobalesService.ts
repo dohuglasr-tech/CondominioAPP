@@ -82,7 +82,7 @@ const LOCAL_KEY_ULTIMO_ENVIO_RECIBOS = 'domus_ultimo_envio_recibos_emails_v1'
 function normalizarCadenaApto(s: string): string {
   return String(s || '')
     .toLowerCase()
-    .replace(/^(apto|apartamento|unidad|inmueble|depto|piso)[\s.\-]*/i, '')
+    .replace(/^(apto|apartamento|unidad|inmueble|depto|piso)[\s.-]*/i, '')
     .replace(/[^a-z0-9]/gi, '')
 }
 

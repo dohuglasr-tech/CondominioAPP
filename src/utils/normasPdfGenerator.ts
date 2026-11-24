@@ -431,7 +431,7 @@ export async function generarPDFNormas(datos: DatosNormasCondominio): Promise<Js
   doc.text('CONSTANCIA DE EXPEDICIÓN Y VALIDACIÓN INSTITUCIONAL', 105, currentY + 3, { align: 'center' })
 
   // Columna 1: Por la Administración
-  const adminNombre = datos.administradorNombre || 'Dohuglas Guevara'
+  const adminNombre = datos.administradorNombre || 'Administración del Condominio'
   const col1X = 16
   const col1Y = currentY + 8
   doc.setFont('helvetica', 'bold')
@@ -446,7 +446,7 @@ export async function generarPDFNormas(datos: DatosNormasCondominio): Promise<Js
   doc.text('Firma / Sello Administrativo Oficial', col1X, col1Y + 11.2)
 
   // Columna 2: Por la Junta de Condominio
-  const presidenteNombre = datos.presidenteNombre || 'Rafael Eduardo Malvares'
+  const presidenteNombre = datos.presidenteNombre || 'Presidencia de la Junta'
   const col2X = 110
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(6.8)

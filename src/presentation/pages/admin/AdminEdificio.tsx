@@ -429,16 +429,26 @@ export const AdminEdificio: React.FC = () => {
         }
       }
 
-      // Insertar o actualizar
+      // Insertar o actualizar en lote
+      const aptosParaInsertar: typeof aptosEsperados = []
+      const actualizacionesPiso: PromiseLike<unknown>[] = []
       for (const esp of aptosEsperados) {
         const existe = existentesMap.get(esp.numero)
         if (existe) {
           if (existe.piso !== esp.piso) {
-            await supabase.from('apartamentos').update({ piso: esp.piso }).eq('id', existe.id)
+            actualizacionesPiso.push(
+              supabase.from('apartamentos').update({ piso: esp.piso }).eq('id', existe.id)
+            )
           }
         } else {
-          await supabase.from('apartamentos').insert([esp])
+          aptosParaInsertar.push(esp)
         }
+      }
+      if (aptosParaInsertar.length > 0) {
+        await supabase.from('apartamentos').insert(aptosParaInsertar)
+      }
+      if (actualizacionesPiso.length > 0) {
+        await Promise.all(actualizacionesPiso)
       }
 
       appCache.invalidateTags(['apartamentos', 'recibos', 'saldos', 'mora'])
@@ -1233,11 +1243,11 @@ export const AdminEdificio: React.FC = () => {
               <div className="admin-grid-2">
                 <div style={groupStyle}>
                   <label style={labelStyle}>Banco</label>
-                  <input name="banco" value={info.banco} onChange={handleChange} style={inputStyle} placeholder="Ej: Banco Bicentenario" />
+                  <input name="banco" value={info.banco} onChange={handleChange} style={inputStyle} placeholder="Ej: Banco de Venezuela" />
                 </div>
                 <div style={groupStyle}>
                   <label style={labelStyle}>Cédula del Titular</label>
-                  <input name="cedula_cuenta" value={info.cedula_cuenta} onChange={handleChange} style={inputStyle} placeholder="Ej: V-6089037" />
+                  <input name="cedula_cuenta" value={info.cedula_cuenta} onChange={handleChange} style={inputStyle} placeholder="Ej: J-00000000-0 / V-12345678" />
                 </div>
               </div>
               <div className="admin-grid-2">
@@ -1247,7 +1257,7 @@ export const AdminEdificio: React.FC = () => {
                 </div>
                 <div style={groupStyle}>
                   <label style={labelStyle}>Número de Cuenta</label>
-                  <input name="cuenta_bancaria" value={info.cuenta_bancaria} onChange={handleChange} style={inputStyle} placeholder="Ej: 0175-0525-4100-7575-1351" />
+                  <input name="cuenta_bancaria" value={info.cuenta_bancaria} onChange={handleChange} style={inputStyle} placeholder="Ej: 0102-0000-0000-0000-0000" />
                 </div>
               </div>
               <div style={groupStyle}>
@@ -1264,11 +1274,11 @@ export const AdminEdificio: React.FC = () => {
               <div className="admin-grid-2">
                 <div style={groupStyle}>
                   <label style={labelStyle}>Banco (Pago Móvil)</label>
-                  <input name="pago_movil_banco" value={info.pago_movil_banco} onChange={handleChange} style={inputStyle} placeholder="Ej: Banco Bicentenario" />
+                  <input name="pago_movil_banco" value={info.pago_movil_banco} onChange={handleChange} style={inputStyle} placeholder="Ej: Banco de Venezuela" />
                 </div>
                 <div style={groupStyle}>
                   <label style={labelStyle}>Cédula (Pago Móvil)</label>
-                  <input name="pago_movil_cedula" value={info.pago_movil_cedula} onChange={handleChange} style={inputStyle} placeholder="Ej: V-6089037" />
+                  <input name="pago_movil_cedula" value={info.pago_movil_cedula} onChange={handleChange} style={inputStyle} placeholder="Ej: V-12345678" />
                 </div>
               </div>
               <div style={groupStyle}>
@@ -1478,7 +1488,7 @@ export const AdminEdificio: React.FC = () => {
                   <label style={labelStyle}>Nombre Completo *</label>
                   <input
                     required
-                    placeholder="Ej: Dohuglas Guevara"
+                    placeholder="Ej: Nombre del integrante"
                     value={formNombre}
                     onChange={e => setFormNombre(e.target.value)}
                     style={inputStyle}

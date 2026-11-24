@@ -6,6 +6,7 @@ import { applyTheme } from '../../utils/themeManager'
 import { extractTenantSubdomain, resolveTenantBuilding } from '../../data/tenantService'
 import { setActiveEdificioConfig, setActiveEdificioId } from '../../data/tenantContext'
 import { esTasaBcvValida, getTasaBcvNumerica, guardarUltimaTasaBcvConocida } from '../../utils/tasaBcvHelper'
+import { logger } from '../../utils/logger'
 
 
 // ── Tipos del contexto ────────────────────────────────────────────
@@ -109,7 +110,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const { data: sRes } = await supabase.auth.getSession()
         hasSession = Boolean(sRes?.session?.user)
-      } catch {}
+      } catch (err) {
+        logger.debug('AuthContext', 'Sin sesión activa al cargar branding', err)
+      }
 
       const cacheKey = hasSession ? 'configuracion_edificio_default_auth' : 'configuracion_edificio_default_pub'
       const data = await appCache.fetch<ConfigEdificio | null>(
@@ -208,7 +211,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (!lastStoredTs && typeof window !== 'undefined') {
             try {
               lastStoredTs = Number(sessionStorage.getItem(storageKey) || '0')
-            } catch {}
+            } catch (err) {
+              logger.debug('AuthContext', 'No se pudo leer sessionStorage lastAccess', err)
+            }
           }
           const needsAccessWrite = !lastStoredTs || (now - lastStoredTs) >= 15 * 60 * 1000
           const needsEmailSync = Boolean(
@@ -223,7 +228,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               updatePayload.ultimo_acceso = new Date(now).toISOString()
               lastAccessWriteRef.current = { userId, ts: now }
               if (typeof window !== 'undefined') {
-                try { sessionStorage.setItem(storageKey, String(now)) } catch {}
+                try { sessionStorage.setItem(storageKey, String(now)) } catch (err) { logger.debug('AuthContext', 'No se pudo guardar sessionStorage lastAccess', err) }
               }
             }
             if (needsEmailSync) {

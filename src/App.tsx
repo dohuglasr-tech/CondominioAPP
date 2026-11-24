@@ -7,7 +7,6 @@ import { SplashScreen } from './presentation/components/SplashScreen'
 import { InstallAppPrompt } from './presentation/components/InstallAppPrompt'
 import { InactivityManager } from './presentation/components/InactivityManager'
 import { Login } from './presentation/pages/Login'
-import { Layout } from './presentation/components/Layout'
 
 function lazyNamed<P = any>(
   importer: () => Promise<Record<string, any>>,
@@ -37,6 +36,7 @@ const ProfileSetup = lazyNamed(() => import('./presentation/pages/ProfileSetup')
 const Register = lazyNamed(() => import('./presentation/pages/Register'), 'Register')
 const DescargarReciboPublico = lazyNamed(() => import('./presentation/pages/DescargarReciboPublico'), 'DescargarReciboPublico')
 
+const Layout = lazyNamed(() => import('./presentation/components/Layout'), 'Layout')
 const Dashboard = lazyNamed(() => import('./presentation/pages/Dashboard'), 'Dashboard')
 const GastosPanel = lazyNamed<{ onClose: () => void }>(() => import('./presentation/components/GastosPanel'), 'GastosPanel')
 const RecibosPanel = lazyNamed<{ onClose: () => void }>(() => import('./presentation/components/RecibosPanel'), 'RecibosPanel')

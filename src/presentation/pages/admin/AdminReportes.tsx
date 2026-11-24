@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '../../../data/supabase'
 import { useAuth } from '../../../application/contexts/AuthContext'
+import { logger } from '../../../utils/logger'
 import {
   obtenerTodosLosReportesAdmin,
   actualizarEstadoReporte,
@@ -112,7 +113,9 @@ export const AdminReportes: React.FC = () => {
           motivo: 'Atención de avería e incidencia comunitaria',
           autor_nombre: adminNombre,
         })
-      } catch {}
+      } catch (err) {
+        logger.debug('AdminReportes', 'Fallback registrando auditoría de caso', err)
+      }
 
       cargarDatos()
     }

@@ -10,6 +10,7 @@ import {
 } from '../../data/chatService'
 import { useAuth } from '../../application/contexts/AuthContext'
 import { useTheme } from '../../application/contexts/ThemeContext'
+import { logger } from '../../utils/logger'
 import { getActiveEdificioNombre } from '../../data/tenantContext'
 import { useNavigate } from 'react-router-dom'
 
@@ -121,7 +122,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onClose }) => {
     // 1. Canal Supabase Realtime (Broadcast + Postgres changes)
     const existing = supabase.getChannels().find(c => c.topic === `realtime:${CHAT_CHANNEL_NAME}`)
     if (existing) {
-      try { supabase.removeChannel(existing) } catch {}
+      try { supabase.removeChannel(existing) } catch (err) { logger.debug('ChatPanel', 'Fallback limpiando canal realtime', err) }
     }
     const channel = supabase.channel(CHAT_CHANNEL_NAME)
 

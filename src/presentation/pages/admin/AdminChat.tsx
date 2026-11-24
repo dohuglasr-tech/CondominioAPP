@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../../data/supabase'
 import { getActiveEdificioNombre } from '../../../data/tenantContext'
+import { logger } from '../../../utils/logger'
 import {
   ChatMensaje,
   ChatEstadoConfig,
@@ -68,7 +69,7 @@ export const AdminChat: React.FC = () => {
     // 1. Canal Supabase Realtime para Broadcast directo entre pantallas
     const existing = supabase.getChannels().find(c => c.topic === `realtime:${CHAT_CHANNEL_NAME}`)
     if (existing) {
-      try { supabase.removeChannel(existing) } catch {}
+      try { supabase.removeChannel(existing) } catch (err) { logger.debug('AdminChat', 'Fallback limpiando canal realtime', err) }
     }
     const channel = supabase.channel(CHAT_CHANNEL_NAME)
 

@@ -98,11 +98,11 @@ const fmtUsd = (n: number) => (Number(n) || 0).toLocaleString('en-US', { minimum
  */
 export function generarMensajeCobroRecibo(datos: DatosCobroRecibo): string {
   const edificio = datos.edificioNombre || getActiveEdificioNombre('Condominio Domus')
-  const banco = datos.bancoNombre || 'Banco Bicentenario'
-  const cuenta = datos.cuentaNumero || '0175-0525-4100-7575-1351'
-  const titular = datos.titularNombre || 'Zoraya Almeida'
-  const rif = datos.cedulaRif || 'V-6089037'
-  const pmoTel = datos.telefonoPagoMovil || datos.telefono || '0414-XXXXXXX'
+  const banco = datos.bancoNombre || 'Banco por configurar'
+  const cuenta = datos.cuentaNumero || 'Cuenta por configurar'
+  const titular = datos.titularNombre || 'Titular por configurar'
+  const rif = datos.cedulaRif || 'RIF/Cédula por configurar'
+  const pmoTel = datos.telefonoPagoMovil || datos.telefono || 'Teléfono por configurar'
   const portal = datos.portalUrl || DEFAULT_PORTAL_URL
 
   const saludo = datos.propietarioNombre
@@ -146,10 +146,10 @@ _Agradecemos de antemano su puntual colaboración para el correcto funcionamient
  */
 export function generarMensajeCobroMora(datos: DatosCobroMora): string {
   const edificio = datos.edificioNombre || getActiveEdificioNombre('Condominio Domus')
-  const banco = datos.bancoNombre || 'Banco Bicentenario'
-  const cuenta = datos.cuentaNumero || '0175-0525-4100-7575-1351'
-  const titular = datos.titularNombre || 'Zoraya Almeida'
-  const rif = datos.cedulaRif || 'V-6089037'
+  const banco = datos.bancoNombre || 'Banco por configurar'
+  const cuenta = datos.cuentaNumero || 'Cuenta por configurar'
+  const titular = datos.titularNombre || 'Titular por configurar'
+  const rif = datos.cedulaRif || 'RIF/Cédula por configurar'
   const portal = datos.portalUrl || DEFAULT_PORTAL_URL
 
   const saludo = datos.propietarioNombre
@@ -251,13 +251,9 @@ export function abrirWhatsApp(params: { telefono?: string | null; mensaje: strin
   const cleanPhone = normalizarTelefonoWhatsApp(params.telefono)
   const encodedMsg = encodeURIComponent(params.mensaje)
 
-  let url = ''
-  if (cleanPhone) {
-    url = `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodedMsg}`
-  } else {
-    // Si no hay teléfono específico, abre WhatsApp listo para elegir a qué contacto o grupo enviar
-    url = `https://api.whatsapp.com/send?text=${encodedMsg}`
-  }
+  const url = cleanPhone
+    ? `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodedMsg}`
+    : `https://api.whatsapp.com/send?text=${encodedMsg}`
 
   if (typeof window !== 'undefined') {
     window.open(url, '_blank', 'noopener,noreferrer')

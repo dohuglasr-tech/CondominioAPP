@@ -2,7 +2,7 @@
 // Archivo: public/sw.js
 // Se registra automáticamente desde el hook useNotifications
 
-const CACHE_NAME = 'condominio-app-v10'
+const CACHE_NAME = 'domus-app-v11'
 
 const PRECACHE_ASSETS = [
   '/',
@@ -32,9 +32,46 @@ self.addEventListener('activate', (event) => {
   )
 })
 
-// ── Fetch handler (Requerido para elegibilidad de instalación PWA en Chrome/Android) ──
+// ── Fetch handler: CacheFirst para /assets/ hasheados y NetworkFirst para navegación ──
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return
+  const reqUrl = new URL(event.request.url)
+
+  // Solo cachear assets del mismo origen (evitar interferir con APIs Supabase)
+  if (reqUrl.origin !== self.location.origin) return
+
+  // Chunks con hash de Vite (/assets/*): CacheFirst con revalidación en caché
+  if (reqUrl.pathname.startsWith('/assets/')) {
+    event.respondWith(
+      caches.open(CACHE_NAME).then(async (cache) => {
+        const cached = await cache.match(event.request)
+        if (cached) return cached
+        const response = await fetch(event.request)
+        if (response && response.ok && response.status === 200) {
+          cache.put(event.request, response.clone()).catch(() => {})
+        }
+        return response
+      })
+    )
+    return
+  }
+
+  // Navegación HTML: NetworkFirst con fallback a caché para offline
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          if (response && response.ok && response.status === 200) {
+            const copy = response.clone()
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy)).catch(() => {})
+          }
+          return response
+        })
+        .catch(() => caches.match(event.request).then((res) => res || caches.match('/index.html')))
+    )
+    return
+  }
+
   event.respondWith(
     fetch(event.request).catch(() => caches.match(event.request))
   )

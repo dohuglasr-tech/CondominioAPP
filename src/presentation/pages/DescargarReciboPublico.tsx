@@ -500,13 +500,13 @@ export const DescargarReciboPublico: React.FC = () => {
               <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px' }}>
                 💳 Transferencia Bancaria
               </div>
-              <div style={{ color: '#cbd5e1' }}><strong>Banco:</strong> {config?.banco || 'Banco Bicentenario'}</div>
-              <div style={{ color: '#cbd5e1' }}><strong>Cédula / RIF:</strong> {config?.cedula_cuenta || config?.rif || 'V-6089037'}</div>
-              <div style={{ color: '#cbd5e1' }}><strong>Titular:</strong> {config?.titular_cuenta || 'Zoraya Almeida'}</div>
+              <div style={{ color: '#cbd5e1' }}><strong>Banco:</strong> {config?.banco || 'Banco por configurar'}</div>
+              <div style={{ color: '#cbd5e1' }}><strong>Cédula / RIF:</strong> {config?.cedula_cuenta || config?.rif || 'Por configurar'}</div>
+              <div style={{ color: '#cbd5e1' }}><strong>Titular:</strong> {config?.titular_cuenta || 'Titular por configurar'}</div>
               <div style={{ color: '#cbd5e1' }}>
                 <strong>Cuenta:</strong>{' '}
                 <span style={{ fontFamily: 'monospace', color: '#fff', fontSize: '13px', fontWeight: 700, wordBreak: 'break-all' }}>
-                  {config?.cuenta_bancaria || '0175-0525-4100-7575-1351'}
+                  {config?.cuenta_bancaria || 'Cuenta bancaria por configurar'}
                 </span>
               </div>
             </div>
@@ -517,8 +517,8 @@ export const DescargarReciboPublico: React.FC = () => {
                 <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px' }}>
                   📱 Pago Móvil
                 </div>
-                <div style={{ color: '#cbd5e1' }}><strong>Banco:</strong> {config?.pago_movil_banco || config?.banco || 'Bicentenario'}</div>
-                <div style={{ color: '#cbd5e1' }}><strong>Cédula:</strong> {config?.pago_movil_cedula || config?.cedula_cuenta || config?.rif || 'V-6089037'}</div>
+                <div style={{ color: '#cbd5e1' }}><strong>Banco:</strong> {config?.pago_movil_banco || config?.banco || 'Banco por configurar'}</div>
+                <div style={{ color: '#cbd5e1' }}><strong>Cédula:</strong> {config?.pago_movil_cedula || config?.cedula_cuenta || config?.rif || 'Por configurar'}</div>
                 <div style={{ color: '#cbd5e1' }}>
                   <strong>Teléfono:</strong> <span style={{ color: '#fff', fontWeight: 700 }}>{config?.pago_movil_telefono || config?.telefono || ''}</span>
                 </div>

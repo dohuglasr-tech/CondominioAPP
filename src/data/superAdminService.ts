@@ -173,8 +173,8 @@ export async function getSystemHealth(): Promise<SystemHealthData> {
   const totalRecords = tableResults.reduce((acc, curr) => acc + (curr.count || 0), 0)
   const hasTableErrors = tableResults.some(t => t.status === 'error')
 
-  let status: 'healthy' | 'degraded' | 'error' | 'offline' = 'healthy'
-  let statusMessage = 'Conectada · 100% de tablas y servicios en línea'
+  let status: 'healthy' | 'degraded' | 'error' | 'offline'
+  let statusMessage: string
 
   if (!isConnected) {
     status = 'offline'
@@ -609,13 +609,14 @@ export async function getMasterAuditLogs(limit = 100): Promise<any[]> {
   try {
     const { data, error } = await supabase
       .from('historial_auditoria')
-      .select('*')
-      .order('fecha_hora', { ascending: false })
+      .select('id, fecha, tipo_accion, titulo, descripcion, apartamento_numero, apartamento_id, mes_afectado, monto_usd, monto_bs, motivo, autor_nombre, autor_email, datos_anteriores, datos_nuevos, created_at')
+      .order('created_at', { ascending: false })
       .limit(limit)
 
     if (error) return []
     return data || []
-  } catch {
+  } catch (err) {
+    console.warn('[superAdminService] Error cargando historial_auditoria:', err)
     return []
   }
 }
@@ -754,19 +755,20 @@ export async function forceBcvRate(rate: number): Promise<{ success: boolean; er
  * 8. EXPORTADOR SNAPSHOT JSON DE LA BASE DE DATOS
  */
 export async function generateFullDatabaseSnapshot(): Promise<{ filename: string; jsonContent: string }> {
-  const tables = [
-    'configuracion_edificio',
-    'apartamentos',
-    'perfiles',
-    'recibos_generados',
-    'pagos_reportados',
-    'gastos_comunes',
-    'junta_condominio',
-    'casos_comunidad',
-    'deudas_mora',
-    'historial_auditoria',
-    'propuestas'
-  ]
+  const tableColumns: Record<string, string> = {
+    configuracion_edificio: 'id, nombre_edificio, slug, rif, direccion, ciudad, telefono, email_contacto, dominio_email, color_primario, tasa_bcv_actual, tasa_bcv_actualizada, total_apartamentos, total_pisos, apartamentos_por_piso, tiene_ph, total_ph, fecha_inicio_gestion, fecha_fin_administracion_anterior, banner_emergencia_activo, banner_emergencia_texto, banner_emergencia_nivel, modo_mantenimiento, updated_at',
+    apartamentos: 'id, numero, piso, metros_cuadrados, alicuota, estado, propietario_nombre, telefono_contacto, created_at, updated_at',
+    perfiles: 'id, apartamento_id, rol, estado_cuenta, nombre_completo, cedula, telefono, condicion_habitacional, propietario_nombre, propietario_email, clave_cambiada, ultimo_acceso, created_at, updated_at',
+    recibos_generados: 'id, apartamento_id, mes_facturado, tasa_bcv, total_gastos_usd, alicuota, subtotal_usd, fondo_reserva_pct, fondo_reserva_usd, cargos_extra_usd, total_usd, total_bs, estado, es_indexado, emitido_at, data_json',
+    pagos_reportados: 'id, apartamento_id, reportado_por, monto_bs, monto_usd, metodo, referencia, fecha_pago, comprobante_url, estado, notas_admin, motivo_rechazo, revisado_por, fecha_revision, created_at, updated_at',
+    gastos_comunes: 'id, descripcion, categoria, tipo, monto_usd, monto_bs, mes_aplicacion, fecha_pago, referencia, pagado_por, autorizado_por, notas, factura_url, created_at',
+    junta_condominio: 'id, nombre, cargo, categoria, telefono, email, apartamento, descripcion_rol, horario_atencion, orden, created_at, updated_at',
+    casos_comunidad: 'id, apartamento_id, tipo, titulo, descripcion, monto_usd, monto_bs, moneda, estado, involucrado_nombre, involucrado_contacto, fecha, fecha_vencimiento, notas_admin, created_at, updated_at',
+    deudas_mora: 'id, apartamento_id, estado, monto_bs, monto_usd, conceptos_detalle, observaciones, fecha_corte, created_at, updated_at',
+    historial_auditoria: 'id, fecha, tipo_accion, titulo, descripcion, apartamento_numero, apartamento_id, mes_afectado, monto_usd, monto_bs, motivo, autor_nombre, autor_email, datos_anteriores, datos_nuevos, created_at',
+    propuestas: 'id, autor_id, titulo, descripcion, estado, total_apoyos, created_at, updated_at',
+  }
+  const tables = Object.keys(tableColumns)
 
   const dump: Record<string, any> = {
     exportMetadata: {
@@ -779,7 +781,7 @@ export async function generateFullDatabaseSnapshot(): Promise<{ filename: string
 
   for (const table of tables) {
     try {
-      const { data } = await supabase.from(table).select('*')
+      const { data } = await supabase.from(table).select(tableColumns[table])
       dump[table] = data || []
     } catch {
       dump[table] = []
@@ -1074,8 +1076,8 @@ export async function runComprehensiveDiagnostic(): Promise<SystemDiagnosticRepo
   let storageUsageKb = 0
   try {
     let totalLen = 0
-    for (let key in localStorage) {
-      if (localStorage.hasOwnProperty(key)) {
+    for (const key in localStorage) {
+      if (Object.prototype.hasOwnProperty.call(localStorage, key)) {
         totalLen += (localStorage[key].length + key.length) * 2
       }
     }

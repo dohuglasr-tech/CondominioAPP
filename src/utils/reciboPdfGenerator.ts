@@ -81,7 +81,7 @@ const TIPO_CARGO_LABELS: Record<string, string> = {
 const fmtBs  = (n: number) => (n || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtUsd = (n: number) => (n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-export const DEFAULT_NOTAS_RECIBO = `DEPOSITAR EN CUENTA CORRIENTE NRO 0175-0525-4100-7575-1351 BANCO BICENTENARIO A NOMBRE DE ZORAYA ALMEIDA, CÉDULA V-6089037. VERIFICAR QUE SE REALICE LA TRANSACCIÓN. PAGO MÓVIL DISPONIBLE.
+export const DEFAULT_NOTAS_RECIBO = `REALIZAR SU PAGO EN LA CUENTA OFICIAL DEL CONDOMINIO CONFIGURADA EN EL PORTAL Y REPORTAR LA REFERENCIA BANCARIA. PAGO MÓVIL DISPONIBLE.
 VECINOS: FAVOR NO LANZAR BOTELLAS NI VIDRIOS POR EL BAJANTE, ES SUMAMENTE PELIGROSO.
 VECINOS: FAVOR REVISAR SUS FILTRACIONES Y DRENAJES DE AIRES ACONDICIONADOS.`
 
@@ -482,7 +482,7 @@ export async function generarPDFRecibo(
 
     sy += 4.2
     doc.text(`REFERENCIA: ${pagoInfo.referencia || 'VALIDADO'}`, 16, sy)
-    doc.text(`CTA: ${config.cuenta_bancaria || '0175-0525-4100-7575-1351'}`, 110, sy)
+    doc.text(`CTA: ${config.cuenta_bancaria || 'Cuenta bancaria por configurar'}`, 110, sy)
   } else {
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(6.5)

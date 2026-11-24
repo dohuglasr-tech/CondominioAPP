@@ -44,90 +44,24 @@ export interface LlenadoGas {
   observaciones?: string
 }
 
-export interface PagoGasItemMeta {
-  campanaId: string
-  titulo: string
-  mes: string
-  montoBs: number
-  montoUsd: number
-  moneda: 'BS' | 'USD'
-  esDeudaAnterior?: boolean
+import {
+  stripPagoMeta,
+  encodePagoMeta,
+  parsePagoMeta,
+  type PagoGasItemMeta,
+  type PagoCuotaEspecialMeta,
+  type PagoDomusMeta,
+} from '../utils/pagoMeta'
+
+export {
+  stripPagoMeta,
+  encodePagoMeta,
+  parsePagoMeta,
 }
-
-export interface PagoCuotaEspecialMeta {
-  columnaId: string
-  titulo: string
-  anio: number
-  monto: number
-  moneda: 'BS' | 'USD'
-  esAdelantado?: boolean
-  esAbonoParcial?: boolean
-  fechaEmision?: string
-  montoOriginal?: number
-  saldoRestanteEstimado?: number
-}
-
-export interface PagoDomusMeta {
-  tipoServicio: 'gas' | 'condominio' | 'mixto'
-  gasItems?: PagoGasItemMeta[]
-  cuotasEspeciales?: PagoCuotaEspecialMeta[]
-  gasMontoBs?: number
-  gasMontoUsd?: number
-  condominioMontoBs?: number
-  condominioMontoUsd?: number
-  origenAdmin?: boolean
-  campanaIdUnico?: string
-  esAdelantoCuotaFutura?: boolean
-  esAbonoParcialAdelanto?: boolean
-  soloCuotasEspeciales?: boolean
-}
-
-const DOMUS_META_PREFIX = '[DOMUS_META:'
-
-export function stripPagoMeta(notasAdmin?: string | null): string {
-  if (!notasAdmin) return ''
-  const idx = notasAdmin.indexOf(DOMUS_META_PREFIX)
-  if (idx === -1) return notasAdmin.trim()
-  const before = notasAdmin.slice(0, idx).trim()
-  const rest = notasAdmin.slice(idx)
-  const endBracket = rest.indexOf(']')
-  // Si había texto adicional después (ej. "| Nota Admin: ..."), preservarlo
-  const after = endBracket >= 0 ? rest.slice(endBracket + 1).trim() : ''
-  if (before && after) return `${before} ${after.startsWith('|') ? after : `· ${after}`}`.trim()
-  return (before || after).trim()
-}
-
-export function encodePagoMeta(notasVisibles: string, meta: PagoDomusMeta): string {
-  const cleanNotes = stripPagoMeta(notasVisibles)
-  const payload = `${DOMUS_META_PREFIX}${JSON.stringify(meta)}]`
-  return cleanNotes ? `${cleanNotes}\n${payload}` : payload
-}
-
-export function parsePagoMeta(notasAdmin?: string | null): PagoDomusMeta | null {
-  if (!notasAdmin) return null
-  const idx = notasAdmin.lastIndexOf(DOMUS_META_PREFIX)
-  if (idx !== -1) {
-    const startJson = idx + DOMUS_META_PREFIX.length
-    const endBracket = notasAdmin.lastIndexOf(']')
-    if (endBracket > startJson) {
-      try {
-        const parsed = JSON.parse(notasAdmin.slice(startJson, endBracket)) as PagoDomusMeta
-        if (parsed && parsed.tipoServicio) return parsed
-      } catch {
-        // Fallback abajo si el JSON estuviese truncado
-      }
-    }
-  }
-
-  // Respaldo heurístico para pagos legacy sin bloque DOMUS_META
-  const lower = notasAdmin.toLowerCase()
-  const mencionaGas = lower.includes('cuota de gas') || lower.includes('cuota especial gas') || lower.includes('[gas]') || lower.includes('servicio de gas') || lower.includes('deuda anterior de gas')
-  if (!mencionaGas) return null
-
-  const mencionaCondominio = lower.includes('recibo ') || lower.includes('deuda pasada') || lower.includes('cable viajero') || lower.includes('guaya') || lower.includes('condominio')
-  return {
-    tipoServicio: mencionaCondominio ? 'mixto' : 'gas'
-  }
+export type {
+  PagoGasItemMeta,
+  PagoCuotaEspecialMeta,
+  PagoDomusMeta,
 }
 
 export type EstadoPagoGas = 'pagado' | 'pendiente' | 'en_verificacion'
@@ -1139,11 +1073,11 @@ export async function guardarGasServicioData(
       }
     }
 
-    // 2. Guardar Llenados
-    for (const l of data.llenados) {
-      const rowId = esUUIDValido(l.id) ? l.id : generarUUID()
-      await supabase.from('casos_comunidad').upsert({
-        id: rowId,
+    // 2. Guardar Llenados en lote
+    const nowIso = new Date().toISOString()
+    if (data.llenados.length > 0) {
+      const llenadoPayloads = data.llenados.map((l) => ({
+        id: esUUIDValido(l.id) ? l.id : generarUUID(),
         tipo: TIPO_GAS_LLENADO,
         titulo: `Llenado Gas: ${l.litrosCargados.toLocaleString()} L - ${l.proveedor}`,
         descripcion: JSON.stringify(l),
@@ -1152,34 +1086,49 @@ export async function guardarGasServicioData(
         moneda: l.costoTotalBs > 0 ? 'BS' : 'USD',
         estado: l.estado,
         fecha: l.fecha,
-        updated_at: new Date().toISOString()
-      })
+        updated_at: nowIso
+      }))
+      await supabase.from('casos_comunidad').upsert(llenadoPayloads)
     }
 
-    // 3. Guardar Jornadas y sus pagos
-    for (const j of data.jornadas) {
-      const jRowId = esUUIDValido(j.id) ? j.id : generarUUID()
-      const { pagos: _, ...jornadaMeta } = j
-
-      await supabase.from('casos_comunidad').upsert({
-        id: jRowId,
-        tipo: TIPO_GAS_JORNADA,
-        titulo: j.titulo,
-        descripcion: JSON.stringify(jornadaMeta),
-        monto_usd: j.costoPorAptoUsd || 0,
-        monto_bs: j.costoPorAptoBs || 0,
-        moneda: j.monedaPrincipal || 'BS',
-        estado: j.estado,
-        fecha: j.fechaInicio,
-        fecha_vencimiento: j.fechaLimite || null,
-        updated_at: new Date().toISOString()
+    // 3. Guardar Jornadas y sus pagos en lote (evita N+1 consultas por apartamento)
+    if (data.jornadas.length > 0) {
+      const jornadaPayloads = data.jornadas.map((j) => {
+        const jRowId = esUUIDValido(j.id) ? j.id : generarUUID()
+        const { pagos: _, ...jornadaMeta } = j
+        return {
+          id: jRowId,
+          tipo: TIPO_GAS_JORNADA,
+          titulo: j.titulo,
+          descripcion: JSON.stringify(jornadaMeta),
+          monto_usd: j.costoPorAptoUsd || 0,
+          monto_bs: j.costoPorAptoBs || 0,
+          moneda: j.monedaPrincipal || 'BS',
+          estado: j.estado,
+          fecha: j.fechaInicio,
+          fecha_vencimiento: j.fechaLimite || null,
+          updated_at: nowIso
+        }
       })
+      await supabase.from('casos_comunidad').upsert(jornadaPayloads)
 
-      // Sincronizar campaña y asignaciones relacionales (no bloqueante)
-      const campanaRelId = await sincronizarCampanaGasRelacional(j).catch(() => null)
-      if (campanaRelId && j.pagos) {
-        const edIdRel = await obtenerEdificioIdGasRelacional()
-        if (edIdRel) {
+      const tienePagosConfirmados = data.jornadas.some(
+        (j) => j.pagos && Object.values(j.pagos).some((p) => p.estado === 'pagado' || p.estado === 'en_verificacion')
+      )
+      const existingPagoRows = tienePagosConfirmados
+        ? (await supabase
+            .from('casos_comunidad')
+            .select('id, titulo, descripcion, apartamento_id')
+            .eq('tipo', TIPO_GAS_PAGO)).data || []
+        : []
+
+      const pagoPayloads: Record<string, unknown>[] = []
+      const edIdRel = await obtenerEdificioIdGasRelacional()
+
+      for (const j of data.jornadas) {
+        // Sincronizar campaña y asignaciones relacionales (no bloqueante)
+        const campanaRelId = await sincronizarCampanaGasRelacional(j).catch(() => null)
+        if (campanaRelId && j.pagos && edIdRel) {
           const batchAsigs = Object.values(j.pagos)
             .filter(p => esUUIDValido(p.apartamentoId))
             .map(p => ({
@@ -1197,7 +1146,7 @@ export async function guardarGasServicioData(
               metodo_pago: p.metodoPago || null,
               pagos_aplicados_ids: Array.isArray(p.pagosAplicadosIds) ? p.pagosAplicadosIds : [],
               observaciones: p.observaciones || null,
-              updated_at: new Date().toISOString()
+              updated_at: nowIso
             }))
           if (batchAsigs.length > 0) {
             await supabase
@@ -1205,39 +1154,56 @@ export async function guardarGasServicioData(
               .upsert(batchAsigs, { onConflict: 'campana_id,apartamento_id' })
           }
         }
-      }
 
-      // Guardar pagos confirmados de esta jornada
-      if (j.pagos) {
-        for (const [key, p] of Object.entries(j.pagos)) {
-          if (p.estado === 'pagado' || p.estado === 'en_verificacion') {
-            const pagoDetalle = { ...p, jornadaId: j.id }
-            const existingRow = await buscarFilaGasPago(j.id, p.apartamentoId || key, p.apartamentoNumero || key)
-            const pagoRowId = existingRow ? existingRow.id : generarUUID()
+        // Preparar pagos confirmados de esta jornada para upsert en lote
+        if (j.pagos) {
+          for (const [key, p] of Object.entries(j.pagos)) {
+            if (p.estado === 'pagado' || p.estado === 'en_verificacion') {
+              const pagoDetalle = { ...p, jornadaId: j.id }
+              const existingRow = existingPagoRows.find((r) => {
+                let parsed: { jornadaId?: string; apartamentoId?: string; apartamentoNumero?: string } = {}
+                try { parsed = JSON.parse(r.descripcion || '{}') } catch (err) { logger.debug('gasService', 'Fallback controlado', err) }
+                const jIdRow = parsed.jornadaId || ''
+                const matchesJornada = jIdRow === j.id || (typeof r.titulo === 'string' && r.titulo.includes(j.id))
+                if (!matchesJornada) return false
+                const pseudoDetalle: DetallePagoAptoGas = {
+                  apartamentoId: parsed.apartamentoId || r.apartamento_id || '',
+                  apartamentoNumero: parsed.apartamentoNumero || r.titulo?.replace(/^Pago Gas Apto\s*/i, '').split(' ')[0] || '',
+                  estado: 'pendiente',
+                  montoBs: 0,
+                  montoUsd: 0
+                }
+                return matchAptoEnGas(pseudoDetalle, p.apartamentoId || key, p.apartamentoNumero || key)
+              })
+              const pagoRowId = existingRow ? existingRow.id : generarUUID()
 
-            await supabase.from('casos_comunidad').upsert({
-              id: pagoRowId,
-              tipo: TIPO_GAS_PAGO,
-              apartamento_id: esUUIDValido(p.apartamentoId) ? p.apartamentoId : null,
-              titulo: `Pago Gas Apto ${p.apartamentoNumero || key} - ${j.id}`,
-              descripcion: JSON.stringify(pagoDetalle),
-              monto_usd: p.montoUsd || 0,
-              monto_bs: p.montoBs || 0,
-              moneda: p.moneda || 'BS',
-              estado: p.estado,
-              fecha: p.fechaPago || getHoyVE(),
-              updated_at: new Date().toISOString()
-            })
+              pagoPayloads.push({
+                id: pagoRowId,
+                tipo: TIPO_GAS_PAGO,
+                apartamento_id: esUUIDValido(p.apartamentoId) ? p.apartamentoId : null,
+                titulo: `Pago Gas Apto ${p.apartamentoNumero || key} - ${j.id}`,
+                descripcion: JSON.stringify(pagoDetalle),
+                monto_usd: p.montoUsd || 0,
+                monto_bs: p.montoBs || 0,
+                moneda: p.moneda || 'BS',
+                estado: p.estado,
+                fecha: p.fechaPago || getHoyVE(),
+                updated_at: nowIso
+              })
+            }
           }
         }
       }
+
+      if (pagoPayloads.length > 0) {
+        await supabase.from('casos_comunidad').upsert(pagoPayloads)
+      }
     }
 
-    // 4. Guardar Eventos del Calendario
-    for (const ev of data.eventosCalendario) {
-      const evRowId = esUUIDValido(ev.id) ? ev.id : generarUUID()
-      await supabase.from('casos_comunidad').upsert({
-        id: evRowId,
+    // 4. Guardar Eventos del Calendario en lote
+    if (data.eventosCalendario.length > 0) {
+      const eventoPayloads = data.eventosCalendario.map((ev) => ({
+        id: esUUIDValido(ev.id) ? ev.id : generarUUID(),
         tipo: TIPO_GAS_EVENTO,
         titulo: ev.titulo,
         descripcion: JSON.stringify(ev),
@@ -1246,8 +1212,9 @@ export async function guardarGasServicioData(
         moneda: ev.moneda || 'BS',
         estado: 'completado',
         fecha: ev.fecha,
-        updated_at: new Date().toISOString()
-      })
+        updated_at: nowIso
+      }))
+      await supabase.from('casos_comunidad').upsert(eventoPayloads)
     }
 
     // 5. Guardar copia snapshot en legacy (sin bloquear)

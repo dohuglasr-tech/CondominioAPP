@@ -72,16 +72,16 @@ export const CATEGORIA_ORGANIGRAMA_CONFIG: Record<
 
 const STORAGE_JUNTA_KEY = 'condominio_junta_organigrama_cache'
 
-// Datos semilla iniciales actualizados con la junta real del condominio
+// Plantilla inicial neutra cuando la tabla junta_condominio aún no tiene registros
 const JUNTA_SEMILLA: MiembroJunta[] = [
   {
     id: 'junta-1',
-    nombre: 'Dohuglas Guevara',
+    nombre: 'Administrador(a) General',
     cargo: 'Administrador General',
     categoria: 'administracion',
-    telefono: '04227283213',
-    email: 'dohuglas.r@gmail.com',
-    apartamento: '565',
+    telefono: 'Por configurar',
+    email: 'administracion@domus.ve',
+    apartamento: '',
     descripcion_rol: 'Gestión administrativa, cobranza, emisión de recibos y contrataciones',
     horario_atencion: 'Lunes a Viernes 8:00 AM - 5:00 PM',
     orden: 1,
@@ -89,12 +89,12 @@ const JUNTA_SEMILLA: MiembroJunta[] = [
   },
   {
     id: 'junta-2',
-    nombre: 'Rafael Eduardo Malvares',
+    nombre: 'Presidente(a) de la Junta',
     cargo: 'Presidente',
     categoria: 'junta_directiva',
-    telefono: '04120788270',
-    email: 'remr123@gmail.com',
-    apartamento: 'Apto 584',
+    telefono: 'Por configurar',
+    email: 'junta@domus.ve',
+    apartamento: '',
     descripcion_rol: 'Representación legal de la comunidad y supervisión de proyectos',
     horario_atencion: 'Previa cita / Reuniones de Junta',
     orden: 2,
@@ -102,67 +102,28 @@ const JUNTA_SEMILLA: MiembroJunta[] = [
   },
   {
     id: 'junta-3',
-    nombre: 'Eudorina Figueroa',
-    cargo: 'Vice-Presidenta',
+    nombre: 'Vicepresidente(a) de la Junta',
+    cargo: 'Vice-Presidente',
     categoria: 'junta_directiva',
-    telefono: '04141108274',
-    email: 'eudorinafigueroa@gmail.com',
-    apartamento: 'Apto',
+    telefono: 'Por configurar',
+    email: 'junta@domus.ve',
+    apartamento: '',
     descripcion_rol: 'Apoyo a la presidencia y coordinación comunitaria',
-    horario_atencion: 'Disponibilidad a disponer',
+    horario_atencion: 'Previa cita / Reuniones de Junta',
     orden: 3,
     created_at: '2026-09-01T10:00:00Z'
   },
   {
     id: 'junta-4',
-    nombre: 'Letty Plaza de Prim',
+    nombre: 'Secretario(a) de Actas',
     cargo: 'Secretaria',
     categoria: 'junta_directiva',
-    telefono: '0416-3332211',
-    email: 'fernandezplazaangela@gmail.com',
-    apartamento: 'Apto',
+    telefono: 'Por configurar',
+    email: 'junta@domus.ve',
+    apartamento: '',
     descripcion_rol: 'Redacción de actas de asamblea, citaciones y archivo documental',
     horario_atencion: 'Horario de oficina',
     orden: 4,
-    created_at: '2026-09-01T10:00:00Z'
-  },
-  {
-    id: 'junta-5',
-    nombre: 'Ana Suarez Gonzalez',
-    cargo: 'Vocal N2',
-    categoria: 'comite_vocal',
-    telefono: '04142619932',
-    email: 'caracas41beisbol@gmail.com',
-    apartamento: 'PH52',
-    descripcion_rol: 'Atención de mantenciones y recreativas',
-    horario_atencion: 'Atención de mantenciones y recreativas',
-    orden: 5,
-    created_at: '2026-09-01T10:00:00Z'
-  },
-  {
-    id: 'junta-6',
-    nombre: 'Hilda Toledo',
-    cargo: 'Vocal N1',
-    categoria: 'comite_vocal',
-    telefono: '0424-1110022',
-    email: 'hildatole@hotmail.com',
-    apartamento: '',
-    descripcion_rol: 'Comité de vocales y enlace vecinal',
-    horario_atencion: 'Lunes a Sábado 7:00 AM - 4:00 PM',
-    orden: 6,
-    created_at: '2026-09-01T10:00:00Z'
-  },
-  {
-    id: 'junta-7',
-    nombre: 'Barinia Lopez',
-    cargo: 'Vocal N3',
-    categoria: 'comite_vocal',
-    telefono: '04143967343',
-    email: 'barinialf@gmail.com',
-    apartamento: 'Apto',
-    descripcion_rol: 'Apoyo a comités y vocales de convivencia',
-    horario_atencion: 'Horario de oficina',
-    orden: 7,
     created_at: '2026-09-01T10:00:00Z'
   }
 ]

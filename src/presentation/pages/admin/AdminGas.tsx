@@ -967,16 +967,12 @@ export const AdminGas: React.FC = () => {
     const tasa = getTasaBcvNumerica(data.config.tasaBcv)
     const costoNum = Number(formLlenado.costoMonto) || 0
 
-    let costoTotalBs = 0
-    let costoTotalUsd = 0
-
-    if (formLlenado.monedaCosto === 'BS') {
-      costoTotalBs = costoNum
-      costoTotalUsd = tasa > 0 ? Number((costoNum / tasa).toFixed(2)) : 0
-    } else {
-      costoTotalUsd = costoNum
-      costoTotalBs = Number((costoNum * tasa).toFixed(2))
-    }
+    const costoTotalBs = formLlenado.monedaCosto === 'BS'
+      ? costoNum
+      : Number((costoNum * tasa).toFixed(2))
+    const costoTotalUsd = formLlenado.monedaCosto === 'BS'
+      ? (tasa > 0 ? Number((costoNum / tasa).toFixed(2)) : 0)
+      : costoNum
 
     const payload: Omit<LlenadoGas, 'id'> = {
       fecha: formLlenado.fecha,
@@ -1022,16 +1018,12 @@ export const AdminGas: React.FC = () => {
     const monto = Number(formEvento.monto) || 0
     const tasa = getTasaBcvNumerica(data?.config.tasaBcv)
 
-    let montoBs = 0
-    let montoUsd = 0
-
-    if (formEvento.moneda === 'BS') {
-      montoBs = monto
-      montoUsd = tasa > 0 ? Number((monto / tasa).toFixed(2)) : 0
-    } else {
-      montoUsd = monto
-      montoBs = Number((monto * tasa).toFixed(2))
-    }
+    const montoBs = formEvento.moneda === 'BS'
+      ? monto
+      : Number((monto * tasa).toFixed(2))
+    const montoUsd = formEvento.moneda === 'BS'
+      ? (tasa > 0 ? Number((monto / tasa).toFixed(2)) : 0)
+      : monto
 
     const res = await guardarEventoCalendario({
       fecha: formEvento.fecha,
@@ -1082,16 +1074,12 @@ export const AdminGas: React.FC = () => {
     const tasa = getTasaBcvNumerica(data.config.tasaBcv)
     const montoNum = Number(formPago.monto) || 0
 
-    let montoBs = 0
-    let montoUsd = 0
-
-    if (formPago.moneda === 'BS') {
-      montoBs = montoNum
-      montoUsd = tasa > 0 ? Number((montoNum / tasa).toFixed(2)) : 0
-    } else {
-      montoUsd = montoNum
-      montoBs = Number((montoNum * tasa).toFixed(2))
-    }
+    const montoBs = formPago.moneda === 'BS'
+      ? montoNum
+      : Number((montoNum * tasa).toFixed(2))
+    const montoUsd = formPago.moneda === 'BS'
+      ? (tasa > 0 ? Number((montoNum / tasa).toFixed(2)) : 0)
+      : montoNum
 
     const key = aptoParaPagar.apartamentoId || aptoParaPagar.apartamentoNumero
     const res = await togglePagoApartamento(metricas.jornadaActiva.id, key, {

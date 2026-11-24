@@ -1,8 +1,7 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react'
 import { useAuth } from '../../application/contexts/AuthContext'
 import { useTheme } from '../../application/contexts/ThemeContext'
 import { useBcvRate } from '../../data/useBcvRate'
-import { ReportarPagoModal } from '../components/ReportarPagoModal'
 import { supabase } from '../../data/supabase'
 import { appCache } from '../../data/cacheService'
 import { useNavigate } from 'react-router-dom'
@@ -19,10 +18,15 @@ import { AvisoBanner } from '../components/AvisoBanner'
 import { obtenerSaldoAFavorApartamento } from '../../data/saldoFavorService'
 import { esReciboIndexado } from '../../utils/indexacionHelper'
 import { getTasaBcvNumerica } from '../../utils/tasaBcvHelper'
-import { obtenerResumenGasApartamento, obtenerDeudaGasApartamento, DeudaApartamentoGas, parsePagoMeta } from '../../data/gasService'
+import { obtenerResumenGasApartamento, obtenerDeudaGasApartamento, DeudaApartamentoGas } from '../../data/gasService'
+import { parsePagoMeta } from '../../utils/pagoMeta'
 import { obtenerLocalesPorApartamento, LocalComercial } from '../../data/localesService'
 import { obtenerJunta, MiembroJunta } from '../../data/juntaService'
 import { ModalCartaSolvencia } from '../components/ModalCartaSolvencia'
+
+const ReportarPagoModal = lazy(() =>
+  import('../components/ReportarPagoModal').then((m) => ({ default: m.ReportarPagoModal }))
+)
 import { DatosCartaSolvencia, obtenerMesActualEs, descargarSolvenciaPDF } from '../../utils/solvenciaPdfGenerator'
 import { registrarAccesoResidente } from '../../data/accesosService'
 import { DashboardQuickActions } from './dashboard/DashboardQuickActions'
@@ -559,21 +563,23 @@ export function Dashboard() {
   return (
     <>
       {modalOpen && (
-        <ReportarPagoModal
-          apartamentoId={apartamentoId}
-          aptoNumero={aptoNumero}
-          initialTipo={modalTipoPago}
-          initialCuotaAdelanto={modalCuotaAdelanto}
-          onClose={() => {
-            setModalOpen(false)
-            setModalCuotaAdelanto(null)
-          }}
-          onSuccess={() => {
-            setModalOpen(false)
-            setModalCuotaAdelanto(null)
-            cargarDatosResidente(true)
-          }}
-        />
+        <Suspense fallback={null}>
+          <ReportarPagoModal
+            apartamentoId={apartamentoId}
+            aptoNumero={aptoNumero}
+            initialTipo={modalTipoPago}
+            initialCuotaAdelanto={modalCuotaAdelanto}
+            onClose={() => {
+              setModalOpen(false)
+              setModalCuotaAdelanto(null)
+            }}
+            onSuccess={() => {
+              setModalOpen(false)
+              setModalCuotaAdelanto(null)
+              cargarDatosResidente(true)
+            }}
+          />
+        </Suspense>
       )}
 
       {/* Modal interactivo de Carta de Solvencia */}

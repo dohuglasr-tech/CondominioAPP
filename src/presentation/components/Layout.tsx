@@ -1,10 +1,13 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, lazy, Suspense } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../application/contexts/AuthContext'
 import { useTheme } from '../../application/contexts/ThemeContext'
-import { ReportarPagoModal } from './ReportarPagoModal'
 import { NotificationBell } from './NotificationBell'
 import { ThemeToggle } from './ThemeToggle'
+
+const ReportarPagoModal = lazy(() =>
+  import('./ReportarPagoModal').then((m) => ({ default: m.ReportarPagoModal }))
+)
 
 // ── Minimalist SVG Line Icons monocolor stroke delgado ──────────────────
 const SVG = {
@@ -162,12 +165,14 @@ export const Layout: React.FC = () => {
 
       {/* ── MODAL REPORTAR PAGO (Disponible globalmente para Desktop y Móvil) ── */}
       {reportarPagoModalOpen && (
-        <ReportarPagoModal
-          apartamentoId={apartamentoId}
-          onClose={() => setReportarPagoModalOpen(false)}
-          onSuccess={() => setReportarPagoModalOpen(false)}
-          config={config}
-        />
+        <Suspense fallback={null}>
+          <ReportarPagoModal
+            apartamentoId={apartamentoId}
+            onClose={() => setReportarPagoModalOpen(false)}
+            onSuccess={() => setReportarPagoModalOpen(false)}
+            config={config}
+          />
+        </Suspense>
       )}
 
       {/* ── SIDEBAR (Desktop) ─────────────────────────────── */}

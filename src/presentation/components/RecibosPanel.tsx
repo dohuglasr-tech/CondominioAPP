@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useAuth } from '../../application/contexts/AuthContext'
 import { supabase } from '../../data/supabase'
+import { logger } from '../../utils/logger'
 import { appCache } from '../../data/cacheService'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { ReportarPagoModal } from './ReportarPagoModal'
@@ -413,10 +414,10 @@ export function RecibosPanel({ onClose }: Props) {
         totalBs: recibo.total_bs,
         tasaBcv: getTasaBcvNumerica(recibo.tasa_bcv, config?.tasa_bcv_actual, authConfig?.tasa_bcv_actual, recibo.total_usd > 0 ? parseFloat((recibo.total_bs / recibo.total_usd).toFixed(4)) : null),
         alicuotaPct: formatAlicuotaPct(recibo.alicuota),
-        bancoNombre: config?.banco || authConfig?.banco || 'Banco Bicentenario',
-        cuentaNumero: config?.cuenta_bancaria || authConfig?.cuenta_bancaria || '0175-0525-4100-7575-1351',
-        titularNombre: config?.titular_cuenta || authConfig?.titular_cuenta || 'Zoraya Almeida',
-        cedulaRif: config?.rif || authConfig?.rif || 'V-6089037',
+        bancoNombre: config?.banco || authConfig?.banco || 'Banco por configurar',
+        cuentaNumero: config?.cuenta_bancaria || authConfig?.cuenta_bancaria || 'Cuenta por configurar',
+        titularNombre: config?.titular_cuenta || authConfig?.titular_cuenta || 'Titular por configurar',
+        cedulaRif: config?.rif || authConfig?.rif || 'RIF/Cédula por configurar',
       })
       abrirWhatsApp({ mensaje: msg })
     }
@@ -449,7 +450,7 @@ export function RecibosPanel({ onClose }: Props) {
           <button
             onClick={() => {
               if (onClose && typeof onClose === 'function') {
-                try { onClose() } catch (_) { }
+                try { onClose() } catch (err) { logger.debug('RecibosPanel', 'Fallback cerrando panel', err) }
               }
               navigate('/')
             }}

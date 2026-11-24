@@ -198,13 +198,13 @@ export function decodificarDescripcion(texto: string): {
     cuerpo = cuerpo.replace(catMatch[0], '')
   }
 
-  const aptoMatch = cuerpo.match(/\[APTO:([a-zA-Z0-9_\-\s]+)\]/)
+  const aptoMatch = cuerpo.match(/\[APTO:([a-zA-Z0-9_\s-]+)\]/)
   if (aptoMatch && aptoMatch[1]) {
     apartamentoNumero = aptoMatch[1].trim()
     cuerpo = cuerpo.replace(aptoMatch[0], '')
   }
 
-  const aptoIdMatch = cuerpo.match(/\[APTO_ID:([a-zA-Z0-9_\-]+)\]/)
+  const aptoIdMatch = cuerpo.match(/\[APTO_ID:([a-zA-Z0-9_-]+)\]/)
   if (aptoIdMatch && aptoIdMatch[1]) {
     apartamentoId = aptoIdMatch[1].trim()
     cuerpo = cuerpo.replace(aptoIdMatch[0], '')

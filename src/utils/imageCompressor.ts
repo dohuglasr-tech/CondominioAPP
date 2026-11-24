@@ -73,7 +73,9 @@ export async function comprimirImagen(
             width = maxWidth
           } else {
             width = Math.round((width * maxHeight) / height)
-            maxHeight ? (height = maxHeight) : null
+            if (maxHeight) {
+              height = maxHeight
+            }
           }
         }
 

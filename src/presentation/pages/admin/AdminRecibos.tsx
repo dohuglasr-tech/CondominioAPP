@@ -262,6 +262,8 @@ export const AdminRecibos: React.FC = () => {
       if (!confirmar) return
     }
 
+    let reclamadoEnServidor = false
+    let liquidacionConfirmada = false
     setProcesandoId(id)
     try {
       const pagoObj = pagos.find(p => p.id === id)
@@ -292,6 +294,7 @@ export const AdminRecibos: React.FC = () => {
           return
         } else {
           reclamado = true
+          reclamadoEnServidor = true
           pagoDb = rpcClaim.pago || null
         }
       } else {
@@ -329,6 +332,7 @@ export const AdminRecibos: React.FC = () => {
           yaProcesado = true
         } else {
           reclamado = true
+          reclamadoEnServidor = true
           pagoDb = claimRes.data
         }
       }
@@ -566,6 +570,7 @@ export const AdminRecibos: React.FC = () => {
           }
         }
 
+        liquidacionConfirmada = true
         setPagos(prev => prev.map(p => (p.id === id ? { ...p, estado: accion, notas_admin: notasFinal, notas_limpias: stripPagoMeta(notasFinal) } : p)))
         appCache.invalidateTags(['pagos', 'recibos', 'saldos', 'mora', 'gas', 'deudas_gas', 'calendario_config'])
         if (metaExistente?.tipoServicio === 'gas' || metaExistente?.tipoServicio === 'mixto') {
@@ -574,6 +579,19 @@ export const AdminRecibos: React.FC = () => {
         setTimeout(() => setToastMsg(null), 4000)
     } catch (err: any) {
       console.error('[AdminRecibos] Error en handleAction:', err)
+      if (reclamadoEnServidor && !liquidacionConfirmada) {
+        try {
+          await supabase.rpc('revertir_reclamo_pago', {
+            p_pago_id: id,
+            p_motivo: err?.message || 'Error en conciliación',
+          })
+          setToastMsg('⚠️ Falló la conciliación posterior; el pago se revirtió a pendiente.')
+        } catch (rollbackErr) {
+          console.error('[AdminRecibos] Error revirtiendo reclamo:', rollbackErr)
+          setToastMsg('⚠️ Falló la conciliación; verifica el estado del pago en base de datos.')
+        }
+        setTimeout(() => setToastMsg(null), 6000)
+      }
     } finally {
       setSelected(null)
       setNota('')

@@ -56,8 +56,8 @@ export const NormasResidente: React.FC = () => {
       ciudad: c?.ciudad || '',
       emailContacto: c?.email_contacto || 'administracion@domus.ve',
       telefono: c?.telefono || adminMiembro?.telefono || null,
-      administradorNombre: adminMiembro?.nombre || 'Dohuglas Guevara',
-      presidenteNombre: presidenteMiembro?.nombre || 'Rafael Eduardo Malvares',
+      administradorNombre: adminMiembro?.nombre || 'Administración del Condominio',
+      presidenteNombre: presidenteMiembro?.nombre || 'Presidencia de la Junta',
       fechaEmision: new Date().toLocaleDateString('es-VE', { year: 'numeric', month: 'long', day: 'numeric' })
     }
   }, [c, p, adminMiembro, presidenteMiembro])
