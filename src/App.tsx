@@ -49,6 +49,7 @@ const JuntaCondominioResidente = lazyNamed(() => import('./presentation/pages/Ju
 const GasResidente = lazyNamed(() => import('./presentation/pages/GasResidente'), 'GasResidente')
 const LocalesResidente = lazyNamed(() => import('./presentation/pages/LocalesResidente'), 'LocalesResidente')
 const NormasResidente = lazyNamed(() => import('./presentation/pages/NormasResidente'), 'NormasResidente')
+const FondoReservaResidente = lazyNamed(() => import('./presentation/pages/FondoReservaResidente'), 'FondoReservaResidente')
 
 // Admin & SuperAdmin
 const AdminLogin = lazyNamed(() => import('./presentation/pages/admin/AdminLogin'), 'AdminLogin')
@@ -56,6 +57,7 @@ const AdminLayout = lazyNamed(() => import('./presentation/components/AdminLayou
 const AdminDashboard = lazyNamed(() => import('./presentation/pages/admin/AdminDashboard'), 'AdminDashboard')
 const AdminEdificio = lazyNamed(() => import('./presentation/pages/admin/AdminEdificio'), 'AdminEdificio')
 const AdminGastos = lazyNamed(() => import('./presentation/pages/admin/AdminGastos'), 'AdminGastos')
+const AdminFondoReserva = lazyNamed(() => import('./presentation/pages/admin/AdminFondoReserva'), 'AdminFondoReserva')
 const AdminRecibos = lazyNamed(() => import('./presentation/pages/admin/AdminRecibos'), 'AdminRecibos')
 const AdminResidentes = lazyNamed(() => import('./presentation/pages/admin/AdminResidentes'), 'AdminResidentes')
 const AdminPropuestas = lazyNamed(() => import('./presentation/pages/admin/AdminPropuestas'), 'AdminPropuestas')
@@ -371,6 +373,7 @@ function AppShell() {
           <Route index element={<AdminDashboard />} />
           <Route path="edificio"   element={<AdminEdificio />} />
           <Route path="gastos"     element={<AdminGastos />} />
+          <Route path="fondo-reserva" element={<AdminFondoReserva />} />
           <Route path="recibos"    element={<AdminRecibos />} />
           <Route path="residentes" element={<AdminResidentes />} />
           <Route path="propuestas" element={<AdminPropuestas />} />
@@ -398,6 +401,7 @@ function AppShell() {
         >
           <Route index element={<Dashboard />} />
           <Route path="gastos"     element={<GastosPanel onClose={() => navigate('/')} />} />
+          <Route path="fondo-reserva" element={<FondoReservaResidente />} />
           <Route path="recibos"    element={<RecibosPanel onClose={() => navigate('/')} />} />
           <Route path="normas"     element={<NormasResidente />} />
           <Route path="locales"    element={<LocalesResidente />} />

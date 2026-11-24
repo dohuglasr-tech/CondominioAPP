@@ -152,12 +152,25 @@ const ADMIN_ICONS: Record<string, React.ReactNode> = {
       <line x1="8" y1="9" x2="10" y2="9" />
     </svg>
   ),
+  fondoReserva: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 21h18" />
+      <path d="M3 10h18" />
+      <path d="M5 6l7-3 7 3" />
+      <path d="M4 10v11" />
+      <path d="M20 10v11" />
+      <path d="M8 14v3" />
+      <path d="M12 14v3" />
+      <path d="M16 14v3" />
+    </svg>
+  ),
 }
 
 const adminNav = [
   { key: 'dashboard', label: 'Dashboard', path: '/admin', desc: 'Estadísticas generales' },
   { key: 'edificio', label: 'Edificio', path: '/admin/edificio', desc: 'Información general' },
   { key: 'gastos', label: 'Gastos', path: '/admin/gastos', desc: 'Registrar egresos del mes' },
+  { key: 'fondoReserva', label: 'Fondo de Reserva', path: '/admin/fondo-reserva', desc: 'Ubicaciones, saldos y auditoría' },
   { key: 'recibos', label: 'Recibos', path: '/admin/recibos', desc: 'Aprobar / rechazar pagos', isRecibos: true },
   { key: 'generarRecibos', label: 'Generar Recibos', path: '/admin/generar-recibos', desc: 'Emisión masiva del mes' },
   { key: 'recibosEmitidos', label: 'Recibos Emitidos', path: '/admin/recibos-emitidos', desc: 'Historial y recibos emitidos' },

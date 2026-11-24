@@ -112,6 +112,18 @@ const SVG = {
       <path d="M3 7l9-4 9 4"/>
     </svg>
   ),
+  fondoReserva: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 21h18"/>
+      <path d="M3 10h18"/>
+      <path d="M5 6l7-3 7 3"/>
+      <path d="M4 10v11"/>
+      <path d="M20 10v11"/>
+      <path d="M8 14v3"/>
+      <path d="M12 14v3"/>
+      <path d="M16 14v3"/>
+    </svg>
+  ),
 }
 
 export const Layout: React.FC = () => {
@@ -157,6 +169,7 @@ export const Layout: React.FC = () => {
     { label: 'Incidencias',          desc: 'Reportar averías y tickets', path: '/reportes', icon: 'reportes' },
     { label: 'Propuestas',           desc: 'Votaciones activas',         path: '/propuestas', icon: 'propuestas' },
     { label: 'Gastos Comunes',       desc: 'Relación de egresos',        path: '/gastos',   icon: 'gastos' },
+    { label: 'Fondo de Reserva',     desc: 'Saldos y transparencia junta', path: '/fondo-reserva', icon: 'fondoReserva' },
     { label: 'Mi Perfil',            desc: 'Mis datos de contacto',      path: '/perfil',   icon: 'perfil' },
   ]
 

@@ -6,6 +6,7 @@ import { useAuth } from '../../../application/contexts/AuthContext'
 import { despacharEmailPagoAprobado } from '../../../data/emailService'
 import { aplicarPagoConPrelacion } from '../../../data/pagosPrelacionService'
 import { liquidarCuotasEspecialesDesdePago } from '../../../data/calendarioDeudasService'
+import { acreditarFondoReservaPorRecibo, inferirMonedaPago } from '../../../data/fondoReservaService'
 import {
   parsePagoMeta,
   stripPagoMeta,
@@ -46,7 +47,7 @@ const ESTADO_CONFIG: Record<string, { label: string; color: string; icon: string
 }
 
 export const AdminRecibos: React.FC = () => {
-  const { config } = useAuth()
+  const { config, perfil } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
   const initialFilter = searchParams.get('filtro') || 'todos'
 
@@ -467,6 +468,25 @@ export const AdminRecibos: React.FC = () => {
                   config?.fecha_inicio_gestion
                 )
                 console.log('[AdminRecibos] Resultado conciliación con prelación:', resPrelacion)
+
+                // C. Acreditar Fondo de Reserva únicamente para recibos ordinarios liquidados al 100% (nunca abonos parciales)
+                if (resPrelacion.success && resPrelacion.recibosLiquidados.length > 0) {
+                  const monedaFondo = inferirMonedaPago({
+                    metodo: pagoDb?.metodo,
+                    montoUsd: condUsd > 0 ? condUsd : pagoDb?.monto_usd ?? selected?.monto_usd,
+                    montoBs: condBs > 0 ? condBs : pagoDb?.monto_bs ?? selected?.monto_bs,
+                  })
+                  for (const recId of resPrelacion.recibosLiquidados) {
+                    await acreditarFondoReservaPorRecibo({
+                      reciboId: recId,
+                      monedaPago: monedaFondo,
+                      tasaBcv: tasaActual,
+                      pagoReportadoId: id,
+                      referencia: refPago,
+                      autorNombre: perfil?.nombre_completo || 'Administrador',
+                    })
+                  }
+                }
               } catch (errPrel) {
                 console.error('[AdminRecibos] Error aplicando prelación de pago:', errPrel)
               }
@@ -572,7 +592,7 @@ export const AdminRecibos: React.FC = () => {
 
         liquidacionConfirmada = true
         setPagos(prev => prev.map(p => (p.id === id ? { ...p, estado: accion, notas_admin: notasFinal, notas_limpias: stripPagoMeta(notasFinal) } : p)))
-        appCache.invalidateTags(['pagos', 'recibos', 'saldos', 'mora', 'gas', 'deudas_gas', 'calendario_config'])
+        appCache.invalidateTags(['pagos', 'recibos', 'saldos', 'mora', 'gas', 'deudas_gas', 'calendario_config', 'fondo_reserva'])
         if (metaExistente?.tipoServicio === 'gas' || metaExistente?.tipoServicio === 'mixto') {
           window.dispatchEvent(new CustomEvent('condominio_gas_updated'))
         }

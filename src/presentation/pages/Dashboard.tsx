@@ -32,6 +32,8 @@ import { registrarAccesoResidente } from '../../data/accesosService'
 import { DashboardQuickActions } from './dashboard/DashboardQuickActions'
 import { DashboardPagosRecientesCard } from './dashboard/DashboardPagosRecientesCard'
 import { DashboardSideCards } from './dashboard/DashboardSideCards'
+import { FondoReservaCard } from '../components/FondoReservaCard'
+import { obtenerFondoReservaPortalResidente, calcularTotalesFondoReserva, ResumenFondoReserva } from '../../data/fondoReservaService'
 
 interface PagoItem {
   id: string
@@ -82,6 +84,7 @@ export function Dashboard() {
   const [localesAsignados, setLocalesAsignados] = useState<LocalComercial[]>([])
   const [modalSolvenciaOpen, setModalSolvenciaOpen] = useState(false)
   const [juntaMiembros, setJuntaMiembros] = useState<MiembroJunta[]>([])
+  const [fondoReserva, setFondoReserva] = useState<ResumenFondoReserva | null>(null)
   const [aptDetalle, setAptDetalle] = useState<{ numero?: string; piso?: number | null; propietario_nombre?: string | null } | null>(null)
 
   const { rate, loading: loadingRate } = useBcvRate()
@@ -385,6 +388,7 @@ export function Dashboard() {
         gasRes,
         localesRes,
         juntaRes,
+        fondoReservaRes,
       ] = await Promise.allSettled([
         appCache.fetch(
           `dashboard_pagos_${targetKey}`,
@@ -421,6 +425,7 @@ export function Dashboard() {
         obtenerResumenGasApartamento(apartamentoId, aptoNumero, forceRefresh),
         obtenerLocalesPorApartamento(apartamentoId, aptoNumero),
         obtenerJunta(forceRefresh),
+        obtenerFondoReservaPortalResidente(tasaValidaRef.current, forceRefresh, 5),
       ])
 
       if (pagosRes.status === 'fulfilled') {
@@ -466,6 +471,12 @@ export function Dashboard() {
         if (juntaRes.value?.data) setJuntaMiembros(juntaRes.value.data)
       } else {
         console.warn('[Dashboard] Error cargando junta:', juntaRes.reason)
+      }
+
+      if (fondoReservaRes.status === 'fulfilled' && fondoReservaRes.value) {
+        setFondoReserva(fondoReservaRes.value)
+      } else if (fondoReservaRes.status === 'rejected') {
+        console.warn('[Dashboard] Error cargando fondo de reserva:', fondoReservaRes.reason)
       }
     } catch (err) {
       console.warn('[Dashboard] Error cargando datos del residente:', err)
@@ -1872,6 +1883,15 @@ export function Dashboard() {
             )}
           </div>
 
+          <FondoReservaCard
+            ubicaciones={fondoReserva?.ubicaciones || []}
+            movimientos={fondoReserva?.movimientos || []}
+            totales={calcularTotalesFondoReserva(fondoReserva?.ubicaciones || [], tasaValida)}
+            ocultarSaldos={ocultarSaldos}
+            compact={true}
+            onVerDetalle={() => navigate('/fondo-reserva')}
+          />
+
         </div>
 
 
@@ -3031,6 +3051,15 @@ export function Dashboard() {
               <DashboardPagosRecientesCard
                 pagosRecientes={pagosRecientes}
                 onVerHistorialCompleto={() => navigate('/recibos')}
+              />
+
+              <FondoReservaCard
+                ubicaciones={fondoReserva?.ubicaciones || []}
+                movimientos={fondoReserva?.movimientos || []}
+                totales={calcularTotalesFondoReserva(fondoReserva?.ubicaciones || [], tasaValida)}
+                ocultarSaldos={ocultarSaldos}
+                compact={true}
+                onVerDetalle={() => navigate('/fondo-reserva')}
               />
 
             </div>

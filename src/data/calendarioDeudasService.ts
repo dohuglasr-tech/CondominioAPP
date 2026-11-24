@@ -10,6 +10,7 @@ import { getHoyVE } from '../utils/fechaVE'
 import { getTasaBcvNumerica } from '../utils/tasaBcvHelper'
 import { getActiveEdificioId } from './tenantContext'
 import { logger, getErrorMessage } from '../utils/logger'
+import { acreditarFondoReservaPorRecibo, inferirMonedaPago } from './fondoReservaService'
 
 export interface ReciboMesItem {
   id: string
@@ -1164,7 +1165,7 @@ export async function guardarMontoReciboPersonalizado(params: EditarMontoCuotaPa
 
       if (updErr) throw updErr
     } else {
-      const { error: insErr } = await supabase
+      const { data: insRec, error: insErr } = await supabase
         .from('recibos_generados')
         .insert({
           apartamento_id: apartamentoId,
@@ -1179,8 +1180,26 @@ export async function guardarMontoReciboPersonalizado(params: EditarMontoCuotaPa
           data_json: dataJsonMerged,
           emitido_at: new Date().toISOString()
         })
+        .select('id')
+        .single()
 
       if (insErr) throw insErr
+      if (insRec?.id) {
+        targetReciboId = insRec.id
+      }
+    }
+
+    // 1.1 Acreditar aporte al Fondo de Reserva si el recibo ordinario pasó a solvente (100% pagado, idempotente)
+    if (estado === 'pagado' && targetReciboId) {
+      await acreditarFondoReservaPorRecibo({
+        reciboId: targetReciboId,
+        monedaPago: inferirMonedaPago({ metodo, monedaExplicita: moneda, montoUsd, montoBs }),
+        tasaBcv: tasaBcvAplicada,
+        referencia: refFinal,
+        autorNombre: autorNombre || 'Administrador',
+      }).catch((frErr) => {
+        logger.debug('calendarioDeudasService', 'Aviso acreditando fondo de reserva en calendario', frErr)
+      })
     }
 
     // 2. Si se marcó como pagado, asentar en pagos_reportados para sincronización completa
@@ -1275,7 +1294,7 @@ export async function guardarMontoReciboPersonalizado(params: EditarMontoCuotaPa
     }).catch(() => { })
 
     // 5. Invalida todas las etiquetas de caché para sincronización total inmediata
-    appCache.invalidateTags(['recibos', 'saldos', 'mora', 'apartamentos', 'calendario_config', 'pagos'])
+    appCache.invalidateTags(['recibos', 'saldos', 'mora', 'apartamentos', 'calendario_config', 'pagos', 'fondo_reserva'])
     appCache.invalidatePattern(/^calendario_matriz/)
 
     return { success: true, error: null }
