@@ -347,7 +347,7 @@ export const AdminRecibos: React.FC = () => {
             let condBs = metaPago?.tipoServicio === 'mixto' ? Number(metaPago.condominioMontoBs || 0) : montoTotalBs
             let condUsd = metaPago?.tipoServicio === 'mixto' ? Number(metaPago.condominioMontoUsd ?? 0) : Number(pagoDb?.monto_usd || 0)
 
-            // Liquidar cuotas extraoficiales / especiales seleccionadas antes de aplicar prelación ordinaria
+            // Liquidar cuotas extraoficiales / especiales seleccionadas (vigentes o adelantadas futuras) antes de prelación ordinaria
             if (metaPago?.cuotasEspeciales && metaPago.cuotasEspeciales.length > 0 && (condBs > 0.01 || condUsd > 0.01)) {
               try {
                 const resCuotas = await liquidarCuotasEspecialesDesdePago({
@@ -355,7 +355,9 @@ export const AdminRecibos: React.FC = () => {
                   cuotasEspeciales: metaPago.cuotasEspeciales,
                   montoDisponibleBs: condBs,
                   montoDisponibleUsd: condUsd,
-                  tasaBcv: tasaActual
+                  tasaBcv: tasaActual,
+                  esAdelantado: Boolean(metaPago.esAdelantoCuotaFutura),
+                  fechaPago: fechaPagoStr
                 })
                 condBs = Math.max(0, Number((condBs - resCuotas.liquidadoBs).toFixed(2)))
                 condUsd = Math.max(0, Number((condUsd - resCuotas.liquidadoUsd).toFixed(2)))
@@ -364,7 +366,7 @@ export const AdminRecibos: React.FC = () => {
               }
             }
 
-            if (condBs > 0.01 || condUsd > 0.01) {
+            if (!metaPago?.soloCuotasEspeciales && (condBs > 0.01 || condUsd > 0.01)) {
               try {
                 const resPrelacion = await aplicarPagoConPrelacion(
                   {
@@ -798,6 +800,21 @@ export const AdminRecibos: React.FC = () => {
                       }}>
                         {pago.servicio === 'gas' ? '⛽ Gas Comunal' : pago.servicio === 'mixto' ? '🔀 Mixto (Cond. + Gas)' : '🏢 Condominio'}
                       </span>
+                      {(pago.metaDomus?.esAdelantoCuotaFutura || pago.metaDomus?.cuotasEspeciales?.some(c => c.esAdelantado)) && (
+                        <span style={{
+                          backgroundColor: 'rgba(14, 165, 233, 0.16)',
+                          color: '#38bdf8',
+                          border: '1px solid rgba(56, 189, 248, 0.35)',
+                          padding: '2px 8px',
+                          borderRadius: '6px',
+                          fontSize: '11px',
+                          fontWeight: 800,
+                        }}>
+                          {pago.metaDomus?.esAbonoParcialAdelanto
+                            ? '🌗 Abono Adelantado · Cuota Extraordinaria'
+                            : '🗓️ Pago Adelantado · Cuota Extraordinaria'}
+                        </span>
+                      )}
                     </div>
 
                     <p style={{ color: '#888', fontSize: '12px', marginTop: '6px', margin: 0 }}>
@@ -808,6 +825,23 @@ export const AdminRecibos: React.FC = () => {
                       <p style={{ color: '#aaa', fontSize: '12px', marginTop: '6px', margin: 0, fontStyle: 'italic' }}>
                         Nota: {pago.notas_limpias || stripPagoMeta(pago.notas_admin)}
                       </p>
+                    )}
+
+                    {pago.metaDomus?.cuotasEspeciales && pago.metaDomus.cuotasEspeciales.length > 0 && (
+                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '6px', fontSize: '11px' }}>
+                        {pago.metaDomus.cuotasEspeciales.map((ce, idx) => (
+                          <span key={`${ce.columnaId}-${idx}`} style={{
+                            backgroundColor: ce.esAdelantado ? 'rgba(14, 165, 233, 0.12)' : 'rgba(234, 179, 8, 0.12)',
+                            border: ce.esAdelantado ? '1px solid rgba(56, 189, 248, 0.28)' : '1px solid rgba(234, 179, 8, 0.28)',
+                            color: ce.esAdelantado ? '#7dd3fc' : '#fde047',
+                            padding: '2px 8px',
+                            borderRadius: '6px',
+                            fontWeight: 700
+                          }}>
+                            ✨ {ce.titulo}{ce.fechaEmision ? ` (Inicio: ${ce.fechaEmision})` : ''}
+                          </span>
+                        ))}
+                      </div>
                     )}
 
                     {pago.servicio === 'mixto' && pago.metaDomus && (

@@ -71,14 +71,24 @@ export interface FilaPersonalizadaConfig {
   alicuota?: number
 }
 
+export interface ValorCeldaPersonalizada {
+  monto: number
+  estado: 'pendiente' | 'pagado'
+  moneda?: 'USD' | 'BS'
+  montoOriginal?: number
+  abonado?: number
+  pagadoPorAdelantado?: boolean
+  ultimaFechaAbono?: string
+}
+
 export interface ConfiguracionCalendario {
   tituloSeccionHistorica: string
   tituloSeccionMensual?: string
   columnas: ColumnaCalendarioConfig[]
   filasPersonalizadas: FilaPersonalizadaConfig[]
   filasOcultasIds: string[]
-  // Valores de columnas personalizadas: [filaId][columnaId] = { monto: number, estado: 'pendiente' | 'pagado' }
-  valoresCeldasPersonalizadas: Record<string, Record<string, { monto: number; estado: 'pendiente' | 'pagado' }>>
+  // Valores de columnas personalizadas: [filaId][columnaId] = { monto, estado, ... }
+  valoresCeldasPersonalizadas: Record<string, Record<string, ValorCeldaPersonalizada>>
   filasCuotasEspeciales?: FilaCuotaEspecial[]
 }
 
@@ -392,7 +402,7 @@ export interface FilaCalendarioApto {
   saldo_a_favor_bs: number
 
   // Valores de columnas personalizadas (clave: colId)
-  valores_personalizados?: Record<string, { monto: number; estado: 'pendiente' | 'pagado'; moneda?: 'USD' | 'BS' }>
+  valores_personalizados?: Record<string, ValorCeldaPersonalizada>
   esPersonalizada?: boolean
 
   // Referencia a deudas_mora en DB
@@ -1220,12 +1230,24 @@ export async function guardarCeldaPersonalizada(params: {
     const colMeta = (config.columnas || []).find(c => c.id === params.columnaId)
     const monedaFinal = params.moneda || colMeta?.moneda || 'USD'
     const montoNum = parsearMontoFlexible(params.monto, monedaFinal)
+    const prev = config.valoresCeldasPersonalizadas[params.filaId][params.columnaId]
+    const hoyIsoCell = obtenerFechaHoyLocalIso()
+    const esFuturaCol = Boolean(colMeta?.fechaEmision && clasificarCuotaExtraordinaria(colMeta.fechaEmision, colMeta.fechaLimite, hoyIsoCell) === 'programada')
+    const montoOrig = Number(prev?.montoOriginal ?? colMeta?.montoDefecto ?? montoNum)
 
     config.valoresCeldasPersonalizadas[params.filaId][params.columnaId] = {
       monto: montoNum,
       estado: params.estado,
-      moneda: monedaFinal
-    } as any
+      moneda: monedaFinal,
+      ...(montoOrig > 0 ? { montoOriginal: montoOrig } : {}),
+      ...(params.estado === 'pagado'
+        ? {
+            abonado: Math.max(Number(prev?.abonado || 0), montoOrig || montoNum),
+            pagadoPorAdelantado: Boolean(prev?.pagadoPorAdelantado || esFuturaCol),
+            ultimaFechaAbono: hoyIsoCell
+          }
+        : (prev?.abonado ? { abonado: prev.abonado } : {}))
+    }
 
     await guardarConfiguracionCalendario(config, anio)
 
@@ -1625,10 +1647,20 @@ export async function editarColumnaPersonalizada(params: {
  */
 export async function liquidarCuotasEspecialesDesdePago(params: {
   apartamentoId: string
-  cuotasEspeciales: Array<{ columnaId: string; anio: number; monto: number; moneda: 'USD' | 'BS' }>
+  cuotasEspeciales: Array<{
+    columnaId: string
+    anio: number
+    monto: number
+    moneda: 'USD' | 'BS'
+    esAdelantado?: boolean
+    fechaEmision?: string
+    montoOriginal?: number
+  }>
   montoDisponibleBs: number
   montoDisponibleUsd: number
   tasaBcv: number
+  esAdelantado?: boolean
+  fechaPago?: string
 }): Promise<{ liquidadoBs: number; liquidadoUsd: number; error?: string | null }> {
   try {
     if (!params.apartamentoId || !params.cuotasEspeciales?.length) {
@@ -1636,6 +1668,8 @@ export async function liquidarCuotasEspecialesDesdePago(params: {
     }
 
     const tasa = params.tasaBcv > 1 ? params.tasaBcv : 859.06
+    const hoyIso = obtenerFechaHoyLocalIso()
+    const fechaAbono = (params.fechaPago || hoyIso).slice(0, 10)
     let budgetBs = Number(params.montoDisponibleBs || 0)
     let budgetUsd = Number(params.montoDisponibleUsd || 0)
     if (budgetBs <= 0 && budgetUsd > 0) budgetBs = Number((budgetUsd * tasa).toFixed(2))
@@ -1665,35 +1699,53 @@ export async function liquidarCuotasEspecialesDesdePago(params: {
         if (budgetBs <= 0.01 && budgetUsd <= 0.01) break
         const col = (config.columnas || []).find(c => c.id === item.columnaId)
         const celdaActual = config.valoresCeldasPersonalizadas[params.apartamentoId][item.columnaId]
-        const montoActual = Number(celdaActual?.monto ?? item.monto ?? col?.montoDefecto ?? 0)
+        const montoActual = Number(celdaActual?.monto ?? col?.montoDefecto ?? item.monto ?? 0)
         const estadoActual = celdaActual?.estado || 'pendiente'
         if (estadoActual === 'pagado' || montoActual <= 0.01) continue
 
-        const mon = (celdaActual as any)?.moneda || item.moneda || col?.moneda || 'USD'
+        const mon = celdaActual?.moneda || item.moneda || col?.moneda || 'USD'
+        const montoOriginal = Number(celdaActual?.montoOriginal ?? item.montoOriginal ?? col?.montoDefecto ?? montoActual)
+        const abonadoPrevio = Number(celdaActual?.abonado || 0)
+        const esAdelantadoEfectivo = Boolean(
+          item.esAdelantado ||
+          params.esAdelantado ||
+          (col?.fechaEmision && clasificarCuotaExtraordinaria(col.fechaEmision, col.fechaLimite, hoyIso) === 'programada')
+        )
+
         const deudaBs = mon === 'BS' ? montoActual : Number((montoActual * tasa).toFixed(2))
         const deudaUsd = mon === 'USD' ? montoActual : Number((montoActual / tasa).toFixed(2))
 
         const cubre = mon === 'USD' ? (budgetUsd + 0.05 >= deudaUsd) : (budgetBs + 0.05 >= deudaBs)
         if (cubre) {
           config.valoresCeldasPersonalizadas[params.apartamentoId][item.columnaId] = {
-            monto: montoActual,
+            monto: montoOriginal,
             estado: 'pagado',
-            moneda: mon
-          } as any
+            moneda: mon,
+            montoOriginal,
+            abonado: montoOriginal,
+            pagadoPorAdelantado: Boolean(celdaActual?.pagadoPorAdelantado || esAdelantadoEfectivo),
+            ultimaFechaAbono: fechaAbono
+          }
           budgetBs = Math.max(0, Number((budgetBs - deudaBs).toFixed(2)))
           budgetUsd = Math.max(0, Number((budgetUsd - deudaUsd).toFixed(2)))
-          liquidadoBs += deudaBs
-          liquidadoUsd += deudaUsd
+          liquidadoBs += Math.min(deudaBs, Number(params.montoDisponibleBs || deudaBs))
+          liquidadoUsd += Math.min(deudaUsd, Number(params.montoDisponibleUsd || deudaUsd))
           huboCambio = true
         } else {
-          // Abono parcial sobre la cuota extraordinaria
+          // Abono parcial sobre la cuota extraordinaria (vigente o adelantada futura)
           const abonoMon = mon === 'USD' ? budgetUsd : budgetBs
           const restante = Math.max(0, Number((montoActual - abonoMon).toFixed(2)))
+          const nuevoAbonado = Number(Math.min(montoOriginal, abonadoPrevio + abonoMon).toFixed(2))
+          const saldado = restante <= 0.05
           config.valoresCeldasPersonalizadas[params.apartamentoId][item.columnaId] = {
-            monto: restante,
-            estado: restante <= 0.05 ? 'pagado' : 'pendiente',
-            moneda: mon
-          } as any
+            monto: saldado ? montoOriginal : restante,
+            estado: saldado ? 'pagado' : 'pendiente',
+            moneda: mon,
+            montoOriginal,
+            abonado: saldado ? montoOriginal : nuevoAbonado,
+            pagadoPorAdelantado: Boolean(celdaActual?.pagadoPorAdelantado || esAdelantadoEfectivo),
+            ultimaFechaAbono: fechaAbono
+          }
           liquidadoBs += budgetBs
           liquidadoUsd += budgetUsd
           budgetBs = 0

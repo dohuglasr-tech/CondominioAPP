@@ -58,6 +58,7 @@ export function Dashboard() {
 
   const [modalOpen, setModalOpen] = useState(false)
   const [modalTipoPago, setModalTipoPago] = useState<'todos' | 'gas' | 'condominio'>('todos')
+  const [modalCuotaAdelanto, setModalCuotaAdelanto] = useState<{ cuotaId: string; modo: 'total' | 'abono' } | null>(null)
   const [ocultarSaldos, setOcultarSaldos] = useState(false)
   const [alicuota, setAlicuota] = useState<number>(1.59)
   const [esPenthouse, setEsPenthouse] = useState(false)
@@ -263,6 +264,10 @@ export function Dashboard() {
     )
   )
 
+  const ultimoPagoEsAdelantoFuturo = Boolean(
+    ultimoPago && parsePagoMeta(ultimoPago.notas_admin)?.esAdelantoCuotaFutura
+  )
+
   const estaSolvente = Boolean(
     !tieneDeudaTotal &&
     !tieneDeudaCondominio &&
@@ -271,7 +276,7 @@ export function Dashboard() {
     recibosPendientesList.length === 0 &&
     deudaTotalConsolidadaBs <= 0.05 &&
     deudaTotalConsolidadaUsd <= 0.05 &&
-    ultimoPago?.estado !== 'pendiente'
+    !(ultimoPago?.estado === 'pendiente' && !ultimoPagoEsAdelantoFuturo)
   )
 
   const adminMiembro = juntaMiembros.find(m => m.categoria === 'administracion' || m.cargo.toLowerCase().includes('administrad'))
@@ -524,9 +529,14 @@ export function Dashboard() {
           apartamentoId={apartamentoId}
           aptoNumero={aptoNumero}
           initialTipo={modalTipoPago}
-          onClose={() => setModalOpen(false)}
+          initialCuotaAdelanto={modalCuotaAdelanto}
+          onClose={() => {
+            setModalOpen(false)
+            setModalCuotaAdelanto(null)
+          }}
           onSuccess={() => {
             setModalOpen(false)
+            setModalCuotaAdelanto(null)
             cargarDatosResidente(true)
           }}
         />
@@ -1226,42 +1236,136 @@ export function Dashboard() {
                 Este cargo aún no se suma a tu deuda actual ni afecta tu solvencia. Entrará en vigencia a partir de la fecha indicada.
               </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {cuotasExtraProgramadas.map(ce => (
-                  <div key={ce.id} className="domus-cuota-item" style={{
-                    backgroundColor: isLight ? '#f8fafc' : 'rgba(0,0,0,0.28)',
-                    border: isLight ? '1px solid #cbd5e1' : '1px solid rgba(56, 189, 248, 0.2)',
-                    borderRadius: '12px',
-                    padding: '10px 12px',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    gap: '10px'
-                  }}>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '2px' }}>
-                        <span style={{
-                          fontSize: '9.5px', fontWeight: 800, padding: '1px 6px', borderRadius: '4px',
-                          backgroundColor: isLight ? '#e0f2fe' : 'rgba(56, 189, 248, 0.18)',
-                          color: isLight ? '#0369a1' : '#7dd3fc'
-                        }}>Cuota Extraordinaria</span>
+                {cuotasExtraProgramadas.map(ce => {
+                  const pagadaAdelantado = ce.estado === 'pagado' && Boolean(ce.pagadoPorAdelantado)
+                  const abonado = Number(ce.abonado || 0)
+                  const montoOrig = Number(ce.montoOriginal || ce.monto || abonado)
+                  const tieneAbono = !pagadaAdelantado && abonado > 0.01
+                  const pctAbono = montoOrig > 0 ? Math.min(100, Math.round((abonado / montoOrig) * 100)) : 0
+                  return (
+                    <div key={ce.id} className="domus-cuota-item" style={{
+                      backgroundColor: isLight ? '#f8fafc' : 'rgba(0,0,0,0.28)',
+                      border: pagadaAdelantado
+                        ? (isLight ? '1px solid #86efac' : '1px solid rgba(34, 197, 94, 0.35)')
+                        : (isLight ? '1px solid #cbd5e1' : '1px solid rgba(56, 189, 248, 0.2)'),
+                      borderRadius: '12px',
+                      padding: '11px 12px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '8px'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px' }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '2px' }}>
+                            <span style={{
+                              fontSize: '9.5px', fontWeight: 800, padding: '1px 6px', borderRadius: '4px',
+                              backgroundColor: isLight ? '#e0f2fe' : 'rgba(56, 189, 248, 0.18)',
+                              color: isLight ? '#0369a1' : '#7dd3fc'
+                            }}>Cuota Extraordinaria</span>
+                            {pagadaAdelantado && (
+                              <span style={{
+                                fontSize: '9.5px', fontWeight: 800, padding: '1px 6px', borderRadius: '4px',
+                                backgroundColor: isLight ? '#dcfce7' : 'rgba(34, 197, 94, 0.18)',
+                                color: isLight ? '#15803d' : '#4ade80'
+                              }}>✅ Pagada por adelantado</span>
+                            )}
+                            {tieneAbono && (
+                              <span style={{
+                                fontSize: '9.5px', fontWeight: 800, padding: '1px 6px', borderRadius: '4px',
+                                backgroundColor: isLight ? '#fef3c7' : 'rgba(245, 158, 11, 0.18)',
+                                color: isLight ? '#b45309' : '#fbbf24'
+                              }}>🌗 Abonada parcialmente</span>
+                            )}
+                          </div>
+                          <div style={{ color: isLight ? '#0f172a' : '#fff', fontSize: '13px', fontWeight: 700 }}>{ce.label}</div>
+                          {ce.descripcion && (
+                            <div style={{ color: isLight ? '#475569' : '#94a3b8', fontSize: '11px', marginTop: '2px', lineHeight: 1.35 }}>{ce.descripcion}</div>
+                          )}
+                          <div style={{ fontSize: '10.5px', color: pagadaAdelantado ? (isLight ? '#15803d' : '#4ade80') : (isLight ? '#0369a1' : '#38bdf8'), fontWeight: 700, marginTop: '4px' }}>
+                            {pagadaAdelantado
+                              ? `Liquidada al 100% · No generará deuda el ${formatearFechaCortaEs(ce.fechaEmision)}`
+                              : `📅 Cobro a partir del ${formatearFechaCortaEs(ce.fechaEmision)}${ce.fechaLimite ? ` · Límite: ${formatearFechaCortaEs(ce.fechaLimite)}` : ''}`}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                          <div style={{
+                            color: pagadaAdelantado
+                              ? (isLight ? '#15803d' : '#4ade80')
+                              : (ce.moneda === 'BS' ? (isLight ? '#c2410c' : '#fb923c') : (isLight ? '#0369a1' : '#38bdf8')),
+                            fontWeight: 800, fontSize: '13px'
+                          }}>
+                            {pagadaAdelantado
+                              ? (ce.moneda === 'BS' ? `Bs. ${fmtBs(montoOrig)}` : `$${montoOrig.toFixed(2)} USD`)
+                              : (ce.moneda === 'BS' ? `Bs. ${fmtBs(ce.monto)}` : `$${ce.monto.toFixed(2)} USD`)}
+                          </div>
+                          <div style={{ fontSize: '10px', color: isLight ? '#64748b' : '#94a3b8' }}>
+                            {pagadaAdelantado ? 'Saldada anticipadamente' : (tieneAbono ? 'Saldo restante' : 'No incluido en saldo actual')}
+                          </div>
+                        </div>
                       </div>
-                      <div style={{ color: isLight ? '#0f172a' : '#fff', fontSize: '13px', fontWeight: 700 }}>{ce.label}</div>
-                      {ce.descripcion && (
-                        <div style={{ color: isLight ? '#475569' : '#94a3b8', fontSize: '11px', marginTop: '2px', lineHeight: 1.35 }}>{ce.descripcion}</div>
+
+                      {tieneAbono && (
+                        <div style={{ marginTop: '2px' }}>
+                          <div style={{ height: '5px', backgroundColor: isLight ? '#e2e8f0' : 'rgba(255,255,255,0.08)', borderRadius: '999px', overflow: 'hidden', marginBottom: '4px' }}>
+                            <div style={{ width: `${pctAbono}%`, height: '100%', backgroundColor: '#10b981' }} />
+                          </div>
+                          <div style={{ fontSize: '10.5px', color: isLight ? '#475569' : '#94a3b8', display: 'flex', justifyContent: 'space-between' }}>
+                            <span>Abonado: <b style={{ color: isLight ? '#047857' : '#34d399' }}>{ce.moneda === 'BS' ? `Bs. ${fmtBs(abonado)}` : `$${abonado.toFixed(2)}`}</b></span>
+                            <span>Total cuota: {ce.moneda === 'BS' ? `Bs. ${fmtBs(montoOrig)}` : `$${montoOrig.toFixed(2)}`}</span>
+                          </div>
+                        </div>
                       )}
-                      <div style={{ fontSize: '10.5px', color: isLight ? '#0369a1' : '#38bdf8', fontWeight: 700, marginTop: '4px' }}>
-                        📅 Cobro a partir del {formatearFechaCortaEs(ce.fechaEmision)}
-                        {ce.fechaLimite ? ` · Límite: ${formatearFechaCortaEs(ce.fechaLimite)}` : ''}
-                      </div>
+
+                      {!pagadaAdelantado && ce.monto > 0.01 && (
+                        <div style={{ display: 'flex', gap: '8px', paddingTop: '2px' }}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setModalTipoPago('condominio')
+                              setModalCuotaAdelanto({ cuotaId: ce.id, modo: 'total' })
+                              setModalOpen(true)
+                            }}
+                            style={{
+                              flex: 1,
+                              backgroundColor: isLight ? '#0284c7' : 'rgba(14, 165, 233, 0.2)',
+                              border: isLight ? '1px solid #0284c7' : '1px solid rgba(56, 189, 248, 0.4)',
+                              color: isLight ? '#ffffff' : '#7dd3fc',
+                              borderRadius: '8px',
+                              padding: '6px 10px',
+                              fontSize: '11px',
+                              fontWeight: 800,
+                              cursor: 'pointer'
+                            }}
+                            className="domus-keep-white"
+                          >
+                            💳 Pagar por adelantado
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setModalTipoPago('condominio')
+                              setModalCuotaAdelanto({ cuotaId: ce.id, modo: 'abono' })
+                              setModalOpen(true)
+                            }}
+                            style={{
+                              flex: 1,
+                              backgroundColor: isLight ? '#f1f5f9' : 'rgba(255, 255, 255, 0.06)',
+                              border: isLight ? '1px solid #cbd5e1' : '1px solid rgba(255, 255, 255, 0.16)',
+                              color: isLight ? '#0f172a' : '#e2e8f0',
+                              borderRadius: '8px',
+                              padding: '6px 10px',
+                              fontSize: '11px',
+                              fontWeight: 800,
+                              cursor: 'pointer'
+                            }}
+                          >
+                            ➕ Abonar a cuota
+                          </button>
+                        </div>
+                      )}
                     </div>
-                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                      <div style={{ color: ce.moneda === 'BS' ? (isLight ? '#c2410c' : '#fb923c') : (isLight ? '#0369a1' : '#38bdf8'), fontWeight: 800, fontSize: '13px' }}>
-                        {ce.moneda === 'BS' ? `Bs. ${fmtBs(ce.monto)}` : `$${ce.monto.toFixed(2)} USD`}
-                      </div>
-                      <div style={{ fontSize: '10px', color: isLight ? '#64748b' : '#94a3b8' }}>No incluido en saldo actual</div>
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
           )}
@@ -1879,6 +1983,13 @@ export function Dashboard() {
                             </span>
                             {(() => {
                               const m = parsePagoMeta(pago.notas_admin)
+                              if (m?.esAdelantoCuotaFutura) {
+                                return (
+                                  <span style={{ fontSize: '9.5px', fontWeight: 800, color: '#38bdf8', backgroundColor: 'rgba(14,165,233,0.16)', padding: '1px 6px', borderRadius: '4px' }}>
+                                    {m.esAbonoParcialAdelanto ? '🌗 Abono Adelantado' : '🗓️ Pago Adelantado'}
+                                  </span>
+                                )
+                              }
                               if (m?.tipoServicio === 'gas') return <span style={{ fontSize: '9.5px', fontWeight: 800, color: '#fb923c', backgroundColor: 'rgba(249,115,22,0.16)', padding: '1px 6px', borderRadius: '4px' }}>⛽ Gas</span>
                               if (m?.tipoServicio === 'mixto') return <span style={{ fontSize: '9.5px', fontWeight: 800, color: '#c084fc', backgroundColor: 'rgba(168,85,247,0.16)', padding: '1px 6px', borderRadius: '4px' }}>🔀 Mixto</span>
                               return null
@@ -2173,46 +2284,140 @@ export function Dashboard() {
                   Programado · No exigible aún
                 </span>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '10px' }}>
-                {cuotasExtraProgramadas.map(ce => (
-                  <div key={ce.id} className="domus-cuota-item" style={{
-                    backgroundColor: isLight ? '#f8fafc' : 'rgba(0,0,0,0.28)',
-                    border: isLight ? '1px solid #cbd5e1' : '1px solid rgba(56,189,248,0.2)',
-                    borderRadius: '14px',
-                    padding: '12px 14px',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    gap: '12px'
-                  }}>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '3px' }}>
-                        <span style={{
-                          fontSize: '10px', fontWeight: 800, padding: '2px 7px', borderRadius: '5px',
-                          backgroundColor: isLight ? '#e0f2fe' : 'rgba(56, 189, 248, 0.18)',
-                          color: isLight ? '#0369a1' : '#7dd3fc'
-                        }}>Cuota Extraordinaria</span>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '10px' }}>
+                {cuotasExtraProgramadas.map(ce => {
+                  const pagadaAdelantado = ce.estado === 'pagado' && Boolean(ce.pagadoPorAdelantado)
+                  const abonado = Number(ce.abonado || 0)
+                  const montoOrig = Number(ce.montoOriginal || ce.monto || abonado)
+                  const tieneAbono = !pagadaAdelantado && abonado > 0.01
+                  const pctAbono = montoOrig > 0 ? Math.min(100, Math.round((abonado / montoOrig) * 100)) : 0
+                  return (
+                    <div key={ce.id} className="domus-cuota-item" style={{
+                      backgroundColor: isLight ? '#f8fafc' : 'rgba(0,0,0,0.28)',
+                      border: pagadaAdelantado
+                        ? (isLight ? '1px solid #86efac' : '1px solid rgba(34, 197, 94, 0.35)')
+                        : (isLight ? '1px solid #cbd5e1' : '1px solid rgba(56,189,248,0.2)'),
+                      borderRadius: '14px',
+                      padding: '14px 16px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '10px'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '4px' }}>
+                            <span style={{
+                              fontSize: '10px', fontWeight: 800, padding: '2px 7px', borderRadius: '5px',
+                              backgroundColor: isLight ? '#e0f2fe' : 'rgba(56, 189, 248, 0.18)',
+                              color: isLight ? '#0369a1' : '#7dd3fc'
+                            }}>Cuota Extraordinaria</span>
+                            {pagadaAdelantado && (
+                              <span style={{
+                                fontSize: '10px', fontWeight: 800, padding: '2px 7px', borderRadius: '5px',
+                                backgroundColor: isLight ? '#dcfce7' : 'rgba(34, 197, 94, 0.18)',
+                                color: isLight ? '#15803d' : '#4ade80'
+                              }}>✅ Pagada por adelantado</span>
+                            )}
+                            {tieneAbono && (
+                              <span style={{
+                                fontSize: '10px', fontWeight: 800, padding: '2px 7px', borderRadius: '5px',
+                                backgroundColor: isLight ? '#fef3c7' : 'rgba(245, 158, 11, 0.18)',
+                                color: isLight ? '#b45309' : '#fbbf24'
+                              }}>🌗 Abonada parcialmente</span>
+                            )}
+                          </div>
+                          <div style={{ color: isLight ? '#0f172a' : '#fff', fontSize: '13.5px', fontWeight: 700 }}>{ce.label}</div>
+                          {ce.descripcion && (
+                            <div style={{ color: isLight ? '#475569' : '#94a3b8', fontSize: '11.5px', marginTop: '3px', lineHeight: 1.4 }}>{ce.descripcion}</div>
+                          )}
+                          <div style={{ fontSize: '11px', color: pagadaAdelantado ? (isLight ? '#15803d' : '#4ade80') : (isLight ? '#0369a1' : '#38bdf8'), fontWeight: 700, marginTop: '5px' }}>
+                            {pagadaAdelantado
+                              ? `Liquidada al 100% · No generará deuda el ${formatearFechaCortaEs(ce.fechaEmision)}`
+                              : `📅 Cobro a partir del ${formatearFechaCortaEs(ce.fechaEmision)}${ce.fechaLimite ? ` · Fecha límite: ${formatearFechaCortaEs(ce.fechaLimite)}` : ''}`}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                          <div style={{
+                            color: pagadaAdelantado
+                              ? (isLight ? '#15803d' : '#4ade80')
+                              : (ce.moneda === 'BS' ? (isLight ? '#c2410c' : '#fb923c') : (isLight ? '#0369a1' : '#38bdf8')),
+                            fontWeight: 900, fontSize: '15px'
+                          }}>
+                            {pagadaAdelantado
+                              ? (ce.moneda === 'BS' ? `Bs. ${fmtBs(montoOrig)}` : `$${montoOrig.toFixed(2)} USD`)
+                              : (ce.moneda === 'BS' ? `Bs. ${fmtBs(ce.monto)}` : `$${ce.monto.toFixed(2)} USD`)}
+                          </div>
+                          <div style={{ fontSize: '10.5px', color: isLight ? '#64748b' : '#94a3b8' }}>
+                            {ce.moneda === 'BS'
+                              ? `≈ $${((pagadaAdelantado ? montoOrig : ce.monto) / tasaValida).toFixed(2)}`
+                              : `≈ Bs. ${fmtBs((pagadaAdelantado ? montoOrig : ce.monto) * tasaValida)}`}
+                          </div>
+                          <div style={{ fontSize: '10px', color: isLight ? '#64748b' : '#94a3b8', marginTop: '2px' }}>
+                            {pagadaAdelantado ? 'Saldada por adelantado' : (tieneAbono ? 'Saldo restante' : 'No incluido en saldo actual')}
+                          </div>
+                        </div>
                       </div>
-                      <div style={{ color: isLight ? '#0f172a' : '#fff', fontSize: '13.5px', fontWeight: 700 }}>{ce.label}</div>
-                      {ce.descripcion && (
-                        <div style={{ color: isLight ? '#475569' : '#94a3b8', fontSize: '11.5px', marginTop: '3px', lineHeight: 1.4 }}>{ce.descripcion}</div>
+
+                      {tieneAbono && (
+                        <div>
+                          <div style={{ height: '6px', backgroundColor: isLight ? '#e2e8f0' : 'rgba(255,255,255,0.08)', borderRadius: '999px', overflow: 'hidden', marginBottom: '4px' }}>
+                            <div style={{ width: `${pctAbono}%`, height: '100%', backgroundColor: '#10b981' }} />
+                          </div>
+                          <div style={{ fontSize: '11px', color: isLight ? '#475569' : '#94a3b8', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                            <span>Abonado por adelantado: <b style={{ color: isLight ? '#047857' : '#34d399' }}>{ce.moneda === 'BS' ? `Bs. ${fmtBs(abonado)}` : `$${abonado.toFixed(2)} USD`}</b> ({pctAbono}%)</span>
+                            <span>Monto original: {ce.moneda === 'BS' ? `Bs. ${fmtBs(montoOrig)}` : `$${montoOrig.toFixed(2)} USD`}</span>
+                          </div>
+                        </div>
                       )}
-                      <div style={{ fontSize: '11px', color: isLight ? '#0369a1' : '#38bdf8', fontWeight: 700, marginTop: '5px' }}>
-                        📅 Cobro a partir del {formatearFechaCortaEs(ce.fechaEmision)}
-                        {ce.fechaLimite ? ` · Fecha límite: ${formatearFechaCortaEs(ce.fechaLimite)}` : ''}
-                      </div>
+
+                      {!pagadaAdelantado && ce.monto > 0.01 && (
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', paddingTop: '2px' }}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setModalTipoPago('condominio')
+                              setModalCuotaAdelanto({ cuotaId: ce.id, modo: 'total' })
+                              setModalOpen(true)
+                            }}
+                            className="domus-keep-white"
+                            style={{
+                              backgroundColor: isLight ? '#0284c7' : 'rgba(14, 165, 233, 0.22)',
+                              border: isLight ? '1px solid #0284c7' : '1px solid rgba(56, 189, 248, 0.45)',
+                              color: isLight ? '#ffffff' : '#7dd3fc',
+                              borderRadius: '10px',
+                              padding: '7px 14px',
+                              fontSize: '12px',
+                              fontWeight: 800,
+                              cursor: 'pointer'
+                            }}
+                          >
+                            💳 Pagar por adelantado
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setModalTipoPago('condominio')
+                              setModalCuotaAdelanto({ cuotaId: ce.id, modo: 'abono' })
+                              setModalOpen(true)
+                            }}
+                            style={{
+                              backgroundColor: isLight ? '#f1f5f9' : 'rgba(255, 255, 255, 0.06)',
+                              border: isLight ? '1px solid #cbd5e1' : '1px solid rgba(255, 255, 255, 0.16)',
+                              color: isLight ? '#0f172a' : '#e2e8f0',
+                              borderRadius: '10px',
+                              padding: '7px 14px',
+                              fontSize: '12px',
+                              fontWeight: 800,
+                              cursor: 'pointer'
+                            }}
+                          >
+                            ➕ Abonar a cuota
+                          </button>
+                        </div>
+                      )}
                     </div>
-                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                      <div style={{ color: ce.moneda === 'BS' ? (isLight ? '#c2410c' : '#fb923c') : (isLight ? '#0369a1' : '#38bdf8'), fontWeight: 900, fontSize: '15px' }}>
-                        {ce.moneda === 'BS' ? `Bs. ${fmtBs(ce.monto)}` : `$${ce.monto.toFixed(2)} USD`}
-                      </div>
-                      <div style={{ fontSize: '10.5px', color: isLight ? '#64748b' : '#94a3b8' }}>
-                        {ce.moneda === 'BS' ? `≈ $${(ce.monto / tasaValida).toFixed(2)}` : `≈ Bs. ${fmtBs(ce.monto * tasaValida)}`}
-                      </div>
-                      <div style={{ fontSize: '10px', color: isLight ? '#64748b' : '#94a3b8', marginTop: '2px' }}>No incluido en saldo actual</div>
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
           )}
@@ -3025,6 +3230,13 @@ export function Dashboard() {
                                 </span>
                                 {(() => {
                                   const m = parsePagoMeta(pago.notas_admin)
+                                  if (m?.esAdelantoCuotaFutura) {
+                                    return (
+                                      <span style={{ fontSize: '10px', fontWeight: 800, color: '#38bdf8', backgroundColor: 'rgba(14,165,233,0.16)', border: '1px solid rgba(56,189,248,0.3)', padding: '2px 7px', borderRadius: '6px' }}>
+                                        {m.esAbonoParcialAdelanto ? '🌗 Abono Adelantado Cuota Extra' : '🗓️ Pago Adelantado Cuota Extra'}
+                                      </span>
+                                    )
+                                  }
                                   if (m?.tipoServicio === 'gas') return <span style={{ fontSize: '10px', fontWeight: 800, color: '#fb923c', backgroundColor: 'rgba(249,115,22,0.16)', border: '1px solid rgba(249,115,22,0.3)', padding: '2px 7px', borderRadius: '6px' }}>⛽ Gas</span>
                                   if (m?.tipoServicio === 'mixto') return <span style={{ fontSize: '10px', fontWeight: 800, color: '#c084fc', backgroundColor: 'rgba(168,85,247,0.16)', border: '1px solid rgba(168,85,247,0.3)', padding: '2px 7px', borderRadius: '6px' }}>🔀 Mixto</span>
                                   return null

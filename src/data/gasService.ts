@@ -56,6 +56,11 @@ export interface PagoCuotaEspecialMeta {
   anio: number
   monto: number
   moneda: 'BS' | 'USD'
+  esAdelantado?: boolean
+  esAbonoParcial?: boolean
+  fechaEmision?: string
+  montoOriginal?: number
+  saldoRestanteEstimado?: number
 }
 
 export interface PagoDomusMeta {
@@ -68,6 +73,9 @@ export interface PagoDomusMeta {
   condominioMontoUsd?: number
   origenAdmin?: boolean
   campanaIdUnico?: string
+  esAdelantoCuotaFutura?: boolean
+  esAbonoParcialAdelanto?: boolean
+  soloCuotasEspeciales?: boolean
 }
 
 const DOMUS_META_PREFIX = '[DOMUS_META:'

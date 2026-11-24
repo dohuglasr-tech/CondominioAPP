@@ -990,27 +990,43 @@ export const ListaMoraResidente: React.FC = () => {
                           <span>Próximo Cargo · Cuota Extraordinaria Programada (No sumado a deuda actual)</span>
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                          {d.desglose.cuotas_programadas.map(ce => (
-                            <div key={ce.id} style={{
-                              display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap',
-                              background: 'rgba(14, 165, 233, 0.1)', border: '1px solid rgba(56, 189, 248, 0.28)',
-                              borderRadius: '8px', padding: '6px 10px', fontSize: '11px'
-                            }}>
-                              <div style={{ minWidth: 0 }}>
-                                <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{ce.label}</span>
-                                {ce.descripcion && (
-                                  <span style={{ color: '#94a3b8', marginLeft: '6px' }}>— {ce.descripcion}</span>
-                                )}
-                                <div style={{ color: '#38bdf8', fontSize: '10px', marginTop: '2px', fontWeight: 700 }}>
-                                  📅 Cobro a partir del {formatearFechaCortaEs(ce.fechaEmision)}
-                                  {ce.fechaLimite ? ` · Límite: ${formatearFechaCortaEs(ce.fechaLimite)}` : ''}
+                          {d.desglose.cuotas_programadas.map(ce => {
+                            const pagadaAdel = ce.estado === 'pagado' && Boolean(ce.pagadoPorAdelantado)
+                            const abonadoVal = Number(ce.abonado || 0)
+                            const montoOrig = Number(ce.montoOriginal || ce.monto || abonadoVal)
+                            const tieneAbono = !pagadaAdel && abonadoVal > 0.01
+                            return (
+                              <div key={ce.id} style={{
+                                display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap',
+                                background: pagadaAdel ? 'rgba(34, 197, 94, 0.1)' : 'rgba(14, 165, 233, 0.1)',
+                                border: pagadaAdel ? '1px solid rgba(34, 197, 94, 0.32)' : '1px solid rgba(56, 189, 248, 0.28)',
+                                borderRadius: '8px', padding: '6px 10px', fontSize: '11px'
+                              }}>
+                                <div style={{ minWidth: 0 }}>
+                                  <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{ce.label}</span>
+                                  {ce.descripcion && (
+                                    <span style={{ color: '#94a3b8', marginLeft: '6px' }}>— {ce.descripcion}</span>
+                                  )}
+                                  {pagadaAdel ? (
+                                    <div style={{ color: '#4ade80', fontSize: '10px', marginTop: '2px', fontWeight: 800 }}>
+                                      ✅ Pagada por adelantado (Liquidada al 100%)
+                                    </div>
+                                  ) : (
+                                    <div style={{ color: '#38bdf8', fontSize: '10px', marginTop: '2px', fontWeight: 700 }}>
+                                      {tieneAbono
+                                        ? `🌗 Abonada parcialmente (Abonado: ${ce.moneda === 'BS' ? `Bs. ${fmtBs(abonadoVal)}` : `$${fmtUsd(abonadoVal)}`} · Restante para ${formatearFechaCortaEs(ce.fechaEmision)}: ${ce.moneda === 'BS' ? `Bs. ${fmtBs(ce.monto)}` : `$${fmtUsd(ce.monto)}`})`
+                                        : `📅 Cobro a partir del ${formatearFechaCortaEs(ce.fechaEmision)}${ce.fechaLimite ? ` · Límite: ${formatearFechaCortaEs(ce.fechaLimite)}` : ''}`}
+                                    </div>
+                                  )}
                                 </div>
+                                <strong style={{ color: pagadaAdel ? '#4ade80' : (ce.moneda === 'BS' ? '#fb923c' : '#38bdf8'), flexShrink: 0 }}>
+                                  {pagadaAdel
+                                    ? (ce.moneda === 'BS' ? `Bs. ${fmtBs(montoOrig)}` : `$${fmtUsd(montoOrig)} USD`)
+                                    : (ce.moneda === 'BS' ? `Bs. ${fmtBs(ce.monto)}` : `$${fmtUsd(ce.monto)} USD`)}
+                                </strong>
                               </div>
-                              <strong style={{ color: ce.moneda === 'BS' ? '#fb923c' : '#38bdf8', flexShrink: 0 }}>
-                                {ce.moneda === 'BS' ? `Bs. ${fmtBs(ce.monto)}` : `$${fmtUsd(ce.monto)} USD`}
-                              </strong>
-                            </div>
-                          ))}
+                            )
+                          })}
                         </div>
                       </div>
                     )}

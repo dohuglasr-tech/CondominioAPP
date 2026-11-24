@@ -43,6 +43,7 @@ interface Props {
   onSuccess: () => void
   config?: ConfigEdificio | null
   initialTipo?: 'todos' | 'gas' | 'condominio'
+  initialCuotaAdelanto?: { cuotaId: string; modo: 'total' | 'abono' } | null
 }
 
 function createRipple(e: React.MouseEvent<HTMLButtonElement>) {
@@ -157,7 +158,8 @@ export function ReportarPagoModal({
   onClose,
   onSuccess,
   config: configProp,
-  initialTipo = 'todos'
+  initialTipo = 'todos',
+  initialCuotaAdelanto = null
 }: Props) {
   const { config: authConfig } = useAuth()
   const config = configProp || authConfig
@@ -169,7 +171,7 @@ export function ReportarPagoModal({
   // Paso 1: deudas
   const [loadingDeudas, setLoadingDeudas] = useState(true)
   const [deudas, setDeudas] = useState<DeudaSeleccionable[]>([])
-  const [cuotasProgramadas, setCuotasProgramadas] = useState<DesgloseConceptoItem[]>([])
+  const [cuotasFuturas, setCuotasFuturas] = useState<DeudaSeleccionable[]>([])
   const [saldoAFavor, setSaldoAFavor] = useState(0)
   const [gasBancarios, setGasBancarios] = useState<DatosPagoGas | null>(null)
   const [gasEnVerificacionCount, setGasEnVerificacionCount] = useState(0)
@@ -232,7 +234,9 @@ export function ReportarPagoModal({
             (cleanTarget && num === cleanTarget)
           )
         })
-        setCuotasProgramadas(miDeuda?.desglose?.cuotas_programadas || [])
+        const rawProgramadas = (miDeuda?.desglose?.cuotas_programadas || []).filter(
+          cp => cp.estado !== 'pagado' && cp.monto > 0.01
+        )
         let items = miDeuda?.desglose?.items || []
 
         // Respaldo de seguridad: si no vino por moraService, consultar recibos pendientes directamente
@@ -288,19 +292,42 @@ export function ReportarPagoModal({
           }
         }
 
+        const matchedAdelanto = initialCuotaAdelanto
+          ? rawProgramadas.find(cp => cp.id === initialCuotaAdelanto.cuotaId)
+          : undefined
+
         const itemsCondominio = items
           .filter(it => it.estado === 'pendiente' && it.monto > 0)
           .map(it => ({
             ...it,
-            selected: initialTipo === 'gas' ? false : true
+            selected: matchedAdelanto ? false : (initialTipo === 'gas' ? false : true)
           }))
 
         // Si vino initialTipo === 'gas', preseleccionar pestaña de cuenta bancaria gas
-        if (initialTipo === 'gas' && itemsGas.length > 0) {
+        if (initialTipo === 'gas' && itemsGas.length > 0 && !matchedAdelanto) {
           setCuentaActivaTab('gas')
         }
 
-        setDeudas([...itemsGas, ...itemsCondominio])
+        const gasMapped = itemsGas.map(g => (matchedAdelanto ? { ...g, selected: false } : g))
+        const futurasMapped: DeudaSeleccionable[] = rawProgramadas.map(cp => ({
+          ...cp,
+          selected: matchedAdelanto ? cp.id === matchedAdelanto.id : false
+        }))
+
+        setDeudas([...gasMapped, ...itemsCondominio])
+        setCuotasFuturas(futurasMapped)
+
+        if (matchedAdelanto && initialCuotaAdelanto) {
+          setCuentaActivaTab('condominio')
+          if (initialCuotaAdelanto.modo === 'abono') {
+            setUsarOtroMonto(true)
+            setMonedaOtroMonto(matchedAdelanto.moneda)
+            setOtroMonto('')
+          } else {
+            setUsarOtroMonto(false)
+          }
+          setStep('resumen')
+        }
 
         const saldoUsd = (saldoRes as any)?.saldo_a_favor_usd
         if (saldoUsd && saldoUsd > 0) {
@@ -314,7 +341,7 @@ export function ReportarPagoModal({
     }
     cargar()
     return () => { mounted = false }
-  }, [apartamentoId, aptoNumero, initialTipo])
+  }, [apartamentoId, aptoNumero, initialTipo, initialCuotaAdelanto])
 
   // Auto-scroll al botón cuando sube comprobante
   useEffect(() => {
@@ -329,8 +356,13 @@ export function ReportarPagoModal({
     setTimeout(() => onClose(), 250)
   }, [onClose])
 
-  // ── Cálculo integral de deudas seleccionadas en USD y Bs ──
-  const deudasSeleccionadas = deudas.filter(d => d.selected)
+  // ── Cálculo integral de deudas seleccionadas en USD y Bs (incluye adelantos a cuotas futuras) ──
+  const deudasActivasSeleccionadas = deudas.filter(d => d.selected)
+  const futurasSeleccionadas = cuotasFuturas.filter(d => d.selected)
+  const deudasSeleccionadas = [...deudasActivasSeleccionadas, ...futurasSeleccionadas]
+  const seleccionaFuturas = futurasSeleccionadas.length > 0
+  const soloFuturasSeleccionadas = seleccionaFuturas && deudasActivasSeleccionadas.length === 0
+
   const totalUsd = Number(deudasSeleccionadas.filter(d => d.moneda === 'USD').reduce((s, d) => s + d.monto, 0).toFixed(2))
   const totalBs = Number(deudasSeleccionadas.filter(d => d.moneda === 'BS').reduce((s, d) => s + d.monto, 0).toFixed(2))
 
@@ -339,29 +371,63 @@ export function ReportarPagoModal({
   const totalUsdEquivalente = Number((totalUsd + (totalBs > 0 ? totalBs / tasaBcv : 0)).toFixed(2))
 
   // Montos finales según si usa otro monto o el monto de la deuda
+  const rawOtroMontoVal = parseFloat(otroMonto.replace(',', '.')) || 0
   let montoFinalUsd = 0
   let montoFinalBs = 0
 
   if (usarOtroMonto) {
-    const rawVal = parseFloat(otroMonto.replace(',', '.')) || 0
     if (monedaOtroMonto === 'USD') {
-      montoFinalUsd = rawVal
-      montoFinalBs = Number((rawVal * tasaBcv).toFixed(2))
+      montoFinalUsd = rawOtroMontoVal
+      montoFinalBs = Number((rawOtroMontoVal * tasaBcv).toFixed(2))
     } else {
-      montoFinalBs = rawVal
-      montoFinalUsd = Number((rawVal / tasaBcv).toFixed(2))
+      montoFinalBs = rawOtroMontoVal
+      montoFinalUsd = Number((rawOtroMontoVal / tasaBcv).toFixed(2))
     }
   } else {
     montoFinalUsd = totalUsdEquivalente
     montoFinalBs = totalBsEquivalente
   }
 
+  const excedeSaldoCuotaFutura = Boolean(
+    usarOtroMonto &&
+    soloFuturasSeleccionadas &&
+    (monedaOtroMonto === 'USD'
+      ? montoFinalUsd > totalUsdEquivalente + 0.05
+      : montoFinalBs > totalBsEquivalente + 1)
+  )
+  const abonoFuturaInvalido = Boolean(
+    usarOtroMonto &&
+    soloFuturasSeleccionadas &&
+    (rawOtroMontoVal <= 0 || excedeSaldoCuotaFutura)
+  )
+
   const toggleDeuda = (id: string) => {
     setDeudas(prev => prev.map(d => d.id === id ? { ...d, selected: !d.selected } : d))
   }
 
+  const toggleCuotaFutura = (id: string) => {
+    setCuotasFuturas(prev => prev.map(d => d.id === id ? { ...d, selected: !d.selected } : d))
+  }
+
+  const iniciarAdelantoDirecto = (cuota: DeudaSeleccionable, modo: 'total' | 'abono') => {
+    setDeudas(prev => prev.map(d => ({ ...d, selected: false })))
+    setCuotasFuturas(prev => prev.map(c => ({ ...c, selected: c.id === cuota.id })))
+    setCuentaActivaTab('condominio')
+    if (modo === 'abono') {
+      setUsarOtroMonto(true)
+      setMonedaOtroMonto(cuota.moneda)
+      setOtroMonto('')
+    } else {
+      setUsarOtroMonto(false)
+    }
+    setStep('resumen')
+  }
+
   const seleccionarTodas = () => setDeudas(prev => prev.map(d => ({ ...d, selected: true })))
-  const deseleccionarTodas = () => setDeudas(prev => prev.map(d => ({ ...d, selected: false })))
+  const deseleccionarTodas = () => {
+    setDeudas(prev => prev.map(d => ({ ...d, selected: false })))
+    setCuotasFuturas(prev => prev.map(d => ({ ...d, selected: false })))
+  }
   const seleccionarSoloGas = () => setDeudas(prev => prev.map(d => ({ ...d, selected: d.categoria === 'gas' })))
   const seleccionarSoloCondominio = () => setDeudas(prev => prev.map(d => ({ ...d, selected: d.categoria !== 'gas' })))
 
@@ -488,25 +554,54 @@ export function ReportarPagoModal({
             columnaId = match[2]
           }
         }
+        const esAdel = it.estadoVigencia === 'programada'
+        const esParcial = Boolean(
+          usarOtroMonto &&
+          (it.moneda === 'USD'
+            ? montoFinalUsd + 0.05 < totalUsdEquivalente
+            : montoFinalBs + 1 < totalBsEquivalente)
+        )
+        const montoAplicadoEst = soloFuturasSeleccionadas && itemsCuotasEspSel.length === 1
+          ? (it.moneda === 'USD' ? Math.min(it.monto, montoFinalUsd) : Math.min(it.monto, montoFinalBs))
+          : it.monto
         return {
           columnaId,
           titulo: it.label,
           anio,
           monto: it.monto,
-          moneda: it.moneda
+          moneda: it.moneda,
+          ...(esAdel ? { esAdelantado: true } : {}),
+          ...(esParcial ? { esAbonoParcial: true } : {}),
+          ...(it.fechaEmision ? { fechaEmision: it.fechaEmision } : {}),
+          montoOriginal: Number((it.montoOriginal || it.monto).toFixed(2)),
+          saldoRestanteEstimado: Math.max(0, Number((it.monto - montoAplicadoEst).toFixed(2)))
         }
       })
       .filter(c => Boolean(c.columnaId))
+
+    const esAdelantoCuotaFutura = soloFuturasSeleccionadas || cuotasEspMeta.some(c => c.esAdelantado)
+    const esAbonoParcialAdelanto = Boolean(cuotasEspMeta.some(c => c.esAdelantado && c.esAbonoParcial))
+    const soloCuotasEspeciales =
+      itemsGasSel.length === 0 &&
+      itemsCondSel.length > 0 &&
+      itemsCondSel.every(it => it.categoria === 'cuota_especial' && !['deuda_2025', 'cable_viajero', 'guaya', 'arreglo'].includes(it.id))
 
     const metaDomus: PagoDomusMeta = {
       tipoServicio,
       ...(gasItemsMeta.length > 0 ? { gasItems: gasItemsMeta, gasMontoBs, gasMontoUsd } : {}),
       ...(cuotasEspMeta.length > 0 ? { cuotasEspeciales: cuotasEspMeta } : {}),
+      ...(esAdelantoCuotaFutura ? { esAdelantoCuotaFutura: true } : {}),
+      ...(esAbonoParcialAdelanto ? { esAbonoParcialAdelanto: true } : {}),
+      ...(soloCuotasEspeciales ? { soloCuotasEspeciales: true } : {}),
       condominioMontoBs,
       condominioMontoUsd
     }
 
-    const notasVisibles = `Método: ${(metodo || 'otro').toUpperCase()} · Banco: ${bancoEfectivo} · Conceptos: ${conceptosLabels || 'Pago general'} · Monto USD: $${montoFinalUsd.toFixed(2)} · Monto Bs: ${montoFinalBs.toLocaleString('es-VE')}`
+    const etiquetaConceptos = soloFuturasSeleccionadas
+      ? `${esAbonoParcialAdelanto ? 'Abono Adelantado' : 'Pago Adelantado'} — Cuota Extraordinaria: ${conceptosLabels}`
+      : (conceptosLabels || 'Pago general')
+
+    const notasVisibles = `Método: ${(metodo || 'otro').toUpperCase()} · Banco: ${bancoEfectivo} · Conceptos: ${etiquetaConceptos} · Monto USD: $${montoFinalUsd.toFixed(2)} · Monto Bs: ${montoFinalBs.toLocaleString('es-VE')}`
     const notasCodificadas = encodePagoMeta(notasVisibles, metaDomus)
 
     // 1. Insertar primero el reporte en `pagos_reportados` (pendiente de revisión administrativa)
@@ -732,27 +827,91 @@ export function ReportarPagoModal({
             <p style={{ fontSize: '13px' }}>Cargando tu estado de cuenta...</p>
           </div>
         ) : deudas.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '24px 0', color: '#555' }}>
-            <div style={{ fontSize: '32px', marginBottom: '10px' }}>✅</div>
-            <p style={{ color: '#aaa', fontSize: '14px', fontWeight: 600, marginBottom: '6px' }}>¡Estás al día!</p>
-            <p style={{ fontSize: '13px' }}>No tienes cuotas ni recibos exigibles pendientes acumulados.</p>
-            {cuotasProgramadas.length > 0 && (
-              <div style={{
-                marginTop: '14px', textAlign: 'left',
-                background: 'rgba(14, 165, 233, 0.08)', border: '1px solid rgba(56, 189, 248, 0.25)',
-                borderRadius: '10px', padding: '10px 12px', fontSize: '11.5px', color: '#38bdf8'
-              }}>
-                <div style={{ fontWeight: 800, marginBottom: '4px' }}>
-                  🗓️ Tienes {cuotasProgramadas.length} {cuotasProgramadas.length === 1 ? 'Cuota Extraordinaria programada' : 'Cuotas Extraordinarias programadas'} a futuro:
+          <div style={{ textAlign: 'center', padding: '14px 0 8px', color: '#555' }}>
+            <div style={{ fontSize: '30px', marginBottom: '6px' }}>✅</div>
+            <p style={{ color: '#aaa', fontSize: '14px', fontWeight: 700, marginBottom: '4px' }}>¡Estás al día!</p>
+            <p style={{ fontSize: '12.5px', marginBottom: '12px' }}>No tienes cuotas ni recibos exigibles pendientes acumulados.</p>
+
+            {cuotasFuturas.length > 0 && (
+              <div style={{ textAlign: 'left', marginTop: '8px', marginBottom: '12px' }}>
+                <div style={{ fontSize: '11.5px', fontWeight: 800, color: '#38bdf8', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span>🗓️</span>
+                  <span>Cuotas Extraordinarias Programadas (Pago o Abono Adelantado Opcional):</span>
                 </div>
-                {cuotasProgramadas.map(cp => (
-                  <div key={cp.id} style={{ color: '#94a3b8', marginTop: '3px' }}>
-                    • <strong style={{ color: '#cbd5e1' }}>{cp.label}</strong> ({cp.moneda === 'BS' ? `Bs. ${cp.monto.toLocaleString('es-VE', { minimumFractionDigits: 2 })}` : `$${cp.monto.toFixed(2)} USD`}) — Cobro a partir del {formatearFechaCortaEs(cp.fechaEmision)}
-                  </div>
-                ))}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '220px', overflowY: 'auto' }}>
+                  {cuotasFuturas.map(cf => (
+                    <div key={cf.id} style={{
+                      background: cf.selected ? 'rgba(14, 165, 233, 0.14)' : 'rgba(14, 165, 233, 0.06)',
+                      border: `1px solid ${cf.selected ? '#38bdf8' : 'rgba(56, 189, 248, 0.28)'}`,
+                      borderRadius: '12px', padding: '11px 12px', transition: 'all 0.15s'
+                    }}>
+                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={cf.selected}
+                          onChange={() => toggleCuotaFutura(cf.id)}
+                          style={{ width: '17px', height: '17px', marginTop: '2px', accentColor: '#0284c7', cursor: 'pointer', flexShrink: 0 }}
+                        />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '2px' }}>
+                            <span style={{ fontSize: '9px', padding: '1px 6px', borderRadius: '4px', background: 'rgba(56,189,248,0.18)', color: '#38bdf8', fontWeight: 800 }}>
+                              PROGRAMADA · DESDE {formatearFechaCortaEs(cf.fechaEmision)}
+                            </span>
+                            {(cf.abonado || 0) > 0.01 && (
+                              <span style={{ fontSize: '9px', padding: '1px 6px', borderRadius: '4px', background: 'rgba(16,185,129,0.18)', color: '#10b981', fontWeight: 800 }}>
+                                ABONADA PARCIALMENTE
+                              </span>
+                            )}
+                          </div>
+                          <p style={{ color: '#fff', fontSize: '13px', fontWeight: 700, margin: 0 }}>{cf.label}</p>
+                          {cf.descripcion && (
+                            <p style={{ color: '#94a3b8', fontSize: '11px', margin: '2px 0 0' }}>{cf.descripcion}</p>
+                          )}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginTop: '6px', flexWrap: 'wrap' }}>
+                            <div style={{ fontSize: '12px', color: '#38bdf8', fontWeight: 800 }}>
+                              {cf.moneda === 'USD' ? `$${cf.monto.toFixed(2)} USD` : `Bs. ${cf.monto.toLocaleString('es-VE', { minimumFractionDigits: 2 })}`}
+                              {(cf.abonado || 0) > 0.01 && (
+                                <span style={{ color: '#10b981', fontSize: '10.5px', fontWeight: 700, marginLeft: '6px' }}>
+                                  (Abonado: {cf.moneda === 'USD' ? `$${(cf.abonado || 0).toFixed(2)}` : `Bs. ${(cf.abonado || 0).toLocaleString('es-VE', { minimumFractionDigits: 2 })}`})
+                                </span>
+                              )}
+                            </div>
+                            <div style={{ display: 'flex', gap: '6px' }}>
+                              <button
+                                type="button"
+                                onClick={(e) => { e.preventDefault(); iniciarAdelantoDirecto(cf, 'total') }}
+                                style={{
+                                  background: 'rgba(2, 132, 199, 0.2)', border: '1px solid rgba(56, 189, 248, 0.4)',
+                                  color: '#38bdf8', borderRadius: '7px', padding: '4px 8px', fontSize: '10.5px', fontWeight: 800, cursor: 'pointer'
+                                }}
+                              >
+                                Pagar 100%
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => { e.preventDefault(); iniciarAdelantoDirecto(cf, 'abono') }}
+                                style={{
+                                  background: 'rgba(16, 185, 129, 0.16)', border: '1px solid rgba(16, 185, 129, 0.4)',
+                                  color: '#10b981', borderRadius: '7px', padding: '4px 8px', fontSize: '10.5px', fontWeight: 800, cursor: 'pointer'
+                                }}
+                              >
+                                Abonar
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </label>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
-            <p style={{ fontSize: '12px', color: '#444', marginTop: '10px' }}>Si deseas adelantar o pagar otra cuota, avanza.</p>
+
+            <p style={{ fontSize: '12px', color: '#444', marginTop: '6px' }}>
+              {cuotasFuturas.length > 0
+                ? 'Selecciona una cuota programada arriba para adelantarla, o avanza para reportar otro pago.'
+                : 'Si deseas adelantar o pagar otra cuota, avanza.'}
+            </p>
           </div>
         ) : (
           <>
@@ -804,7 +963,7 @@ export function ReportarPagoModal({
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-              <span style={{ color: '#888', fontSize: '12px' }}>{deudas.filter(d => d.selected).length} de {deudas.length} seleccionados</span>
+              <span style={{ color: '#888', fontSize: '12px' }}>{deudasSeleccionadas.length} de {deudas.length + cuotasFuturas.length} seleccionados</span>
               <button type="button" onClick={todasSel ? deseleccionarTodas : seleccionarTodas}
                 style={{ background: 'none', border: 'none', color: 'var(--color-accent, #f97316)', fontSize: '12px', fontWeight: 600, cursor: 'pointer', padding: '0' }}>
                 {todasSel ? 'Deseleccionar todo' : 'Seleccionar todo'}
@@ -881,19 +1040,41 @@ export function ReportarPagoModal({
               ))}
             </div>
 
-            {cuotasProgramadas.length > 0 && (
+            {cuotasFuturas.length > 0 && (
               <div style={{
-                background: 'rgba(14, 165, 233, 0.08)', border: '1px solid rgba(56, 189, 248, 0.25)',
-                borderRadius: '10px', padding: '10px 12px', marginBottom: '12px', fontSize: '11.5px', color: '#38bdf8'
+                background: 'rgba(14, 165, 233, 0.07)', border: '1px solid rgba(56, 189, 248, 0.25)',
+                borderRadius: '10px', padding: '10px 12px', marginBottom: '12px'
               }}>
-                <div style={{ fontWeight: 800, marginBottom: '3px' }}>
-                  🗓️ Próximo cargo programado (no exigible aún):
+                <div style={{ fontWeight: 800, marginBottom: '6px', fontSize: '11.5px', color: '#38bdf8' }}>
+                  🗓️ Adelantar o abonar a Cuotas Extraordinarias Programadas (Opcional):
                 </div>
-                {cuotasProgramadas.map(cp => (
-                  <div key={cp.id} style={{ color: '#94a3b8', marginTop: '2px' }}>
-                    • <strong style={{ color: '#e2e8f0' }}>{cp.label}</strong> ({cp.moneda === 'BS' ? `Bs. ${cp.monto.toLocaleString('es-VE', { minimumFractionDigits: 2 })}` : `$${cp.monto.toFixed(2)} USD`}) — Cobro a partir del {formatearFechaCortaEs(cp.fechaEmision)}
-                  </div>
-                ))}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {cuotasFuturas.map(cf => (
+                    <label key={cf.id} style={{
+                      display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer',
+                      background: cf.selected ? 'rgba(56, 189, 248, 0.14)' : 'rgba(255,255,255,0.02)',
+                      border: `1px solid ${cf.selected ? '#38bdf8' : 'rgba(56, 189, 248, 0.2)'}`,
+                      borderRadius: '8px', padding: '8px 10px'
+                    }}>
+                      <input
+                        type="checkbox"
+                        checked={cf.selected}
+                        onChange={() => toggleCuotaFutura(cf.id)}
+                        style={{ width: '16px', height: '16px', accentColor: '#0284c7', cursor: 'pointer', flexShrink: 0 }}
+                      />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: '12px', fontWeight: 700, color: '#fff' }}>{cf.label}</div>
+                        <div style={{ fontSize: '10.5px', color: '#94a3b8' }}>
+                          Cobro desde {formatearFechaCortaEs(cf.fechaEmision)}
+                          {(cf.abonado || 0) > 0.01 ? ` · Ya abonado: ${cf.moneda === 'BS' ? `Bs. ${(cf.abonado || 0).toLocaleString('es-VE', { minimumFractionDigits: 2 })}` : `$${(cf.abonado || 0).toFixed(2)}`}` : ''}
+                        </div>
+                      </div>
+                      <span style={{ fontSize: '11.5px', fontWeight: 800, color: '#38bdf8', flexShrink: 0 }}>
+                        {cf.moneda === 'BS' ? `Bs. ${cf.monto.toLocaleString('es-VE', { minimumFractionDigits: 2 })}` : `$${cf.monto.toFixed(2)} USD`}
+                      </span>
+                    </label>
+                  ))}
+                </div>
               </div>
             )}
 
@@ -942,10 +1123,21 @@ export function ReportarPagoModal({
         {deudasSeleccionadas.length > 0 ? (
           <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid #2a2a2a', borderRadius: '14px', padding: '14px', marginBottom: '16px' }}>
             {deudasSeleccionadas.map(d => (
-              <div key={d.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                <span style={{ color: '#ccc', fontSize: '13px', display: 'flex', gap: '6px', alignItems: 'center' }}>
-                  <span>{d.icono}</span>{d.label}
-                </span>
+              <div key={d.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', gap: '8px' }}>
+                <div style={{ minWidth: 0 }}>
+                  <span style={{ color: '#ccc', fontSize: '13px', display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <span>{d.icono}</span>
+                    <span>{d.label}</span>
+                    {d.estadoVigencia === 'programada' && (
+                      <span style={{ fontSize: '9.5px', fontWeight: 800, padding: '1px 6px', borderRadius: '4px', background: 'rgba(56,189,248,0.18)', color: '#38bdf8' }}>
+                        {usarOtroMonto ? 'ABONO ADELANTADO' : 'PAGO ADELANTADO'} · DESDE {formatearFechaCortaEs(d.fechaEmision)}
+                      </span>
+                    )}
+                  </span>
+                  {d.descripcion && (
+                    <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px', paddingLeft: '22px' }}>{d.descripcion}</div>
+                  )}
+                </div>
                 <span style={{ color: '#fff', fontSize: '13px', fontWeight: 600, flexShrink: 0 }}>
                   {d.moneda === 'USD' ? `$${d.monto.toFixed(2)} USD` : `Bs. ${d.monto.toLocaleString('es-VE', { minimumFractionDigits: 2 })}`}
                 </span>
@@ -954,13 +1146,13 @@ export function ReportarPagoModal({
 
             <div style={{ paddingTop: '10px', marginTop: '6px', borderTop: '1px solid #333' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                <span style={{ color: '#aaa', fontSize: '12px' }}>Total en Divisas:</span>
+                <span style={{ color: '#aaa', fontSize: '12px' }}>{soloFuturasSeleccionadas ? 'Saldo Pendiente de la Cuota:' : 'Total en Divisas:'}</span>
                 <span style={{ color: '#60a5fa', fontSize: '14.5px', fontWeight: 700 }}>
                   ${totalUsdEquivalente.toFixed(2)} USD
                 </span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ color: '#aaa', fontSize: '12px' }}>Total en Bolívares (BCV: {tasaBcv.toFixed(2)}):</span>
+                <span style={{ color: '#aaa', fontSize: '12px' }}>Equivalente en Bolívares (BCV: {tasaBcv.toFixed(2)}):</span>
                 <span style={{ color: 'var(--color-accent, #f97316)', fontSize: '15px', fontWeight: 800 }}>
                   Bs. {totalBsEquivalente.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
@@ -973,16 +1165,20 @@ export function ReportarPagoModal({
           </div>
         )}
 
-        {/* Checkbox Otro Monto */}
+        {/* Checkbox Otro Monto / Abono Parcial */}
         <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', marginBottom: '14px' }}>
           <input type="checkbox" checked={usarOtroMonto} onChange={e => {
             setUsarOtroMonto(e.target.checked)
-            if (e.target.checked && !otroMonto) {
+            if (e.target.checked && !otroMonto && !soloFuturasSeleccionadas) {
               setOtroMonto(totalUsdEquivalente > 0 ? totalUsdEquivalente.toFixed(2) : '')
             }
           }}
             style={{ width: '16px', height: '16px', accentColor: 'var(--color-accent, #f97316)' }} />
-          <span style={{ color: '#fff', fontSize: '13px', fontWeight: 600 }}>Pagar un monto diferente (Abono / Cuota parcial)</span>
+          <span style={{ color: '#fff', fontSize: '13px', fontWeight: 600 }}>
+            {soloFuturasSeleccionadas
+              ? 'Realizar un abono parcial adelantado a esta cuota'
+              : 'Pagar un monto diferente (Abono / Cuota parcial)'}
+          </span>
         </label>
 
         {usarOtroMonto && (
@@ -1054,12 +1250,46 @@ export function ReportarPagoModal({
                   : `$${( (parseFloat(otroMonto.replace(',', '.')) || 0) / tasaBcv ).toFixed(2)} USD`}
               </strong>
             </p>
+
+            {soloFuturasSeleccionadas && (
+              <div style={{
+                marginTop: '10px', padding: '9px 11px', borderRadius: '8px',
+                background: excedeSaldoCuotaFutura ? 'rgba(239,68,68,0.12)' : 'rgba(14,165,233,0.1)',
+                border: `1px solid ${excedeSaldoCuotaFutura ? 'rgba(239,68,68,0.4)' : 'rgba(56,189,248,0.3)'}`,
+                fontSize: '11.5px'
+              }}>
+                {excedeSaldoCuotaFutura ? (
+                  <span style={{ color: '#f87171', fontWeight: 700 }}>
+                    ⚠️ El abono ingresado supera el saldo pendiente de la cuota ({monedaOtroMonto === 'USD' ? `$${totalUsdEquivalente.toFixed(2)} USD` : `Bs. ${totalBsEquivalente.toLocaleString('es-VE', { minimumFractionDigits: 2 })}`}).
+                  </span>
+                ) : rawOtroMontoVal <= 0 ? (
+                  <span style={{ color: '#94a3b8' }}>
+                    Ingresa un monto mayor a 0 y hasta {monedaOtroMonto === 'USD' ? `$${totalUsdEquivalente.toFixed(2)} USD` : `Bs. ${totalBsEquivalente.toLocaleString('es-VE', { minimumFractionDigits: 2 })}`}.
+                  </span>
+                ) : (
+                  (() => {
+                    const remUsd = Math.max(0, Number((totalUsdEquivalente - montoFinalUsd).toFixed(2)))
+                    const remBs = Math.max(0, Number((totalBsEquivalente - montoFinalBs).toFixed(2)))
+                    const salda100 = remUsd <= 0.05 || remBs <= 1
+                    return (
+                      <span style={{ color: salda100 ? '#10b981' : '#38bdf8', fontWeight: 700 }}>
+                        {salda100
+                          ? '✅ Con este monto la cuota quedará pagada al 100% por adelantado.'
+                          : `🌗 Quedarían abonados $${montoFinalUsd.toFixed(2)} USD · Saldo restante para ${formatearFechaCortaEs(futurasSeleccionadas[0]?.fechaEmision)}: $${remUsd.toFixed(2)} USD (Bs. ${remBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}).`}
+                      </span>
+                    )
+                  })()
+                )}
+              </div>
+            )}
           </div>
         )}
 
         {/* Monto Final Confirmado */}
         <div style={{ background: 'rgba(249,115,22,0.07)', border: '1px solid rgba(249,115,22,0.2)', borderRadius: '12px', padding: '12px 14px', marginBottom: '18px' }}>
-          <p style={{ color: '#888', fontSize: '11px', marginBottom: '4px' }}>Monto total a registrar:</p>
+          <p style={{ color: '#888', fontSize: '11px', marginBottom: '4px' }}>
+            {soloFuturasSeleccionadas ? (usarOtroMonto ? 'Abono adelantado a registrar:' : 'Pago adelantado total a registrar:') : 'Monto total a registrar:'}
+          </p>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap' }}>
             <span style={{ color: '#60a5fa', fontSize: '20px', fontWeight: 800 }}>
               ${montoFinalUsd.toFixed(2)} USD
@@ -1073,8 +1303,16 @@ export function ReportarPagoModal({
 
         <div style={{ display: 'flex', gap: '10px' }}>
           <button style={btnSecondary} onClick={() => setStep('deudas')}>← Atrás</button>
-          <button className="btn-premium ripple-container" style={{ ...btnPrimary }}
-            onClick={e => { createRipple(e); setStep('metodo') }}>
+          <button
+            className="btn-premium ripple-container"
+            disabled={abonoFuturaInvalido}
+            style={{ ...btnPrimary, opacity: abonoFuturaInvalido ? 0.5 : 1, cursor: abonoFuturaInvalido ? 'not-allowed' : 'pointer' }}
+            onClick={e => {
+              if (abonoFuturaInvalido) return
+              createRipple(e)
+              setStep('metodo')
+            }}
+          >
             Avanzar →
           </button>
         </div>

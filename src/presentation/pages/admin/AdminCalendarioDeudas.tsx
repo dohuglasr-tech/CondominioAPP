@@ -1203,9 +1203,12 @@ export const AdminCalendarioDeudas: React.FC = () => {
 
     // Cuota Especial / Personalizada
     const celdasPers = apto.valores_personalizados || {}
-    const celdaVal = celdasPers[col.id] ?? (col.montoDefecto ? { monto: col.montoDefecto, estado: 'pendiente' } : { monto: 0, estado: 'pendiente' })
+    const celdaVal = celdasPers[col.id] ?? (col.montoDefecto ? { monto: col.montoDefecto, estado: 'pendiente' as const } : { monto: 0, estado: 'pendiente' as const })
     const tieneMonto = celdaVal && celdaVal.monto > 0
     const esPagado = celdaVal?.estado === 'pagado'
+    const abonadoVal = Number((celdaVal as any)?.abonado || 0)
+    const esPagadoAdelantado = esPagado && Boolean((celdaVal as any)?.pagadoPorAdelantado)
+    const tieneAbonoParcial = !esPagado && abonadoVal > 0.01
     const monCelda = (celdaVal as any)?.moneda || col.moneda || 'USD'
     const esBs = monCelda === 'BS'
 
@@ -1217,24 +1220,33 @@ export const AdminCalendarioDeudas: React.FC = () => {
           padding: '10px 10px',
           width: '122px',
           maxWidth: '125px',
-          backgroundColor: tieneMonto ? (esPagado ? 'rgba(16, 185, 129, 0.08)' : 'rgba(234, 179, 8, 0.12)') : 'transparent',
-          color: tieneMonto ? (esPagado ? '#34d399' : '#facc15') : '#475569',
+          backgroundColor: tieneMonto
+            ? (esPagado ? 'rgba(16, 185, 129, 0.08)' : tieneAbonoParcial ? 'rgba(56, 189, 248, 0.12)' : 'rgba(234, 179, 8, 0.12)')
+            : 'transparent',
+          color: tieneMonto ? (esPagado ? '#34d399' : tieneAbonoParcial ? '#38bdf8' : '#facc15') : '#475569',
           fontWeight: tieneMonto ? 700 : 400,
           cursor: 'pointer',
           textAlign: 'right'
         }}
-        title={`Cuota especial "${col.titulo}". Clic para editar monto o marcar pagada`}
+        title={
+          esPagadoAdelantado
+            ? `Cuota "${col.titulo}" pagada por adelantado. Clic para editar.`
+            : tieneAbonoParcial
+            ? `Cuota "${col.titulo}" con abono parcial (${esBs ? `Bs. ${fmtBs(abonadoVal)}` : `$${fmtUsd(abonadoVal)}`}). Restante: ${esBs ? `Bs. ${fmtBs(celdaVal.monto)}` : `$${fmtUsd(celdaVal.monto)}`}`
+            : `Cuota especial "${col.titulo}". Clic para editar monto o marcar pagada`
+        }
       >
         {tieneMonto ? (
           esPagado ? (
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontWeight: 700, fontSize: '11px' }}>
-              <span>✓</span>
-              <span style={{ textDecoration: 'line-through', opacity: 0.75 }}>
+              <span>{esPagadoAdelantado ? '⚡' : '✓'}</span>
+              <span style={{ textDecoration: 'line-through', opacity: 0.78 }}>
                 {esBs ? `Bs. ${fmtBs(celdaVal.monto)}` : `$${fmtUsd(celdaVal.monto)}`}
               </span>
             </div>
           ) : (
-            <span>
+            <span title={tieneAbonoParcial ? 'Saldo restante tras abono parcial' : undefined}>
+              {tieneAbonoParcial ? '🌗 ' : ''}
               {esBs ? `Bs. ${fmtBs(celdaVal.monto)}` : `$${fmtUsd(celdaVal.monto)}`}
             </span>
           )
@@ -2299,15 +2311,26 @@ export const AdminCalendarioDeudas: React.FC = () => {
                   {cuotasAnexoFiltradas.map(({ col, anio: itemAnio }) => {
                     let asignados = 0
                     let pagados = 0
+                    let abonadosParciales = 0
                     let montoPendTotal = 0
+                    let montoRecaudadoTotal = 0
                     const valsAnio = configsPorAnio[itemAnio]?.valoresCeldasPersonalizadas
                     filas.forEach(f => {
                       const valGuardado = valsAnio?.[f.apartamento_id]?.[col.id] ?? (itemAnio === anioSeleccionado ? f.valores_personalizados?.[col.id] : undefined)
-                      const val = valGuardado ?? (col.montoDefecto ? { monto: col.montoDefecto, estado: 'pendiente' } : null)
-                      if (val && Number(val.monto || 0) > 0) {
+                      const val = valGuardado ?? (col.montoDefecto ? { monto: col.montoDefecto, estado: 'pendiente' as const } : null)
+                      if (val && (Number(val.monto || 0) > 0 || Number((val as any).abonado || 0) > 0)) {
                         asignados++
-                        if (val.estado === 'pagado') pagados++
-                        else montoPendTotal += Number(val.monto || 0)
+                        const abonadoCelda = Number((val as any).abonado || 0)
+                        if (val.estado === 'pagado') {
+                          pagados++
+                          montoRecaudadoTotal += Number(abonadoCelda || val.monto || col.montoDefecto || 0)
+                        } else {
+                          montoPendTotal += Number(val.monto || 0)
+                          if (abonadoCelda > 0.01) {
+                            abonadosParciales++
+                            montoRecaudadoTotal += abonadoCelda
+                          }
+                        }
                       }
                     })
                     const pct = asignados > 0 ? Math.round((pagados / asignados) * 100) : 0
@@ -2391,7 +2414,12 @@ export const AdminCalendarioDeudas: React.FC = () => {
                             <div style={{ width: `${pct}%`, height: '100%', backgroundColor: pct === 100 ? '#10b981' : '#eab308', transition: 'width 0.3s' }} />
                           </div>
                           <span style={{ fontSize: '10.5px', color: '#94a3b8', fontWeight: 700, whiteSpace: 'nowrap' }}>
-                            {pagados}/{asignados} pagados · Pend: {col.moneda === 'BS' ? `Bs. ${fmtBs(montoPendTotal)}` : `$${fmtUsd(montoPendTotal)}`}
+                            {pagados}/{asignados} pagados
+                            {abonadosParciales > 0 ? ` · 🌗 ${abonadosParciales} abono${abonadosParciales > 1 ? 's' : ''}` : ''}
+                            {montoRecaudadoTotal > 0.01
+                              ? ` · 💰 ${esProgramada ? 'Anticipado' : 'Recaudado'}: ${col.moneda === 'BS' ? `Bs. ${fmtBs(montoRecaudadoTotal)}` : `$${fmtUsd(montoRecaudadoTotal)}`}`
+                              : ''}
+                            {` · Pend: ${col.moneda === 'BS' ? `Bs. ${fmtBs(montoPendTotal)}` : `$${fmtUsd(montoPendTotal)}`}`}
                           </span>
                         </div>
                       </div>

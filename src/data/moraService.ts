@@ -74,6 +74,10 @@ export interface DesgloseConceptoItem {
   moneda: 'BS' | 'USD'
   estado: 'pendiente' | 'pagado'
   estadoVigencia?: EstadoVigenciaCuota
+  montoOriginal?: number
+  abonado?: number
+  pagadoPorAdelantado?: boolean
+  ultimaFechaAbono?: string
   icono?: string
   detalle?: string
   columnaId?: string
@@ -410,12 +414,44 @@ export async function obtenerDeudaMoraApartamento(
           anioCfg: number,
           descripcion?: string,
           fechaEmision?: string,
-          fechaLimite?: string
+          fechaLimite?: string,
+          montoDefectoCol?: number
         ) => {
-          const montoVal = Number(val?.monto || 0)
-          if (!val || val.estado !== 'pendiente' || montoVal <= 0.01) return
-          const mon: 'USD' | 'BS' = val.moneda || defaultMoneda || 'USD'
+          if (!val) return
           const estadoVigencia = clasificarCuotaExtraordinaria(fechaEmision, fechaLimite, hoyIso)
+          const montoVal = Number(val?.monto || 0)
+          const mon: 'USD' | 'BS' = val.moneda || defaultMoneda || 'USD'
+          const montoOrig = Number(val?.montoOriginal ?? montoDefectoCol ?? montoVal)
+          const abonadoVal = Number(val?.abonado || 0)
+
+          // Caso A: Cuota futura programada ya liquidada al 100% por adelantado -> mostrar confirmación sin sumar deuda/mora
+          if (val.estado === 'pagado') {
+            if (estadoVigencia === 'programada' && (val.pagadoPorAdelantado || abonadoVal > 0 || val.ultimaFechaAbono || montoOrig > 0.01)) {
+              cuotasProgramadasList.push({
+                id: `cuota_esp_${anioCfg}_${idPrefix}`,
+                columnaId: idPrefix,
+                anio: anioCfg,
+                label: titulo || 'Cuota Extraordinaria',
+                categoria: 'cuota_especial',
+                monto: 0,
+                moneda: mon,
+                estado: 'pagado',
+                estadoVigencia: 'programada',
+                montoOriginal: Number(montoOrig.toFixed(2)),
+                abonado: Number((abonadoVal || montoOrig || montoVal).toFixed(2)),
+                pagadoPorAdelantado: true,
+                ultimaFechaAbono: val.ultimaFechaAbono,
+                icono: '✅',
+                descripcion,
+                fechaEmision,
+                fechaLimite
+              })
+            }
+            return
+          }
+
+          if (val.estado !== 'pendiente' || montoVal <= 0.01) return
+
           const itemObj: DesgloseConceptoItem = {
             id: `cuota_esp_${anioCfg}_${idPrefix}`,
             columnaId: idPrefix,
@@ -426,6 +462,10 @@ export async function obtenerDeudaMoraApartamento(
             moneda: mon,
             estado: 'pendiente',
             estadoVigencia,
+            montoOriginal: Number(montoOrig.toFixed(2)),
+            abonado: Number(abonadoVal.toFixed(2)),
+            pagadoPorAdelantado: Boolean(val.pagadoPorAdelantado),
+            ultimaFechaAbono: val.ultimaFechaAbono,
             icono: estadoVigencia === 'programada' ? '🗓️' : '✨',
             descripcion,
             fechaEmision,
@@ -464,7 +504,8 @@ export async function obtenerDeudaMoraApartamento(
                   anioCfg,
                   col.descripcion,
                   col.fechaEmision,
-                  col.fechaLimite
+                  col.fechaLimite,
+                  col.montoDefecto
                 )
               })
             }
@@ -480,7 +521,8 @@ export async function obtenerDeudaMoraApartamento(
                   anioCfg,
                   fila.descripcion,
                   fila.fechaEmision,
-                  fila.fechaLimite
+                  fila.fechaLimite,
+                  fila.montoDefecto
                 )
               })
             }
@@ -942,12 +984,43 @@ export async function obtenerDeudasMora(
             anioCfg: number,
             descripcion?: string,
             fechaEmision?: string,
-            fechaLimite?: string
+            fechaLimite?: string,
+            montoDefectoCol?: number
           ) => {
-            if (!val || val.estado !== 'pendiente' || Number(val.monto || 0) <= 0.01) return
-            const montoVal = Number(val.monto)
-            const mon: 'USD' | 'BS' = val.moneda || defaultMoneda || 'USD'
+            if (!val) return
             const estadoVigencia = clasificarCuotaExtraordinaria(fechaEmision, fechaLimite, hoyIso)
+            const montoVal = Number(val?.monto || 0)
+            const mon: 'USD' | 'BS' = val.moneda || defaultMoneda || 'USD'
+            const montoOrig = Number(val?.montoOriginal ?? montoDefectoCol ?? montoVal)
+            const abonadoVal = Number(val?.abonado || 0)
+
+            if (val.estado === 'pagado') {
+              if (estadoVigencia === 'programada' && (val.pagadoPorAdelantado || abonadoVal > 0 || val.ultimaFechaAbono || montoOrig > 0.01)) {
+                cuotasProgramadas.push({
+                  id: `cuota_esp_${anioCfg}_${idPrefix}`,
+                  columnaId: idPrefix,
+                  anio: anioCfg,
+                  label: titulo || 'Cuota Extraordinaria',
+                  categoria: 'cuota_especial',
+                  monto: 0,
+                  moneda: mon,
+                  estado: 'pagado',
+                  estadoVigencia: 'programada',
+                  montoOriginal: Number(montoOrig.toFixed(2)),
+                  abonado: Number((abonadoVal || montoOrig || montoVal).toFixed(2)),
+                  pagadoPorAdelantado: true,
+                  ultimaFechaAbono: val.ultimaFechaAbono,
+                  icono: '✅',
+                  descripcion,
+                  fechaEmision,
+                  fechaLimite
+                })
+              }
+              return
+            }
+
+            if (val.estado !== 'pendiente' || montoVal <= 0.01) return
+
             const cuotaItem: DesgloseConceptoItem = {
               id: `cuota_esp_${anioCfg}_${idPrefix}`,
               columnaId: idPrefix,
@@ -958,6 +1031,10 @@ export async function obtenerDeudasMora(
               moneda: mon,
               estado: 'pendiente',
               estadoVigencia,
+              montoOriginal: Number(montoOrig.toFixed(2)),
+              abonado: Number(abonadoVal.toFixed(2)),
+              pagadoPorAdelantado: Boolean(val.pagadoPorAdelantado),
+              ultimaFechaAbono: val.ultimaFechaAbono,
               icono: estadoVigencia === 'programada' ? '🗓️' : '✨',
               descripcion,
               fechaEmision,
@@ -988,7 +1065,8 @@ export async function obtenerDeudasMora(
                     anioCfg,
                     col.descripcion,
                     col.fechaEmision,
-                    col.fechaLimite
+                    col.fechaLimite,
+                    col.montoDefecto
                   )
                 }
               })
@@ -1005,7 +1083,8 @@ export async function obtenerDeudasMora(
                   anioCfg,
                   fila.descripcion,
                   fila.fechaEmision,
-                  fila.fechaLimite
+                  fila.fechaLimite,
+                  fila.montoDefecto
                 )
               })
             }
