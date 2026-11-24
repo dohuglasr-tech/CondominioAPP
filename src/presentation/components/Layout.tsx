@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../application/contexts/AuthContext'
+import { useTheme } from '../../application/contexts/ThemeContext'
 import { ReportarPagoModal } from './ReportarPagoModal'
 import { NotificationBell } from './NotificationBell'
 import { ThemeToggle } from './ThemeToggle'
@@ -114,6 +115,7 @@ export const Layout: React.FC = () => {
   const { pathname } = useLocation()
   const navigate = useNavigate()
   const { signOut, perfil, config, user } = useAuth()
+  const { isLight } = useTheme()
   const [reportarPagoModalOpen, setReportarPagoModalOpen] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
 
@@ -207,7 +209,7 @@ export const Layout: React.FC = () => {
           </div>
           {/* Campanita en sidebar */}
           <div onClick={(e) => e.stopPropagation()}>
-            <NotificationBell apartamentoId={apartamentoId || null} iconColor="#a1a1aa" />
+            <NotificationBell apartamentoId={apartamentoId || null} iconColor={isLight ? '#475569' : '#a1a1aa'} />
           </div>
         </div>
 
@@ -307,7 +309,7 @@ export const Layout: React.FC = () => {
             <ThemeToggle variant="icon" />
 
             {/* Notificaciones */}
-            <NotificationBell apartamentoId={apartamentoId || null} iconColor="#a1a1aa" />
+            <NotificationBell apartamentoId={apartamentoId || null} iconColor={isLight ? '#475569' : '#a1a1aa'} />
 
             <button
               className="mobile-header-action-btn"
@@ -1336,6 +1338,62 @@ export const Layout: React.FC = () => {
             -webkit-backface-visibility: hidden;
             backface-visibility: hidden;
           }
+        }
+
+        /* ── MODO CLARO LAYOUT RESIDENTE ── */
+        body.theme-light .layout-container,
+        body.theme-light .layout-main {
+          background-color: #eef2f6 !important;
+        }
+        body.theme-light .layout-sidebar {
+          background: #ffffff !important;
+          border-right: 1px solid #e2e8f0 !important;
+        }
+        body.theme-light .sidebar-user-card {
+          background: #f8fafc !important;
+          border-color: #e2e8f0 !important;
+        }
+        body.theme-light .nav-btn {
+          color: #334155 !important;
+        }
+        body.theme-light .nav-btn:hover {
+          background: #f1f5f9 !important;
+          color: #0f172a !important;
+        }
+        body.theme-light .nav-btn.active {
+          background: var(--color-accent-light, rgba(249, 115, 22, 0.12)) !important;
+          color: var(--color-accent-hover, #ea580c) !important;
+        }
+        body.theme-light .mobile-top-bar {
+          background: rgba(255, 255, 255, 0.95) !important;
+          border-bottom: 1px solid #e2e8f0 !important;
+          box-shadow: 0 2px 12px rgba(15, 23, 42, 0.05) !important;
+        }
+        body.theme-light .mobile-header-building {
+          color: #0f172a !important;
+        }
+        body.theme-light .mobile-header-apto {
+          color: var(--color-accent-hover, #ea580c) !important;
+        }
+        body.theme-light .layout-bottom-bar {
+          background: rgba(255, 255, 255, 0.96) !important;
+          border-top: 1px solid #e2e8f0 !important;
+          box-shadow: 0 -4px 20px rgba(15, 23, 42, 0.06) !important;
+        }
+        body.theme-light .center-btn-circle {
+          border-color: #eef2f6 !important;
+        }
+        body.theme-light .resident-offcanvas-drawer {
+          background-color: #ffffff !important;
+          border-right: 1px solid #e2e8f0 !important;
+        }
+        body.theme-light .drawer-circle-icon {
+          background: #f1f5f9 !important;
+          border-color: #e2e8f0 !important;
+          color: #334155 !important;
+        }
+        body.theme-light .drawer-label {
+          color: #334155 !important;
         }
       `}</style>
     </div>

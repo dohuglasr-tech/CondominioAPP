@@ -1650,6 +1650,37 @@ export const AdminCalendarioDeudas: React.FC = () => {
             font-size: 16px !important;
           }
         }
+
+        body.theme-light .calendario-sticky-col {
+          background-color: #ffffff !important;
+          box-shadow: 4px 0 10px rgba(15, 23, 42, 0.06) !important;
+          color: #0f172a !important;
+        }
+        body.theme-light .calendario-main-table tbody tr:nth-child(even) {
+          background-color: #f8fafc !important;
+        }
+        body.theme-light .calendario-main-table tbody tr:hover {
+          background-color: #eff6ff !important;
+        }
+        body.theme-light .calendario-main-table tfoot tr,
+        body.theme-light .calendario-main-table tfoot td {
+          background-color: #f1f5f9 !important;
+          color: #0f172a !important;
+          border-top: 2px solid #cbd5e1 !important;
+        }
+        body.theme-light .calendario-modal-content {
+          background-color: #ffffff !important;
+          border-color: #cbd5e1 !important;
+          color: #0f172a !important;
+        }
+        body.theme-light .calendario-modal-header {
+          background-color: #f8fafc !important;
+          border-bottom: 1px solid #e2e8f0 !important;
+        }
+        body.theme-light .calendario-modal-footer {
+          background-color: #f8fafc !important;
+          border-top: 1px solid #e2e8f0 !important;
+        }
       `}</style>
 
       {/* Toast Alert */}

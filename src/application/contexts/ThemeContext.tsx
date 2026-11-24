@@ -56,7 +56,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         metaTheme.setAttribute('name', 'theme-color')
         document.head.appendChild(metaTheme)
       }
-      metaTheme.setAttribute('content', '#f8fafc')
+      metaTheme.setAttribute('content', '#eef2f6')
     } else {
       root.classList.add('theme-dark')
       root.classList.remove('theme-light')

@@ -534,6 +534,11 @@ export const AdminEdificio: React.FC = () => {
         @media (max-width: 768px) { .admin-grid-2 { grid-template-columns: 1fr; gap: 0px; } }
         .logo-drop-zone { transition: border-color 0.2s, background-color 0.2s; }
         .logo-drop-zone:hover { border-color: var(--color-accent, #f97316) !important; background-color: var(--color-accent-light, rgba(249, 115, 22, 0.05)) !important; }
+        body.theme-light .logo-drop-zone {
+          background-color: #f8fafc !important;
+          border-color: #cbd5e1 !important;
+          color: #334155 !important;
+        }
       `}</style>
 
       {/* Header Principal */}

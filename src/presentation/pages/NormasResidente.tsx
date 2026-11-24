@@ -273,7 +273,7 @@ export const NormasResidente: React.FC = () => {
       <div className="normas-search-section">
         {/* Barra de búsqueda interactiva */}
         <div className="normas-search-box">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#94a3b8', flexShrink: 0 }}>
             <circle cx="11" cy="11" r="8"/>
             <line x1="21" y1="21" x2="16.65" y2="16.65"/>
           </svg>
@@ -1076,6 +1076,167 @@ export const NormasResidente: React.FC = () => {
             justify-content: flex-start;
             margin-top: 6px;
           }
+        }
+
+        /* ── Modo Claro para Reglamento y Normas ── */
+        body.theme-light .normas-page-container {
+          color: #0f172a;
+        }
+        body.theme-light .normas-btn-back {
+          background: #ffffff;
+          border-color: #cbd5e1;
+          color: #334155;
+        }
+        body.theme-light .normas-btn-back:hover {
+          background: #f1f5f9;
+          border-color: #94a3b8;
+          color: #0f172a;
+        }
+        body.theme-light .normas-hero-card {
+          background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+          border-color: #e2e8f0;
+          box-shadow: 0 12px 32px rgba(15, 23, 42, 0.06);
+        }
+        body.theme-light .normas-hero-title {
+          color: #0f172a;
+        }
+        body.theme-light .normas-hero-subtitle {
+          color: #475569;
+        }
+        body.theme-light .normas-btn-secondary {
+          background: #f1f5f9;
+          border-color: #cbd5e1;
+          color: #1e293b;
+        }
+        body.theme-light .normas-btn-secondary:hover {
+          background: #e2e8f0;
+          border-color: #94a3b8;
+        }
+        body.theme-light .normas-hero-badge-box {
+          background: #f8fafc;
+          border-color: #e2e8f0;
+        }
+        body.theme-light .normas-badge-title {
+          color: #0f172a;
+        }
+        body.theme-light .normas-badge-sub,
+        body.theme-light .normas-badge-date,
+        body.theme-light .normas-kpi-desc,
+        body.theme-light .normas-card-legal,
+        body.theme-light .normas-footer-label,
+        body.theme-light .normas-footer-sub {
+          color: #64748b;
+        }
+        body.theme-light .normas-kpi-card,
+        body.theme-light .norma-card,
+        body.theme-light .normas-footer-card,
+        body.theme-light .normas-empty-state {
+          background: #ffffff;
+          border-color: #e2e8f0;
+          box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04);
+        }
+        body.theme-light .normas-kpi-card:hover,
+        body.theme-light .norma-card:hover {
+          border-color: #cbd5e1;
+        }
+        body.theme-light .normas-kpi-tag {
+          color: #475569;
+        }
+        body.theme-light .normas-kpi-val,
+        body.theme-light .norma-card-title,
+        body.theme-light .normas-footer-val {
+          color: #0f172a;
+        }
+        body.theme-light .normas-preambulo-card {
+          background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+          border-color: #fcd34d;
+        }
+        body.theme-light .normas-preambulo-title {
+          color: #92400e;
+        }
+        body.theme-light .normas-preambulo-text {
+          color: #451a03;
+        }
+        body.theme-light .normas-search-box {
+          background: #ffffff;
+          border-color: #cbd5e1;
+        }
+        body.theme-light .normas-search-box svg {
+          color: #64748b !important;
+        }
+        body.theme-light .normas-search-input {
+          color: #0f172a;
+        }
+        body.theme-light .normas-search-input::placeholder {
+          color: #94a3b8;
+        }
+        body.theme-light .normas-search-clear {
+          background: #e2e8f0;
+          color: #334155;
+        }
+        body.theme-light .normas-chip {
+          background: #ffffff;
+          border-color: #cbd5e1;
+          color: #475569;
+        }
+        body.theme-light .normas-chip:hover {
+          background: #f1f5f9;
+          color: #0f172a;
+        }
+        body.theme-light .norma-card-header {
+          border-bottom-color: #e2e8f0;
+        }
+        body.theme-light .norma-card-legal {
+          color: #64748b;
+        }
+        body.theme-light .norma-action-btn {
+          background: #f1f5f9;
+          border-color: #cbd5e1;
+          color: #334155;
+        }
+        body.theme-light .norma-action-btn:hover {
+          background: #e2e8f0;
+          color: #0f172a;
+        }
+        body.theme-light .norma-item-label {
+          color: #334155;
+        }
+        body.theme-light .norma-item-text {
+          color: #1e293b;
+        }
+        body.theme-light .norma-callout-box {
+          background: #eff6ff;
+          border-color: #bfdbfe;
+        }
+        body.theme-light .norma-callout-box.warning {
+          background: #fef2f2;
+          border-color: #fecaca;
+        }
+        body.theme-light .norma-callout-title {
+          color: #b45309;
+        }
+        body.theme-light .norma-callout-box.warning .norma-callout-title {
+          color: #b91c1c;
+        }
+        body.theme-light .norma-callout-desc {
+          color: #334155;
+        }
+        body.theme-light .normas-aviso-cierre {
+          background: #fefce8;
+          border-color: #fde047;
+        }
+        body.theme-light .normas-aviso-cierre-title {
+          color: #a16207;
+        }
+        body.theme-light .normas-aviso-cierre-text {
+          color: #422006;
+        }
+        body.theme-light .normas-footer-bar {
+          border-top-color: #e2e8f0;
+          color: #64748b;
+        }
+        body.theme-light .normas-footer-link {
+          color: #c2410c;
         }
       `}</style>
     </div>

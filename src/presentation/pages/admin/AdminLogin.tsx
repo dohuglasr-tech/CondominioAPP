@@ -90,17 +90,20 @@ export const AdminLogin: React.FC = () => {
   }
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      backgroundColor: '#07090e',
-      backgroundImage: 'radial-gradient(ellipse at 50% 20%, rgba(255, 255, 255, 0.03) 0%, rgba(0, 0, 0, 0) 70%)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      fontFamily: "'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
-      padding: '24px',
-      boxSizing: 'border-box'
-    }}>
+    <div
+      className="admin-login-root"
+      style={{
+        minHeight: '100vh',
+        backgroundColor: '#07090e',
+        backgroundImage: 'radial-gradient(ellipse at 50% 20%, rgba(255, 255, 255, 0.03) 0%, rgba(0, 0, 0, 0) 70%)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontFamily: "'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
+        padding: '24px',
+        boxSizing: 'border-box'
+      }}
+    >
       <style>{`
         @keyframes adminGlowPulse {
           0%, 100% { opacity: 0.6; transform: scale(1); }
@@ -111,10 +114,28 @@ export const AdminLogin: React.FC = () => {
           box-shadow: 0 0 0 3px var(--color-accent-light, rgba(249, 115, 22, 0.18)) !important;
           background-color: #0b0f19 !important;
         }
+        body.theme-light .admin-login-root {
+          background-color: #eef2f6 !important;
+          background-image: radial-gradient(ellipse at 50% 20%, rgba(15, 23, 42, 0.04) 0%, rgba(0, 0, 0, 0) 70%) !important;
+          color: #0f172a !important;
+        }
+        body.theme-light .admin-input-focus:focus {
+          background-color: #ffffff !important;
+        }
+        .admin-back-link {
+          color: #64748b;
+          transition: color 0.2s;
+        }
+        .admin-back-link:hover {
+          color: #e2e8f0;
+        }
+        body.theme-light .admin-back-link:hover {
+          color: #0f172a;
+        }
       `}</style>
 
       <div style={{ width: '100%', maxWidth: '420px' }}>
-        
+
         {/* Header con Logo y Título */}
         <div style={{ textAlign: 'center', marginBottom: '28px' }}>
           <div style={{
@@ -135,7 +156,7 @@ export const AdminLogin: React.FC = () => {
               filter: 'blur(12px)',
               animation: 'adminGlowPulse 3s infinite ease-in-out'
             }} />
-            
+
             <div style={{
               position: 'relative',
               width: '76px',
@@ -195,7 +216,7 @@ export const AdminLogin: React.FC = () => {
           boxShadow: '0 20px 50px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.06)'
         }}>
           <form onSubmit={handleLogin}>
-            
+
             {/* Campo Correo */}
             <div style={{ marginBottom: '18px' }}>
               <label style={{
@@ -399,21 +420,18 @@ export const AdminLogin: React.FC = () => {
         <div style={{ textAlign: 'center', marginTop: '22px' }}>
           <button
             type="button"
+            className="admin-back-link"
             onClick={() => navigate('/login')}
             style={{
               background: 'none',
               border: 'none',
-              color: '#64748b',
               cursor: 'pointer',
               fontSize: '13px',
               fontWeight: 600,
               display: 'inline-flex',
               alignItems: 'center',
-              gap: '6px',
-              transition: 'color 0.2s'
+              gap: '6px'
             }}
-            onMouseOver={(e) => (e.target as HTMLElement).style.color = '#e2e8f0'}
-            onMouseOut={(e) => (e.target as HTMLElement).style.color = '#64748b'}
           >
             <span>←</span>
             <span>Volver al portal de residentes</span>

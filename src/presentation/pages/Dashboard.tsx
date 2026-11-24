@@ -619,6 +619,37 @@ export function Dashboard() {
           position: relative;
           overflow: hidden;
         }
+
+        body.theme-light .resident-page {
+          background-color: #eef2f6 !important;
+          color: #0f172a !important;
+        }
+        body.theme-light .desktop-card {
+          background: #ffffff !important;
+          border: 1px solid #e2e8f0 !important;
+          box-shadow: 0 8px 24px -4px rgba(15, 23, 42, 0.06) !important;
+          color: #0f172a !important;
+        }
+        body.theme-light .quick-action-circle {
+          box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08) !important;
+        }
+        body.theme-light .quick-action-circle[style*="background-color: rgb(19, 40, 31)"],
+        body.theme-light .quick-action-circle[style*="background-color: rgb(38, 18, 21)"],
+        body.theme-light .quick-action-circle[style*="background-color: rgb(16, 29, 44)"],
+        body.theme-light .quick-action-circle[style*="background-color: rgb(35, 18, 44)"],
+        body.theme-light .quick-action-circle[style*="background-color: rgb(12, 34, 41)"],
+        body.theme-light .quick-action-circle[style*="background-color: rgb(38, 30, 14)"] {
+          background-color: #ffffff !important;
+          border-color: #e2e8f0 !important;
+        }
+        body.theme-light .quick-action-label {
+          color: #334155 !important;
+          font-weight: 700;
+        }
+        body.theme-light .domus-cuota-item {
+          background-color: rgba(255, 255, 255, 0.88) !important;
+          border: 1px solid rgba(202, 138, 4, 0.28) !important;
+        }
       `}</style>
 
       <div className="resident-page">
@@ -1175,7 +1206,7 @@ export function Dashboard() {
                   const hoyIso = new Date().toISOString().slice(0, 10)
                   const vencida = Boolean(ce.fechaLimite && ce.fechaLimite < hoyIso)
                   return (
-                    <div key={ce.id} style={{
+                    <div key={ce.id} className="domus-cuota-item" style={{
                       backgroundColor: 'rgba(0,0,0,0.28)',
                       border: '1px solid rgba(255,255,255,0.07)',
                       borderRadius: '12px',
@@ -1965,7 +1996,7 @@ export function Dashboard() {
                   const hoyIso = new Date().toISOString().slice(0, 10)
                   const vencida = Boolean(ce.fechaLimite && ce.fechaLimite < hoyIso)
                   return (
-                    <div key={ce.id} style={{
+                    <div key={ce.id} className="domus-cuota-item" style={{
                       backgroundColor: 'rgba(0,0,0,0.3)',
                       border: `1px solid ${vencida ? 'rgba(239,68,68,0.35)' : 'rgba(255,255,255,0.08)'}`,
                       borderRadius: '14px',

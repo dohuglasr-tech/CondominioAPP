@@ -474,6 +474,10 @@ export const AdminGastos: React.FC = () => {
             grid-template-columns: 1fr;
           }
         }
+        body.theme-light .gasto-amounts-pill {
+          background-color: #f8fafc !important;
+          border-color: #e2e8f0 !important;
+        }
       `}</style>
 
       {/* Header */}

@@ -33,6 +33,7 @@ export const Skeleton: React.FC<SkeletonProps> = ({
 export const SkeletonCard: React.FC<{ height?: string | number }> = ({ height = '130px' }) => {
   return (
     <div
+      className="skeleton-card-box"
       style={{
         backgroundColor: '#141414',
         border: '1px solid #1e1e1e',
@@ -63,6 +64,7 @@ export const SkeletonCard: React.FC<{ height?: string | number }> = ({ height = 
 export const SkeletonListItem: React.FC = () => {
   return (
     <div
+      className="skeleton-list-box"
       style={{
         display: 'flex',
         alignItems: 'center',
@@ -95,7 +97,7 @@ export const SkeletonTable: React.FC<{ rows?: number; columns?: number }> = ({ r
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%' }}>
       {/* Cabecera */}
-      <div style={{ display: 'flex', gap: '12px', padding: '10px 12px', borderBottom: '1px solid #222' }}>
+      <div className="skeleton-table-header" style={{ display: 'flex', gap: '12px', padding: '10px 12px', borderBottom: '1px solid #222' }}>
         {Array.from({ length: columns }).map((_, i) => (
           <Skeleton key={i} height="14px" width={`${100 / columns}%`} />
         ))}
@@ -104,6 +106,7 @@ export const SkeletonTable: React.FC<{ rows?: number; columns?: number }> = ({ r
       {Array.from({ length: rows }).map((_, r) => (
         <div
           key={r}
+          className="skeleton-table-row"
           style={{
             display: 'flex',
             gap: '12px',
@@ -126,6 +129,7 @@ export const SkeletonTable: React.FC<{ rows?: number; columns?: number }> = ({ r
 export const SkeletonChart: React.FC<{ height?: string | number; title?: string }> = ({ height = '220px', title }) => {
   return (
     <div
+      className="skeleton-card-box"
       style={{
         backgroundColor: '#141414',
         border: '1px solid #222',

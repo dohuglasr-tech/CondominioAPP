@@ -9,6 +9,7 @@ import {
   enviarMensajeDesdeResidente
 } from '../../data/chatService'
 import { useAuth } from '../../application/contexts/AuthContext'
+import { useTheme } from '../../application/contexts/ThemeContext'
 import { useNavigate } from 'react-router-dom'
 
 interface ChatPanelProps {
@@ -17,6 +18,7 @@ interface ChatPanelProps {
 
 export const ChatPanel: React.FC<ChatPanelProps> = ({ onClose }) => {
   const { session, perfil } = useAuth()
+  const { isLight } = useTheme()
   const [mensajes, setMensajes] = useState<ChatMensaje[]>([])
   const [loading, setLoading] = useState(true)
   const [inputVal, setInputVal] = useState('')
@@ -270,7 +272,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onClose }) => {
     overlay: {
       width: '100%',
       height: '100%',
-      backgroundColor: '#0a0a0a',
+      backgroundColor: isLight ? '#eef2f6' : '#0a0a0a',
       display: 'flex',
       flexDirection: 'column' as const,
       padding: '16px',
@@ -278,14 +280,14 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onClose }) => {
     },
     modal: {
       flex: 1,
-      backgroundColor: '#121214',
-      border: '1px solid #27272a',
+      backgroundColor: isLight ? '#ffffff' : '#121214',
+      border: isLight ? '1px solid #e2e8f0' : '1px solid #27272a',
       borderRadius: '20px',
       position: 'relative' as const,
       overflow: 'hidden',
       display: 'flex',
       flexDirection: 'column' as const,
-      boxShadow: '0 8px 32px rgba(0,0,0,0.5)'
+      boxShadow: isLight ? '0 10px 32px rgba(15, 23, 42, 0.08)' : '0 8px 32px rgba(0,0,0,0.5)'
     },
     topAccent: {
       position: 'absolute' as const,
@@ -300,15 +302,15 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onClose }) => {
     },
     header: {
       padding: '16px 20px',
-      borderBottom: '1px solid #27272a',
+      borderBottom: isLight ? '1px solid #e2e8f0' : '1px solid #27272a',
       display: 'flex',
       justifyContent: 'space-between',
       alignItems: 'center',
       flexShrink: 0,
-      backgroundColor: '#18181b'
+      backgroundColor: isLight ? '#f8fafc' : '#18181b'
     },
     title: {
-      color: '#fff',
+      color: isLight ? '#0f172a' : '#fff',
       fontSize: '18px',
       fontWeight: 700,
       margin: 0,
@@ -323,12 +325,12 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onClose }) => {
       display: 'flex',
       flexDirection: 'column' as const,
       gap: '16px',
-      backgroundColor: '#0c0c0e'
+      backgroundColor: isLight ? '#f1f5f9' : '#0c0c0e'
     },
     footer: {
       padding: '14px 20px',
-      borderTop: '1px solid #27272a',
-      backgroundColor: '#18181b',
+      borderTop: isLight ? '1px solid #e2e8f0' : '1px solid #27272a',
+      backgroundColor: isLight ? '#f8fafc' : '#18181b',
       flexShrink: 0
     },
     inputRow: {
@@ -337,9 +339,9 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onClose }) => {
     },
     input: {
       flex: 1,
-      backgroundColor: estadoChat.solo_lectura ? '#1c1917' : '#222',
-      border: estadoChat.solo_lectura ? '1px dashed #7f1d1d' : '1px solid #333',
-      color: estadoChat.solo_lectura ? '#a8a29e' : '#fff',
+      backgroundColor: estadoChat.solo_lectura ? (isLight ? '#fef2f2' : '#1c1917') : (isLight ? '#ffffff' : '#222'),
+      border: estadoChat.solo_lectura ? '1px dashed #ef4444' : (isLight ? '1px solid #cbd5e1' : '1px solid #333'),
+      color: estadoChat.solo_lectura ? (isLight ? '#991b1b' : '#a8a29e') : (isLight ? '#0f172a' : '#fff'),
       padding: '12px 16px',
       borderRadius: '12px',
       fontSize: '14px',
@@ -347,8 +349,8 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onClose }) => {
       cursor: estadoChat.solo_lectura ? 'not-allowed' : 'text'
     },
     sendBtn: {
-      background: estadoChat.solo_lectura ? '#451a03' : 'var(--color-brand-gradient, #f97316)',
-      color: estadoChat.solo_lectura ? '#a8a29e' : '#fff',
+      background: estadoChat.solo_lectura ? (isLight ? '#fee2e2' : '#451a03') : 'var(--color-brand-gradient, #f97316)',
+      color: estadoChat.solo_lectura ? (isLight ? '#991b1b' : '#a8a29e') : '#fff',
       border: 'none',
       borderRadius: '12px',
       padding: '0 20px',
@@ -673,19 +675,21 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onClose }) => {
                     backgroundColor: isMe
                       ? 'var(--color-accent, #f97316)'
                       : isAnuncio
-                        ? 'rgba(234, 179, 8, 0.12)'
+                        ? (isLight ? '#fefce8' : 'rgba(234, 179, 8, 0.12)')
                         : isAdmin
                           ? 'var(--color-accent-light, rgba(249,115,22,0.12))'
-                          : '#202024',
+                          : (isLight ? '#ffffff' : '#202024'),
                     border: isAnuncio
                       ? '1px solid rgba(234, 179, 8, 0.35)'
                       : isAdmin && !isMe
                         ? '1px solid var(--color-accent-glow, rgba(249,115,22,0.3))'
-                        : '1px solid transparent',
-                    color: isMe ? '#fff' : '#eaeaea',
+                        : isLight && !isMe
+                          ? '1px solid #e2e8f0'
+                          : '1px solid transparent',
+                    color: isMe ? '#fff' : (isLight ? '#0f172a' : '#eaeaea'),
                     fontSize: '13px',
                     lineHeight: '1.45',
-                    boxShadow: isMe ? '0 4px 12px rgba(249,115,22,0.2)' : 'none'
+                    boxShadow: isMe ? '0 4px 12px rgba(249,115,22,0.2)' : (isLight ? '0 1px 3px rgba(15, 23, 42, 0.05)' : 'none')
                   }}>
                     {isAnuncio && (
                       <div style={{ fontSize: '10px', fontWeight: 800, color: '#facc15', marginBottom: '4px', textTransform: 'uppercase' }}>

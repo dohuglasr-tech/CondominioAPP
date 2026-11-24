@@ -548,6 +548,32 @@ export function Login() {
             width: 54px;
           }
         }
+
+        body.theme-light .login-root-container {
+          background-color: #eef2f6 !important;
+          color: #0f172a !important;
+        }
+        body.theme-light .login-form-wrapper {
+          background-color: #eef2f6 !important;
+        }
+        body.theme-light .register-card-glow {
+          background-color: #ffffff !important;
+          border-color: #cbd5e1 !important;
+          box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06) !important;
+        }
+        body.theme-light .register-action-btn {
+          background-color: #ffffff !important;
+          border-color: #cbd5e1 !important;
+          color: #1e293b !important;
+        }
+        body.theme-light .register-action-btn:hover {
+          background-color: #f1f5f9 !important;
+          border-color: #94a3b8 !important;
+        }
+        body.theme-light .login-sheet-pill-bar {
+          background-color: rgba(15, 23, 42, 0.22);
+          box-shadow: none;
+        }
       `}</style>
 
       {/* ── PANEL IZQUIERDO: HERO NARANJA CON DATOS Y LOGO DEL EDIFICIO ── */}

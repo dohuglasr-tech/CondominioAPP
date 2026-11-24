@@ -501,6 +501,64 @@ export const AdminLayout: React.FC = () => {
             overscroll-behavior-y: contain;
           }
         }
+
+        /* ── MODO CLARO ADMIN LAYOUT ── */
+        body.theme-light .admin-layout-container,
+        body.theme-light .admin-main {
+          background-color: #eef2f6 !important;
+        }
+        body.theme-light .admin-sidebar {
+          background: #ffffff !important;
+          border-right: 1px solid #e2e8f0 !important;
+        }
+        body.theme-light .admin-sidebar-nav-btn:hover {
+          background-color: #f1f5f9 !important;
+          color: #0f172a !important;
+        }
+        body.theme-light .admin-sidebar-nav-btn.active {
+          background-color: var(--color-accent-light, rgba(249, 115, 22, 0.12)) !important;
+          color: var(--color-accent-hover, #ea580c) !important;
+        }
+        body.theme-light .admin-logout-btn {
+          background-color: #fff1f2 !important;
+          border-color: #fecdd3 !important;
+          color: #dc2626 !important;
+        }
+        body.theme-light .admin-mobile-top-bar {
+          background: rgba(255, 255, 255, 0.95) !important;
+          border-bottom: 1px solid #e2e8f0 !important;
+          box-shadow: 0 2px 12px rgba(15, 23, 42, 0.05) !important;
+        }
+        body.theme-light .admin-mobile-bottom-bar {
+          background: rgba(255, 255, 255, 0.96) !important;
+          border-top: 1px solid #e2e8f0 !important;
+          box-shadow: 0 -4px 20px rgba(15, 23, 42, 0.06) !important;
+        }
+        body.theme-light .admin-bottom-center-btn {
+          border-color: #eef2f6 !important;
+        }
+        body.theme-light .admin-offcanvas-drawer {
+          background-color: #ffffff !important;
+          border-right: 1px solid #e2e8f0 !important;
+          box-shadow: 10px 0 40px rgba(15, 23, 42, 0.14) !important;
+        }
+        body.theme-light .admin-drawer-close-btn {
+          background-color: #f1f5f9 !important;
+          border-color: #e2e8f0 !important;
+          color: #475569 !important;
+        }
+        body.theme-light .offcanvas-circle-icon {
+          background: #f1f5f9 !important;
+          border-color: #e2e8f0 !important;
+          color: #334155 !important;
+        }
+        body.theme-light .offcanvas-item-btn:hover .offcanvas-circle-icon {
+          background: #e2e8f0 !important;
+          color: #0f172a !important;
+        }
+        body.theme-light .offcanvas-label {
+          color: #334155 !important;
+        }
       `}</style>
 
       {/* ── MOBILE TOP BAR ────────────────────────────────────────────── */}
@@ -618,7 +676,7 @@ export const AdminLayout: React.FC = () => {
                   height: '8px',
                   backgroundColor: 'var(--color-accent, #ea580c)',
                   borderRadius: '50%',
-                  border: '2px solid #0c0d10'
+                  border: '2px solid var(--color-bg-surface, #0c0d10)'
                 }} />
               )}
             </button>
@@ -690,6 +748,7 @@ export const AdminLayout: React.FC = () => {
           </div>
 
           <button
+            className="admin-drawer-close-btn"
             onClick={() => setDrawerOpen(false)}
             style={{
               width: '34px',
@@ -783,7 +842,7 @@ export const AdminLayout: React.FC = () => {
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      border: '2px solid #0c0d10'
+                      border: '2px solid var(--color-bg-surface, #0c0d10)'
                     }}>
                       {pendingCount}
                     </span>
@@ -966,7 +1025,7 @@ export const AdminLayout: React.FC = () => {
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      border: '2px solid #0c0d10'
+                      border: '2px solid var(--color-bg-surface, #0c0d10)'
                     }}>
                       {pendingCount}
                     </span>
@@ -1076,7 +1135,7 @@ export const AdminLayout: React.FC = () => {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                border: '2px solid #090a0d',
+                border: '2px solid var(--color-bg-deep, #090a0d)',
                 boxShadow: '0 2px 6px rgba(239, 68, 68, 0.6)'
               }}>
                 {pendingCount}
@@ -1146,6 +1205,7 @@ export const AdminLayout: React.FC = () => {
             return (
               <button
                 key={item.path}
+                className={`admin-sidebar-nav-btn ${isActive ? 'active' : ''}`}
                 onClick={() => navigate(item.path)}
                 style={{
                   display: 'flex', alignItems: 'center', gap: '12px',
@@ -1193,6 +1253,7 @@ export const AdminLayout: React.FC = () => {
           <BotonLimpiarCache variant="menuItem" />
           <p style={{ color: '#555', fontSize: '11px', marginBottom: '8px' }}>{adminNombre}</p>
           <button
+            className="admin-logout-btn"
             onClick={handleLogout}
             style={{
               width: '100%', backgroundColor: '#1a1a1a', color: '#888', border: '1px solid #2a2a2a',

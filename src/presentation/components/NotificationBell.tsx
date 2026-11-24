@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
+import { useTheme } from '../../application/contexts/ThemeContext'
 import { supabase } from '../../data/supabase'
 import {
   Notificacion,
@@ -88,6 +89,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
   iconColor = '#a1a1aa',
 }) => {
   const navigate = useNavigate()
+  const { isLight } = useTheme()
   const [open, setOpen] = useState(false)
   const [notifs, setNotifs] = useState<Notificacion[]>([])
   const [noLeidas, setNoLeidas] = useState(0)
@@ -294,6 +296,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
 
           {/* Panel Flotante de Notificaciones */}
           <div
+            className="notification-dropdown-panel"
             onClick={(e) => e.stopPropagation()}
             style={{
               position: 'fixed',
@@ -320,10 +323,12 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
                     maxWidth: 'calc(100vw - 24px)',
                   }
               ),
-              backgroundColor: '#111318',
-              border: '1px solid rgba(255, 255, 255, 0.12)',
+              backgroundColor: isLight ? '#ffffff' : '#111318',
+              border: isLight ? '1px solid #cbd5e1' : '1px solid rgba(255, 255, 255, 0.12)',
               borderRadius: isMobile ? '22px' : '18px',
-              boxShadow: '0 24px 64px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(255, 255, 255, 0.08), 0 8px 24px rgba(0, 0, 0, 0.5)',
+              boxShadow: isLight
+                ? '0 20px 50px rgba(15, 23, 42, 0.16), 0 4px 12px rgba(15, 23, 42, 0.06)'
+                : '0 24px 64px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(255, 255, 255, 0.08), 0 8px 24px rgba(0, 0, 0, 0.5)',
               zIndex: 999999,
               display: 'flex',
               flexDirection: 'column',
@@ -338,13 +343,13 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
               alignItems: 'center',
               justifyContent: 'space-between',
               padding: '16px 18px 14px',
-              borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-              backgroundColor: 'rgba(255, 255, 255, 0.02)',
+              borderBottom: isLight ? '1px solid #e2e8f0' : '1px solid rgba(255, 255, 255, 0.08)',
+              backgroundColor: isLight ? '#f8fafc' : 'rgba(255, 255, 255, 0.02)',
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <span style={{ fontSize: '16px' }}>🔔</span>
                 <div>
-                  <div style={{ color: '#fff', fontSize: '15px', fontWeight: 800, letterSpacing: '-0.2px' }}>
+                  <div style={{ color: isLight ? '#0f172a' : '#fff', fontSize: '15px', fontWeight: 800, letterSpacing: '-0.2px' }}>
                     Notificaciones
                   </div>
                   {noLeidas > 0 ? (
@@ -352,7 +357,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
                       {noLeidas} nueva{noLeidas > 1 ? 's' : ''} sin leer
                     </div>
                   ) : (
-                    <div style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 500, marginTop: '1px' }}>
+                    <div style={{ color: isLight ? '#64748b' : '#94a3b8', fontSize: '11px', fontWeight: 500, marginTop: '1px' }}>
                       Al día
                     </div>
                   )}
@@ -383,9 +388,9 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
                   onClick={() => setOpen(false)}
                   title="Cerrar"
                   style={{
-                    background: 'rgba(255, 255, 255, 0.06)',
-                    border: '1px solid rgba(255, 255, 255, 0.08)',
-                    color: '#a1a1aa',
+                    background: isLight ? '#f1f5f9' : 'rgba(255, 255, 255, 0.06)',
+                    border: isLight ? '1px solid #cbd5e1' : '1px solid rgba(255, 255, 255, 0.08)',
+                    color: isLight ? '#475569' : '#a1a1aa',
                     width: '28px',
                     height: '28px',
                     borderRadius: '50%',
@@ -420,8 +425,8 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
                     width: '56px',
                     height: '56px',
                     borderRadius: '50%',
-                    backgroundColor: 'rgba(255, 255, 255, 0.04)',
-                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                    backgroundColor: isLight ? '#f1f5f9' : 'rgba(255, 255, 255, 0.04)',
+                    border: isLight ? '1px solid #e2e8f0' : '1px solid rgba(255, 255, 255, 0.08)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -430,10 +435,10 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
                   }}>
                     🔔
                   </div>
-                  <div style={{ fontSize: '14px', fontWeight: 700, color: '#e2e8f0', marginBottom: '4px' }}>
+                  <div style={{ fontSize: '14px', fontWeight: 700, color: isLight ? '#0f172a' : '#e2e8f0', marginBottom: '4px' }}>
                     Sin notificaciones aún
                   </div>
-                  <div style={{ fontSize: '12px', color: '#94a3b8', lineHeight: 1.4 }}>
+                  <div style={{ fontSize: '12px', color: isLight ? '#475569' : '#94a3b8', lineHeight: 1.4 }}>
                     Te avisaremos aquí cuando se emita un nuevo recibo, se apruebe un pago o haya avisos comunitarios.
                   </div>
                 </div>
@@ -448,9 +453,9 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
                       alignItems: 'flex-start',
                       gap: '12px',
                       padding: '14px 18px',
-                      background: n.leida ? 'transparent' : 'rgba(249, 115, 22, 0.04)',
+                      background: n.leida ? 'transparent' : (isLight ? '#fff7ed' : 'rgba(249, 115, 22, 0.04)'),
                       border: 'none',
-                      borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
+                      borderBottom: isLight ? '1px solid #e2e8f0' : '1px solid rgba(255, 255, 255, 0.06)',
                       cursor: 'pointer',
                       textAlign: 'left',
                       transition: 'background 0.15s',
@@ -484,7 +489,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
                         marginBottom: '3px',
                       }}>
                         <div style={{
-                          color: n.leida ? '#cbd5e1' : '#fff',
+                          color: isLight ? (n.leida ? '#334155' : '#0f172a') : (n.leida ? '#cbd5e1' : '#fff'),
                           fontSize: '13.5px',
                           fontWeight: n.leida ? 600 : 800,
                           lineHeight: 1.25,
@@ -507,7 +512,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
                       </div>
 
                       <div style={{
-                        color: n.leida ? '#94a3b8' : '#cbd5e1',
+                        color: isLight ? '#475569' : (n.leida ? '#94a3b8' : '#cbd5e1'),
                         fontSize: '12px',
                         lineHeight: 1.45,
                         display: '-webkit-box',
@@ -538,12 +543,12 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
             {/* Footer */}
             <div style={{
               padding: '12px 18px',
-              borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+              borderTop: isLight ? '1px solid #e2e8f0' : '1px solid rgba(255, 255, 255, 0.08)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
               gap: '10px',
-              backgroundColor: 'rgba(255, 255, 255, 0.02)',
+              backgroundColor: isLight ? '#f8fafc' : 'rgba(255, 255, 255, 0.02)',
             }}>
               {typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default' ? (
                 <button
