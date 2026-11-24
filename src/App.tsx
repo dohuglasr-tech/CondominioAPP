@@ -242,6 +242,17 @@ const AdminRoute = ({ children }: { children: React.ReactNode }) => {
   return <>{children}</>
 }
 
+// ── Guarda exclusiva para SuperAdmin (Supabase Auth real) ───────────
+const SuperAdminRoute = ({ children }: { children: React.ReactNode }) => {
+  const { session, perfil, loading } = useAuth()
+
+  if (loading) return <Loader />
+  if (session && perfil === null) return <Loader />
+  if (!session || perfil?.rol !== 'superadmin') return <Navigate to="/admin-login" replace />
+
+  return <>{children}</>
+}
+
 // ── Shell de la app (con splash) ─────────────────────────────────
 function AppShell() {
   const { config, isPasswordRecovery } = useAuth()
@@ -318,7 +329,14 @@ function AppShell() {
         />
 
         <Route path="/admin-login" element={<AdminLogin />} />
-        <Route path="/superadmin" element={<SuperAdminDashboard />} />
+        <Route
+          path="/superadmin"
+          element={
+            <SuperAdminRoute>
+              <SuperAdminDashboard />
+            </SuperAdminRoute>
+          }
+        />
 
         <Route
           path="/admin/*"

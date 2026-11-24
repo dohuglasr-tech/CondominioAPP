@@ -733,14 +733,425 @@ export async function obtenerDeudaMoraApartamento(
   )
 }
 
+function construirListaDeudoresDesdeDatos(params: {
+  deudasMoraRows: any[]
+  recibosRows: any[]
+  apartamentosRows: any[]
+  perfilesRows: any[]
+  configCasosRows: any[]
+  incluirSolventes: boolean
+}): DeudaMoraItem[] {
+  const {
+    deudasMoraRows,
+    recibosRows,
+    apartamentosRows,
+    perfilesRows,
+    configCasosRows,
+    incluirSolventes
+  } = params
+
+  const perfilesMap = new Map<string, any>()
+  ;(perfilesRows || []).forEach(p => {
+    if (p.apartamento_id) {
+      const exist = perfilesMap.get(p.apartamento_id)
+      if (!exist || (!exist.propietario_email && p.propietario_email)) {
+        perfilesMap.set(p.apartamento_id, p)
+      }
+    }
+  })
+
+  const moraMap = new Map<string, any>()
+  ;(deudasMoraRows || []).forEach((row: any) => {
+    if (row.apartamento_id) moraMap.set(row.apartamento_id, row)
+  })
+
+  const recibosPendientesMap = new Map<string, any[]>()
+  ;(recibosRows || []).forEach(r => {
+    if (!r.apartamento_id) return
+    if (r.estado === 'pendiente') {
+      if (!recibosPendientesMap.has(r.apartamento_id)) {
+        recibosPendientesMap.set(r.apartamento_id, [])
+      }
+      recibosPendientesMap.get(r.apartamento_id)!.push(r)
+    }
+  })
+
+  const configsCalendario: Array<{ anio: number; config: any }> = []
+  ;(configCasosRows || []).forEach((row: any) => {
+    if (!row?.descripcion) return
+    try {
+      const parsed = JSON.parse(row.descripcion)
+      const matchAnio = String(row.tipo || '').match(/config_calendario_mora_(\d{4})/)
+      const anioCfg = matchAnio ? Number(matchAnio[1]) : 2026
+      configsCalendario.push({ anio: anioCfg, config: parsed })
+    } catch (e) {}
+  })
+
+  const mesesNombres = [
+    'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+  ]
+
+  const listaDeudores: DeudaMoraItem[] = []
+
+  ;(apartamentosRows || []).forEach(apto => {
+    const moraRow = moraMap.get(apto.id)
+    const perfil = perfilesMap.get(apto.id)
+    const recs = recibosPendientesMap.get(apto.id) || []
+
+    const propNombre =
+      perfil?.condicion_habitacional === 'alquilado' && perfil?.propietario_nombre
+        ? perfil.propietario_nombre
+        : perfil?.nombre_completo || apto.propietario_nombre || 'N/D'
+    const propTel = perfil?.telefono || apto.telefono_contacto || ''
+    const propEmail = perfil?.propietario_email || undefined
+
+    let conceptosHist: any = {}
+    if (moraRow?.conceptos_detalle) {
+      try {
+        if (moraRow.conceptos_detalle.startsWith('{')) {
+          conceptosHist = JSON.parse(moraRow.conceptos_detalle)
+        }
+      } catch (e) {}
+    }
+
+    const esMoraSolventada = moraRow?.estado === 'solventado'
+    const deudaBase2025 = esMoraSolventada ? 0 : Number(conceptosHist.deuda_2025 || (moraRow?.monto_bs && !conceptosHist.deuda_2025 ? moraRow.monto_bs : 0))
+    const cableViajero  = esMoraSolventada ? 0 : Number(conceptosHist.cable_viajero || 0)
+    const guaya         = esMoraSolventada ? 0 : Number(conceptosHist.guaya || 0)
+    const arreglo       = esMoraSolventada ? 0 : Number(conceptosHist.arreglo || 0)
+
+    const mDeuda: 'USD' | 'BS' = conceptosHist.deuda_2025_moneda || 'BS'
+    const mCable: 'USD' | 'BS' = conceptosHist.cable_viajero_moneda || 'USD'
+    const mGuaya: 'USD' | 'BS' = conceptosHist.guaya_moneda || 'USD'
+    const mArreglo: 'USD' | 'BS' = conceptosHist.arreglo_moneda || (arreglo > 0 && arreglo < 100 ? 'USD' : 'BS')
+
+    let sumBs = 0
+    let sumUsd = 0
+
+    if (mDeuda === 'BS') sumBs += deudaBase2025; else sumUsd += deudaBase2025
+    if (mCable === 'BS') sumBs += cableViajero; else sumUsd += cableViajero
+    if (mGuaya === 'BS') sumBs += guaya; else sumUsd += guaya
+    if (mArreglo === 'BS') sumBs += arreglo; else sumUsd += arreglo
+
+    const recibosBsList: DesgloseReciboItem[] = []
+    const recibosUsdList: DesgloseReciboItem[] = []
+    const itemsList: DesgloseConceptoItem[] = []
+
+    if (deudaBase2025 > 0.01) {
+      itemsList.push({
+        id: 'deuda_2025',
+        label: 'Deuda Pasada 2025',
+        categoria: 'deuda_2025',
+        monto: Number(deudaBase2025.toFixed(2)),
+        moneda: mDeuda,
+        estado: 'pendiente',
+        icono: '📌'
+      })
+    }
+    if (cableViajero > 0.01) {
+      itemsList.push({
+        id: 'cable_viajero',
+        label: 'Cable Viajero 2025',
+        categoria: 'cuota_especial',
+        monto: Number(cableViajero.toFixed(2)),
+        moneda: mCable,
+        estado: 'pendiente',
+        icono: '🛗'
+      })
+    }
+    if (guaya > 0.01) {
+      itemsList.push({
+        id: 'guaya',
+        label: 'Guayas Ascensor 2025',
+        categoria: 'cuota_especial',
+        monto: Number(guaya.toFixed(2)),
+        moneda: mGuaya,
+        estado: 'pendiente',
+        icono: '⛓️'
+      })
+    }
+    if (arreglo > 0.01) {
+      itemsList.push({
+        id: 'arreglo',
+        label: 'Arreglo Ascensor',
+        categoria: 'cuota_especial',
+        monto: Number(arreglo.toFixed(2)),
+        moneda: mArreglo,
+        estado: 'pendiente',
+        icono: '🔧'
+      })
+    }
+
+    recs.forEach((r: any) => {
+      const parts = (r.mes_facturado || '').split('-')
+      const anio = parts[0]
+      const mesNum = parseInt(parts[1], 10) || 1
+      const label = `${mesesNombres[mesNum - 1] || parts[1]} ${anio}`
+      const esReciboBs = (anio === '2026' && mesNum <= 2) || (Number(r.total_usd || 0) === 0 && Number(r.total_bs || 0) > 0)
+
+      if (esReciboBs) {
+        const mbs = Number(r.total_bs || 0)
+        sumBs += mbs
+        const recItem: DesgloseReciboItem = {
+          key: r.mes_facturado,
+          label,
+          monto: Number(mbs.toFixed(2)),
+          moneda: 'BS',
+          estado: 'pendiente'
+        }
+        recibosBsList.push(recItem)
+        itemsList.push({
+          id: `rec-${r.id}`,
+          label: `Recibo ${label}`,
+          categoria: 'recibo_mes',
+          monto: Number(mbs.toFixed(2)),
+          moneda: 'BS',
+          estado: 'pendiente',
+          icono: '📄'
+        })
+      } else {
+        const musd = Number(r.total_usd || 0)
+        sumUsd += musd
+        const recItem: DesgloseReciboItem = {
+          key: r.mes_facturado,
+          label,
+          monto: Number(musd.toFixed(2)),
+          moneda: 'USD',
+          estado: 'pendiente'
+        }
+        recibosUsdList.push(recItem)
+        itemsList.push({
+          id: `rec-${r.id}`,
+          label: `Recibo ${label}`,
+          categoria: 'recibo_mes',
+          monto: Number(musd.toFixed(2)),
+          moneda: 'USD',
+          estado: 'pendiente',
+          icono: '💵'
+        })
+      }
+    })
+
+    const hoyIso = obtenerFechaHoyLocalIso()
+    const cuotasAdicionales: DesgloseConceptoItem[] = []
+    const cuotasProgramadas: DesgloseConceptoItem[] = []
+
+    const pushCuotaCalendario = (
+      idPrefix: string,
+      titulo: string,
+      val: any,
+      defaultMoneda: 'USD' | 'BS',
+      anioCfg: number,
+      descripcion?: string,
+      fechaEmision?: string,
+      fechaLimite?: string,
+      montoDefectoCol?: number
+    ) => {
+      if (!val) return
+      const estadoVigencia = clasificarCuotaExtraordinaria(fechaEmision, fechaLimite, hoyIso)
+      const montoVal = Number(val?.monto || 0)
+      const mon: 'USD' | 'BS' = val.moneda || defaultMoneda || 'USD'
+      const montoOrig = Number(val?.montoOriginal ?? montoDefectoCol ?? montoVal)
+      const abonadoVal = Number(val?.abonado || 0)
+
+      if (val.estado === 'pagado') {
+        if (estadoVigencia === 'programada' && (val.pagadoPorAdelantado || abonadoVal > 0 || val.ultimaFechaAbono || montoOrig > 0.01)) {
+          cuotasProgramadas.push({
+            id: `cuota_esp_${anioCfg}_${idPrefix}`,
+            columnaId: idPrefix,
+            anio: anioCfg,
+            label: titulo || 'Cuota Extraordinaria',
+            categoria: 'cuota_especial',
+            monto: 0,
+            moneda: mon,
+            estado: 'pagado',
+            estadoVigencia: 'programada',
+            montoOriginal: Number(montoOrig.toFixed(2)),
+            abonado: Number((abonadoVal || montoOrig || montoVal).toFixed(2)),
+            pagadoPorAdelantado: true,
+            ultimaFechaAbono: val.ultimaFechaAbono,
+            icono: '✅',
+            descripcion,
+            fechaEmision,
+            fechaLimite
+          })
+        }
+        return
+      }
+
+      if (val.estado !== 'pendiente' || montoVal <= 0.01) return
+
+      const cuotaItem: DesgloseConceptoItem = {
+        id: `cuota_esp_${anioCfg}_${idPrefix}`,
+        columnaId: idPrefix,
+        anio: anioCfg,
+        label: titulo || 'Cuota Extraordinaria',
+        categoria: 'cuota_especial',
+        monto: Number(montoVal.toFixed(2)),
+        moneda: mon,
+        estado: 'pendiente',
+        estadoVigencia,
+        montoOriginal: Number(montoOrig.toFixed(2)),
+        abonado: Number(abonadoVal.toFixed(2)),
+        pagadoPorAdelantado: Boolean(val.pagadoPorAdelantado),
+        ultimaFechaAbono: val.ultimaFechaAbono,
+        icono: estadoVigencia === 'programada' ? '🗓️' : '✨',
+        descripcion,
+        fechaEmision,
+        fechaLimite
+      }
+
+      if (estadoVigencia === 'programada') {
+        cuotasProgramadas.push(cuotaItem)
+      } else {
+        if (mon === 'USD') sumUsd += montoVal
+        else sumBs += montoVal
+        cuotasAdicionales.push(cuotaItem)
+        itemsList.push(cuotaItem)
+      }
+    }
+
+    configsCalendario.forEach(({ anio: anioCfg, config: cfgObj }) => {
+      if (Array.isArray(cfgObj?.columnas)) {
+        const celdasPers = cfgObj.valoresCeldasPersonalizadas?.[apto.id] || {}
+        cfgObj.columnas.forEach((col: any) => {
+          if (col.tipo === 'cuota_especial') {
+            const val = celdasPers[col.id] ?? (col.montoDefecto ? { monto: col.montoDefecto, estado: 'pendiente' } : null)
+            pushCuotaCalendario(
+              col.id,
+              col.titulo || 'Cuota Extraordinaria',
+              val,
+              col.moneda || 'USD',
+              anioCfg,
+              col.descripcion,
+              col.fechaEmision,
+              col.fechaLimite,
+              col.montoDefecto
+            )
+          }
+        })
+      }
+
+      if (Array.isArray(cfgObj?.filasCuotasEspeciales)) {
+        cfgObj.filasCuotasEspeciales.forEach((fila: any) => {
+          const val = fila.valoresPorApto?.[apto.id] ?? (fila.montoDefecto ? { monto: fila.montoDefecto, estado: 'pendiente' } : null)
+          pushCuotaCalendario(
+            fila.id,
+            fila.nombre || 'Cuota Extraordinaria',
+            val,
+            fila.moneda || 'USD',
+            anioCfg,
+            fila.descripcion,
+            fila.fechaEmision,
+            fila.fechaLimite,
+            fila.montoDefecto
+          )
+        })
+      }
+    })
+
+    const totalBs = Number(sumBs.toFixed(2))
+    const totalUsd = Number(sumUsd.toFixed(2))
+    const tieneDeuda = totalBs > 0.01 || totalUsd > 0.01
+
+    if (!tieneDeuda && !incluirSolventes) {
+      return
+    }
+
+    const cuotasVencidasCount = cuotasAdicionales.filter(c => c.estadoVigencia === 'vencida').length
+    const tieneHistoricoDeuda = deudaBase2025 > 0.01 || cableViajero > 0.01 || guaya > 0.01 || arreglo > 0.01
+    const totalConceptosMora = (tieneHistoricoDeuda ? Math.max(1, Number(moraRow?.meses_deuda || 1)) : 0) + recs.length + cuotasVencidasCount
+
+    let tasa: TasaRiesgoMora = 'azul'
+    if (tieneDeuda) {
+      if (!tieneHistoricoDeuda && recs.length <= 1 && cuotasVencidasCount === 0) {
+        tasa = 'azul'
+      } else if (totalConceptosMora <= 3) {
+        tasa = 'amarillo'
+      } else if (totalConceptosMora <= 6) {
+        tasa = 'rojo'
+      } else {
+        tasa = 'morado'
+      }
+    }
+
+    let accionLegal: AccionLegalMora = 'notificacion_amistosa'
+    if (tasa === 'amarillo') accionLegal = 'citacion_junta'
+    else if (tasa === 'rojo') accionLegal = 'carta_cobro_extrajudicial'
+    else if (tasa === 'morado') accionLegal = 'suspension_servicios'
+
+    const partesResumen: string[] = []
+    if (deudaBase2025 > 0.01) partesResumen.push(`Deuda 2025 (${mDeuda === 'BS' ? 'Bs. ' + deudaBase2025.toLocaleString('es-VE', { minimumFractionDigits: 2 }) : '$' + deudaBase2025.toFixed(2)})`)
+    if (cableViajero > 0.01) partesResumen.push(`Cable Viajero ($${cableViajero.toFixed(2)})`)
+    if (guaya > 0.01) partesResumen.push(`Guayas ($${guaya.toFixed(2)})`)
+    if (arreglo > 0.01) partesResumen.push(`Arreglo Asc. (${mArreglo === 'BS' ? 'Bs. ' + arreglo.toLocaleString('es-VE', { minimumFractionDigits: 2 }) : '$' + arreglo.toFixed(2)})`)
+    if (recibosBsList.length > 0) partesResumen.push(`${recibosBsList.length} recibos en Bs (${recibosBsList.map(r => r.label.split(' ')[0]).join(', ')})`)
+    if (recibosUsdList.length > 0) partesResumen.push(`${recibosUsdList.length} recibos en $ (${recibosUsdList.map(r => r.label.split(' ')[0]).join(', ')})`)
+    if (cuotasAdicionales.length > 0) {
+      partesResumen.push(`Cuota Extraordinaria (${cuotasAdicionales.map(c => c.label).join(', ')})`)
+    }
+
+    const conceptosDetalleTexto = partesResumen.length > 0
+      ? partesResumen.join(' · ')
+      : (tieneDeuda ? 'Conceptos pendientes al cobro' : (cuotasProgramadas.length > 0 ? 'Al día / Cuota Extraordinaria programada a futuro' : 'Al día / Solvente'))
+
+    listaDeudores.push({
+      id: moraRow?.id || `mora-apto-${apto.id}`,
+      apartamento_id: apto.id,
+      apartamento_numero: apto.numero,
+      piso: apto.piso,
+      propietario_nombre: propNombre,
+      propietario_telefono: propTel,
+      propietario_email: propEmail,
+      meses_deuda: tieneDeuda ? totalConceptosMora : 0,
+      monto_usd: totalUsd,
+      monto_bs: totalBs,
+      monto_manual_usd: Number((moraRow?.monto_usd || 0).toFixed(2)),
+      monto_manual_bs: Number((moraRow?.monto_bs || 0).toFixed(2)),
+      moneda_principal: totalBs > 0 && totalUsd > 0 ? 'MIXTO' : totalBs > 0 ? 'BS' : 'USD',
+      tasa_riesgo: tasa,
+      accion_legal: accionLegal,
+      estado: tieneDeuda ? 'activo' : 'solventado',
+      conceptos_detalle: conceptosDetalleTexto,
+      observaciones: moraRow?.observaciones || '',
+      fecha_corte: moraRow?.fecha_corte || new Date().toISOString().slice(0, 10),
+      origen: moraRow ? 'deuda_manual' : 'recibo_emitido',
+      created_at: moraRow?.created_at || recs[0]?.emitido_at || new Date().toISOString(),
+      updated_at: moraRow?.updated_at || new Date().toISOString(),
+      desglose: {
+        deuda_base_2025: deudaBase2025 > 0 ? { monto: deudaBase2025, moneda: mDeuda } : undefined,
+        cable_viajero: cableViajero > 0 ? { monto: cableViajero, moneda: mCable } : undefined,
+        guaya: guaya > 0 ? { monto: guaya, moneda: mGuaya } : undefined,
+        arreglo: arreglo > 0 ? { monto: arreglo, moneda: mArreglo } : undefined,
+        recibos_bs: recibosBsList,
+        recibos_usd: recibosUsdList,
+        cuotas_especiales: cuotasAdicionales,
+        cuotas_programadas: cuotasProgramadas,
+        items: itemsList,
+        total_bs: totalBs,
+        total_usd: totalUsd
+      }
+    })
+  })
+
+  listaDeudores.sort((a, b) => {
+    const deudaA = (a.monto_usd || 0) > 0 || (a.monto_bs || 0) > 0 ? 1 : 0
+    const deudaB = (b.monto_usd || 0) > 0 || (b.monto_bs || 0) > 0 ? 1 : 0
+    if (deudaB !== deudaA) return deudaB - deudaA
+
+    const prioA = TASA_RIESGO_CONFIG[a.tasa_riesgo]?.prioridad ?? 0
+    const prioB = TASA_RIESGO_CONFIG[b.tasa_riesgo]?.prioridad ?? 0
+    if (prioB !== prioA) return prioB - prioA
+
+    return a.apartamento_numero.localeCompare(b.apartamento_numero, undefined, { numeric: true })
+  })
+
+  return listaDeudores
+}
+
 /**
- * Obtiene todas las deudas y moras unificadas:
- * 1. Consulta `deudas_mora` (deudas anteriores montadas manualmente / crónicas).
- * 2. Consulta `recibos_generados` donde `estado = 'pendiente'`.
- * 3. Si un apartamento SOLO debe el recibo emitido este mes (< 1 mes), se clasifica como AZUL.
- * 4. Si tiene deudas crónicas anteriores o más de 1 recibo vencido, se categoriza según los meses (Amarillo 3m, Rojo 4-6m, Morado >6m).
- *
- * Utiliza appCache (3 min TTL, deduplicación y tags) para acelerar la carga en 0 ms.
+ * Obtiene todas las deudas y moras unificadas para el Panel de Administrador.
  */
 export async function obtenerDeudasMora(
   forceRefresh = false,
@@ -772,429 +1183,65 @@ export async function obtenerDeudasMora(
             .like('tipo', 'config_calendario_mora%')
         ])
 
-        // Si hubo error grave en la consulta básica de deudas_mora y tampoco hay recibos
         if (dmRes.error && recibosRes.error) {
           console.info('[moraService] Usando caché local para deudas_mora:', dmRes.error?.message)
           return { data: getLocalMoraCache(), error: null, fromDb: false }
         }
 
-        // Mapas de ayuda
-        const aptosMap = new Map<string, any>()
-        ;(aptosRes.data || []).forEach(a => aptosMap.set(a.id, a))
-
-        const perfilesMap = new Map<string, any>()
-        ;(perfilesRes.data || []).forEach(p => {
-          if (p.apartamento_id) {
-            const exist = perfilesMap.get(p.apartamento_id)
-            if (!exist || (!exist.propietario_email && p.propietario_email)) {
-              perfilesMap.set(p.apartamento_id, p)
-            }
-          }
-        })
-
-        const moraMap = new Map<string, any>()
-        ;(dmRes.data || []).forEach((row: any) => {
-          if (row.apartamento_id) moraMap.set(row.apartamento_id, row)
-        })
-
-        const recibosPendientesMap = new Map<string, any[]>()
-        ;(recibosRes.data || []).forEach(r => {
-          if (!r.apartamento_id) return
-          if (r.estado === 'pendiente') {
-            if (!recibosPendientesMap.has(r.apartamento_id)) {
-              recibosPendientesMap.set(r.apartamento_id, [])
-            }
-            recibosPendientesMap.get(r.apartamento_id)!.push(r)
-          }
-        })
-
-        // Columnas o celdas personalizadas del calendario (todos los años activos)
-        const configsCalendario: Array<{ anio: number; config: any }> = []
-        ;(configRes.data || []).forEach((row: any) => {
-          if (!row?.descripcion) return
-          try {
-            const parsed = JSON.parse(row.descripcion)
-            const matchAnio = String(row.tipo || '').match(/config_calendario_mora_(\d{4})/)
-            const anioCfg = matchAnio ? Number(matchAnio[1]) : 2026
-            configsCalendario.push({ anio: anioCfg, config: parsed })
-          } catch (e) {}
-        })
-
-        const mesesNombres = [
-          'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-          'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
-        ]
-
-        const listaDeudores: DeudaMoraItem[] = []
-
-        // Recorrer todos los apartamentos para construir el balance exacto
-        ;(aptosRes.data || []).forEach(apto => {
-          const moraRow = moraMap.get(apto.id)
-          const perfil = perfilesMap.get(apto.id)
-          const recs = recibosPendientesMap.get(apto.id) || []
-
-          const propNombre =
-            perfil?.condicion_habitacional === 'alquilado' && perfil?.propietario_nombre
-              ? perfil.propietario_nombre
-              : perfil?.nombre_completo || apto.propietario_nombre || 'N/D'
-          const propTel = perfil?.telefono || apto.telefono_contacto || ''
-          const propEmail = perfil?.propietario_email || undefined
-
-          // 1. Conceptos históricos de 2025
-          let conceptosHist: any = {}
-          if (moraRow?.conceptos_detalle) {
-            try {
-              if (moraRow.conceptos_detalle.startsWith('{')) {
-                conceptosHist = JSON.parse(moraRow.conceptos_detalle)
-              }
-            } catch (e) {}
-          }
-
-          const esMoraSolventada = moraRow?.estado === 'solventado'
-          const deudaBase2025 = esMoraSolventada ? 0 : Number(conceptosHist.deuda_2025 || (moraRow?.monto_bs && !conceptosHist.deuda_2025 ? moraRow.monto_bs : 0))
-          const cableViajero  = esMoraSolventada ? 0 : Number(conceptosHist.cable_viajero || 0)
-          const guaya         = esMoraSolventada ? 0 : Number(conceptosHist.guaya || 0)
-          const arreglo       = esMoraSolventada ? 0 : Number(conceptosHist.arreglo || 0)
-
-          const mDeuda: 'USD' | 'BS' = conceptosHist.deuda_2025_moneda || 'BS'
-          const mCable: 'USD' | 'BS' = conceptosHist.cable_viajero_moneda || 'USD'
-          const mGuaya: 'USD' | 'BS' = conceptosHist.guaya_moneda || 'USD'
-          const mArreglo: 'USD' | 'BS' = conceptosHist.arreglo_moneda || (arreglo > 0 && arreglo < 100 ? 'USD' : 'BS')
-
-          let sumBs = 0
-          let sumUsd = 0
-
-          if (mDeuda === 'BS') sumBs += deudaBase2025; else sumUsd += deudaBase2025
-          if (mCable === 'BS') sumBs += cableViajero; else sumUsd += cableViajero
-          if (mGuaya === 'BS') sumBs += guaya; else sumUsd += guaya
-          if (mArreglo === 'BS') sumBs += arreglo; else sumUsd += arreglo
-
-          const recibosBsList: DesgloseReciboItem[] = []
-          const recibosUsdList: DesgloseReciboItem[] = []
-          const itemsList: DesgloseConceptoItem[] = []
-
-          // Agregar conceptos 2025 si tienen monto
-          if (deudaBase2025 > 0.01) {
-            itemsList.push({
-              id: 'deuda_2025',
-              label: 'Deuda Pasada 2025',
-              categoria: 'deuda_2025',
-              monto: Number(deudaBase2025.toFixed(2)),
-              moneda: mDeuda,
-              estado: 'pendiente',
-              icono: '📌'
-            })
-          }
-          if (cableViajero > 0.01) {
-            itemsList.push({
-              id: 'cable_viajero',
-              label: 'Cable Viajero 2025',
-              categoria: 'cuota_especial',
-              monto: Number(cableViajero.toFixed(2)),
-              moneda: mCable,
-              estado: 'pendiente',
-              icono: '🛗'
-            })
-          }
-          if (guaya > 0.01) {
-            itemsList.push({
-              id: 'guaya',
-              label: 'Guayas Ascensor 2025',
-              categoria: 'cuota_especial',
-              monto: Number(guaya.toFixed(2)),
-              moneda: mGuaya,
-              estado: 'pendiente',
-              icono: '⛓️'
-            })
-          }
-          if (arreglo > 0.01) {
-            itemsList.push({
-              id: 'arreglo',
-              label: 'Arreglo Ascensor',
-              categoria: 'cuota_especial',
-              monto: Number(arreglo.toFixed(2)),
-              moneda: mArreglo,
-              estado: 'pendiente',
-              icono: '🔧'
-            })
-          }
-
-          // 2. Procesar recibos pendientes (distinguiendo Bolívares y Dólares)
-          recs.forEach((r: any) => {
-            const parts = (r.mes_facturado || '').split('-')
-            const anio = parts[0]
-            const mesNum = parseInt(parts[1], 10) || 1
-            const label = `${mesesNombres[mesNum - 1] || parts[1]} ${anio}`
-            // Enero y Febrero 2026 son en BS (o cualquier recibo emitido con solo total_bs > 0)
-            const esReciboBs = (anio === '2026' && mesNum <= 2) || (Number(r.total_usd || 0) === 0 && Number(r.total_bs || 0) > 0)
-
-            if (esReciboBs) {
-              const mbs = Number(r.total_bs || 0)
-              sumBs += mbs
-              const recItem: DesgloseReciboItem = {
-                key: r.mes_facturado,
-                label,
-                monto: Number(mbs.toFixed(2)),
-                moneda: 'BS',
-                estado: 'pendiente'
-              }
-              recibosBsList.push(recItem)
-              itemsList.push({
-                id: `rec-${r.id}`,
-                label: `Recibo ${label}`,
-                categoria: 'recibo_mes',
-                monto: Number(mbs.toFixed(2)),
-                moneda: 'BS',
-                estado: 'pendiente',
-                icono: '📄'
-              })
-            } else {
-              const musd = Number(r.total_usd || 0)
-              sumUsd += musd
-              const recItem: DesgloseReciboItem = {
-                key: r.mes_facturado,
-                label,
-                monto: Number(musd.toFixed(2)),
-                moneda: 'USD',
-                estado: 'pendiente'
-              }
-              recibosUsdList.push(recItem)
-              itemsList.push({
-                id: `rec-${r.id}`,
-                label: `Recibo ${label}`,
-                categoria: 'recibo_mes',
-                monto: Number(musd.toFixed(2)),
-                moneda: 'USD',
-                estado: 'pendiente',
-                icono: '💵'
-              })
-            }
-          })
-
-          // 3. Cuotas especiales adicionales del calendario (separando vigentes vs programadas futuras)
-          const hoyIso = obtenerFechaHoyLocalIso()
-          const cuotasAdicionales: DesgloseConceptoItem[] = []
-          const cuotasProgramadas: DesgloseConceptoItem[] = []
-
-          const pushCuotaCalendario = (
-            idPrefix: string,
-            titulo: string,
-            val: any,
-            defaultMoneda: 'USD' | 'BS',
-            anioCfg: number,
-            descripcion?: string,
-            fechaEmision?: string,
-            fechaLimite?: string,
-            montoDefectoCol?: number
-          ) => {
-            if (!val) return
-            const estadoVigencia = clasificarCuotaExtraordinaria(fechaEmision, fechaLimite, hoyIso)
-            const montoVal = Number(val?.monto || 0)
-            const mon: 'USD' | 'BS' = val.moneda || defaultMoneda || 'USD'
-            const montoOrig = Number(val?.montoOriginal ?? montoDefectoCol ?? montoVal)
-            const abonadoVal = Number(val?.abonado || 0)
-
-            if (val.estado === 'pagado') {
-              if (estadoVigencia === 'programada' && (val.pagadoPorAdelantado || abonadoVal > 0 || val.ultimaFechaAbono || montoOrig > 0.01)) {
-                cuotasProgramadas.push({
-                  id: `cuota_esp_${anioCfg}_${idPrefix}`,
-                  columnaId: idPrefix,
-                  anio: anioCfg,
-                  label: titulo || 'Cuota Extraordinaria',
-                  categoria: 'cuota_especial',
-                  monto: 0,
-                  moneda: mon,
-                  estado: 'pagado',
-                  estadoVigencia: 'programada',
-                  montoOriginal: Number(montoOrig.toFixed(2)),
-                  abonado: Number((abonadoVal || montoOrig || montoVal).toFixed(2)),
-                  pagadoPorAdelantado: true,
-                  ultimaFechaAbono: val.ultimaFechaAbono,
-                  icono: '✅',
-                  descripcion,
-                  fechaEmision,
-                  fechaLimite
-                })
-              }
-              return
-            }
-
-            if (val.estado !== 'pendiente' || montoVal <= 0.01) return
-
-            const cuotaItem: DesgloseConceptoItem = {
-              id: `cuota_esp_${anioCfg}_${idPrefix}`,
-              columnaId: idPrefix,
-              anio: anioCfg,
-              label: titulo || 'Cuota Extraordinaria',
-              categoria: 'cuota_especial',
-              monto: Number(montoVal.toFixed(2)),
-              moneda: mon,
-              estado: 'pendiente',
-              estadoVigencia,
-              montoOriginal: Number(montoOrig.toFixed(2)),
-              abonado: Number(abonadoVal.toFixed(2)),
-              pagadoPorAdelantado: Boolean(val.pagadoPorAdelantado),
-              ultimaFechaAbono: val.ultimaFechaAbono,
-              icono: estadoVigencia === 'programada' ? '🗓️' : '✨',
-              descripcion,
-              fechaEmision,
-              fechaLimite
-            }
-
-            if (estadoVigencia === 'programada') {
-              cuotasProgramadas.push(cuotaItem)
-            } else {
-              if (mon === 'USD') sumUsd += montoVal
-              else sumBs += montoVal
-              cuotasAdicionales.push(cuotaItem)
-              itemsList.push(cuotaItem)
-            }
-          }
-
-          configsCalendario.forEach(({ anio: anioCfg, config: cfgObj }) => {
-            if (Array.isArray(cfgObj?.columnas)) {
-              const celdasPers = cfgObj.valoresCeldasPersonalizadas?.[apto.id] || {}
-              cfgObj.columnas.forEach((col: any) => {
-                if (col.tipo === 'cuota_especial') {
-                  const val = celdasPers[col.id] ?? (col.montoDefecto ? { monto: col.montoDefecto, estado: 'pendiente' } : null)
-                  pushCuotaCalendario(
-                    col.id,
-                    col.titulo || 'Cuota Extraordinaria',
-                    val,
-                    col.moneda || 'USD',
-                    anioCfg,
-                    col.descripcion,
-                    col.fechaEmision,
-                    col.fechaLimite,
-                    col.montoDefecto
-                  )
-                }
-              })
-            }
-
-            if (Array.isArray(cfgObj?.filasCuotasEspeciales)) {
-              cfgObj.filasCuotasEspeciales.forEach((fila: any) => {
-                const val = fila.valoresPorApto?.[apto.id] ?? (fila.montoDefecto ? { monto: fila.montoDefecto, estado: 'pendiente' } : null)
-                pushCuotaCalendario(
-                  fila.id,
-                  fila.nombre || 'Cuota Extraordinaria',
-                  val,
-                  fila.moneda || 'USD',
-                  anioCfg,
-                  fila.descripcion,
-                  fila.fechaEmision,
-                  fila.fechaLimite,
-                  fila.montoDefecto
-                )
-              })
-            }
-          })
-
-          const totalBs = Number(sumBs.toFixed(2))
-          const totalUsd = Number(sumUsd.toFixed(2))
-          const tieneDeuda = totalBs > 0.01 || totalUsd > 0.01
-
-          // Si el usuario no pidió incluir solventes y este apto no debe nada exigible todavía
-          if (!tieneDeuda && !incluirSolventes) {
-            return
-          }
-
-          // Calcular tasa de riesgo y gravedad (cuotas futuras programadas NO activan mora;
-          // una cuota extraordinaria vigente sin vencer tampoco marca atraso)
-          const cuotasVencidasCount = cuotasAdicionales.filter(c => c.estadoVigencia === 'vencida').length
-          const tieneHistoricoDeuda = deudaBase2025 > 0.01 || cableViajero > 0.01 || guaya > 0.01 || arreglo > 0.01
-          const totalConceptosMora = (tieneHistoricoDeuda ? Math.max(1, Number(moraRow?.meses_deuda || 1)) : 0) + recs.length + cuotasVencidasCount
-
-          let tasa: TasaRiesgoMora = 'azul'
-          if (tieneDeuda) {
-            if (!tieneHistoricoDeuda && recs.length <= 1 && cuotasVencidasCount === 0) {
-              tasa = 'azul' // Recibo del mes o cuota extraordinaria vigente (no vencida)
-            } else if (totalConceptosMora <= 3) {
-              tasa = 'amarillo'
-            } else if (totalConceptosMora <= 6) {
-              tasa = 'rojo'
-            } else {
-              tasa = 'morado'
-            }
-          }
-
-          let accionLegal: AccionLegalMora = 'notificacion_amistosa'
-          if (tasa === 'amarillo') accionLegal = 'citacion_junta'
-          else if (tasa === 'rojo') accionLegal = 'carta_cobro_extrajudicial'
-          else if (tasa === 'morado') accionLegal = 'suspension_servicios'
-
-          // Generar descripción legible detallada
-          const partesResumen: string[] = []
-          if (deudaBase2025 > 0.01) partesResumen.push(`Deuda 2025 (${mDeuda === 'BS' ? 'Bs. ' + deudaBase2025.toLocaleString('es-VE', { minimumFractionDigits: 2 }) : '$' + deudaBase2025.toFixed(2)})`)
-          if (cableViajero > 0.01) partesResumen.push(`Cable Viajero ($${cableViajero.toFixed(2)})`)
-          if (guaya > 0.01) partesResumen.push(`Guayas ($${guaya.toFixed(2)})`)
-          if (arreglo > 0.01) partesResumen.push(`Arreglo Asc. (${mArreglo === 'BS' ? 'Bs. ' + arreglo.toLocaleString('es-VE', { minimumFractionDigits: 2 }) : '$' + arreglo.toFixed(2)})`)
-          if (recibosBsList.length > 0) partesResumen.push(`${recibosBsList.length} recibos en Bs (${recibosBsList.map(r => r.label.split(' ')[0]).join(', ')})`)
-          if (recibosUsdList.length > 0) partesResumen.push(`${recibosUsdList.length} recibos en $ (${recibosUsdList.map(r => r.label.split(' ')[0]).join(', ')})`)
-          if (cuotasAdicionales.length > 0) {
-            partesResumen.push(`Cuota Extraordinaria (${cuotasAdicionales.map(c => c.label).join(', ')})`)
-          }
-
-          const conceptosDetalleTexto = partesResumen.length > 0
-            ? partesResumen.join(' · ')
-            : (tieneDeuda ? 'Conceptos pendientes al cobro' : (cuotasProgramadas.length > 0 ? 'Al día / Cuota Extraordinaria programada a futuro' : 'Al día / Solvente'))
-
-          listaDeudores.push({
-            id: moraRow?.id || `mora-apto-${apto.id}`,
-            apartamento_id: apto.id,
-            apartamento_numero: apto.numero,
-            piso: apto.piso,
-            propietario_nombre: propNombre,
-            propietario_telefono: propTel,
-            propietario_email: propEmail,
-            meses_deuda: tieneDeuda ? totalConceptosMora : 0,
-            monto_usd: totalUsd,
-            monto_bs: totalBs,
-            monto_manual_usd: Number((moraRow?.monto_usd || 0).toFixed(2)),
-            monto_manual_bs: Number((moraRow?.monto_bs || 0).toFixed(2)),
-            moneda_principal: totalBs > 0 && totalUsd > 0 ? 'MIXTO' : totalBs > 0 ? 'BS' : 'USD',
-            tasa_riesgo: tasa,
-            accion_legal: accionLegal,
-            estado: tieneDeuda ? 'activo' : 'solventado',
-            conceptos_detalle: conceptosDetalleTexto,
-            observaciones: moraRow?.observaciones || '',
-            fecha_corte: moraRow?.fecha_corte || new Date().toISOString().slice(0, 10),
-            origen: moraRow ? 'deuda_manual' : 'recibo_emitido',
-            created_at: moraRow?.created_at || recs[0]?.emitido_at || new Date().toISOString(),
-            updated_at: moraRow?.updated_at || new Date().toISOString(),
-            desglose: {
-              deuda_base_2025: deudaBase2025 > 0 ? { monto: deudaBase2025, moneda: mDeuda } : undefined,
-              cable_viajero: cableViajero > 0 ? { monto: cableViajero, moneda: mCable } : undefined,
-              guaya: guaya > 0 ? { monto: guaya, moneda: mGuaya } : undefined,
-              arreglo: arreglo > 0 ? { monto: arreglo, moneda: mArreglo } : undefined,
-              recibos_bs: recibosBsList,
-              recibos_usd: recibosUsdList,
-              cuotas_especiales: cuotasAdicionales,
-              cuotas_programadas: cuotasProgramadas,
-              items: itemsList,
-              total_bs: totalBs,
-              total_usd: totalUsd
-            }
-          })
-        })
-
-        // Ordenar: primero los morosos de mayor riesgo a menor, luego solventes, y luego por número de apartamento
-        listaDeudores.sort((a, b) => {
-          const deudaA = (a.monto_usd || 0) > 0 || (a.monto_bs || 0) > 0 ? 1 : 0
-          const deudaB = (b.monto_usd || 0) > 0 || (b.monto_bs || 0) > 0 ? 1 : 0
-          if (deudaB !== deudaA) return deudaB - deudaA
-
-          const prioA = TASA_RIESGO_CONFIG[a.tasa_riesgo]?.prioridad ?? 0
-          const prioB = TASA_RIESGO_CONFIG[b.tasa_riesgo]?.prioridad ?? 0
-          if (prioB !== prioA) return prioB - prioA
-
-          return a.apartamento_numero.localeCompare(b.apartamento_numero, undefined, { numeric: true })
+        const listaDeudores = construirListaDeudoresDesdeDatos({
+          deudasMoraRows: dmRes.data || [],
+          recibosRows: recibosRes.data || [],
+          apartamentosRows: aptosRes.data || [],
+          perfilesRows: perfilesRes.data || [],
+          configCasosRows: configRes.data || [],
+          incluirSolventes
         })
 
         saveLocalMoraCache(listaDeudores)
         return { data: listaDeudores, error: null, fromDb: true }
       } catch (err: any) {
         console.warn('[moraService] Excepción obteniendo deudas:', err)
+        return { data: getLocalMoraCache(), error: null, fromDb: false }
+      }
+    },
+    { ttlMs: 3 * 60 * 1000, tags: ['mora', 'recibos', 'calendario_config'], forceRefresh }
+  )
+}
+
+/**
+ * Obtiene el resumen comunitario de morosidad para residentes mediante RPC seguro
+ * (`get_resumen_mora_comunitario`), sin exponer PII ni acceso directo a tablas vecinas.
+ */
+export async function obtenerDeudasMoraComunitaria(
+  forceRefresh = false,
+  incluirSolventes = true
+): Promise<{ data: DeudaMoraItem[]; error: string | null; fromDb: boolean }> {
+  const cacheKey = incluirSolventes ? 'deudas_mora_comunitario_todos' : 'deudas_mora_comunitario'
+  return appCache.fetch(
+    cacheKey,
+    async () => {
+      try {
+        const { data: rpcData, error: rpcErr } = await supabase.rpc('get_resumen_mora_comunitario')
+        if (!rpcErr && rpcData) {
+          const listaDeudores = construirListaDeudoresDesdeDatos({
+            deudasMoraRows: rpcData.deudas_mora || [],
+            recibosRows: rpcData.recibos_pendientes || [],
+            apartamentosRows: rpcData.apartamentos || [],
+            perfilesRows: [],
+            configCasosRows: rpcData.configs_calendario || [],
+            incluirSolventes
+          })
+          return { data: listaDeudores, error: null, fromDb: true }
+        }
+
+        if (rpcErr) {
+          console.warn('[moraService] RPC comunitario no disponible, usando fallback:', rpcErr.message)
+          return obtenerDeudasMora(forceRefresh, incluirSolventes)
+        }
+
+        return { data: [], error: null, fromDb: true }
+      } catch (err: any) {
+        console.warn('[moraService] Excepción obteniendo mora comunitaria:', err)
         return { data: getLocalMoraCache(), error: null, fromDb: false }
       }
     },

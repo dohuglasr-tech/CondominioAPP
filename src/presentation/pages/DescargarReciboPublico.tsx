@@ -141,34 +141,51 @@ export const DescargarReciboPublico: React.FC = () => {
         setLoading(true)
         setError(null)
 
-        const [reciboRes, configRes] = await Promise.all([
-          supabase
-            .from('recibos_generados')
-            .select(`
-              *,
-              apartamento:apartamentos (
-                id, numero, piso, alicuota, propietario_nombre, telefono_contacto
-              )
-            `)
-            .eq('id', reciboId)
-            .maybeSingle(),
-          supabase
-            .from('configuracion_edificio')
-            .select('*')
-            .limit(1)
-            .maybeSingle()
-        ])
+        let recData: any = null
+        let cfgData: any = null
+
+        const { data: rpcPayload, error: rpcErr } = await supabase.rpc('public_get_recibo_descarga', {
+          p_recibo_id: reciboId,
+        })
+
+        if (!rpcErr && rpcPayload?.recibo) {
+          recData = rpcPayload.recibo
+          cfgData = rpcPayload.config || null
+        } else if (rpcErr) {
+          // Fallback para entornos aún sin migración aplicada
+          const [reciboRes, configRes] = await Promise.all([
+            supabase
+              .from('recibos_generados')
+              .select(`
+                *,
+                apartamento:apartamentos (
+                  id, numero, piso, alicuota, propietario_nombre, telefono_contacto
+                )
+              `)
+              .eq('id', reciboId)
+              .maybeSingle(),
+            supabase
+              .from('configuracion_edificio')
+              .select('*')
+              .limit(1)
+              .maybeSingle()
+          ])
+          if (reciboRes.error || !reciboRes.data) {
+            setError('El recibo solicitado no existe o fue retirado por la administración.')
+            setLoading(false)
+            return
+          }
+          recData = reciboRes.data
+          cfgData = configRes.data || null
+        }
 
         if (cancel) return
 
-        if (reciboRes.error || !reciboRes.data) {
+        if (!recData) {
           setError('El recibo solicitado no existe o fue retirado por la administración.')
           setLoading(false)
           return
         }
-
-        const recData = reciboRes.data
-        const cfgData = configRes.data || null
 
         setRecibo(recData)
         setConfig(cfgData)

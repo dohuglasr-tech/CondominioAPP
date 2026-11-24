@@ -1,4 +1,3 @@
-import * as XLSX from 'xlsx'
 import { supabase } from './supabase'
 import { registrarEventoAuditoria } from './auditoriaService'
 import { notificarTodos } from './notificacionesService'
@@ -764,8 +763,163 @@ export async function obtenerDestinatariosUltimoReciboEnviado(): Promise<Resumen
   }
 }
 
+function extraerTextoCeldaExcelJS(cellVal: any): string {
+  if (cellVal === null || cellVal === undefined) return ''
+  if (typeof cellVal === 'string' || typeof cellVal === 'number' || typeof cellVal === 'boolean') {
+    return String(cellVal).trim()
+  }
+  if (cellVal instanceof Date) {
+    return cellVal.toISOString().slice(0, 10)
+  }
+  if (typeof cellVal === 'object') {
+    if (typeof cellVal.text === 'string') return cellVal.text.trim()
+    if (typeof cellVal.hyperlink === 'string') return cellVal.hyperlink.replace(/^mailto:/i, '').trim()
+    if (Array.isArray(cellVal.richText)) {
+      return cellVal.richText.map((r: any) => r?.text || '').join('').trim()
+    }
+    if (cellVal.result !== undefined && cellVal.result !== null) {
+      return extraerTextoCeldaExcelJS(cellVal.result)
+    }
+  }
+  return String(cellVal).trim()
+}
+
+function parsearCsvAMatriz(text: string): string[][] {
+  const cleanText = text.replace(/^\uFEFF/, '')
+  const firstLine = cleanText.split(/\r?\n/)[0] || ''
+  const delimiter = (firstLine.split(';').length > firstLine.split(',').length) ? ';' : ','
+  const rows: string[][] = []
+  let currentRow: string[] = []
+  let currentCell = ''
+  let inQuotes = false
+
+  for (let i = 0; i < cleanText.length; i++) {
+    const ch = cleanText[i]
+    const next = cleanText[i + 1]
+    if (inQuotes) {
+      if (ch === '"' && next === '"') {
+        currentCell += '"'
+        i++
+      } else if (ch === '"') {
+        inQuotes = false
+      } else {
+        currentCell += ch
+      }
+    } else if (ch === '"') {
+      inQuotes = true
+    } else if (ch === delimiter) {
+      currentRow.push(currentCell.trim())
+      currentCell = ''
+    } else if (ch === '\r' || ch === '\n') {
+      if (ch === '\r' && next === '\n') i++
+      currentRow.push(currentCell.trim())
+      if (currentRow.some(c => c !== '')) rows.push(currentRow)
+      currentRow = []
+      currentCell = ''
+    } else {
+      currentCell += ch
+    }
+  }
+  currentRow.push(currentCell.trim())
+  if (currentRow.some(c => c !== '')) rows.push(currentRow)
+  return rows
+}
+
+export async function leerMatrizDesdeArchivoExcel(file: File): Promise<string[][]> {
+  const fileName = (file.name || '').toLowerCase()
+  if (fileName.endsWith('.xls') && !fileName.endsWith('.xlsx')) {
+    throw new Error('El formato antiguo .xls no es soportado por razones de seguridad. Guarda el archivo como .xlsx o .csv e inténtalo de nuevo.')
+  }
+
+  if (fileName.endsWith('.csv') || file.type === 'text/csv') {
+    const csvText = await file.text()
+    return parsearCsvAMatriz(csvText)
+  }
+
+  const ExcelJSModule = await import('exceljs')
+  const ExcelJS = (ExcelJSModule as any).default || ExcelJSModule
+  const workbook = new ExcelJS.Workbook()
+  await workbook.xlsx.load(await file.arrayBuffer())
+  const worksheet = workbook.worksheets[0]
+  if (!worksheet) {
+    throw new Error('El archivo Excel no contiene hojas.')
+  }
+
+  const matrix: string[][] = []
+  worksheet.eachRow({ includeEmpty: false }, (row: any) => {
+    const values = Array.isArray(row.values) ? row.values.slice(1) : []
+    matrix.push(values.map((v: any) => extraerTextoCeldaExcelJS(v)))
+  })
+  return matrix
+}
+
+export async function leerObjetosDesdeArchivoExcel(file: File): Promise<Record<string, string>[]> {
+  const matrix = await leerMatrizDesdeArchivoExcel(file)
+  const rowsLimpias = matrix.filter(row => row.some(c => c.trim() !== ''))
+  if (rowsLimpias.length === 0) return []
+
+  const primeraFila = rowsLimpias[0].map((c, idx) => c.trim() || `Columna_${idx + 1}`)
+  const tieneEncabezado = !primeraFila.some(c => c.includes('@'))
+  const startRow = tieneEncabezado ? 1 : 0
+  const headers = tieneEncabezado
+    ? primeraFila
+    : primeraFila.map((_, idx) => `Columna_${idx + 1}`)
+
+  const result: Record<string, string>[] = []
+  for (let i = startRow; i < rowsLimpias.length; i++) {
+    const row = rowsLimpias[i]
+    const obj: Record<string, string> = {}
+    headers.forEach((h, idx) => {
+      obj[h] = String(row[idx] ?? '').trim()
+    })
+    result.push(obj)
+  }
+  return result
+}
+
+export async function exportarFilasAExcel(params: {
+  rows: Array<Record<string, unknown>>
+  sheetName: string
+  fileName: string
+  columnWidths?: number[]
+}): Promise<void> {
+  const ExcelJSModule = await import('exceljs')
+  const ExcelJS = (ExcelJSModule as any).default || ExcelJSModule
+  const workbook = new ExcelJS.Workbook()
+  const worksheet = workbook.addWorksheet(params.sheetName || 'Datos')
+
+  const headers = params.rows.length > 0 ? Object.keys(params.rows[0]) : []
+  if (headers.length > 0) {
+    worksheet.columns = headers.map((h, idx) => ({
+      header: h,
+      key: h,
+      width: params.columnWidths?.[idx] || 22
+    }))
+    params.rows.forEach(r => {
+      const cleanRow: Record<string, unknown> = {}
+      headers.forEach(h => {
+        cleanRow[h] = r[h] ?? ''
+      })
+      worksheet.addRow(cleanRow)
+    })
+  }
+
+  const buffer = await workbook.xlsx.writeBuffer()
+  const blob = new Blob([buffer], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = params.fileName
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
 /**
- * Parsea un archivo Excel (.xlsx, .xls, .csv) para extraer y deduplicar correos electrónicos,
+ * Parsea un archivo Excel (.xlsx, .csv) para extraer y deduplicar correos electrónicos,
  * cruzando opcionalmente números de apartamento con el edificio.
  */
 export async function parsearExcelCorreos(
@@ -773,15 +927,7 @@ export async function parsearExcelCorreos(
   aptosExistentes?: Array<{ id: string; numero: string; propietario_nombre?: string | null }>
 ): Promise<ResultadoExcelCorreos> {
   try {
-    const data = new Uint8Array(await file.arrayBuffer())
-    const workbook = XLSX.read(data, { type: 'array' })
-    const sheetName = workbook.SheetNames[0]
-    if (!sheetName) {
-      return { destinatarios: [], totalFilas: 0, descartados: 0, duplicados: 0, error: 'El archivo Excel no contiene hojas.' }
-    }
-
-    const worksheet = workbook.Sheets[sheetName]
-    const matrix = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: '' })
+    const matrix = await leerMatrizDesdeArchivoExcel(file)
     const rowsLimpias = (matrix || []).filter(row => Array.isArray(row) && row.some(c => String(c || '').trim() !== ''))
 
     if (rowsLimpias.length === 0) {

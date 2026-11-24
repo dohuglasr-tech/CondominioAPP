@@ -73,15 +73,15 @@ export const AdminLogin: React.FC = () => {
         return
       }
 
-      if (perfil.rol !== 'administrador') {
+      if (perfil.rol !== 'administrador' && perfil.rol !== 'superadmin') {
         await supabase.auth.signOut()
         setError('Tu cuenta no tiene privilegios de administrador.')
         setLoading(false)
         return
       }
 
-      // 3. Es administrador verificado → redirigir al panel
-      navigate('/admin', { replace: true })
+      // 3. Administrador / SuperAdmin verificado → redirigir al panel correspondiente
+      navigate(perfil.rol === 'superadmin' ? '/superadmin' : '/admin', { replace: true })
 
     } catch (err: any) {
       setError(err?.message || 'Error de conexión con el servidor. Intenta de nuevo.')

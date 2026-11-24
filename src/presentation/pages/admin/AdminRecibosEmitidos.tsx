@@ -8,7 +8,6 @@ import { generarPDFRecibo, ReciboAptoData, ReciboGastoData, ReciboCargoData, Rec
 import { compararApartamentos, formatAlicuotaPct } from '../../../utils/alicuota'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
-import * as XLSX from 'xlsx'
 import { SkeletonCard, SkeletonChart, SkeletonTable } from '../../components/Skeleton'
 import { generarMensajeCobroRecibo, generarMensajeReciboPagado, abrirWhatsApp } from '../../../utils/whatsappHelper'
 import {
@@ -16,7 +15,11 @@ import {
   despacharEmailRecordatorioRecibo,
   getBasePortalUrl
 } from '../../../data/emailService'
-import { guardarDestinatariosUltimoReciboEnviado } from '../../../data/notificacionesGlobalesService'
+import {
+  guardarDestinatariosUltimoReciboEnviado,
+  leerObjetosDesdeArchivoExcel,
+  exportarFilasAExcel
+} from '../../../data/notificacionesGlobalesService'
 import { generarInformeGestionPDF, DatosInformeGestion } from '../../../utils/informeGestionPdfGenerator'
 import { esReciboIndexado } from '../../../utils/indexacionHelper'
 
@@ -247,128 +250,120 @@ export const AdminRecibosEmitidos: React.FC = () => {
       .replace(/[^a-z0-9]/gi, '')
   }
 
-  // ── Importador inteligente de correos desde Excel (.xlsx, .xls, .csv) ───────
-  const handleCargarExcelEmails = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // ── Importador inteligente de correos desde Excel (.xlsx, .csv) ───────
+  const handleCargarExcelEmails = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
 
-    const reader = new FileReader()
-    reader.onload = (evt) => {
-      try {
-        const data = new Uint8Array(evt.target?.result as ArrayBuffer)
-        const workbook = XLSX.read(data, { type: 'array' })
-        const sheetName = workbook.SheetNames[0]
-        const worksheet = workbook.Sheets[sheetName]
-        const rows: any[] = XLSX.utils.sheet_to_json(worksheet)
+    try {
+      const rows = await leerObjetosDesdeArchivoExcel(file)
 
-        if (!rows || rows.length === 0) {
-          alert('El archivo Excel no contiene filas con datos.')
-          return
-        }
-
-        let coincidencias = 0
-        const nuevoMapaEmails = { ...emailsManuales }
-        const nuevoMapaNombres = { ...nombresManuales }
-
-        rows.forEach((row) => {
-          let aptoStr = ''
-          let emailStr = ''
-          let nombreStr = ''
-
-          for (const key of Object.keys(row)) {
-            const keyLower = key.toLowerCase()
-            if (
-              keyLower.includes('apto') ||
-              keyLower.includes('apartamento') ||
-              keyLower.includes('unidad') ||
-              keyLower.includes('inmueble') ||
-              keyLower.includes('depto') ||
-              keyLower.includes('numero') ||
-              keyLower.includes('nro')
-            ) {
-              aptoStr = String(row[key] || '')
-              break
-            }
-          }
-
-          for (const key of Object.keys(row)) {
-            const keyLower = key.toLowerCase()
-            if (
-              keyLower.includes('nombre') ||
-              keyLower.includes('propietario') ||
-              keyLower.includes('residente') ||
-              keyLower.includes('titular') ||
-              keyLower.includes('inquilino') ||
-              keyLower.includes('destinatario')
-            ) {
-              nombreStr = String(row[key] || '').trim()
-              break
-            }
-          }
-
-          for (const key of Object.keys(row)) {
-            const keyLower = key.toLowerCase()
-            const valStr = String(row[key] || '').trim()
-            if (
-              keyLower.includes('email') ||
-              keyLower.includes('correo') ||
-              keyLower.includes('mail')
-            ) {
-              emailStr = valStr
-              break
-            } else if (!emailStr && valStr.includes('@')) {
-              emailStr = valStr
-            }
-          }
-
-          if (!aptoStr || !emailStr) {
-            const values = Object.values(row)
-            if (values.length >= 2) {
-              if (!aptoStr) aptoStr = String(values[0] || '')
-              if (!emailStr) {
-                const mailCandidate = values.find(v => String(v || '').includes('@'))
-                if (mailCandidate) emailStr = String(mailCandidate).trim()
-                else emailStr = String(values[1] || '').trim()
-              }
-            }
-          }
-
-          if (aptoStr && emailStr && emailStr.includes('@')) {
-            const normExcel = normalizarCadenaApto(aptoStr)
-            const match = recibosParaEmails.find(r => {
-              const normApto = normalizarCadenaApto(r.apartamento?.numero || '')
-              return normApto === normExcel
-            })
-
-            if (match) {
-              nuevoMapaEmails[match.apartamento_id] = emailStr
-              if (nombreStr) {
-                nuevoMapaNombres[match.apartamento_id] = nombreStr
-              }
-              coincidencias++
-            }
-          }
-        })
-
-        setEmailsManuales(nuevoMapaEmails)
-        setNombresManuales(nuevoMapaNombres)
-        if (coincidencias > 0) {
-          showToast(`✅ Se asignaron ${coincidencias} registros exitosamente desde el archivo Excel.`)
-        } else {
-          alert('No se encontraron coincidencias entre los números de apartamento del Excel y los apartamentos de este mes. Asegúrate de incluir columnas como "Apartamento" y "Correo".')
-        }
-      } catch (err: any) {
-        console.error('Error leyendo Excel:', err)
-        alert('Error al leer el archivo Excel: ' + (err.message || 'Formato no soportado.'))
-      } finally {
-        if (excelInputRef.current) excelInputRef.current.value = ''
+      if (!rows || rows.length === 0) {
+        alert('El archivo Excel no contiene filas con datos.')
+        return
       }
+
+      let coincidencias = 0
+      const nuevoMapaEmails = { ...emailsManuales }
+      const nuevoMapaNombres = { ...nombresManuales }
+
+      rows.forEach((row) => {
+        let aptoStr = ''
+        let emailStr = ''
+        let nombreStr = ''
+
+        for (const key of Object.keys(row)) {
+          const keyLower = key.toLowerCase()
+          if (
+            keyLower.includes('apto') ||
+            keyLower.includes('apartamento') ||
+            keyLower.includes('unidad') ||
+            keyLower.includes('inmueble') ||
+            keyLower.includes('depto') ||
+            keyLower.includes('numero') ||
+            keyLower.includes('nro')
+          ) {
+            aptoStr = String(row[key] || '')
+            break
+          }
+        }
+
+        for (const key of Object.keys(row)) {
+          const keyLower = key.toLowerCase()
+          if (
+            keyLower.includes('nombre') ||
+            keyLower.includes('propietario') ||
+            keyLower.includes('residente') ||
+            keyLower.includes('titular') ||
+            keyLower.includes('inquilino') ||
+            keyLower.includes('destinatario')
+          ) {
+            nombreStr = String(row[key] || '').trim()
+            break
+          }
+        }
+
+        for (const key of Object.keys(row)) {
+          const keyLower = key.toLowerCase()
+          const valStr = String(row[key] || '').trim()
+          if (
+            keyLower.includes('email') ||
+            keyLower.includes('correo') ||
+            keyLower.includes('mail')
+          ) {
+            emailStr = valStr
+            break
+          } else if (!emailStr && valStr.includes('@')) {
+            emailStr = valStr
+          }
+        }
+
+        if (!aptoStr || !emailStr) {
+          const values = Object.values(row)
+          if (values.length >= 2) {
+            if (!aptoStr) aptoStr = String(values[0] || '')
+            if (!emailStr) {
+              const mailCandidate = values.find(v => String(v || '').includes('@'))
+              if (mailCandidate) emailStr = String(mailCandidate).trim()
+              else emailStr = String(values[1] || '').trim()
+            }
+          }
+        }
+
+        if (aptoStr && emailStr && emailStr.includes('@')) {
+          const normExcel = normalizarCadenaApto(aptoStr)
+          const match = recibosParaEmails.find(r => {
+            const normApto = normalizarCadenaApto(r.apartamento?.numero || '')
+            return normApto === normExcel
+          })
+
+          if (match) {
+            nuevoMapaEmails[match.apartamento_id] = emailStr
+            if (nombreStr) {
+              nuevoMapaNombres[match.apartamento_id] = nombreStr
+            }
+            coincidencias++
+          }
+        }
+      })
+
+      setEmailsManuales(nuevoMapaEmails)
+      setNombresManuales(nuevoMapaNombres)
+      if (coincidencias > 0) {
+        showToast(`✅ Se asignaron ${coincidencias} registros exitosamente desde el archivo Excel.`)
+      } else {
+        alert('No se encontraron coincidencias entre los números de apartamento del Excel y los apartamentos de este mes. Asegúrate de incluir columnas como "Apartamento" y "Correo".')
+      }
+    } catch (err: any) {
+      console.error('Error leyendo Excel:', err)
+      alert('Error al leer el archivo Excel: ' + (err.message || 'Formato no soportado.'))
+    } finally {
+      if (excelInputRef.current) excelInputRef.current.value = ''
     }
-    reader.readAsArrayBuffer(file)
   }
 
   // ── Generador y descargador de plantilla Excel en 1 Clic ───────────────────
-  const handleDescargarPlantillaExcel = () => {
+  const handleDescargarPlantillaExcel = async () => {
     const rows = recibosParaEmails.map(r => ({
       'Apartamento': r.apartamento?.numero || '',
       'Nombre / Propietario': nombresManuales[r.apartamento_id] || r.apartamento?.propietario_nombre || '',
@@ -377,18 +372,12 @@ export const AdminRecibosEmitidos: React.FC = () => {
       'Total Bs': r.total_bs
     }))
 
-    const worksheet = XLSX.utils.json_to_sheet(rows)
-    worksheet['!cols'] = [
-      { wch: 15 },
-      { wch: 30 },
-      { wch: 38 },
-      { wch: 14 },
-      { wch: 16 }
-    ]
-
-    const workbook = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Correos Apartamentos')
-    XLSX.writeFile(workbook, `Plantilla_Correos_Aptos_${mesParaEmails || 'Emision'}.xlsx`)
+    await exportarFilasAExcel({
+      rows,
+      sheetName: 'Correos Apartamentos',
+      fileName: `Plantilla_Correos_Aptos_${mesParaEmails || 'Emision'}.xlsx`,
+      columnWidths: [15, 30, 38, 14, 16]
+    })
   }
 
   // ── Despachador de correos masivos con descarga directa y recordatorio ─────

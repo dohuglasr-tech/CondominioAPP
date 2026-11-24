@@ -70,7 +70,7 @@ export function Login() {
   const [enableBiometricOnLogin, setEnableBiometricOnLogin] = useState(true)
   
   const { tenantSlug } = useParams<{ tenantSlug?: string }>()
-  const { signIn, config, session, isAdmin, tenantSubdomain, refreshConfig } = useAuth()
+  const { signIn, config, session, isAdmin, isSuperAdmin, tenantSubdomain, refreshConfig } = useAuth()
   const activeTenantSlug = tenantSlug || tenantSubdomain
   const nombreEdificio = config?.nombre_edificio || 'DOMUS'
 
@@ -83,9 +83,9 @@ export function Login() {
   // Redirigir si ya existe sesión activa
   useEffect(() => {
     if (session) {
-      navigate(isAdmin ? '/admin' : '/', { replace: true })
+      navigate(isSuperAdmin ? '/superadmin' : isAdmin ? '/admin' : '/', { replace: true })
     }
-  }, [session, isAdmin, navigate])
+  }, [session, isAdmin, isSuperAdmin, navigate])
 
   // Cargar email recordado y disponibilidad biométrica
   useEffect(() => {

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../data/supabase'
 import { useAuth } from '../../application/contexts/AuthContext'
+import { extractTenantSubdomain } from '../../data/tenantService'
 import { compararApartamentos } from '../../utils/alicuota'
 import { AuthHeroPanel } from '../components/AuthHeroPanel'
 
@@ -46,7 +47,8 @@ export function Register() {
   const [step, setStep] = useState<1 | 2 | 3>(1)
   const [loading, setLoading] = useState(false)
   const [validatingApto, setValidatingApto] = useState(false)
-  const [apartamentosEdificio, setApartamentosEdificio] = useState<Array<{ id: string; numero: string; piso: number | null }>>([])
+  const [apartamentosEdificio, setApartamentosEdificio] = useState<Array<{ id: string; numero: string; piso: number | null; ocupado?: boolean }>>([])
+  const [edificioId, setEdificioId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   // Configuración del edificio
@@ -62,32 +64,62 @@ export function Register() {
     logo_url: null,
   })
 
-  // Cargar configuración de edificio y lista oficial de apartamentos
+  // Cargar configuración de edificio y lista oficial de apartamentos vía RPCs públicos seguros
   useEffect(() => {
-    supabase
-      .from('configuracion_edificio')
-      .select('nombre_edificio, rif, direccion, logo_url')
-      .maybeSingle()
-      .then(({ data }) => {
-        if (data) {
-          setConfig({
-            nombre_edificio: data.nombre_edificio || 'Mi Edificio',
-            rif: data.rif || null,
-            direccion: data.direccion || null,
-            logo_url: data.logo_url || null,
-          })
-        }
+    let cancelled = false
+    const cargarDatosIniciales = async () => {
+      const slug = extractTenantSubdomain()
+      let resolvedEdifId: string | null = null
+
+      const { data: branding, error: brandingErr } = await supabase.rpc('public_get_edificio_branding', {
+        p_slug: slug || null,
       })
 
-    supabase
-      .from('apartamentos')
-      .select('id, numero, piso')
-      .then(({ data }) => {
-        if (data && data.length > 0) {
-          const ordenados = [...data].sort((a, b) => compararApartamentos(a.numero, b.numero))
+      if (!cancelled && !brandingErr && branding) {
+        resolvedEdifId = branding.id || null
+        setEdificioId(resolvedEdifId)
+        setConfig({
+          nombre_edificio: branding.nombre_edificio || 'Mi Edificio',
+          rif: branding.rif || null,
+          direccion: branding.direccion || null,
+          logo_url: branding.logo_url || null,
+        })
+      } else if (!cancelled && brandingErr) {
+        const { data: cfgFallback } = await supabase
+          .from('configuracion_edificio')
+          .select('id, nombre_edificio, rif, direccion, logo_url')
+          .limit(1)
+          .maybeSingle()
+        if (cfgFallback) {
+          resolvedEdifId = cfgFallback.id || null
+          setEdificioId(resolvedEdifId)
+          setConfig({
+            nombre_edificio: cfgFallback.nombre_edificio || 'Mi Edificio',
+            rif: cfgFallback.rif || null,
+            direccion: cfgFallback.direccion || null,
+            logo_url: cfgFallback.logo_url || null,
+          })
+        }
+      }
+
+      const { data: aptsRpc, error: aptsErr } = await supabase.rpc('public_list_apartamentos_registro', {
+        p_edificio_id: resolvedEdifId,
+      })
+
+      if (!cancelled && !aptsErr && Array.isArray(aptsRpc) && aptsRpc.length > 0) {
+        const ordenados = [...aptsRpc].sort((a, b) => compararApartamentos(a.numero, b.numero))
+        setApartamentosEdificio(ordenados)
+      } else if (!cancelled && aptsErr) {
+        const { data: aptsFallback } = await supabase.from('apartamentos').select('id, numero, piso')
+        if (aptsFallback && aptsFallback.length > 0) {
+          const ordenados = [...aptsFallback].sort((a, b) => compararApartamentos(a.numero, b.numero))
           setApartamentosEdificio(ordenados)
         }
-      })
+      }
+    }
+
+    cargarDatosIniciales()
+    return () => { cancelled = true }
   }, [])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -126,19 +158,21 @@ export function Register() {
       const err = validateStep2()
       if (err) { setError(err); return }
 
-      // Validar que el apartamento exista en la lista oficial y no esté ocupado
+      // Validar que el apartamento exista en la lista oficial y no esté ocupado (vía RPC público sin PII)
       setValidatingApto(true)
       const aptNum = form.apartamento.trim().toUpperCase()
 
       try {
-        const { data: aptData, error: aptError } = await supabase
-          .from('apartamentos')
-          .select('id, numero')
-          .ilike('numero', aptNum)
-          .maybeSingle()
+        const { data: aptsRpc, error: rpcErr } = await supabase.rpc('public_list_apartamentos_registro', {
+          p_edificio_id: edificioId,
+        })
 
-        if (aptError) {
-          console.warn('[Register] Aviso verificando apartamento:', aptError)
+        let aptData: { id: string; numero: string; piso: number | null; ocupado?: boolean } | undefined
+        if (!rpcErr && Array.isArray(aptsRpc)) {
+          setApartamentosEdificio([...aptsRpc].sort((a, b) => compararApartamentos(a.numero, b.numero)))
+          aptData = aptsRpc.find((a: any) => String(a.numero || '').trim().toUpperCase() === aptNum)
+        } else {
+          aptData = apartamentosEdificio.find(a => String(a.numero || '').trim().toUpperCase() === aptNum)
         }
 
         if (!aptData) {
@@ -147,13 +181,7 @@ export function Register() {
           return
         }
 
-        const { data: existingProfile } = await supabase
-          .from('perfiles')
-          .select('id, nombre_completo')
-          .eq('apartamento_id', aptData.id)
-          .maybeSingle()
-
-        if (existingProfile) {
+        if (aptData.ocupado) {
           setError('Este departamento ya tiene un usuario existente, contactese con la adminitracion')
           setValidatingApto(false)
           return
@@ -176,15 +204,16 @@ export function Register() {
     const aptNum = form.apartamento.trim().toUpperCase()
 
     try {
-      // 1. Verificar contra la lista oficial de apartamentos de la Torre
-      const { data: aptData, error: aptError } = await supabase
-        .from('apartamentos')
-        .select('id, numero')
-        .ilike('numero', aptNum)
-        .maybeSingle()
+      // 1. Verificar contra la lista oficial de apartamentos vía RPC seguro
+      const { data: aptsRpc, error: rpcErr } = await supabase.rpc('public_list_apartamentos_registro', {
+        p_edificio_id: edificioId,
+      })
 
-      if (aptError) {
-        console.warn('[Register] Aviso al verificar apartamento:', aptError)
+      let aptData: { id: string; numero: string; ocupado?: boolean } | undefined
+      if (!rpcErr && Array.isArray(aptsRpc)) {
+        aptData = aptsRpc.find((a: any) => String(a.numero || '').trim().toUpperCase() === aptNum)
+      } else {
+        aptData = apartamentosEdificio.find(a => String(a.numero || '').trim().toUpperCase() === aptNum)
       }
 
       if (!aptData) {
@@ -194,14 +223,7 @@ export function Register() {
         return
       }
 
-      // 2. Comprobar si ya existe un perfil registrado para este apartamento
-      const { data: existingProfile } = await supabase
-        .from('perfiles')
-        .select('id, nombre_completo')
-        .eq('apartamento_id', aptData.id)
-        .maybeSingle()
-
-      if (existingProfile) {
+      if (aptData.ocupado) {
         setError('Este departamento ya tiene un usuario existente, contactese con la adminitracion')
         setLoading(false)
         setStep(2)
@@ -226,53 +248,32 @@ export function Register() {
 
       if (signUpError) throw signUpError
 
-      // 3. Guardar el perfil COMPLETO (perfil_completo = true)
-      //    Así el usuario NUNCA más verá una pantalla redundante de completar perfil
+      // 3. Guardar el perfil COMPLETO vía RPC seguro (el servidor fuerza rol = 'residente')
       if (signUpData?.user) {
-        const payload: Record<string, any> = {
-          id: signUpData.user.id,
-          nombre_completo: form.nombre_completo.trim(),
-          cedula: form.cedula.trim(),
-          telefono: form.telefono.trim(),
-          rol: 'residente',
-          estado_cuenta: 'activa',
-          clave_cambiada: true,
-          perfil_completo: true, // ¡Marcado como completo de una vez!
-          condicion_habitacional: form.condicion_habitacional,
-          carga_familiar: parseInt(form.carga_familiar) || 1,
-          apartamento_id: aptId,
+        const propEmail = form.condicion_habitacional === 'alquilado'
+          ? (form.propietario_email.trim() || null)
+          : form.email.trim()
+
+        const { data: rpcRes, error: rpcCompleteErr } = await supabase.rpc('completar_registro_residente', {
+          p_apartamento_id: aptId,
+          p_nombre_completo: form.nombre_completo.trim(),
+          p_cedula: form.cedula.trim(),
+          p_telefono: form.telefono.trim(),
+          p_condicion_habitacional: form.condicion_habitacional,
+          p_carga_familiar: parseInt(form.carga_familiar) || 1,
+          p_propietario_nombre: form.condicion_habitacional === 'alquilado' ? form.propietario_nombre.trim() : form.nombre_completo.trim(),
+          p_propietario_cedula: form.condicion_habitacional === 'alquilado' ? form.propietario_cedula.trim() : form.cedula.trim(),
+          p_propietario_telefono: form.condicion_habitacional === 'alquilado' ? form.propietario_telefono.trim() : form.telefono.trim(),
+          p_propietario_email: propEmail,
+        })
+
+        if (rpcCompleteErr) {
+          console.error('[Register] Error RPC completando perfil:', rpcCompleteErr.message)
+          throw new Error(rpcCompleteErr.message)
         }
-
-        if (form.condicion_habitacional === 'alquilado') {
-          payload.propietario_nombre = form.propietario_nombre.trim()
-          payload.propietario_cedula = form.propietario_cedula.trim()
-          payload.propietario_telefono = form.propietario_telefono.trim()
-          if (form.propietario_email.trim()) {
-            payload.propietario_email = form.propietario_email.trim()
-          }
-        } else {
-          // Si es propietario ('propio'), el correo con el que se registra ES el email del propietario
-          payload.propietario_nombre = form.nombre_completo.trim()
-          payload.propietario_cedula = form.cedula.trim()
-          payload.propietario_telefono = form.telefono.trim()
-          payload.propietario_email = form.email.trim()
+        if (rpcRes && rpcRes.ok === false) {
+          throw new Error(rpcRes.error || 'No se pudo vincular el departamento.')
         }
-
-        const { error: upsertErr } = await supabase
-          .from('perfiles')
-          .upsert(payload, { onConflict: 'id' })
-
-        if (upsertErr) {
-          console.error('[Register] Error guardando perfil:', upsertErr.message)
-        }
-
-        // Anexar la información del residente y propietario al apartamento oficial
-        await supabase.from('apartamentos').update({
-          propietario_nombre: form.condicion_habitacional === 'propio' ? form.nombre_completo.trim() : form.propietario_nombre.trim(),
-          propietario_cedula: form.condicion_habitacional === 'propio' ? form.cedula.trim() : form.propietario_cedula.trim(),
-          telefono_contacto: form.condicion_habitacional === 'propio' ? form.telefono.trim() : form.propietario_telefono.trim(),
-          estado: 'habitado',
-        }).eq('id', aptId)
 
         await refreshPerfil()
       }

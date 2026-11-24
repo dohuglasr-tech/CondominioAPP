@@ -34,7 +34,7 @@ export const SuperAdminDashboard: React.FC = () => {
   const { user, perfil, isSuperAdmin, loading, signIn, signOut } = useAuth()
 
   // Estado de Login para cuando no se ha iniciado sesión como superadmin
-  const [loginEmail, setLoginEmail] = useState('condominioapp.v@gmail.com')
+  const [loginEmail, setLoginEmail] = useState('')
   const [loginPass, setLoginPass] = useState('')
   const [loginLoading, setLoginLoading] = useState(false)
   const [loginError, setLoginError] = useState<string | null>(null)
@@ -731,7 +731,7 @@ export const SuperAdminDashboard: React.FC = () => {
                 type="button"
                 onClick={async () => {
                   await signOut()
-                  setLoginEmail('condominioapp.v@gmail.com')
+                  setLoginEmail('')
                   setLoginPass('')
                 }}
                 style={{
@@ -766,7 +766,7 @@ export const SuperAdminDashboard: React.FC = () => {
                 required
                 value={loginEmail}
                 onChange={e => setLoginEmail(e.target.value)}
-                placeholder="condominioapp.v@gmail.com"
+                placeholder="superadmin@dominio.com"
                 style={{
                   width: '100%', boxSizing: 'border-box', background: '#0a0d14',
                   border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '12px',

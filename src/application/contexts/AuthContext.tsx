@@ -93,9 +93,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       // 3. Fallback: cargar el primer edificio registrado o configuración existente
+      let hasSession = false
+      try {
+        const { data: sRes } = await supabase.auth.getSession()
+        hasSession = Boolean(sRes?.session?.user)
+      } catch {}
+
+      const cacheKey = hasSession ? 'configuracion_edificio_default_auth' : 'configuracion_edificio_default_pub'
       const data = await appCache.fetch<ConfigEdificio | null>(
-        'configuracion_edificio_default',
+        cacheKey,
         async () => {
+          if (!hasSession) {
+            const { data: rpcData, error: rpcErr } = await supabase.rpc('public_get_edificio_branding', {
+              p_slug: null,
+            })
+            if (!rpcErr) {
+              const cfg = (rpcData || null) as ConfigEdificio | null
+              if (cfg && (!cfg.tasa_bcv_actual || cfg.tasa_bcv_actual <= 1)) {
+                cfg.tasa_bcv_actual = 859.06
+              }
+              return cfg
+            }
+          }
+
           const { data } = await supabase
             .from('configuracion_edificio')
             .select('*')
@@ -152,10 +172,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       if (data) {
         setPerfil(data)
-        // Sincronizar tema y configuración del edificio asociado al usuario
-        if ((data as any).edificio_id) {
-          cargarConfig(false, (data as any).edificio_id)
-        }
+        // Sincronizar tema y configuración completa del edificio asociado al usuario autenticado
+        cargarConfig(true, (data as any).edificio_id || undefined)
 
         // Registrar último acceso y sincronizar email oficial con el que se registró el propietario
         const updatePayload: Record<string, any> = { ultimo_acceso: new Date().toISOString() }

@@ -113,7 +113,26 @@ async function recalcularCuotasEnBs(nuevaTasa: number): Promise<void> {
 }
 
 // ── Handler principal ─────────────────────────────────────────────
-Deno.serve(async (_req: Request) => {
+Deno.serve(async (req: Request) => {
+  const cronSecret = (Deno.env.get("CRON_SECRET") || "").trim();
+  const serviceKey = (Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "").trim();
+  const headerCronSecret = (req.headers.get("x-cron-secret") || "").trim();
+  const authHeader = (req.headers.get("authorization") || "").trim();
+  const bearerToken = authHeader.toLowerCase().startsWith("bearer ")
+    ? authHeader.slice(7).trim()
+    : "";
+
+  const isAuthorized =
+    (cronSecret && (headerCronSecret === cronSecret || bearerToken === cronSecret)) ||
+    (serviceKey && bearerToken === serviceKey);
+
+  if (!isAuthorized) {
+    return Response.json(
+      { ok: false, error: "No autorizado para ejecutar cron-tasa-bcv." },
+      { status: 401 }
+    );
+  }
+
   const log: string[] = [];
   const hoy = new Date().toISOString().split("T")[0];
 

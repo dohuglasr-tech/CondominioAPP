@@ -6,7 +6,7 @@ import {
   DeudaMoraItem,
   TASA_RIESGO_CONFIG,
   ACCION_LEGAL_CONFIG,
-  obtenerDeudasMora,
+  obtenerDeudasMoraComunitaria,
   obtenerPisoApto,
   formatearFechaCortaEs
 } from '../../data/moraService'
@@ -51,8 +51,8 @@ export const ListaMoraResidente: React.FC = () => {
   const cargarDatos = useCallback(async (force = false) => {
     setLoading(true)
     try {
-      // Cargar todos los apartamentos (incluyendo solventes para transparencia total)
-      const res = await obtenerDeudasMora(force, true)
+      // Cargar resumen comunitario sin PII privada mediante RPC seguro
+      const res = await obtenerDeudasMoraComunitaria(force, true)
       setDeudas(res.data || [])
     } catch (err) {
       console.warn('[ListaMoraResidente] Error cargando lista:', err)

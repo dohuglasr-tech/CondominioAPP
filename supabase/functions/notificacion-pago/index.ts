@@ -36,7 +36,8 @@ declare const Deno: {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY")!;
-const EMAIL_FROM = Deno.env.get("EMAIL_FROM") ?? "Torre 5 <no-reply@torre5.com>";
+const EMAIL_FROM = Deno.env.get("EMAIL_FROM") ?? "Domus Condominio <no-reply@domus.ve>";
+const WEBHOOK_SECRET = (Deno.env.get("WEBHOOK_SECRET") || "").trim();
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
@@ -77,24 +78,31 @@ async function obtenerDatosEmail(pago: PagoRecord) {
     .eq("id", pago.reportado_por)
     .single();
 
-  // Obtener número de apartamento
+  // Obtener número y edificio_id del apartamento
   const { data: apto } = await supabase
     .from("apartamentos")
-    .select("numero")
+    .select("*")
     .eq("id", pago.apartamento_id)
-    .single();
+    .maybeSingle();
 
-  // Obtener tasa BCV actual para mostrar en el recibo
-  const { data: config } = await supabase
+  const aptoEdificioId = (apto as any)?.edificio_id || null;
+
+  // Obtener configuración del edificio correspondiente (soporta multiedificio)
+  let configQuery = supabase
     .from("configuracion_edificio")
-    .select("nombre_edificio, tasa_bcv_actual")
-    .single();
+    .select("nombre_edificio, tasa_bcv_actual");
+
+  if (aptoEdificioId) {
+    configQuery = configQuery.eq("id", aptoEdificioId);
+  }
+
+  const { data: config } = await configQuery.limit(1).maybeSingle();
 
   return {
     emailDestino: usuario?.user?.email ?? null,
-    nombreResidente: perfil?.nombre_completo ?? `Apto. ${apto?.numero}`,
+    nombreResidente: perfil?.nombre_completo ?? `Apto. ${apto?.numero ?? "N/A"}`,
     numeroApto: apto?.numero ?? "N/A",
-    nombreEdificio: config?.nombre_edificio ?? "Torre 5",
+    nombreEdificio: config?.nombre_edificio ?? "Domus Condominio",
     tasaBcv: config?.tasa_bcv_actual ?? 0,
   };
 }
@@ -321,26 +329,49 @@ async function enviarEmail(
 
 // ── Crear notificación in-app ─────────────────────────────────────
 async function crearNotificacionInApp(
-  usuarioId: string,
+  apartamentoId: string,
   aprobado: boolean,
   apto: string,
   monto: number | null
 ): Promise<void> {
+  if (!apartamentoId) return;
   const montoStr = monto ? `$${Number(monto).toFixed(2)}` : "";
   await supabase.from("notificaciones").insert({
-    usuario_id: usuarioId,
+    apartamento_id: apartamentoId,
     titulo: aprobado ? "✅ Pago Confirmado" : "⚠️ Pago Rechazado",
-    mensaje: aprobado
+    cuerpo: aprobado
       ? `Tu pago ${montoStr} para el Apto. ${apto} ha sido aprobado.`
       : `Tu pago reportado para el Apto. ${apto} fue rechazado. Revisa el motivo.`,
-    tipo: aprobado ? "success" : "warning",
-    link: "/mis-pagos",
+    tipo: aprobado ? "pago_aprobado" : "pago_rechazado",
+    link: "/",
+    leida: false,
   });
 }
 
 // ── Handler principal ─────────────────────────────────────────────
 Deno.serve(async (req: Request) => {
   try {
+    if (!WEBHOOK_SECRET) {
+      console.error("[notificacion-pago] WEBHOOK_SECRET no configurado en secretos.");
+      return Response.json(
+        { ok: false, error: "Webhook no configurado en el servidor." },
+        { status: 500 }
+      );
+    }
+
+    const headerSecret = (req.headers.get("x-webhook-secret") || "").trim();
+    const authHeader = (req.headers.get("authorization") || "").trim();
+    const bearerSecret = authHeader.toLowerCase().startsWith("bearer ")
+      ? authHeader.slice(7).trim()
+      : "";
+
+    if (headerSecret !== WEBHOOK_SECRET && bearerSecret !== WEBHOOK_SECRET) {
+      return Response.json(
+        { ok: false, error: "No autorizado." },
+        { status: 401 }
+      );
+    }
+
     const payload: WebhookPayload = await req.json();
 
     // Solo procesar UPDATEs donde el estado cambió
@@ -373,7 +404,7 @@ Deno.serve(async (req: Request) => {
 
     // Crear notificación in-app (siempre)
     await crearNotificacionInApp(
-      record.reportado_por,
+      record.apartamento_id,
       aprobado,
       numeroApto,
       record.monto_usd

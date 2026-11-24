@@ -38,10 +38,93 @@ const EMAIL_FROM_CONFIG = Deno.env.get("EMAIL_FROM") || "";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+const ALLOWED_ORIGINS_ENV = (Deno.env.get("ALLOWED_ORIGINS") || "")
+  .split(",")
+  .map((o) => o.trim())
+  .filter(Boolean);
+
+const ALLOWED_ORIGINS = Array.from(
+  new Set([
+    "https://domus-ve.vercel.app",
+    "https://domus.ve",
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "capacitor://localhost",
+    "http://localhost",
+    ...ALLOWED_ORIGINS_ENV,
+  ])
+);
+
+const ALLOWED_RESET_ORIGINS_ENV = (Deno.env.get("ALLOWED_RESET_ORIGINS") || "")
+  .split(",")
+  .map((o) => o.trim())
+  .filter(Boolean);
+
+const ALLOWED_RESET_ORIGINS = Array.from(
+  new Set([
+    "https://domus-ve.vercel.app",
+    "https://domus.ve",
+    "http://localhost:3000",
+    "http://localhost:5173",
+    ...ALLOWED_RESET_ORIGINS_ENV,
+  ])
+);
+
+const DEFAULT_RESET_REDIRECT = "https://domus-ve.vercel.app/reset-password";
+
+// Rate-limiting en memoria para recuperar-password (máx 3 solicitudes cada 5 min por clave)
+const resetRateLimiter = new Map<string, number[]>();
+const RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
+const RATE_LIMIT_MAX = 3;
+
+function getCorsHeaders(req: Request): Record<string, string> {
+  const origin = (req.headers.get("origin") || "").trim();
+  const allowedOrigin = ALLOWED_ORIGINS.includes(origin)
+    ? origin
+    : ALLOWED_ORIGINS[0];
+  return {
+    "Access-Control-Allow-Origin": allowedOrigin,
+    "Vary": "Origin",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+  };
+}
+
+function sanitizeResetRedirect(rawUrl?: string): string {
+  if (!rawUrl || typeof rawUrl !== "string") return DEFAULT_RESET_REDIRECT;
+  try {
+    const parsed = new URL(rawUrl.trim());
+    if (
+      ALLOWED_RESET_ORIGINS.includes(parsed.origin) &&
+      parsed.pathname.startsWith("/reset-password")
+    ) {
+      return `${parsed.origin}/reset-password`;
+    }
+  } catch {
+    // URL inválida
+  }
+  return DEFAULT_RESET_REDIRECT;
+}
+
+function maskEmail(email: string): string {
+  if (!email || !email.includes("@")) return "tu correo registrado";
+  const [u, d] = email.split("@");
+  if (!u || !d) return "tu correo registrado";
+  if (u.length <= 2) return `${u[0]}*@${d}`;
+  return `${u[0]}${"*".repeat(Math.min(6, Math.max(3, u.length - 2)))}${u[u.length - 1]}@${d}`;
+}
+
+function checkResetRateLimit(key: string): boolean {
+  const now = Date.now();
+  const prev = (resetRateLimiter.get(key) || []).filter((ts) => now - ts < RATE_LIMIT_WINDOW_MS);
+  if (prev.length >= RATE_LIMIT_MAX) {
+    resetRateLimiter.set(key, prev);
+    return false;
+  }
+  prev.push(now);
+  resetRateLimiter.set(key, prev);
+  return true;
+}
 
 /** Genera la plantilla HTML ejecutiva para recuperación de contraseña */
 function generarHtmlRecuperacionPassword(params: {
@@ -142,81 +225,294 @@ function generarHtmlRecuperacionPassword(params: {
 </html>`;
 }
 
+async function resolverCuentaResidenteServidor(
+  supabaseAdmin: any,
+  rawIdentifier: string,
+  fallbackNombre?: string,
+  fallbackApto?: string
+): Promise<{
+  email: string;
+  nombre?: string;
+  apto?: string;
+  edificioId: string | null;
+}> {
+  const clean = rawIdentifier.trim();
+  if (clean.includes("@")) {
+    return {
+      email: clean.toLowerCase(),
+      nombre: fallbackNombre,
+      apto: fallbackApto,
+      edificioId: null,
+    };
+  }
+
+  let email = "";
+  let nombre = fallbackNombre;
+  let apto = fallbackApto;
+  let edificioId: string | null = null;
+
+  const { data: aptos } = await supabaseAdmin
+    .from("apartamentos")
+    .select("*")
+    .ilike("numero", clean)
+    .limit(1);
+
+  if (aptos && aptos.length > 0) {
+    const aptoRow: any = aptos[0];
+    apto = aptoRow.numero;
+    edificioId = aptoRow.edificio_id || null;
+
+    const { data: perfApto } = await supabaseAdmin
+      .from("perfiles")
+      .select("nombre_completo, propietario_email, email")
+      .eq("apartamento_id", aptoRow.id)
+      .limit(1);
+
+    if (perfApto && perfApto.length > 0) {
+      nombre = perfApto[0].nombre_completo || nombre;
+      email = String(perfApto[0].propietario_email || perfApto[0].email || "").trim().toLowerCase();
+    }
+  } else {
+    const digits = clean.replace(/[^0-9]/g, "");
+    if (digits.length >= 5) {
+      const { data: perfCed } = await supabaseAdmin
+        .from("perfiles")
+        .select("nombre_completo, propietario_email, email, apartamento_id, apartamento:apartamento_id(numero)")
+        .or(`cedula.ilike.%${digits}%,propietario_cedula.ilike.%${digits}%`)
+        .limit(1);
+
+      if (perfCed && perfCed.length > 0) {
+        const p: any = perfCed[0];
+        nombre = p.nombre_completo || nombre;
+        apto = p.apartamento?.numero || apto;
+        email = String(p.propietario_email || p.email || "").trim().toLowerCase();
+      }
+    }
+  }
+
+  return { email, nombre, apto, edificioId };
+}
+
 Deno.serve(async (req: Request) => {
+  const corsHeaders = getCorsHeaders(req);
+
   // Manejo de pre-flight CORS
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
 
   try {
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+      return new Response(
+        JSON.stringify({ ok: false, error: "Credenciales de servicio Supabase no configuradas en Edge Function." }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+
     const body = await req.json();
 
     let { to, bcc, replyTo, subject, html, from, attachments } = body;
     const tipo = body.tipo || body.accion || "";
+    let defaultBuildingName = "Domus Condominio";
+    let resetMetaResponse: { maskedEmail?: string; apto?: string } | null = null;
 
     // ──────────────────────────────────────────────────────────
-    // CASO ESPECIAL: RESTABLECIMIENTO DE CONTRASEÑA
+    // CASO ESPECIAL A: VERIFICAR OTP DE RECUPERACIÓN (por correo/apto/cédula)
     // ──────────────────────────────────────────────────────────
-    if (tipo === "recuperar-password" || tipo === "password-reset") {
-      const emailDestino = (body.email || to || "").trim().toLowerCase();
-      if (!emailDestino || !emailDestino.includes("@")) {
+    if (tipo === "verificar-otp-recovery") {
+      const rawIdentifier = String(body.identifier || body.email || "").trim();
+      const token = String(body.token || "").trim();
+
+      if (!rawIdentifier || !token) {
         return new Response(
-          JSON.stringify({ ok: false, error: "Correo electrónico destinatario inválido." }),
+          JSON.stringify({ ok: false, error: "Identificador y código OTP son requeridos." }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
-      if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+      const clientIp = (req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip") || "unknown").split(",")[0].trim();
+      if (!checkResetRateLimit(`otp:${clientIp}:${rawIdentifier.toLowerCase()}`)) {
         return new Response(
-          JSON.stringify({ ok: false, error: "Credenciales de servicio Supabase no configuradas en Edge Function." }),
-          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          JSON.stringify({ ok: false, error: "Demasiados intentos. Espera 5 minutos antes de reintentar." }),
+          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
-      const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-        auth: { autoRefreshToken: false, persistSession: false },
+      const resolved = await resolverCuentaResidenteServidor(supabaseAdmin, rawIdentifier);
+      if (!resolved.email || !resolved.email.includes("@")) {
+        return new Response(
+          JSON.stringify({ ok: false, error: "Código incorrecto o expirado." }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const { data: otpData, error: otpErr } = await supabaseAdmin.auth.verifyOtp({
+        email: resolved.email,
+        token,
+        type: "recovery",
       });
 
-      const targetBase = (body.redirectTo || "https://domus-ve.vercel.app/reset-password").trim();
+      if (otpErr || !otpData?.session) {
+        return new Response(
+          JSON.stringify({ ok: false, error: "Código incorrecto o expirado." }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
 
-      // Generar el enlace de recuperación oficial seguro de Supabase
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          access_token: otpData.session.access_token,
+          refresh_token: otpData.session.refresh_token,
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // ──────────────────────────────────────────────────────────
+    // CASO ESPECIAL B: RESTABLECIMIENTO DE CONTRASEÑA (Público, con rate-limit + allowlist)
+    // ──────────────────────────────────────────────────────────
+    if (tipo === "recuperar-password" || tipo === "password-reset") {
+      const rawIdentifier = String(body.identifier || body.email || to || "").trim();
+      if (!rawIdentifier) {
+        return new Response(
+          JSON.stringify({ ok: false, error: "Por favor ingresa tu correo, número de apartamento o cédula." }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const clientIp = (req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip") || "unknown").split(",")[0].trim();
+      const rateKey = `${clientIp}:${rawIdentifier.toLowerCase()}`;
+      if (!checkResetRateLimit(rateKey)) {
+        return new Response(
+          JSON.stringify({ ok: false, error: "Demasiados intentos recientes. Por favor espera 5 minutos antes de volver a intentarlo." }),
+          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Resolver correo, nombre, apto y edificio en el servidor con service_role
+      const resolved = await resolverCuentaResidenteServidor(
+        supabaseAdmin,
+        rawIdentifier,
+        body.nombre,
+        body.apto
+      );
+      const emailDestino = resolved.email;
+      const nombreDestino = resolved.nombre;
+      const aptoDestino = resolved.apto;
+      const edificioIdDestino = resolved.edificioId;
+
+      // Respuesta neutra si no hay correo encontrado (previene enumeración de cuentas)
+      if (!emailDestino || !emailDestino.includes("@")) {
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            neutral: true,
+            maskedEmail: "tu correo registrado",
+          }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Obtener nombre dinámico del edificio
+      let cfgQuery = supabaseAdmin.from("configuracion_edificio").select("nombre_edificio");
+      if (edificioIdDestino) {
+        cfgQuery = cfgQuery.eq("id", edificioIdDestino);
+      }
+      const { data: cfgRow } = await cfgQuery.limit(1).maybeSingle();
+      defaultBuildingName = cfgRow?.nombre_edificio || body.edificio || "Domus Condominio";
+
+      const targetBase = sanitizeResetRedirect(body.redirectTo);
+
+      // Generar enlace de recuperación oficial
       const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
         type: "recovery",
         email: emailDestino,
-        options: {
-          redirectTo: targetBase,
-        },
+        options: { redirectTo: targetBase },
       });
 
       if (linkError || !linkData?.properties) {
-        console.error("[enviar-email] Error generando enlace de recuperación:", linkError);
+        console.warn("[enviar-email] generateLink no generó enlace (se responde neutro):", linkError?.message);
         return new Response(
-          JSON.stringify({ ok: false, error: linkError?.message || "No se pudo generar el enlace de recuperación." }),
-          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          JSON.stringify({
+            ok: true,
+            neutral: true,
+            maskedEmail: maskEmail(emailDestino),
+          }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
       const hashedToken = linkData.properties.hashed_token;
       const emailOtp = linkData.properties.email_otp;
-
-      // Usar enlace directo al portal con token_hash para entrar sin pasar por pantallas de login externas
       let resetUrl = linkData.properties.action_link;
       if (hashedToken && targetBase) {
-        const cleanBase = targetBase.split('?')[0];
+        const cleanBase = targetBase.split("?")[0];
         resetUrl = `${cleanBase}?token_hash=${encodeURIComponent(hashedToken)}&type=recovery`;
       }
 
-      const edificioNombre = body.edificio || "Residencias Ocutuy 5";
-
       to = emailDestino;
-      subject = `🔑 Restablece tu contraseña - ${edificioNombre}`;
+      subject = `🔑 Restablece tu contraseña - ${defaultBuildingName}`;
       html = generarHtmlRecuperacionPassword({
-        nombre: body.nombre,
-        apto: body.apto,
-        edificio: edificioNombre,
+        nombre: nombreDestino,
+        apto: aptoDestino,
+        edificio: defaultBuildingName,
         resetUrl,
         codigoOtp: emailOtp,
       });
+      resetMetaResponse = {
+        maskedEmail: maskEmail(emailDestino),
+        apto: aptoDestino,
+      };
+    } else {
+      // ──────────────────────────────────────────────────────────
+      // RESTO DE ENVÍOS: EXIGE JWT VÁLIDO + ROL ADMINISTRADOR / SUPERADMIN
+      // ──────────────────────────────────────────────────────────
+      const authHeader = (req.headers.get("authorization") || "").trim();
+      const jwt = authHeader.toLowerCase().startsWith("bearer ")
+        ? authHeader.slice(7).trim()
+        : "";
+
+      if (!jwt) {
+        return new Response(
+          JSON.stringify({ ok: false, error: "Autenticación requerida para enviar correos." }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const { data: userRes, error: userErr } = await supabaseAdmin.auth.getUser(jwt);
+      if (userErr || !userRes?.user) {
+        return new Response(
+          JSON.stringify({ ok: false, error: "Token inválido o sesión expirada." }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const { data: perfilAdmin } = await supabaseAdmin
+        .from("perfiles")
+        .select("*")
+        .eq("id", userRes.user.id)
+        .maybeSingle();
+
+      const rolUsuario = String((perfilAdmin as any)?.rol || "").toLowerCase();
+      if (!["administrador", "superadmin", "admin"].includes(rolUsuario)) {
+        return new Response(
+          JSON.stringify({ ok: false, error: "Acceso denegado: solo administradores pueden despachar correos." }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const adminEdificioId = (perfilAdmin as any)?.edificio_id || null;
+      let cfgQuery = supabaseAdmin.from("configuracion_edificio").select("nombre_edificio");
+      if (adminEdificioId) cfgQuery = cfgQuery.eq("id", adminEdificioId);
+      const { data: cfgRow } = await cfgQuery.limit(1).maybeSingle();
+      if (cfgRow?.nombre_edificio) {
+        defaultBuildingName = cfgRow.nombre_edificio;
+      }
     }
 
     const toList = Array.isArray(to) ? to.map((e: string) => String(e).trim()).filter(Boolean) : (to ? [String(to).trim()].filter(Boolean) : []);
@@ -247,7 +543,7 @@ Deno.serve(async (req: Request) => {
           },
         });
 
-        const remitente = from || (EMAIL_FROM_CONFIG.includes('<') ? EMAIL_FROM_CONFIG : `"Residencias Ocutuy 5" <${EMAIL_FROM_CONFIG || GMAIL_USER}>`);
+        const remitente = from || (EMAIL_FROM_CONFIG.includes('<') ? EMAIL_FROM_CONFIG : `"${defaultBuildingName}" <${EMAIL_FROM_CONFIG || GMAIL_USER}>`);
 
         const mailOptions: Record<string, any> = {
           from: remitente,
@@ -279,6 +575,7 @@ Deno.serve(async (req: Request) => {
             id: info.messageId,
             bccSupported: true,
             bccCount: bccList.length,
+            ...(resetMetaResponse || {}),
           }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
@@ -309,7 +606,13 @@ Deno.serve(async (req: Request) => {
         const gasData = await gasRes.json().catch(() => ({}));
         if (gasRes.ok && (gasData.ok || gasData.success)) {
           return new Response(
-            JSON.stringify({ ok: true, provider: "google-script", bccSupported: Boolean(bccHeader), bccCount: bccList.length }),
+            JSON.stringify({
+              ok: true,
+              provider: "google-script",
+              bccSupported: Boolean(bccHeader),
+              bccCount: bccList.length,
+              ...(resetMetaResponse || {}),
+            }),
             { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
@@ -322,7 +625,7 @@ Deno.serve(async (req: Request) => {
     // MÉTODO 3: RESEND API
     // ──────────────────────────────────────────────────────────
     if (RESEND_API_KEY) {
-      const remitenteResend = from || EMAIL_FROM_CONFIG || "Residencias Ocutuy 5 <onboarding@resend.dev>";
+      const remitenteResend = from || EMAIL_FROM_CONFIG || `${defaultBuildingName} <onboarding@resend.dev>`;
       const payloadResend: Record<string, any> = {
         from: remitenteResend,
         to: toList.length > 0 ? toList : [EMAIL_FROM_CONFIG || "onboarding@resend.dev"],
@@ -366,6 +669,7 @@ Deno.serve(async (req: Request) => {
           id: resData.id,
           bccSupported: true,
           bccCount: bccList.length,
+          ...(resetMetaResponse || {}),
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );

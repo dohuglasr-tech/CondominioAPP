@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
-import * as XLSX from 'xlsx'
 import { useAuth } from '../../../application/contexts/AuthContext'
 import { supabase } from '../../../data/supabase'
 import {
@@ -8,6 +7,7 @@ import {
 } from '../../../data/emailService'
 import {
   obtenerDestinatariosActivosGlobal,
+  exportarFilasAExcel,
   obtenerDestinatariosUltimoReciboEnviado,
   parsearExcelCorreos,
   enviarNotificacionGlobalMasiva,
@@ -260,7 +260,7 @@ export const AdminNotificacionesGlobales: React.FC = () => {
     }
   }
 
-  const handleDescargarPlantillaExcel = () => {
+  const handleDescargarPlantillaExcel = async () => {
     const fuente =
       destinatariosUltimoRecibo?.destinatarios.length
         ? destinatariosUltimoRecibo.destinatarios
@@ -276,11 +276,12 @@ export const AdminNotificacionesGlobales: React.FC = () => {
           { Apartamento: '5101', Propietario: 'Ejemplo Propietario', 'Correo Electrónico': 'propietario@ejemplo.com' }
         ]
 
-    const worksheet = XLSX.utils.json_to_sheet(rows)
-    worksheet['!cols'] = [{ wch: 16 }, { wch: 30 }, { wch: 38 }]
-    const workbook = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Correos Comunicado')
-    XLSX.writeFile(workbook, 'Plantilla_Correos_Comunicado_Domus.xlsx')
+    await exportarFilasAExcel({
+      rows,
+      sheetName: 'Correos Comunicado',
+      fileName: 'Plantilla_Correos_Comunicado_Domus.xlsx',
+      columnWidths: [16, 30, 38]
+    })
   }
 
   const handleAgregarEmailManual = () => {

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../data/supabase'
 import { useAuth } from '../../application/contexts/AuthContext'
 import { AuthHeroPanel } from '../components/AuthHeroPanel'
-import { sendResidentPasswordReset, resolveResidentAccount } from '../../data/passwordRecoveryService'
+import { sendResidentPasswordReset, verifyResidentRecoveryOtp } from '../../data/passwordRecoveryService'
 
 export const ResetPassword: React.FC = () => {
   const navigate = useNavigate()
@@ -285,31 +285,15 @@ export const ResetPassword: React.FC = () => {
     setOtpError(null)
 
     try {
-      // Si ingresaron apartamento o cédula, resolver al correo registrado
-      let targetEmail = cleanMailOrApto.toLowerCase()
-      if (!cleanMailOrApto.includes('@')) {
-        const resolved = await resolveResidentAccount(cleanMailOrApto)
-        if (!resolved.success || !resolved.email) {
-          setOtpError(resolved.error || 'No pudimos identificar la cuenta asociada.')
-          setOtpLoading(false)
-          return
-        }
-        targetEmail = resolved.email
-      }
+      const otpRes = await verifyResidentRecoveryOtp(cleanMailOrApto, cleanCode)
 
-      const { data, error: otpErr } = await supabase.auth.verifyOtp({
-        email: targetEmail,
-        token: cleanCode,
-        type: 'recovery',
-      })
-
-      if (otpErr) {
-        setOtpError(otpErr.message || 'Código incorrecto o expirado.')
+      if (!otpRes.success) {
+        setOtpError(otpRes.error || 'Código incorrecto o expirado.')
         setOtpLoading(false)
         return
       }
 
-      if (data?.session) {
+      if (otpRes.hasSession) {
         sessionStorage.setItem('condominio_is_recovery', 'true')
         setHasValidSession(true)
         cleanUrlAuthParams()

@@ -85,12 +85,33 @@ export async function resolveTenantBuilding(slugOrId?: string | null): Promise<C
   const target = (slugOrId || extractTenantSubdomain() || '').trim().toLowerCase()
   if (!target) return null
 
-  // Cachear resultado para no saturar la base de datos
-  const cacheKey = `tenant_config_${target}`
+  // Verificar si hay sesión activa: si no la hay, usar RPC público seguro sin datos bancarios
+  let hasSession = false
+  try {
+    const { data: sessionRes } = await supabase.auth.getSession()
+    hasSession = Boolean(sessionRes?.session?.user)
+  } catch {}
+
+  const cacheKey = `${hasSession ? 'tenant_config_auth_' : 'tenant_config_pub_'}${target}`
   const cached = sessionStorage.getItem(cacheKey)
   if (cached) {
     try {
       return JSON.parse(cached)
+    } catch {}
+  }
+
+  if (!hasSession) {
+    try {
+      const { data: rpcData, error: rpcErr } = await supabase.rpc('public_get_edificio_branding', {
+        p_slug: target,
+      })
+      if (!rpcErr && rpcData) {
+        sessionStorage.setItem(cacheKey, JSON.stringify(rpcData))
+        return rpcData as ConfigEdificio
+      }
+      if (!rpcErr && !rpcData) {
+        return null
+      }
     } catch {}
   }
 
