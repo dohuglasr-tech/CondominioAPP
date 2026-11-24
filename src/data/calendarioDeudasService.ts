@@ -3,6 +3,7 @@ import { appCache } from './cacheService'
 import { registrarEventoAuditoria } from './auditoriaService'
 import { obtenerTodosLosSaldosAFavor } from './saldoFavorService'
 import { compararApartamentos } from '../utils/alicuota'
+import { encodePagoMeta, PagoDomusMeta } from './gasService'
 
 export interface ReciboMesItem {
   id: string
@@ -24,6 +25,9 @@ export interface FilaCuotaEspecial {
   montosPorColumna?: Record<string, number>
   // Valores por apartamento: key = apartamento_id
   valoresPorApto: Record<string, { monto: number; estado: 'pendiente' | 'pagado' }>
+  fechaEmision?: string
+  fechaLimite?: string
+  descripcion?: string
   created_at?: string
 }
 
@@ -37,6 +41,26 @@ export interface ColumnaCalendarioConfig {
   orden: number
   esPersonalizada?: boolean
   montoDefecto?: number
+  descripcion?: string
+  fechaEmision?: string // YYYY-MM-DD
+  fechaLimite?: string  // YYYY-MM-DD
+  creadaEn?: string
+}
+
+export interface EventoCalendarioCuota {
+  id: string
+  columnaId: string
+  anio: number
+  titulo: string
+  descripcion?: string
+  tipoEvento: 'emision' | 'vencimiento'
+  fecha: string // YYYY-MM-DD
+  moneda: 'USD' | 'BS'
+  montoDefecto: number
+  totalAptosAsignados: number
+  totalAptosPendientes: number
+  totalAptosPagados: number
+  estado: 'proximo' | 'hoy' | 'vencido' | 'completado'
 }
 
 export interface FilaPersonalizadaConfig {
@@ -1174,6 +1198,10 @@ export async function guardarCeldaPersonalizada(params: {
   estado: 'pendiente' | 'pagado'
   moneda?: 'USD' | 'BS'
   anio?: number
+  apartamentoNumero?: string
+  autorNombre?: string
+  referencia?: string
+  sincronizarReporte?: boolean
 }): Promise<{ success: boolean; error: string | null }> {
   try {
     const anio = params.anio || 2026
@@ -1182,16 +1210,142 @@ export async function guardarCeldaPersonalizada(params: {
     if (!config.valoresCeldasPersonalizadas[params.filaId]) {
       config.valoresCeldasPersonalizadas[params.filaId] = {}
     }
-    const montoNum = parsearMontoFlexible(params.monto, params.moneda)
+    const colMeta = (config.columnas || []).find(c => c.id === params.columnaId)
+    const monedaFinal = params.moneda || colMeta?.moneda || 'USD'
+    const montoNum = parsearMontoFlexible(params.monto, monedaFinal)
+
     config.valoresCeldasPersonalizadas[params.filaId][params.columnaId] = {
       monto: montoNum,
       estado: params.estado,
-      ...(params.moneda ? { moneda: params.moneda } : {})
-    }
+      moneda: monedaFinal
+    } as any
+
     await guardarConfiguracionCalendario(config, anio)
+
+    // Sincronizar con pagos_reportados si corresponde y la fila corresponde a un UUID de apartamento
+    const esAptoUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(params.filaId)
+    if (esAptoUuid && params.sincronizarReporte !== false) {
+      const campanaKey = `cuota_esp_${anio}_${params.columnaId}_${params.filaId}`
+      try {
+        const { data: existentes } = await supabase
+          .from('pagos_reportados')
+          .select('id, notas_admin')
+          .eq('apartamento_id', params.filaId)
+
+        const autoRows = (existentes || []).filter(r => {
+          const n = String(r.notas_admin || '')
+          return n.includes(`"campanaIdUnico":"${campanaKey}"`) && n.includes('"origenAdmin":true')
+        })
+
+        if (params.estado === 'pagado' && montoNum > 0.01) {
+          let tasa = 859.06
+          try {
+            const { data: edCfg } = await supabase.from('configuracion_edificio').select('tasa_bcv_actual').limit(1).maybeSingle()
+            if (edCfg?.tasa_bcv_actual && Number(edCfg.tasa_bcv_actual) > 1) tasa = Number(edCfg.tasa_bcv_actual)
+          } catch {}
+          const montoBs = monedaFinal === 'BS' ? montoNum : Number((montoNum * tasa).toFixed(2))
+          const montoUsd = monedaFinal === 'USD' ? montoNum : Number((montoNum / tasa).toFixed(2))
+          const ref = (params.referencia || '').trim() || `CUOTA-${anio}-${params.columnaId.slice(-6).toUpperCase()}`
+          const meta: PagoDomusMeta = {
+            tipoServicio: 'condominio',
+            origenAdmin: true,
+            campanaIdUnico: campanaKey,
+            condominioMontoBs: montoBs,
+            condominioMontoUsd: montoUsd,
+            cuotasEspeciales: [{
+              columnaId: params.columnaId,
+              titulo: colMeta?.titulo || 'Cuota Extraordinaria',
+              anio,
+              monto: montoNum,
+              moneda: monedaFinal
+            }]
+          }
+          const notas = encodePagoMeta(
+            `Cuota Extraordinaria: ${colMeta?.titulo || 'Cuota Especial'} (${anio}) · Liquidada por ${params.autorNombre || 'Administración'}`,
+            meta
+          )
+          if (autoRows.length > 0) {
+            await supabase.from('pagos_reportados').update({
+              monto_bs: montoBs,
+              monto_usd: montoUsd,
+              referencia: ref,
+              estado: 'aprobado',
+              fecha_pago: new Date().toISOString().slice(0, 10),
+              notas_admin: notas
+            }).eq('id', autoRows[0].id)
+          } else {
+            await supabase.from('pagos_reportados').insert({
+              apartamento_id: params.filaId,
+              monto_bs: montoBs,
+              monto_usd: montoUsd,
+              referencia: ref,
+              metodo: 'otro',
+              estado: 'aprobado',
+              fecha_pago: new Date().toISOString().slice(0, 10),
+              notas_admin: notas
+            })
+          }
+        } else if (params.estado === 'pendiente' && autoRows.length > 0) {
+          await supabase.from('pagos_reportados').delete().in('id', autoRows.map(a => a.id))
+        }
+      } catch (syncErr) {
+        console.warn('[calendarioDeudasService] Aviso sincronizando cuota especial en pagos_reportados:', syncErr)
+      }
+    }
+
+    appCache.invalidateTags(['calendario_config', 'mora', 'saldos', 'recibos', 'pagos'])
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('condominio_cuotas_updated'))
+    }
     return { success: true, error: null }
   } catch (err: any) {
     return { success: false, error: err.message || 'Error guardando celda' }
+  }
+}
+
+/**
+ * Aplica en un solo guardado atómico un monto/estado de cuota especial para todos o varios apartamentos
+ * (evita el problema N+1 de múltiples escrituras secuenciales).
+ */
+export async function guardarCeldaPersonalizadaMasiva(params: {
+  columnaId: string
+  monto: number | string
+  estado: 'pendiente' | 'pagado'
+  moneda?: 'USD' | 'BS'
+  anio?: number
+  apartamentosIds?: string[]
+}): Promise<{ success: boolean; afectados: number; error: string | null }> {
+  try {
+    const anio = params.anio || 2026
+    const config = await obtenerConfiguracionCalendario(anio)
+    const colMeta = (config.columnas || []).find(c => c.id === params.columnaId)
+    const monedaFinal = params.moneda || colMeta?.moneda || 'USD'
+    const montoNum = parsearMontoFlexible(params.monto, monedaFinal)
+
+    let targetIds = params.apartamentosIds
+    if (!targetIds || targetIds.length === 0) {
+      const { data: aptos } = await supabase.from('apartamentos').select('id')
+      targetIds = (aptos || []).map(a => a.id)
+    }
+
+    if (!config.valoresCeldasPersonalizadas) config.valoresCeldasPersonalizadas = {}
+    targetIds.forEach(aid => {
+      if (!config.valoresCeldasPersonalizadas[aid]) config.valoresCeldasPersonalizadas[aid] = {}
+      config.valoresCeldasPersonalizadas[aid][params.columnaId] = {
+        monto: montoNum,
+        estado: params.estado,
+        moneda: monedaFinal
+      } as any
+    })
+
+    await guardarConfiguracionCalendario(config, anio)
+    appCache.invalidateTags(['calendario_config', 'mora', 'saldos', 'recibos', 'pagos'])
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('condominio_cuotas_updated'))
+    }
+    return { success: true, afectados: targetIds.length, error: null }
+  } catch (err: any) {
+    return { success: false, afectados: 0, error: err.message || 'Error guardando celdas masivamente' }
   }
 }
 
@@ -1204,29 +1358,38 @@ export type PosicionInsercionColumna =
   | { tipo: 'antes_de'; colIdReferencia: string }
 
 /**
- * Agrega una columna personalizada (Cuota Especial) en la posición exacta indicada
+ * Agrega una columna personalizada (Cuota Extraoficial / Especial) en la posición exacta indicada
  */
 export async function agregarColumnaPersonalizada(params: {
   titulo: string
+  descripcion?: string
   seccion: 'naranja' | 'azul'
   moneda: 'USD' | 'BS'
-  montoDefecto?: number
+  montoDefecto?: number | string
+  fechaEmision?: string
+  fechaLimite?: string
   posicion: PosicionInsercionColumna
   aplicarATodos?: boolean
+  apartamentosIds?: string[]
   anio?: number
 }): Promise<{ success: boolean; nuevaColumna: ColumnaCalendarioConfig | null; error: string | null }> {
   try {
     const anio = params.anio || 2026
     const config = await obtenerConfiguracionCalendario(anio)
     const id = `cuota_col_${Date.now()}`
+    const montoLimpio = parsearMontoFlexible(params.montoDefecto, params.moneda)
     const nuevaCol: ColumnaCalendarioConfig = {
       id,
       titulo: params.titulo.trim(),
+      ...(params.descripcion?.trim() ? { descripcion: params.descripcion.trim() } : {}),
       seccion: params.seccion,
       moneda: params.moneda,
       tipo: 'cuota_especial',
       esPersonalizada: true,
-      montoDefecto: Number(params.montoDefecto || 0),
+      montoDefecto: montoLimpio,
+      ...(params.fechaEmision ? { fechaEmision: params.fechaEmision } : {}),
+      ...(params.fechaLimite ? { fechaLimite: params.fechaLimite } : {}),
+      creadaEn: new Date().toISOString(),
       orden: 999
     }
 
@@ -1269,23 +1432,323 @@ export async function agregarColumnaPersonalizada(params: {
     cols.forEach((c, idx) => { c.orden = idx + 1 })
     config.columnas = cols
 
-    // Si se aplica a todos y hay monto por defecto, poblar valores
-    if (params.aplicarATodos && (params.montoDefecto || 0) > 0) {
-      const { data: aptos } = await supabase.from('apartamentos').select('id')
+    // Poblar valores a todos o a los apartamentos seleccionados
+    if (montoLimpio > 0) {
       if (!config.valoresCeldasPersonalizadas) config.valoresCeldasPersonalizadas = {}
-      ;(aptos || []).forEach(a => {
-        if (!config.valoresCeldasPersonalizadas[a.id]) config.valoresCeldasPersonalizadas[a.id] = {}
-        config.valoresCeldasPersonalizadas[a.id][id] = {
-          monto: Number(params.montoDefecto || 0),
-          estado: 'pendiente'
-        }
+      let targets: string[] = []
+      if (params.apartamentosIds && params.apartamentosIds.length > 0) {
+        targets = params.apartamentosIds
+      } else if (params.aplicarATodos) {
+        const { data: aptos } = await supabase.from('apartamentos').select('id')
+        targets = (aptos || []).map(a => a.id)
+      }
+
+      targets.forEach(aid => {
+        if (!config.valoresCeldasPersonalizadas[aid]) config.valoresCeldasPersonalizadas[aid] = {}
+        config.valoresCeldasPersonalizadas[aid][id] = {
+          monto: montoLimpio,
+          estado: 'pendiente',
+          moneda: params.moneda
+        } as any
       })
     }
 
     await guardarConfiguracionCalendario(config, anio)
+    appCache.invalidateTags(['calendario_config', 'mora', 'saldos', 'recibos', 'pagos'])
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('condominio_cuotas_updated'))
+    }
     return { success: true, nuevaColumna: nuevaCol, error: null }
   } catch (err: any) {
     return { success: false, nuevaColumna: null, error: err.message || 'Error agregando columna' }
+  }
+}
+
+/**
+ * Edita una Cuota Extraoficial / Especial existente (título, descripción, fechas, monto y alcance),
+ * preservando intactos los apartamentos que ya pagaron.
+ */
+export async function editarColumnaPersonalizada(params: {
+  colId: string
+  titulo: string
+  descripcion?: string
+  seccion?: 'naranja' | 'azul'
+  moneda: 'USD' | 'BS'
+  montoDefecto?: number | string
+  fechaEmision?: string
+  fechaLimite?: string
+  aplicarATodos?: boolean
+  apartamentosIds?: string[]
+  actualizarPendientes?: boolean
+  anio?: number
+}): Promise<{ success: boolean; error: string | null }> {
+  try {
+    const anio = params.anio || 2026
+    const config = await obtenerConfiguracionCalendario(anio)
+    const cols = [...(config.columnas || obtenerColumnasPorDefecto(anio))]
+    const idx = cols.findIndex(c => c.id === params.colId)
+    if (idx === -1) return { success: false, error: 'Cuota extraordinaria no encontrada' }
+
+    const montoLimpio = parsearMontoFlexible(params.montoDefecto, params.moneda)
+    cols[idx] = {
+      ...cols[idx],
+      titulo: params.titulo.trim(),
+      descripcion: params.descripcion?.trim() || undefined,
+      ...(params.seccion ? { seccion: params.seccion } : {}),
+      moneda: params.moneda,
+      montoDefecto: montoLimpio,
+      fechaEmision: params.fechaEmision || undefined,
+      fechaLimite: params.fechaLimite || undefined
+    }
+    config.columnas = cols
+
+    // Si se solicita reasignar / actualizar montos pendientes
+    if (params.actualizarPendientes && montoLimpio >= 0) {
+      if (!config.valoresCeldasPersonalizadas) config.valoresCeldasPersonalizadas = {}
+      let targets: string[] = []
+      if (params.apartamentosIds && params.apartamentosIds.length > 0) {
+        targets = params.apartamentosIds
+      } else if (params.aplicarATodos) {
+        const { data: aptos } = await supabase.from('apartamentos').select('id')
+        targets = (aptos || []).map(a => a.id)
+      }
+
+      if (targets.length > 0) {
+        const targetSet = new Set(targets)
+        // Limpiar pendientes de apartamentos ya no seleccionados
+        Object.keys(config.valoresCeldasPersonalizadas).forEach(aid => {
+          const val = config.valoresCeldasPersonalizadas[aid]?.[params.colId]
+          if (val && val.estado === 'pendiente' && !targetSet.has(aid)) {
+            delete config.valoresCeldasPersonalizadas[aid][params.colId]
+          }
+        })
+        // Asignar o actualizar pendientes en los seleccionados (respetando los ya pagados)
+        targets.forEach(aid => {
+          if (!config.valoresCeldasPersonalizadas[aid]) config.valoresCeldasPersonalizadas[aid] = {}
+          const prev = config.valoresCeldasPersonalizadas[aid][params.colId]
+          if (!prev || prev.estado !== 'pagado') {
+            config.valoresCeldasPersonalizadas[aid][params.colId] = {
+              monto: montoLimpio,
+              estado: montoLimpio > 0 ? 'pendiente' : 'pagado',
+              moneda: params.moneda
+            } as any
+          }
+        })
+      }
+    }
+
+    await guardarConfiguracionCalendario(config, anio)
+    appCache.invalidateTags(['calendario_config', 'mora', 'saldos', 'recibos', 'pagos'])
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('condominio_cuotas_updated'))
+    }
+    return { success: true, error: null }
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Error editando cuota extraordinaria' }
+  }
+}
+
+/**
+ * Liquida cuotas extraoficiales / especiales seleccionadas al aprobar un pago reportado desde Reportes de Pago.
+ * Devuelve exactamente cuánto monto en Bs/USD fue absorbido por cuotas especiales para evitar doble abono.
+ */
+export async function liquidarCuotasEspecialesDesdePago(params: {
+  apartamentoId: string
+  cuotasEspeciales: Array<{ columnaId: string; anio: number; monto: number; moneda: 'USD' | 'BS' }>
+  montoDisponibleBs: number
+  montoDisponibleUsd: number
+  tasaBcv: number
+}): Promise<{ liquidadoBs: number; liquidadoUsd: number; error?: string | null }> {
+  try {
+    if (!params.apartamentoId || !params.cuotasEspeciales?.length) {
+      return { liquidadoBs: 0, liquidadoUsd: 0, error: null }
+    }
+
+    const tasa = params.tasaBcv > 1 ? params.tasaBcv : 859.06
+    let budgetBs = Number(params.montoDisponibleBs || 0)
+    let budgetUsd = Number(params.montoDisponibleUsd || 0)
+    if (budgetBs <= 0 && budgetUsd > 0) budgetBs = Number((budgetUsd * tasa).toFixed(2))
+    if (budgetUsd <= 0 && budgetBs > 0 && tasa > 0) budgetUsd = Number((budgetBs / tasa).toFixed(2))
+
+    let liquidadoBs = 0
+    let liquidadoUsd = 0
+
+    // Agrupar por año para minimizar lecturas/escrituras
+    const porAnio = new Map<number, typeof params.cuotasEspeciales>()
+    params.cuotasEspeciales.forEach(c => {
+      const a = Number(c.anio) || 2026
+      const arr = porAnio.get(a) || []
+      arr.push(c)
+      porAnio.set(a, arr)
+    })
+
+    for (const [anio, lista] of porAnio.entries()) {
+      const config = await obtenerConfiguracionCalendario(anio)
+      if (!config.valoresCeldasPersonalizadas) config.valoresCeldasPersonalizadas = {}
+      if (!config.valoresCeldasPersonalizadas[params.apartamentoId]) {
+        config.valoresCeldasPersonalizadas[params.apartamentoId] = {}
+      }
+
+      let huboCambio = false
+      for (const item of lista) {
+        if (budgetBs <= 0.01 && budgetUsd <= 0.01) break
+        const col = (config.columnas || []).find(c => c.id === item.columnaId)
+        const celdaActual = config.valoresCeldasPersonalizadas[params.apartamentoId][item.columnaId]
+        const montoActual = Number(celdaActual?.monto ?? item.monto ?? col?.montoDefecto ?? 0)
+        const estadoActual = celdaActual?.estado || 'pendiente'
+        if (estadoActual === 'pagado' || montoActual <= 0.01) continue
+
+        const mon = (celdaActual as any)?.moneda || item.moneda || col?.moneda || 'USD'
+        const deudaBs = mon === 'BS' ? montoActual : Number((montoActual * tasa).toFixed(2))
+        const deudaUsd = mon === 'USD' ? montoActual : Number((montoActual / tasa).toFixed(2))
+
+        const cubre = mon === 'USD' ? (budgetUsd + 0.05 >= deudaUsd) : (budgetBs + 0.05 >= deudaBs)
+        if (cubre) {
+          config.valoresCeldasPersonalizadas[params.apartamentoId][item.columnaId] = {
+            monto: montoActual,
+            estado: 'pagado',
+            moneda: mon
+          } as any
+          budgetBs = Math.max(0, Number((budgetBs - deudaBs).toFixed(2)))
+          budgetUsd = Math.max(0, Number((budgetUsd - deudaUsd).toFixed(2)))
+          liquidadoBs += deudaBs
+          liquidadoUsd += deudaUsd
+          huboCambio = true
+        } else {
+          // Abono parcial sobre la cuota extraordinaria
+          const abonoMon = mon === 'USD' ? budgetUsd : budgetBs
+          const restante = Math.max(0, Number((montoActual - abonoMon).toFixed(2)))
+          config.valoresCeldasPersonalizadas[params.apartamentoId][item.columnaId] = {
+            monto: restante,
+            estado: restante <= 0.05 ? 'pagado' : 'pendiente',
+            moneda: mon
+          } as any
+          liquidadoBs += budgetBs
+          liquidadoUsd += budgetUsd
+          budgetBs = 0
+          budgetUsd = 0
+          huboCambio = true
+        }
+      }
+
+      if (huboCambio) {
+        await guardarConfiguracionCalendario(config, anio)
+      }
+    }
+
+    if (liquidadoBs > 0 || liquidadoUsd > 0) {
+      appCache.invalidateTags(['calendario_config', 'mora', 'saldos', 'recibos', 'pagos'])
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('condominio_cuotas_updated'))
+      }
+    }
+
+    return {
+      liquidadoBs: Number(liquidadoBs.toFixed(2)),
+      liquidadoUsd: Number(liquidadoUsd.toFixed(2)),
+      error: null
+    }
+  } catch (err: any) {
+    console.error('[calendarioDeudasService] Error liquidando cuotas especiales:', err)
+    return { liquidadoBs: 0, liquidadoUsd: 0, error: err.message }
+  }
+}
+
+/**
+ * Construye automáticamente los eventos y recordatorios del calendario (Emisión y Fecha Límite)
+ * a partir de todas las Cuotas Extraoficiales configuradas en el sistema.
+ */
+export async function obtenerEventosCalendarioCuotas(anioFilter?: number): Promise<EventoCalendarioCuota[]> {
+  try {
+    const [{ data: configRows }, { data: aptosDb }] = await Promise.all([
+      supabase
+        .from('casos_comunidad')
+        .select('tipo, descripcion')
+        .like('tipo', 'config_calendario_mora%'),
+      supabase.from('apartamentos').select('id')
+    ])
+
+    const totalAptos = (aptosDb || []).length
+    const hoyIso = new Date().toISOString().slice(0, 10)
+    const eventos: EventoCalendarioCuota[] = []
+
+    const calcularEstado = (fecha: string, pendientes: number, asignados: number): EventoCalendarioCuota['estado'] => {
+      if (asignados > 0 && pendientes === 0) return 'completado'
+      if (fecha === hoyIso) return 'hoy'
+      if (fecha < hoyIso) return 'vencido'
+      return 'proximo'
+    }
+
+    ;(configRows || []).forEach(row => {
+      if (!row?.descripcion) return
+      let cfg: any = null
+      try { cfg = JSON.parse(row.descripcion) } catch {}
+      if (!cfg || !Array.isArray(cfg.columnas)) return
+
+      const matchAnio = String(row.tipo || '').match(/config_calendario_mora_(\d{4})/)
+      const anio = matchAnio ? Number(matchAnio[1]) : 2026
+      if (anioFilter && anio !== anioFilter) return
+
+      const valoresCeldas = cfg.valoresCeldasPersonalizadas || {}
+      cfg.columnas.forEach((col: ColumnaCalendarioConfig) => {
+        if (col.tipo !== 'cuota_especial') return
+        if (!col.fechaEmision && !col.fechaLimite) return
+
+        let asignados = 0
+        let pendientes = 0
+        let pagados = 0
+        ;(aptosDb || []).forEach(a => {
+          const val = valoresCeldas[a.id]?.[col.id] ?? (col.montoDefecto ? { monto: col.montoDefecto, estado: 'pendiente' } : null)
+          if (val && Number(val.monto || 0) > 0) {
+            asignados++
+            if (val.estado === 'pagado') pagados++
+            else pendientes++
+          }
+        })
+
+        if (col.fechaEmision) {
+          eventos.push({
+            id: `ev_em_${anio}_${col.id}`,
+            columnaId: col.id,
+            anio,
+            titulo: col.titulo,
+            descripcion: col.descripcion,
+            tipoEvento: 'emision',
+            fecha: col.fechaEmision,
+            moneda: col.moneda,
+            montoDefecto: Number(col.montoDefecto || 0),
+            totalAptosAsignados: asignados || totalAptos,
+            totalAptosPendientes: pendientes,
+            totalAptosPagados: pagados,
+            estado: calcularEstado(col.fechaEmision, pendientes, asignados)
+          })
+        }
+
+        if (col.fechaLimite) {
+          eventos.push({
+            id: `ev_lim_${anio}_${col.id}`,
+            columnaId: col.id,
+            anio,
+            titulo: col.titulo,
+            descripcion: col.descripcion,
+            tipoEvento: 'vencimiento',
+            fecha: col.fechaLimite,
+            moneda: col.moneda,
+            montoDefecto: Number(col.montoDefecto || 0),
+            totalAptosAsignados: asignados || totalAptos,
+            totalAptosPendientes: pendientes,
+            totalAptosPagados: pagados,
+            estado: calcularEstado(col.fechaLimite, pendientes, asignados)
+          })
+        }
+      })
+    })
+
+    eventos.sort((a, b) => a.fecha.localeCompare(b.fecha))
+    return eventos
+  } catch (err) {
+    console.warn('[calendarioDeudasService] Error obteniendo eventos de cuotas:', err)
+    return []
   }
 }
 

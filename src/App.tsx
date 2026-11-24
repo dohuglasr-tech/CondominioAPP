@@ -37,6 +37,7 @@ import { AdminHistorial } from './presentation/pages/admin/AdminHistorial'
 import { AdminLogs } from './presentation/pages/admin/AdminLogs'
 import { AdminGas } from './presentation/pages/admin/AdminGas'
 import { AdminLocales } from './presentation/pages/admin/AdminLocales'
+import { AdminNotificacionesGlobales } from './presentation/pages/admin/AdminNotificacionesGlobales'
 import { ListaMoraResidente } from './presentation/pages/ListaMoraResidente'
 import { JuntaCondominioResidente } from './presentation/pages/JuntaCondominioResidente'
 import { GasResidente } from './presentation/pages/GasResidente'
@@ -338,6 +339,7 @@ function AppShell() {
           <Route path="calendario-deudas" element={<AdminCalendarioDeudas />} />
           <Route path="gas"        element={<AdminGas />} />
           <Route path="locales"    element={<AdminLocales />} />
+          <Route path="notificaciones-globales" element={<AdminNotificacionesGlobales />} />
           <Route path="historial"  element={<AdminHistorial />} />
           <Route path="logs"       element={<AdminLogs />} />
         </Route>

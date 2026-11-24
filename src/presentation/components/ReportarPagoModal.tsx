@@ -10,6 +10,10 @@ import {
   obtenerGasServicioData,
   obtenerTodasLasDeudasGasApartamento,
   reportarPagoGasResidente,
+  encodePagoMeta,
+  PagoDomusMeta,
+  PagoGasItemMeta,
+  PagoCuotaEspecialMeta,
   DatosPagoGas
 } from '../../data/gasService'
 import { appCache } from '../../data/cacheService'
@@ -167,6 +171,7 @@ export function ReportarPagoModal({
   const [deudas, setDeudas] = useState<DeudaSeleccionable[]>([])
   const [saldoAFavor, setSaldoAFavor] = useState(0)
   const [gasBancarios, setGasBancarios] = useState<DatosPagoGas | null>(null)
+  const [gasEnVerificacionCount, setGasEnVerificacionCount] = useState(0)
   const [cuentaActivaTab, setCuentaActivaTab] = useState<'gas' | 'condominio'>('condominio')
 
   // Paso 2: resumen/monto
@@ -264,6 +269,7 @@ export function ReportarPagoModal({
         if (gasRes?.data) {
           setGasBancarios(gasRes.data.config.datosPago)
           const infoGas = obtenerTodasLasDeudasGasApartamento(gasRes.data, apartamentoId, aptoNumero)
+          setGasEnVerificacionCount(infoGas.cuotasEnVerificacion?.length || 0)
           if (infoGas.tieneDeuda && infoGas.cuotasPendientes.length > 0) {
             infoGas.cuotasPendientes.forEach(c => {
               itemsGas.push({
@@ -404,10 +410,120 @@ export function ReportarPagoModal({
       ? 'efectivo_usd'
       : (metodo || 'transferencia_bs')
 
-    // Sincronizar cuotas de gas pagadas
-    const itemsGas = deudasSeleccionadas.filter(d => d.categoria === 'gas')
-    if (itemsGas.length > 0) {
-      for (const itemGas of itemsGas) {
+    // Separar ítems de Gas vs Cuotas Especiales vs Condominio Ordinario
+    const itemsGasSel = deudasSeleccionadas.filter(d => d.categoria === 'gas')
+    const itemsCondSel = deudasSeleccionadas.filter(d => d.categoria !== 'gas')
+    const itemsCuotasEspSel = itemsCondSel.filter(d => d.categoria === 'cuota_especial')
+
+    // Calcular montos exactos por servicio
+    const gasSelectedBs = itemsGasSel.reduce(
+      (s, it) => s + (it.moneda === 'BS' ? it.monto : Number((it.monto * tasaBcv).toFixed(2))),
+      0
+    )
+    const gasSelectedUsd = itemsGasSel.reduce(
+      (s, it) => s + (it.moneda === 'USD' ? it.monto : (tasaBcv > 0 ? Number((it.monto / tasaBcv).toFixed(2)) : 0)),
+      0
+    )
+
+    let gasMontoBs = 0
+    let gasMontoUsd = 0
+    let condominioMontoBs = 0
+    let condominioMontoUsd = 0
+
+    if (itemsGasSel.length > 0 && itemsCondSel.length === 0) {
+      // Solo Gas (acepta monto completo o abono parcial)
+      gasMontoBs = Number(montoFinalBs.toFixed(2))
+      gasMontoUsd = Number(montoFinalUsd.toFixed(2))
+    } else if (itemsGasSel.length > 0 && itemsCondSel.length > 0) {
+      // Pago Mixto (Gas + Condominio)
+      if (usarOtroMonto) {
+        gasMontoBs = Number(Math.min(montoFinalBs, gasSelectedBs).toFixed(2))
+        gasMontoUsd = Number(Math.min(montoFinalUsd, gasSelectedUsd).toFixed(2))
+        condominioMontoBs = Number(Math.max(0, montoFinalBs - gasMontoBs).toFixed(2))
+        condominioMontoUsd = Number(Math.max(0, montoFinalUsd - gasMontoUsd).toFixed(2))
+      } else {
+        gasMontoBs = Number(gasSelectedBs.toFixed(2))
+        gasMontoUsd = Number(gasSelectedUsd.toFixed(2))
+        condominioMontoBs = Number(Math.max(0, montoFinalBs - gasMontoBs).toFixed(2))
+        condominioMontoUsd = Number(Math.max(0, montoFinalUsd - gasMontoUsd).toFixed(2))
+      }
+    } else {
+      // Solo Condominio / Cuotas Especiales / Pago general
+      condominioMontoBs = Number(montoFinalBs.toFixed(2))
+      condominioMontoUsd = Number(Math.max(0, montoFinalUsd).toFixed(2))
+    }
+
+    const tipoServicio: PagoDomusMeta['tipoServicio'] =
+      itemsGasSel.length > 0 && itemsCondSel.length > 0
+        ? 'mixto'
+        : itemsGasSel.length > 0
+        ? 'gas'
+        : 'condominio'
+
+    const gasItemsMeta: PagoGasItemMeta[] = itemsGasSel.map(it => {
+      const campanaId = it.id.replace(/^gas-/, '')
+      return {
+        campanaId,
+        titulo: it.label,
+        mes: campanaId === 'deuda-anterior-gas' ? 'Anterior' : 'Cuota',
+        montoBs: it.moneda === 'BS' ? it.monto : Number((it.monto * tasaBcv).toFixed(2)),
+        montoUsd: it.moneda === 'USD' ? it.monto : (tasaBcv > 0 ? Number((it.monto / tasaBcv).toFixed(2)) : 0),
+        moneda: it.moneda,
+        esDeudaAnterior: campanaId === 'deuda-anterior-gas'
+      }
+    })
+
+    const cuotasEspMeta: PagoCuotaEspecialMeta[] = itemsCuotasEspSel
+      .map(it => {
+        const rawAnio = (it as any).anio
+        const rawColId = (it as any).columnaId
+        let columnaId = rawColId || ''
+        let anio = Number(rawAnio) || 2026
+        if (!columnaId && it.id.startsWith('cuota_esp_')) {
+          const match = it.id.match(/^cuota_esp_(\d{4})_(.+)$/)
+          if (match) {
+            anio = Number(match[1]) || 2026
+            columnaId = match[2]
+          }
+        }
+        return {
+          columnaId,
+          titulo: it.label,
+          anio,
+          monto: it.monto,
+          moneda: it.moneda
+        }
+      })
+      .filter(c => Boolean(c.columnaId))
+
+    const metaDomus: PagoDomusMeta = {
+      tipoServicio,
+      ...(gasItemsMeta.length > 0 ? { gasItems: gasItemsMeta, gasMontoBs, gasMontoUsd } : {}),
+      ...(cuotasEspMeta.length > 0 ? { cuotasEspeciales: cuotasEspMeta } : {}),
+      condominioMontoBs,
+      condominioMontoUsd
+    }
+
+    const notasVisibles = `Método: ${(metodo || 'otro').toUpperCase()} · Banco: ${bancoEfectivo} · Conceptos: ${conceptosLabels || 'Pago general'} · Monto USD: $${montoFinalUsd.toFixed(2)} · Monto Bs: ${montoFinalBs.toLocaleString('es-VE')}`
+    const notasCodificadas = encodePagoMeta(notasVisibles, metaDomus)
+
+    // 1. Insertar primero el reporte en `pagos_reportados` (pendiente de revisión administrativa)
+    const { id: pagoReportadoId, error: pagoErr } = await reportarPago({
+      apartamento_id: apartamentoId,
+      monto_bs: montoFinalBs,
+      monto_usd: montoFinalUsd,
+      metodo: metodoMapeado,
+      numero_referencia: refEfectiva,
+      banco_origen: bancoEfectivo,
+      comprobante_url: comprobanteUrl,
+      notas_admin: notasCodificadas
+    })
+
+    if (pagoErr) { setError(pagoErr); setLoading(false); return }
+
+    // 2. Si incluye cuotas de gas, marcarlas en 'en_verificacion' (nunca 'pagado' antes de aprobación)
+    if (itemsGasSel.length > 0) {
+      for (const itemGas of itemsGasSel) {
         const campanaId = itemGas.id.replace(/^gas-/, '')
         try {
           await reportarPagoGasResidente({
@@ -420,26 +536,15 @@ export function ReportarPagoModal({
             referencia: refEfectiva,
             fechaPago: new Date().toISOString().slice(0, 10),
             observaciones: `Reportado vía portal de pagos · Banco: ${bancoEfectivo} · Ref: ${refEfectiva}`,
-            tasaBcv
+            tasaBcv,
+            estadoDestino: 'en_verificacion',
+            pagoReportadoId
           })
         } catch (eGas) {
-          console.warn('[ReportarPagoModal] Error reportando cuota de gas:', eGas)
+          console.warn('[ReportarPagoModal] Error marcando cuota de gas en verificación:', eGas)
         }
       }
     }
-
-    const { error: pagoErr } = await reportarPago({
-      apartamento_id: apartamentoId,
-      monto_bs: montoFinalBs,
-      monto_usd: montoFinalUsd,
-      metodo: metodoMapeado,
-      numero_referencia: refEfectiva,
-      banco_origen: bancoEfectivo,
-      comprobante_url: comprobanteUrl,
-      notas_admin: `Método: ${(metodo || 'otro').toUpperCase()} · Banco: ${bancoEfectivo} · Conceptos: ${conceptosLabels || 'Pago general'} · Monto USD: $${montoFinalUsd.toFixed(2)} · Monto Bs: ${montoFinalBs.toLocaleString('es-VE')}`
-    })
-
-    if (pagoErr) { setError(pagoErr); setLoading(false); return }
 
     appCache.invalidateTags(['gas', 'deudas_gas', 'saldos', 'recibos', 'mora', 'pagos'])
 
@@ -609,6 +714,13 @@ export function ReportarPagoModal({
           <div style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: '10px', padding: '10px 14px', marginBottom: '14px', fontSize: '12px', color: '#6ee7b7', display: 'flex', gap: '8px', alignItems: 'center' }}>
             <span style={{ fontSize: '16px' }}>💚</span>
             <span><strong>Saldo a favor: ${saldoAFavor.toFixed(2)}</strong> — Puedes amortizarlo en tu pago.</span>
+          </div>
+        )}
+
+        {gasEnVerificacionCount > 0 && (
+          <div style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.32)', borderRadius: '10px', padding: '10px 14px', marginBottom: '14px', fontSize: '12px', color: '#fbbf24', display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <span style={{ fontSize: '16px' }}>⏳</span>
+            <span>Tienes <strong>{gasEnVerificacionCount}</strong> {gasEnVerificacionCount === 1 ? 'cuota de gas' : 'cuotas de gas'} con pago en verificación por administración.</span>
           </div>
         )}
 

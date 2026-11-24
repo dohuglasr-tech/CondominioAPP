@@ -5,6 +5,15 @@ import { appCache } from '../../../data/cacheService'
 import { useAuth } from '../../../application/contexts/AuthContext'
 import { despacharEmailPagoAprobado } from '../../../data/emailService'
 import { aplicarPagoConPrelacion } from '../../../data/pagosPrelacionService'
+import { liquidarCuotasEspecialesDesdePago } from '../../../data/calendarioDeudasService'
+import {
+  parsePagoMeta,
+  stripPagoMeta,
+  encodePagoMeta,
+  aprobarPagoGasDesdeReporte,
+  rechazarPagoGasDesdeReporte,
+  PagoDomusMeta
+} from '../../../data/gasService'
 import { SkeletonListItem } from '../../components/Skeleton'
 
 interface PagoAdmin {
@@ -19,6 +28,9 @@ interface PagoAdmin {
   created_at: string
   fecha_pago?: string | null
   notas_admin?: string | null
+  notas_limpias?: string | null
+  metaDomus?: PagoDomusMeta | null
+  servicio: 'gas' | 'condominio' | 'mixto'
   comprobante_url?: string | null
   apartamento: { numero: string; id?: string } | null
   residente_nombre?: string | null
@@ -39,6 +51,7 @@ export const AdminRecibos: React.FC = () => {
   const [pagos, setPagos] = useState<PagoAdmin[]>([])
   const [loading, setLoading] = useState(true)
   const [filtro, setFiltro] = useState<string>(initialFilter)
+  const [filtroServicio, setFiltroServicio] = useState<'todos' | 'condominio' | 'gas' | 'mixto'>('todos')
   const [selected, setSelected] = useState<PagoAdmin | null>(null)
   const [nota, setNota] = useState('')
   const [procesando, setProcesando] = useState(false)
@@ -88,9 +101,13 @@ export const AdminRecibos: React.FC = () => {
           if (!pagosRes.data) return []
 
           return pagosRes.data.map((r: any) => {
+            const notasLimpias = stripPagoMeta(r.notas_admin)
+            const metaDomus = parsePagoMeta(r.notas_admin)
+            const servicio: 'gas' | 'condominio' | 'mixto' = metaDomus?.tipoServicio || 'condominio'
+
             let banco = 'Transferencia'
-            if (r.notas_admin && r.notas_admin.includes('Banco')) {
-              const match = r.notas_admin.match(/Banco(?: Origen)?:\s*([^\n,|]+)/i)
+            if (notasLimpias && notasLimpias.includes('Banco')) {
+              const match = notasLimpias.match(/Banco(?: Origen)?:\s*([^\n,|]+)/i)
               if (match) banco = match[1].trim()
             }
 
@@ -120,6 +137,9 @@ export const AdminRecibos: React.FC = () => {
               created_at: r.created_at,
               fecha_pago: r.fecha_pago,
               notas_admin: r.notas_admin,
+              notas_limpias: notasLimpias,
+              metaDomus,
+              servicio,
               comprobante_url: r.comprobante_url,
               apartamento: aptoInfo ? { numero: aptoInfo.numero, id: finalAptoId } : null,
               residente_nombre: residentName,
@@ -150,7 +170,7 @@ export const AdminRecibos: React.FC = () => {
         { event: '*', schema: 'public', table: 'pagos_reportados' },
         (payload) => {
           console.log('[AdminRecibos] Cambio recibido en tiempo real:', payload)
-          appCache.invalidateTags(['pagos', 'saldos', 'recibos', 'mora'])
+          appCache.invalidateTags(['pagos', 'saldos', 'recibos', 'mora', 'gas', 'deudas_gas'])
           if (payload.eventType === 'INSERT') {
             setToastMsg('🔔 ¡Nuevo pago recibido! Se ha actualizado la lista.')
             setTimeout(() => setToastMsg(null), 5000)
@@ -168,18 +188,48 @@ export const AdminRecibos: React.FC = () => {
   const countPendientes = pagos.filter(p => p.estado === 'pendiente').length
   const countAprobados = pagos.filter(p => p.estado === 'aprobado').length
   const countRechazados = pagos.filter(p => p.estado === 'rechazado').length
+  const countGas = pagos.filter(p => p.servicio === 'gas').length
+  const countCondominio = pagos.filter(p => p.servicio === 'condominio').length
+  const countMixto = pagos.filter(p => p.servicio === 'mixto').length
 
-  const filtrados = filtro === 'todos' ? pagos : pagos.filter(p => p.estado === filtro)
+  // Totales diferenciados por servicio (pagos aprobados)
+  const resumenServicios = pagos.reduce(
+    (acc, p) => {
+      if (p.estado !== 'aprobado') return acc
+      if (p.servicio === 'gas') {
+        acc.gasBs += Number(p.monto_bs || 0)
+        acc.gasUsd += Number(p.monto_usd || 0)
+      } else if (p.servicio === 'mixto' && p.metaDomus) {
+        acc.gasBs += Number(p.metaDomus.gasMontoBs || 0)
+        acc.gasUsd += Number(p.metaDomus.gasMontoUsd || 0)
+        acc.condBs += Number(p.metaDomus.condominioMontoBs || 0)
+        acc.condUsd += Number(p.metaDomus.condominioMontoUsd || 0)
+      } else {
+        acc.condBs += Number(p.monto_bs || 0)
+        acc.condUsd += Number(p.monto_usd || 0)
+      }
+      return acc
+    },
+    { gasBs: 0, gasUsd: 0, condBs: 0, condUsd: 0 }
+  )
+
+  const filtrados = pagos.filter(p => {
+    const matchEstado = filtro === 'todos' ? true : p.estado === filtro
+    const matchServicio = filtroServicio === 'todos' ? true : p.servicio === filtroServicio
+    return matchEstado && matchServicio
+  })
 
   // ── Cambiar estado del pago (Aprobar / Rechazar) ──────────────
   const handleAction = async (id: string, accion: 'aprobado' | 'rechazado') => {
     setProcesando(true)
     try {
       const pagoObj = pagos.find(p => p.id === id)
-      let notasFinal = pagoObj?.notas_admin || ''
-      if (nota.trim()) {
-        notasFinal = notasFinal ? `${notasFinal} | Nota Admin: ${nota.trim()}` : `Nota Admin: ${nota.trim()}`
-      }
+      const metaExistente = pagoObj?.metaDomus || parsePagoMeta(pagoObj?.notas_admin)
+      const notasBaseLimpias = stripPagoMeta(pagoObj?.notas_admin)
+      const notasConComentario = nota.trim()
+        ? (notasBaseLimpias ? `${notasBaseLimpias} | Nota Admin: ${nota.trim()}` : `Nota Admin: ${nota.trim()}`)
+        : notasBaseLimpias
+      const notasFinal = metaExistente ? encodePagoMeta(notasConComentario, metaExistente) : notasConComentario
 
       // Construir el objeto de actualización con campos seguros
       const updatePayload: Record<string, unknown> = {
@@ -216,6 +266,22 @@ export const AdminRecibos: React.FC = () => {
         }
       }
 
+      if (accion === 'rechazado') {
+        const aptoIdRech = pagoObj?.apartamento_id || (pagoObj?.apartamento as any)?.id || ''
+        const aptoNumRech = pagoObj?.apartamento?.numero || ''
+        if (metaExistente && (metaExistente.tipoServicio === 'gas' || metaExistente.tipoServicio === 'mixto' || (metaExistente.gasItems && metaExistente.gasItems.length > 0))) {
+          await rechazarPagoGasDesdeReporte({
+            pagoReportadoId: id,
+            apartamentoId: aptoIdRech,
+            apartamentoNumero: aptoNumRech,
+            meta: metaExistente
+          })
+          setToastMsg('❌ Pago rechazado y cuota(s) de gas devueltas a pendiente')
+        } else {
+          setToastMsg('❌ Pago rechazado')
+        }
+      }
+
       if (accion === 'aprobado') {
         const { data: pagoDb, error: errPagoDb } = await supabase
           .from('pagos_reportados')
@@ -242,29 +308,83 @@ export const AdminRecibos: React.FC = () => {
           }
         }
 
+        const metaPago = parsePagoMeta(pagoDb?.notas_admin || notasFinal) || metaExistente
+        const tasaActual = config?.tasa_bcv_actual && config.tasa_bcv_actual > 1 ? config.tasa_bcv_actual : 859.06
+        const montoTotalBs = Number(pagoDb?.monto_bs ?? selected?.monto_bs ?? pagoObj?.monto_bs ?? 0)
+        const montoTotalUsd = Number(pagoDb?.monto_usd ?? selected?.monto_usd ?? pagoObj?.monto_usd ?? 0)
+        const refPago = pagoDb?.referencia || selected?.numero_referencia || pagoObj?.numero_referencia || 'S/R'
+        const fechaPagoStr = pagoDb?.fecha_pago || selected?.fecha_pago || pagoObj?.fecha_pago || new Date().toISOString().slice(0, 10)
+        const aptoNumPre = selected?.apartamento?.numero || pagoObj?.apartamento?.numero || ''
+
         if (aptoId) {
-          // Aplicar pago siguiendo la prelación:
-          // 1. Deudas en Bs fijos (deuda atrasada manual y recibos no indexados)
-          // 2. Recibos indexados (se descuenta en Bs y el saldo restante queda indexado al Dólar)
-          // 3. Saldo a favor (si cubre todo o no tiene deuda indexada)
-          try {
-            const resPrelacion = await aplicarPagoConPrelacion(
-              {
-                id,
-                apartamento_id: aptoId,
-                monto_bs: Number(pagoDb?.monto_bs ?? selected?.monto_bs ?? pagoObj?.monto_bs ?? 0),
-                monto_usd: pagoDb?.monto_usd ? Number(pagoDb.monto_usd) : null,
-                referencia: pagoDb?.referencia || selected?.numero_referencia || pagoObj?.numero_referencia || 'S/R',
-                banco_origen: selected?.banco_origen || pagoObj?.banco_origen || 'Transferencia',
-                fecha_pago: pagoDb?.fecha_pago || selected?.fecha_pago || pagoObj?.fecha_pago || new Date().toISOString().slice(0, 10),
-                tasa_bcv: config?.tasa_bcv_actual || 859.06
-              },
-              config?.tasa_bcv_actual || 859.06,
-              config?.fecha_inicio_gestion
-            )
-            console.log('[AdminRecibos] Resultado conciliación con prelación:', resPrelacion)
-          } catch (errPrel) {
-            console.error('[AdminRecibos] Error aplicando prelación de pago:', errPrel)
+          // A. Reconciliar porción de Gas Comunal si el pago es de Gas o Mixto
+          if (metaPago && (metaPago.tipoServicio === 'gas' || metaPago.tipoServicio === 'mixto')) {
+            try {
+              await aprobarPagoGasDesdeReporte({
+                pagoReportadoId: id,
+                apartamentoId: aptoId,
+                apartamentoNumero: aptoNumPre,
+                meta: metaPago,
+                montoTotalBs,
+                montoTotalUsd,
+                referencia: refPago,
+                metodo: pagoDb?.metodo || 'transferencia',
+                fechaPago: fechaPagoStr,
+                tasaBcv: tasaActual
+              })
+            } catch (errGas) {
+              console.error('[AdminRecibos] Error aprobando porción de Gas:', errGas)
+            }
+          }
+
+          // B. Aplicar porción de Condominio Ordinario con prelación (NUNCA para pagos solo Gas)
+          const debeAplicarCondominio =
+            !metaPago ||
+            metaPago.tipoServicio === 'condominio' ||
+            (metaPago.tipoServicio === 'mixto' && ((metaPago.condominioMontoBs || 0) > 0.05 || (metaPago.condominioMontoUsd || 0) > 0.05))
+
+          if (debeAplicarCondominio) {
+            let condBs = metaPago?.tipoServicio === 'mixto' ? Number(metaPago.condominioMontoBs || 0) : montoTotalBs
+            let condUsd = metaPago?.tipoServicio === 'mixto' ? Number(metaPago.condominioMontoUsd ?? 0) : Number(pagoDb?.monto_usd || 0)
+
+            // Liquidar cuotas extraoficiales / especiales seleccionadas antes de aplicar prelación ordinaria
+            if (metaPago?.cuotasEspeciales && metaPago.cuotasEspeciales.length > 0 && (condBs > 0.01 || condUsd > 0.01)) {
+              try {
+                const resCuotas = await liquidarCuotasEspecialesDesdePago({
+                  apartamentoId: aptoId,
+                  cuotasEspeciales: metaPago.cuotasEspeciales,
+                  montoDisponibleBs: condBs,
+                  montoDisponibleUsd: condUsd,
+                  tasaBcv: tasaActual
+                })
+                condBs = Math.max(0, Number((condBs - resCuotas.liquidadoBs).toFixed(2)))
+                condUsd = Math.max(0, Number((condUsd - resCuotas.liquidadoUsd).toFixed(2)))
+              } catch (errCuota) {
+                console.warn('[AdminRecibos] Aviso liquidando cuotas especiales:', errCuota)
+              }
+            }
+
+            if (condBs > 0.01 || condUsd > 0.01) {
+              try {
+                const resPrelacion = await aplicarPagoConPrelacion(
+                  {
+                    id,
+                    apartamento_id: aptoId,
+                    monto_bs: condBs,
+                    monto_usd: condUsd > 0 ? condUsd : null,
+                    referencia: refPago,
+                    banco_origen: selected?.banco_origen || pagoObj?.banco_origen || 'Transferencia',
+                    fecha_pago: fechaPagoStr,
+                    tasa_bcv: tasaActual
+                  },
+                  tasaActual,
+                  config?.fecha_inicio_gestion
+                )
+                console.log('[AdminRecibos] Resultado conciliación con prelación:', resPrelacion)
+              } catch (errPrel) {
+                console.error('[AdminRecibos] Error aplicando prelación de pago:', errPrel)
+              }
+            }
           }
         }
 
@@ -364,8 +484,11 @@ export const AdminRecibos: React.FC = () => {
           }
         }
 
-        setPagos(prev => prev.map(p => (p.id === id ? { ...p, estado: accion, notas_admin: notasFinal } : p)))
-        appCache.invalidateTags(['pagos', 'recibos', 'saldos', 'mora'])
+        setPagos(prev => prev.map(p => (p.id === id ? { ...p, estado: accion, notas_admin: notasFinal, notas_limpias: stripPagoMeta(notasFinal) } : p)))
+        appCache.invalidateTags(['pagos', 'recibos', 'saldos', 'mora', 'gas', 'deudas_gas', 'calendario_config'])
+        if (metaExistente?.tipoServicio === 'gas' || metaExistente?.tipoServicio === 'mixto') {
+          window.dispatchEvent(new CustomEvent('condominio_gas_updated'))
+        }
         setTimeout(() => setToastMsg(null), 4000)
     } catch (err: any) {
       console.error('[AdminRecibos] Error en handleAction:', err)
@@ -472,48 +595,125 @@ export const AdminRecibos: React.FC = () => {
         </div>
       )}
 
-      {/* Filtros con contadores */}
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
-        {[
-          { id: 'todos', label: 'Todos', count: pagos.length },
-          { id: 'pendiente', label: 'Pendientes', count: countPendientes, alert: countPendientes > 0 },
-          { id: 'aprobado', label: 'Aprobados', count: countAprobados },
-          { id: 'rechazado', label: 'Rechazados', count: countRechazados },
-        ].map(f => {
-          const isActivo = filtro === f.id
-          return (
-            <button
-              key={f.id}
-              onClick={() => cambiarFiltro(f.id)}
-              style={{
-                padding: '8px 16px',
-                borderRadius: '8px',
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: '12px',
-                fontWeight: 600,
-                backgroundColor: isActivo ? 'var(--color-accent, #f97316)' : '#1e1e1e',
-                color: isActivo ? '#fff' : '#888',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                transition: 'background-color 0.2s',
-              }}
-            >
-              <span>{f.label}</span>
-              <span style={{
-                backgroundColor: isActivo ? 'rgba(255,255,255,0.2)' : f.alert ? '#f59e0b30' : '#2a2a2a',
-                color: isActivo ? '#fff' : f.alert ? '#f59e0b' : '#aaa',
-                padding: '1px 6px',
-                borderRadius: '999px',
-                fontSize: '11px',
-                fontWeight: 700,
-              }}>
-                {f.count}
-              </span>
-            </button>
-          )
-        })}
+      {/* KPIs diferenciados por servicio (Aprobados) */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+        gap: '12px',
+        marginBottom: '18px'
+      }}>
+        <div style={{
+          backgroundColor: '#141414',
+          border: '1px solid rgba(59, 130, 246, 0.25)',
+          borderRadius: '14px',
+          padding: '14px 18px'
+        }}>
+          <div style={{ fontSize: '11px', fontWeight: 800, color: '#60a5fa', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            🏢 Recaudado Condominio (Aprobado)
+          </div>
+          <div style={{ fontSize: '18px', fontWeight: 900, color: '#fff', marginTop: '4px' }}>
+            Bs. {resumenServicios.condBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </div>
+          <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600 }}>
+            ≈ ${resumenServicios.condUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
+          </div>
+        </div>
+
+        <div style={{
+          backgroundColor: '#141414',
+          border: '1px solid rgba(249, 115, 22, 0.28)',
+          borderRadius: '14px',
+          padding: '14px 18px'
+        }}>
+          <div style={{ fontSize: '11px', fontWeight: 800, color: '#fb923c', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            ⛽ Recaudado Gas Comunal (Aprobado)
+          </div>
+          <div style={{ fontSize: '18px', fontWeight: 900, color: '#fff', marginTop: '4px' }}>
+            Bs. {resumenServicios.gasBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </div>
+          <div style={{ fontSize: '12px', color: '#fed7aa', fontWeight: 600 }}>
+            ≈ ${resumenServicios.gasUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
+          </div>
+        </div>
+      </div>
+
+      {/* Filtros con contadores (Estado y Servicio) */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          {[
+            { id: 'todos', label: 'Todos', count: pagos.length },
+            { id: 'pendiente', label: 'Pendientes', count: countPendientes, alert: countPendientes > 0 },
+            { id: 'aprobado', label: 'Aprobados', count: countAprobados },
+            { id: 'rechazado', label: 'Rechazados', count: countRechazados },
+          ].map(f => {
+            const isActivo = filtro === f.id
+            return (
+              <button
+                key={f.id}
+                onClick={() => cambiarFiltro(f.id)}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  backgroundColor: isActivo ? 'var(--color-accent, #f97316)' : '#1e1e1e',
+                  color: isActivo ? '#fff' : '#888',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  transition: 'background-color 0.2s',
+                }}
+              >
+                <span>{f.label}</span>
+                <span style={{
+                  backgroundColor: isActivo ? 'rgba(255,255,255,0.2)' : f.alert ? '#f59e0b30' : '#2a2a2a',
+                  color: isActivo ? '#fff' : f.alert ? '#f59e0b' : '#aaa',
+                  padding: '1px 6px',
+                  borderRadius: '999px',
+                  fontSize: '11px',
+                  fontWeight: 700,
+                }}>
+                  {f.count}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+          {[
+            { id: 'todos', label: 'Todos Servicios', count: pagos.length, color: '#94a3b8' },
+            { id: 'condominio', label: '🏢 Condominio', count: countCondominio, color: '#60a5fa' },
+            { id: 'gas', label: '⛽ Gas', count: countGas, color: '#fb923c' },
+            { id: 'mixto', label: '🔀 Mixto', count: countMixto, color: '#c084fc' },
+          ].map(sf => {
+            const isActivo = filtroServicio === sf.id
+            return (
+              <button
+                key={sf.id}
+                onClick={() => setFiltroServicio(sf.id as any)}
+                style={{
+                  padding: '7px 12px',
+                  borderRadius: '8px',
+                  border: `1px solid ${isActivo ? sf.color : '#2a2a2a'}`,
+                  cursor: 'pointer',
+                  fontSize: '11.5px',
+                  fontWeight: 700,
+                  backgroundColor: isActivo ? `${sf.color}20` : '#141414',
+                  color: isActivo ? sf.color : '#888',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                <span>{sf.label}</span>
+                <span style={{ opacity: 0.8 }}>({sf.count})</span>
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       {/* Lista de pagos */}
@@ -560,7 +760,7 @@ export const AdminRecibos: React.FC = () => {
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
                   <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                       <p style={{ color: '#fff', fontSize: '16px', fontWeight: 700, margin: 0 }}>
                         Apto {pago.apartamento?.numero || 'S/A'} — {pago.monto_usd && Number(pago.monto_usd) > 0 ? `$${Number(pago.monto_usd).toFixed(2)} USD (Bs. ${pago.monto_bs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})` : `Bs. ${pago.monto_bs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                       </p>
@@ -575,16 +775,50 @@ export const AdminRecibos: React.FC = () => {
                       }}>
                         {cfg.icon} {cfg.label}
                       </span>
+                      <span style={{
+                        backgroundColor: pago.servicio === 'gas'
+                          ? 'rgba(249, 115, 22, 0.16)'
+                          : pago.servicio === 'mixto'
+                          ? 'rgba(168, 85, 247, 0.16)'
+                          : 'rgba(59, 130, 246, 0.14)',
+                        color: pago.servicio === 'gas'
+                          ? '#fb923c'
+                          : pago.servicio === 'mixto'
+                          ? '#c084fc'
+                          : '#60a5fa',
+                        border: `1px solid ${pago.servicio === 'gas'
+                          ? 'rgba(249, 115, 22, 0.35)'
+                          : pago.servicio === 'mixto'
+                          ? 'rgba(168, 85, 247, 0.35)'
+                          : 'rgba(59, 130, 246, 0.3)'}`,
+                        padding: '2px 8px',
+                        borderRadius: '6px',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                      }}>
+                        {pago.servicio === 'gas' ? '⛽ Gas Comunal' : pago.servicio === 'mixto' ? '🔀 Mixto (Cond. + Gas)' : '🏢 Condominio'}
+                      </span>
                     </div>
 
                     <p style={{ color: '#888', fontSize: '12px', marginTop: '6px', margin: 0 }}>
                       {pago.banco_origen} · Ref: <strong style={{ color: '#ccc' }}>{pago.numero_referencia}</strong> · Reportado por <strong style={{ color: '#fff' }}>{pago.residente_nombre}</strong> · {new Date(pago.created_at).toLocaleString('es-VE', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                     </p>
 
-                    {pago.notas_admin && (
+                    {(pago.notas_limpias || stripPagoMeta(pago.notas_admin)) && (
                       <p style={{ color: '#aaa', fontSize: '12px', marginTop: '6px', margin: 0, fontStyle: 'italic' }}>
-                        Nota: {pago.notas_admin}
+                        Nota: {pago.notas_limpias || stripPagoMeta(pago.notas_admin)}
                       </p>
+                    )}
+
+                    {pago.servicio === 'mixto' && pago.metaDomus && (
+                      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '6px', fontSize: '11px' }}>
+                        <span style={{ color: '#fb923c', fontWeight: 700 }}>
+                          ⛽ Gas: Bs. {Number(pago.metaDomus.gasMontoBs || 0).toLocaleString('es-VE', { minimumFractionDigits: 2 })} (${Number(pago.metaDomus.gasMontoUsd || 0).toFixed(2)})
+                        </span>
+                        <span style={{ color: '#60a5fa', fontWeight: 700 }}>
+                          🏢 Condominio: Bs. {Number(pago.metaDomus.condominioMontoBs || 0).toLocaleString('es-VE', { minimumFractionDigits: 2 })} (${Number(pago.metaDomus.condominioMontoUsd || 0).toFixed(2)})
+                        </span>
+                      </div>
                     )}
                   </div>
 

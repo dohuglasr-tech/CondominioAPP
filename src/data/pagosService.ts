@@ -17,7 +17,7 @@ export interface ReportePagoPayload {
  * Inserta un pago pendiente en la tabla `pagos_reportados`.
  * El campo `estado` queda en 'pendiente' por defecto (definido en la BD).
  */
-export async function reportarPago(payload: ReportePagoPayload): Promise<{ error: string | null }> {
+export async function reportarPago(payload: ReportePagoPayload): Promise<{ id?: string; error: string | null }> {
   try {
     // Obtener el ID del usuario actual para el campo 'reportado_por'
     const { data: authData } = await supabase.auth.getUser()
@@ -89,7 +89,7 @@ export async function reportarPago(payload: ReportePagoPayload): Promise<{ error
       metodoNormalizado = 'otro'
     }
 
-    const { error } = await supabase
+    const { data: insertedRow, error } = await supabase
       .from('pagos_reportados')
       .insert({
         apartamento_id: aptoId,
@@ -103,6 +103,8 @@ export async function reportarPago(payload: ReportePagoPayload): Promise<{ error
         reportado_por: authData.user.id,
         fecha_pago: new Date().toISOString().split('T')[0],
       })
+      .select('id')
+      .maybeSingle()
 
     if (error) {
       console.error('[PagosService] Error insertando pago:', error)
@@ -110,9 +112,9 @@ export async function reportarPago(payload: ReportePagoPayload): Promise<{ error
     }
 
     // Invalidar inmediatamente caché de pagos, saldos, recibos y mora para refresco en tiempo real
-    appCache.invalidateTags(['pagos', 'saldos', 'recibos', 'mora'])
+    appCache.invalidateTags(['pagos', 'saldos', 'recibos', 'mora', 'gas', 'deudas_gas'])
 
-    return { error: null }
+    return { id: insertedRow?.id, error: null }
   } catch (err: any) {
     console.error('[PagosService] Excepción al reportar pago:', err)
     return { error: err.message || 'Error de conexión. Intenta de nuevo.' }

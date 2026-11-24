@@ -499,9 +499,15 @@ export const GasResidente: React.FC = () => {
                 DEUDA ESPECÍFICA DE GAS · APTO {aptoNumero}
               </span>
               <span style={{
-                backgroundColor: isSolventeGas ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)',
-                color: isSolventeGas ? '#22c55e' : '#ef4444',
-                border: `1px solid ${isSolventeGas ? 'rgba(34, 197, 94, 0.4)' : 'rgba(239, 68, 68, 0.4)'}`,
+                backgroundColor: isSolventeGas
+                  ? (miDeuda?.enVerificacion ? 'rgba(245, 158, 11, 0.2)' : 'rgba(34, 197, 94, 0.2)')
+                  : 'rgba(239, 68, 68, 0.2)',
+                color: isSolventeGas
+                  ? (miDeuda?.enVerificacion ? '#fbbf24' : '#22c55e')
+                  : '#ef4444',
+                border: `1px solid ${isSolventeGas
+                  ? (miDeuda?.enVerificacion ? 'rgba(245, 158, 11, 0.4)' : 'rgba(34, 197, 94, 0.4)')
+                  : 'rgba(239, 68, 68, 0.4)'}`,
                 padding: '4px 12px',
                 borderRadius: '999px',
                 fontSize: '11px',
@@ -510,14 +516,18 @@ export const GasResidente: React.FC = () => {
                 alignItems: 'center',
                 gap: '5px'
               }}>
-                <span>{isSolventeGas ? '✅' : '⚠️'}</span>
-                <span>{isSolventeGas ? 'AL DÍA CON EL GAS' : 'CUOTA DE GAS PENDIENTE'}</span>
+                <span>{isSolventeGas ? (miDeuda?.enVerificacion ? '⏳' : '✅') : '⚠️'}</span>
+                <span>
+                  {isSolventeGas
+                    ? (miDeuda?.enVerificacion ? 'PAGO EN VERIFICACIÓN' : 'AL DÍA CON EL GAS')
+                    : 'CUOTA DE GAS PENDIENTE'}
+                </span>
               </span>
             </div>
 
             {/* Gran Cifra de Deuda de Gas */}
             <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', flexWrap: 'wrap', marginBottom: '8px' }}>
-              <span style={{ fontSize: '36px', fontWeight: 900, color: isSolventeGas ? '#22c55e' : '#ef4444', letterSpacing: '-0.5px' }}>
+              <span style={{ fontSize: '36px', fontWeight: 900, color: isSolventeGas ? (miDeuda?.enVerificacion ? '#fbbf24' : '#22c55e') : '#ef4444', letterSpacing: '-0.5px' }}>
                 Bs. {fmtBs(deudaGasBs)}
               </span>
               <span style={{ fontSize: '16px', color: '#a1a1aa', fontWeight: 700 }}>
@@ -527,7 +537,9 @@ export const GasResidente: React.FC = () => {
 
             <p style={{ color: '#cbd5e1', fontSize: '13px', margin: '0 0 16px', lineHeight: 1.4 }}>
               {isSolventeGas
-                ? 'Tu apartamento no tiene cuotas de gas pendientes. Puedes consultar los registros pasados en el calendario de pago.'
+                ? (miDeuda?.enVerificacion
+                  ? `Tu pago de gas (Bs. ${fmtBs(miDeuda.montoEnVerificacionBs || 0)}) fue recibido y está en revisión por la administración. Se reflejará como solvente al ser aprobado.`
+                  : 'Tu apartamento no tiene cuotas de gas pendientes. Puedes consultar los registros pasados en el calendario de pago.')
                 : `Cuota comunitaria asignada por la administración para ${miDeuda?.campanaTitulo || 'la recarga del tanque central'}. Recuerda que este aporte se paga a la cuenta especial de gas.`}
             </p>
 
@@ -746,14 +758,23 @@ export const GasResidente: React.FC = () => {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {historialCuotas.map(cuota => {
                   const isPagado = cuota.estado === 'pagado'
+                  const isVerificacion = cuota.estado === 'en_verificacion'
                   return (
                     <div
                       key={cuota.jornadaId}
                       style={{
                         padding: '14px 18px',
                         borderRadius: '14px',
-                        backgroundColor: isPagado ? 'rgba(34, 197, 94, 0.05)' : 'rgba(239, 68, 68, 0.06)',
-                        border: `1px solid ${isPagado ? 'rgba(34, 197, 94, 0.25)' : 'rgba(239, 68, 68, 0.3)'}`,
+                        backgroundColor: isPagado
+                          ? 'rgba(34, 197, 94, 0.05)'
+                          : isVerificacion
+                          ? 'rgba(245, 158, 11, 0.07)'
+                          : 'rgba(239, 68, 68, 0.06)',
+                        border: `1px solid ${isPagado
+                          ? 'rgba(34, 197, 94, 0.25)'
+                          : isVerificacion
+                          ? 'rgba(245, 158, 11, 0.35)'
+                          : 'rgba(239, 68, 68, 0.3)'}`,
                         display: 'flex',
                         justifyContent: 'space-between',
                         alignItems: 'center',
@@ -781,20 +802,29 @@ export const GasResidente: React.FC = () => {
                           <span style={{
                             fontSize: '11px',
                             fontWeight: 800,
-                            color: isPagado ? '#4ade80' : '#f87171',
-                            backgroundColor: isPagado ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                            color: isPagado ? '#4ade80' : isVerificacion ? '#fbbf24' : '#f87171',
+                            backgroundColor: isPagado
+                              ? 'rgba(34, 197, 94, 0.15)'
+                              : isVerificacion
+                              ? 'rgba(245, 158, 11, 0.16)'
+                              : 'rgba(239, 68, 68, 0.15)',
                             padding: '2px 8px',
                             borderRadius: '999px'
                           }}>
-                            {isPagado ? '✅ PAGADO' : '⏳ PENDIENTE'}
+                            {isPagado ? '✅ PAGADO' : isVerificacion ? '⏳ EN VERIFICACIÓN' : '🔴 PENDIENTE'}
                           </span>
                         </div>
 
                         <div style={{ color: '#a1a1aa', fontSize: '12px', marginTop: '4px' }}>
                           Mes: <b>{cuota.mes}</b> {cuota.fechaLimite ? `· Límite: ${cuota.fechaLimite}` : ''}
-                          {isPagado && cuota.referencia && (
+                          {(isPagado || isVerificacion) && cuota.referencia && (
                             <span style={{ color: '#38bdf8', marginLeft: '6px' }}>
                               · Ref: <b>{cuota.referencia}</b> {cuota.fechaPago ? `(${cuota.fechaPago})` : ''}
+                            </span>
+                          )}
+                          {!isPagado && (cuota.abonoBs || 0) > 0 && (
+                            <span style={{ color: '#4ade80', marginLeft: '6px' }}>
+                              · Abonado: Bs. {fmtBs(cuota.abonoBs || 0)}
                             </span>
                           )}
                         </div>
@@ -810,7 +840,7 @@ export const GasResidente: React.FC = () => {
                           </div>
                         </div>
 
-                        {!isPagado && (
+                        {!isPagado && !isVerificacion && (
                           <button
                             onClick={() => setModalReportarOpen(true)}
                             style={{

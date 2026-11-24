@@ -151,7 +151,7 @@ Deno.serve(async (req: Request) => {
   try {
     const body = await req.json();
 
-    let { to, subject, html, from, attachments } = body;
+    let { to, bcc, replyTo, subject, html, from, attachments } = body;
     const tipo = body.tipo || body.accion || "";
 
     // ──────────────────────────────────────────────────────────
@@ -219,14 +219,18 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    if (!to || !subject || !html) {
+    const toList = Array.isArray(to) ? to.map((e: string) => String(e).trim()).filter(Boolean) : (to ? [String(to).trim()].filter(Boolean) : []);
+    const bccList = Array.isArray(bcc) ? bcc.map((e: string) => String(e).trim()).filter(Boolean) : (bcc ? [String(bcc).trim()].filter(Boolean) : []);
+
+    if ((toList.length === 0 && bccList.length === 0) || !subject || !html) {
       return new Response(
-        JSON.stringify({ ok: false, error: "Parámetros 'to', 'subject' y 'html' son requeridos." }),
+        JSON.stringify({ ok: false, error: "Parámetros ('to' o 'bcc'), 'subject' y 'html' son requeridos." }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const destinatario = Array.isArray(to) ? to.join(", ") : to;
+    const destinatario = toList.join(", ");
+    const bccHeader = bccList.join(", ");
 
     // ──────────────────────────────────────────────────────────
     // MÉTODO 1: GMAIL SMTP (500 correos/día gratis, sin dominio, 0 bloqueos)
@@ -247,10 +251,16 @@ Deno.serve(async (req: Request) => {
 
         const mailOptions: Record<string, any> = {
           from: remitente,
-          to: destinatario,
+          to: destinatario || GMAIL_USER,
           subject,
           html,
         };
+        if (bccHeader) {
+          mailOptions.bcc = bccHeader;
+        }
+        if (replyTo) {
+          mailOptions.replyTo = String(replyTo).trim();
+        }
 
         if (attachments && Array.isArray(attachments) && attachments.length > 0) {
           mailOptions.attachments = attachments.map((att: any) => ({
@@ -263,7 +273,13 @@ Deno.serve(async (req: Request) => {
         const info = await transporter.sendMail(mailOptions);
 
         return new Response(
-          JSON.stringify({ ok: true, provider: "gmail-smtp", id: info.messageId }),
+          JSON.stringify({
+            ok: true,
+            provider: "gmail-smtp",
+            id: info.messageId,
+            bccSupported: true,
+            bccCount: bccList.length,
+          }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       } catch (gmailErr: any) {
@@ -283,12 +299,17 @@ Deno.serve(async (req: Request) => {
         const gasRes = await fetch(GOOGLE_SCRIPT_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ to: destinatario, subject, html }),
+          body: JSON.stringify({
+            to: destinatario || bccList[0] || "",
+            ...(bccHeader ? { bcc: bccHeader } : {}),
+            subject,
+            html
+          }),
         });
         const gasData = await gasRes.json().catch(() => ({}));
         if (gasRes.ok && (gasData.ok || gasData.success)) {
           return new Response(
-            JSON.stringify({ ok: true, provider: "google-script" }),
+            JSON.stringify({ ok: true, provider: "google-script", bccSupported: Boolean(bccHeader), bccCount: bccList.length }),
             { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
@@ -304,10 +325,16 @@ Deno.serve(async (req: Request) => {
       const remitenteResend = from || EMAIL_FROM_CONFIG || "Residencias Ocutuy 5 <onboarding@resend.dev>";
       const payloadResend: Record<string, any> = {
         from: remitenteResend,
-        to: Array.isArray(to) ? to : [to],
+        to: toList.length > 0 ? toList : [EMAIL_FROM_CONFIG || "onboarding@resend.dev"],
         subject,
         html,
       };
+      if (bccList.length > 0) {
+        payloadResend.bcc = bccList;
+      }
+      if (replyTo) {
+        payloadResend.reply_to = String(replyTo).trim();
+      }
 
       if (attachments && Array.isArray(attachments) && attachments.length > 0) {
         payloadResend.attachments = attachments;
@@ -333,7 +360,13 @@ Deno.serve(async (req: Request) => {
       }
 
       return new Response(
-        JSON.stringify({ ok: true, provider: "resend", id: resData.id }),
+        JSON.stringify({
+          ok: true,
+          provider: "resend",
+          id: resData.id,
+          bccSupported: true,
+          bccCount: bccList.length,
+        }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }

@@ -947,6 +947,26 @@ export const AdminDashboard: React.FC = () => {
 
             {/* 7. Avisos a la Comunidad (Rojo/Ámbar) */}
             <button
+              onClick={() => navigate('/admin/notificaciones-globales')}
+              style={{
+                backgroundColor: 'rgba(249, 115, 22, 0.14)',
+                color: '#fb923c',
+                border: '1px solid rgba(249, 115, 22, 0.35)',
+                padding: '8px 16px',
+                borderRadius: '10px',
+                fontSize: '13px',
+                fontWeight: 700,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                transition: 'all 0.2s',
+              }}
+            >
+              📧 Notificación Global
+            </button>
+
+            <button
               onClick={() => setAvisoModalOpen(true)}
               style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
             >
@@ -1234,6 +1254,26 @@ export const AdminDashboard: React.FC = () => {
             </button>
 
             <BotonLimpiarCache variant="button" />
+
+            <button
+              onClick={() => navigate('/admin/notificaciones-globales')}
+              style={{
+                backgroundColor: 'rgba(249, 115, 22, 0.14)',
+                color: '#fb923c',
+                border: '1px solid rgba(249, 115, 22, 0.35)',
+                padding: '8px 16px',
+                borderRadius: '10px',
+                fontSize: '13px',
+                fontWeight: 700,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                transition: 'all 0.2s',
+              }}
+            >
+              📧 Notificación Global
+            </button>
 
             <button
               onClick={() => setAvisoModalOpen(true)}

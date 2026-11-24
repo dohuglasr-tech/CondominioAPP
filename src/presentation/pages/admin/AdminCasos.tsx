@@ -204,7 +204,8 @@ export const AdminCasos: React.FC = () => {
   // Filtrado
   const casosFiltrados = useMemo(() => {
     return casos.filter(c => {
-      if (c.tipo?.startsWith('config_') || c.tipo?.startsWith('configuracion_')) return false
+      const t = c.tipo || ''
+      if (t.startsWith('config_') || t.startsWith('configuracion_') || t.startsWith('gas_') || t.startsWith('comunicado_global_')) return false
       if (filtroTipo !== 'todos' && c.tipo !== filtroTipo) return false
       if (filtroEstado !== 'todos' && c.estado !== filtroEstado) return false
       if (busqueda.trim()) {
@@ -229,7 +230,8 @@ export const AdminCasos: React.FC = () => {
     let totalCasosReales = 0
 
     casos.forEach(c => {
-      if (c.tipo?.startsWith('config_') || c.tipo?.startsWith('configuracion_')) return
+      const t = c.tipo || ''
+      if (t.startsWith('config_') || t.startsWith('configuracion_') || t.startsWith('gas_') || t.startsWith('comunicado_global_')) return
       totalCasosReales++
       totalUsd += c.monto_usd || 0
       totalBs += c.monto_bs || 0

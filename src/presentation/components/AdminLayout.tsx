@@ -137,6 +137,12 @@ const ADMIN_ICONS: Record<string, React.ReactNode> = {
       <path d="M3 7l9-4 9 4"/>
     </svg>
   ),
+  notificacionesGlobales: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+      <polyline points="22,6 12,13 2,6"/>
+    </svg>
+  ),
   logs: (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
@@ -164,6 +170,7 @@ const adminNav = [
   { key: 'propuestas', label: 'Propuestas', path: '/admin/propuestas', desc: 'Crear votaciones' },
   { key: 'reportes', label: 'Reportes', path: '/admin/reportes', desc: 'Responder incidencias' },
   { key: 'chat', label: 'Chat', path: '/admin/chat', desc: 'Enviar avisos a todos' },
+  { key: 'notificacionesGlobales', label: 'Notificación Global', path: '/admin/notificaciones-globales', desc: 'Correos masivos a residentes' },
   { key: 'historial', label: 'Historial', path: '/admin/historial', desc: 'Auditoría y arqueo inmutable' },
   { key: 'logs', label: 'Logs', path: '/admin/logs', desc: 'Conexiones de residentes' },
 ]
@@ -886,6 +893,13 @@ export const AdminLayout: React.FC = () => {
                   {ADMIN_ICONS.chat}
                 </div>
                 <span className={`offcanvas-label ${pathname.startsWith('/admin/chat') ? 'active' : ''}`}>Chat</span>
+              </button>
+
+              <button className="offcanvas-item-btn" onClick={() => navigate('/admin/notificaciones-globales')}>
+                <div className={`offcanvas-circle-icon ${pathname.startsWith('/admin/notificaciones-globales') ? 'active' : ''}`}>
+                  {ADMIN_ICONS.notificacionesGlobales}
+                </div>
+                <span className={`offcanvas-label ${pathname.startsWith('/admin/notificaciones-globales') ? 'active' : ''}`}>Correos</span>
               </button>
 
               <button className="offcanvas-item-btn" onClick={() => navigate('/admin/propuestas')}>

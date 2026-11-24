@@ -198,7 +198,10 @@ function getLocalCache(): CasoComunidad[] {
 
 function saveLocalCache(casos: CasoComunidad[]) {
   try {
-    const clean = (casos || []).filter(c => !c.tipo?.startsWith('config_') && !c.tipo?.startsWith('configuracion_'))
+    const clean = (casos || []).filter(c => {
+      const t = c.tipo || ''
+      return !t.startsWith('config_') && !t.startsWith('configuracion_') && !t.startsWith('gas_') && !t.startsWith('comunicado_global_')
+    })
     localStorage.setItem(STORAGE_KEY, JSON.stringify(clean))
   } catch (e) {
     console.warn('[casosService] Error saving localStorage cache:', e)
@@ -218,8 +221,11 @@ export async function obtenerCasos(): Promise<{ data: CasoComunidad[]; error: st
       return { data: cached, error: null, fromDb: false }
     }
 
-    // Filtrar configuraciones del sistema (como config_calendario_mora) para que no se muestren como casos
-    const rowsCasos = (dbData || []).filter((row: any) => !row.tipo?.startsWith('config_') && !row.tipo?.startsWith('configuracion_'))
+    // Filtrar registros internos (configuraciones, módulo de gas y comunicados globales) para que no se muestren como casos
+    const rowsCasos = (dbData || []).filter((row: any) => {
+      const t = String(row.tipo || '')
+      return !t.startsWith('config_') && !t.startsWith('configuracion_') && !t.startsWith('gas_') && !t.startsWith('comunicado_global_')
+    })
 
     // Si la tabla no tiene casos reales registrados en DB todavía, mostrar los casos de ejemplo/semilla
     if (rowsCasos.length === 0) {

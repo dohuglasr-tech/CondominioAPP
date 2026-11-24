@@ -16,6 +16,7 @@ import { sendResidentPasswordReset } from '../../../data/passwordRecoveryService
 import { EnviarExpedienteEmailModal } from '../../components/EnviarExpedienteEmailModal'
 import { EnviarSolvenciaEmailModal } from '../../components/EnviarSolvenciaEmailModal'
 import { DatosCartaSolvencia, normalizarCedula, obtenerMesActualEs } from '../../../utils/solvenciaPdfGenerator'
+import { parsePagoMeta, stripPagoMeta } from '../../../data/gasService'
 
 interface PersonaContacto {
   nombre: string
@@ -467,11 +468,14 @@ export const AdminResidentes: React.FC = () => {
     // B. Pagos reportados
     ;(residente.historial_pagos || []).forEach(p => {
       const fecha = p.fecha ? p.fecha.substring(0, 10) : 'Sin fecha'
+      const notasLimpias = stripPagoMeta(p.notas_admin)
+      const metaP = parsePagoMeta(p.notas_admin)
+      const tagServ = metaP?.tipoServicio === 'gas' ? '⛽ Gas' : metaP?.tipoServicio === 'mixto' ? '🔀 Mixto' : '🏢 Condominio'
       timelineItems.push({
         fecha,
         tipo: 'pago',
-        titulo: `Pago Reportado (Ref: ${p.referencia || 'S/R'})`,
-        detalle: `Banco: ${p.banco || 'Transferencia'}${p.notas_admin ? ` · Nota: ${p.notas_admin}` : ''}`,
+        titulo: `Pago Reportado (${tagServ} · Ref: ${p.referencia || 'S/R'})`,
+        detalle: `Banco: ${p.banco || 'Transferencia'}${notasLimpias ? ` · Nota: ${notasLimpias}` : ''}`,
         montoUsd: p.monto_usd,
         montoBs: p.monto_bs,
         estado: p.estado === 'aprobado' ? 'Aprobado' : p.estado === 'rechazado' ? 'Rechazado' : 'En Verificación'
@@ -2357,7 +2361,15 @@ export const AdminResidentes: React.FC = () => {
                         flexShrink: 0
                       }} />
                       <div>
-                        <p style={{ color: '#fff', fontSize: '13.5px', fontWeight: 700, margin: 0 }}>{p.monto}</p>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                          <p style={{ color: '#fff', fontSize: '13.5px', fontWeight: 700, margin: 0 }}>{p.monto}</p>
+                          {(() => {
+                            const m = parsePagoMeta(p.notas_admin)
+                            if (m?.tipoServicio === 'gas') return <span style={{ fontSize: '9.5px', fontWeight: 800, color: '#fb923c', backgroundColor: 'rgba(249,115,22,0.16)', padding: '1px 6px', borderRadius: '4px' }}>⛽ Gas</span>
+                            if (m?.tipoServicio === 'mixto') return <span style={{ fontSize: '9.5px', fontWeight: 800, color: '#c084fc', backgroundColor: 'rgba(168,85,247,0.16)', padding: '1px 6px', borderRadius: '4px' }}>🔀 Mixto</span>
+                            return null
+                          })()}
+                        </div>
                         <p style={{ color: '#777', fontSize: '11px', margin: '2px 0 0' }}>
                           Ref: {p.referencia} · {p.banco} · {new Date(p.fecha).toLocaleDateString()}
                         </p>

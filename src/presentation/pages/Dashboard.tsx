@@ -10,7 +10,7 @@ import { formatAlicuotaPct, getAlicuotaPctNumber } from '../../utils/alicuota'
 import { AvisoBanner } from '../components/AvisoBanner'
 import { obtenerSaldoAFavorApartamento } from '../../data/saldoFavorService'
 import { esReciboIndexado } from '../../utils/indexacionHelper'
-import { obtenerGasServicioData, obtenerDeudaGasApartamento, DeudaApartamentoGas } from '../../data/gasService'
+import { obtenerGasServicioData, obtenerDeudaGasApartamento, DeudaApartamentoGas, parsePagoMeta } from '../../data/gasService'
 import { obtenerLocalesPorApartamento, LocalComercial } from '../../data/localesService'
 import { obtenerJunta, MiembroJunta } from '../../data/juntaService'
 import { ModalCartaSolvencia } from '../components/ModalCartaSolvencia'
@@ -419,12 +419,17 @@ export function Dashboard() {
     cargarApartamentoInfo(false)
     cargarDatosResidente(false)
 
-    // Escuchar eventos broadcast de actualización de gas comunal
+    // Escuchar eventos broadcast de actualización de gas comunal y cuotas extraordinarias
     const onGasUpdated = () => {
       appCache.invalidateTags(['gas', 'saldos', 'recibos', 'mora'])
       cargarDatosResidente(true)
     }
+    const onCuotasUpdated = () => {
+      appCache.invalidateTags(['mora', 'recibos', 'saldos', 'calendario_config'])
+      cargarDatosResidente(true)
+    }
     window.addEventListener('condominio_gas_updated', onGasUpdated)
+    window.addEventListener('condominio_cuotas_updated', onCuotasUpdated)
 
     const onStorage = (e: StorageEvent) => {
       if (e.key === 'gas_servicio_cache' || e.key === 'condominio_gas_cache_v2') {
@@ -437,6 +442,7 @@ export function Dashboard() {
     if (!apartamentoId) {
       return () => {
         window.removeEventListener('condominio_gas_updated', onGasUpdated)
+        window.removeEventListener('condominio_cuotas_updated', onCuotasUpdated)
         window.removeEventListener('storage', onStorage)
       }
     }
@@ -469,6 +475,9 @@ export function Dashboard() {
           if (t === 'config_gas_servicio' || (typeof t === 'string' && t.startsWith('gas_'))) {
             appCache.invalidateTags(['gas', 'saldos'])
             cargarDatosResidente(true)
+          } else if (typeof t === 'string' && t.startsWith('config_calendario_mora')) {
+            appCache.invalidateTags(['mora', 'recibos', 'saldos', 'calendario_config'])
+            cargarDatosResidente(true)
           }
         }
       )
@@ -476,6 +485,7 @@ export function Dashboard() {
 
     return () => {
       window.removeEventListener('condominio_gas_updated', onGasUpdated)
+      window.removeEventListener('condominio_cuotas_updated', onCuotasUpdated)
       window.removeEventListener('storage', onStorage)
       supabase.removeChannel(channel)
     }
@@ -1128,6 +1138,75 @@ export function Dashboard() {
             </div>
           )}
 
+          {/* ── ALERTA DE CUOTAS EXTRAORDINARIAS / EXTRAOFICIALES (MÓVIL) ── */}
+          {moraRecord?.desglose?.cuotas_especiales && moraRecord.desglose.cuotas_especiales.length > 0 && (
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(234, 179, 8, 0.14) 0%, rgba(20, 21, 25, 0.95) 100%)',
+              border: '1px solid rgba(234, 179, 8, 0.38)',
+              borderRadius: '20px',
+              padding: '16px',
+              boxShadow: '0 8px 24px rgba(0, 0, 0, 0.45)'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                <span style={{ color: '#facc15', fontSize: '12px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  ✨ Cuotas Extraordinarias Pendientes ({moraRecord.desglose.cuotas_especiales.length})
+                </span>
+                <button
+                  onClick={() => {
+                    setModalTipoPago('condominio')
+                    setModalOpen(true)
+                  }}
+                  style={{
+                    backgroundColor: 'rgba(234, 179, 8, 0.2)',
+                    border: '1px solid rgba(234, 179, 8, 0.4)',
+                    color: '#fde047',
+                    borderRadius: '8px',
+                    padding: '4px 10px',
+                    fontSize: '11px',
+                    fontWeight: 800,
+                    cursor: 'pointer'
+                  }}
+                >
+                  Pagar
+                </button>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {moraRecord.desglose.cuotas_especiales.map(ce => {
+                  const hoyIso = new Date().toISOString().slice(0, 10)
+                  const vencida = Boolean(ce.fechaLimite && ce.fechaLimite < hoyIso)
+                  return (
+                    <div key={ce.id} style={{
+                      backgroundColor: 'rgba(0,0,0,0.28)',
+                      border: '1px solid rgba(255,255,255,0.07)',
+                      borderRadius: '12px',
+                      padding: '10px 12px',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: '8px'
+                    }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ color: '#fff', fontSize: '13px', fontWeight: 700 }}>{ce.label}</div>
+                        {(ce.fechaEmision || ce.fechaLimite) && (
+                          <div style={{ fontSize: '10.5px', color: vencida ? '#f87171' : '#94a3b8', marginTop: '2px' }}>
+                            {ce.fechaEmision ? `Emisión: ${ce.fechaEmision}` : ''}
+                            {ce.fechaEmision && ce.fechaLimite ? ' · ' : ''}
+                            {ce.fechaLimite ? `${vencida ? '⚠️ Vencida:' : '📅 Límite:'} ${ce.fechaLimite}` : ''}
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                        <div style={{ color: ce.moneda === 'BS' ? '#fb923c' : '#facc15', fontWeight: 800, fontSize: '13px' }}>
+                          {ce.moneda === 'BS' ? `Bs. ${fmtBs(ce.monto)}` : `$${ce.monto.toFixed(2)} USD`}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
           {/* ── ALERTA DE RECIBO / MORA (Si el apartamento figura en la lista y tiene deuda real) ── */}
           {moraRecord && tieneDeudaReal && (() => {
             const tasaCfg = getTasaConfig(moraRecord.tasa_riesgo)
@@ -1613,8 +1692,16 @@ export function Dashboard() {
                           {isAprobado ? '✓' : isRechazado ? '✕' : '⏳'}
                         </div>
                         <div>
-                          <div style={{ color: '#fff', fontSize: '13px', fontWeight: 700 }}>
-                            Ref: {pago.referencia}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                            <span style={{ color: '#fff', fontSize: '13px', fontWeight: 700 }}>
+                              Ref: {pago.referencia}
+                            </span>
+                            {(() => {
+                              const m = parsePagoMeta(pago.notas_admin)
+                              if (m?.tipoServicio === 'gas') return <span style={{ fontSize: '9.5px', fontWeight: 800, color: '#fb923c', backgroundColor: 'rgba(249,115,22,0.16)', padding: '1px 6px', borderRadius: '4px' }}>⛽ Gas</span>
+                              if (m?.tipoServicio === 'mixto') return <span style={{ fontSize: '9.5px', fontWeight: 800, color: '#c084fc', backgroundColor: 'rgba(168,85,247,0.16)', padding: '1px 6px', borderRadius: '4px' }}>🔀 Mixto</span>
+                              return null
+                            })()}
                           </div>
                           <div style={{ color: '#8e8e93', fontSize: '11px', marginTop: '1px' }}>
                             {new Date(pago.created_at).toLocaleDateString('es-VE', { day: '2-digit', month: 'short' })}
@@ -1831,6 +1918,90 @@ export function Dashboard() {
             </div>
             )
           })()}
+
+          {/* ── ALERTA DE CUOTAS EXTRAORDINARIAS / EXTRAOFICIALES (DESKTOP) ── */}
+          {moraRecord?.desglose?.cuotas_especiales && moraRecord.desglose.cuotas_especiales.length > 0 && (
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(234, 179, 8, 0.12) 0%, rgba(15, 23, 42, 0.92) 100%)',
+              border: '1px solid rgba(234, 179, 8, 0.35)',
+              borderRadius: '20px',
+              padding: '18px 24px',
+              marginBottom: '24px',
+              boxShadow: '0 8px 26px rgba(0, 0, 0, 0.45)'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', gap: '12px', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span style={{ fontSize: '20px' }}>✨</span>
+                  <div>
+                    <div style={{ color: '#facc15', fontSize: '13px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      Cuotas Extraordinarias y Próximas Fechas Límite ({moraRecord.desglose.cuotas_especiales.length})
+                    </div>
+                    <div style={{ color: '#94a3b8', fontSize: '12px' }}>
+                      Obligaciones extraordinarias sincronizadas con tu estado de cuenta y calendario.
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setModalTipoPago('condominio')
+                    setModalOpen(true)
+                  }}
+                  style={{
+                    backgroundColor: '#eab308',
+                    color: '#000',
+                    border: 'none',
+                    borderRadius: '10px',
+                    padding: '8px 16px',
+                    fontSize: '12px',
+                    fontWeight: 800,
+                    cursor: 'pointer'
+                  }}
+                >
+                  💳 Pagar Cuotas
+                </button>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '10px' }}>
+                {moraRecord.desglose.cuotas_especiales.map(ce => {
+                  const hoyIso = new Date().toISOString().slice(0, 10)
+                  const vencida = Boolean(ce.fechaLimite && ce.fechaLimite < hoyIso)
+                  return (
+                    <div key={ce.id} style={{
+                      backgroundColor: 'rgba(0,0,0,0.3)',
+                      border: `1px solid ${vencida ? 'rgba(239,68,68,0.35)' : 'rgba(255,255,255,0.08)'}`,
+                      borderRadius: '14px',
+                      padding: '12px 14px',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: '12px'
+                    }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ color: '#fff', fontSize: '13.5px', fontWeight: 700 }}>{ce.label}</div>
+                        {ce.descripcion && (
+                          <div style={{ color: '#94a3b8', fontSize: '11px', marginTop: '2px' }}>{ce.descripcion}</div>
+                        )}
+                        {(ce.fechaEmision || ce.fechaLimite) && (
+                          <div style={{ fontSize: '11px', color: vencida ? '#f87171' : '#cbd5e1', marginTop: '4px' }}>
+                            {ce.fechaEmision ? `Emisión: ${ce.fechaEmision}` : ''}
+                            {ce.fechaEmision && ce.fechaLimite ? ' · ' : ''}
+                            {ce.fechaLimite ? `${vencida ? '⚠️ Vence:' : '📅 Límite:'} ${ce.fechaLimite}` : ''}
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                        <div style={{ color: ce.moneda === 'BS' ? '#fb923c' : '#facc15', fontWeight: 900, fontSize: '15px' }}>
+                          {ce.moneda === 'BS' ? `Bs. ${fmtBs(ce.monto)}` : `$${ce.monto.toFixed(2)} USD`}
+                        </div>
+                        <div style={{ fontSize: '10.5px', color: '#94a3b8' }}>
+                          {ce.moneda === 'BS' ? `≈ $${(ce.monto / tasaValida).toFixed(2)}` : `≈ Bs. ${fmtBs(ce.monto * tasaValida)}`}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
 
           {/* ── ALERTA DE CUOTA ESPECIAL POR GAS (DESKTOP) ─────────── */}
           {deudaGas && deudaGas.tieneDeuda && (deudaGas.montoBs > 0 || deudaGas.montoUsd > 0) && (
@@ -2537,8 +2708,16 @@ export function Dashboard() {
                               {isAprobado ? '✓' : isRechazado ? '✕' : '⏳'}
                             </div>
                             <div>
-                              <div style={{ color: '#fff', fontSize: '14px', fontWeight: 700 }}>
-                                Referencia Bancaria: {pago.referencia}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                <span style={{ color: '#fff', fontSize: '14px', fontWeight: 700 }}>
+                                  Referencia Bancaria: {pago.referencia}
+                                </span>
+                                {(() => {
+                                  const m = parsePagoMeta(pago.notas_admin)
+                                  if (m?.tipoServicio === 'gas') return <span style={{ fontSize: '10px', fontWeight: 800, color: '#fb923c', backgroundColor: 'rgba(249,115,22,0.16)', border: '1px solid rgba(249,115,22,0.3)', padding: '2px 7px', borderRadius: '6px' }}>⛽ Gas</span>
+                                  if (m?.tipoServicio === 'mixto') return <span style={{ fontSize: '10px', fontWeight: 800, color: '#c084fc', backgroundColor: 'rgba(168,85,247,0.16)', border: '1px solid rgba(168,85,247,0.3)', padding: '2px 7px', borderRadius: '6px' }}>🔀 Mixto</span>
+                                  return null
+                                })()}
                               </div>
                               <div style={{ color: '#7e8b9b', fontSize: '12px', marginTop: '2px' }}>
                                 Fecha: {new Date(pago.created_at).toLocaleDateString('es-VE', { day: '2-digit', month: 'long', year: 'numeric' })}

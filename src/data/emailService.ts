@@ -1585,5 +1585,218 @@ export async function despacharEmailCartaSolvencia(params: {
   })
 }
 
+export type CategoriaComunicadoGlobal = 'informativo' | 'urgente' | 'mantenimiento' | 'cobranza' | 'comunidad'
+
+const CATEGORIA_GLOBAL_META: Record<CategoriaComunicadoGlobal, {
+  badge: string
+  accent: string
+  accentBg: string
+  accentBorder: string
+  headerBg: string
+}> = {
+  informativo: {
+    badge: '📢 COMUNICADO OFICIAL',
+    accent: '#f97316',
+    accentBg: 'rgba(249,115,22,0.16)',
+    accentBorder: 'rgba(249,115,22,0.45)',
+    headerBg: 'linear-gradient(135deg,#0f172a 0%,#1e1b2e 55%,#2b1710 100%)'
+  },
+  urgente: {
+    badge: '🚨 AVISO URGENTE',
+    accent: '#ef4444',
+    accentBg: 'rgba(239,68,68,0.18)',
+    accentBorder: 'rgba(239,68,68,0.45)',
+    headerBg: 'linear-gradient(135deg,#0f172a 0%,#2b1116 100%)'
+  },
+  mantenimiento: {
+    badge: '🛠️ MANTENIMIENTO',
+    accent: '#f59e0b',
+    accentBg: 'rgba(245,158,11,0.16)',
+    accentBorder: 'rgba(245,158,11,0.45)',
+    headerBg: 'linear-gradient(135deg,#0f172a 0%,#261d0e 100%)'
+  },
+  cobranza: {
+    badge: '💳 ADMINISTRACIÓN Y COBRANZA',
+    accent: '#3b82f6',
+    accentBg: 'rgba(59,130,246,0.16)',
+    accentBorder: 'rgba(59,130,246,0.45)',
+    headerBg: 'linear-gradient(135deg,#0f172a 0%,#10203a 100%)'
+  },
+  comunidad: {
+    badge: '🏢 ASAMBLEA / COMUNIDAD',
+    accent: '#10b981',
+    accentBg: 'rgba(16,185,129,0.16)',
+    accentBorder: 'rgba(16,185,129,0.45)',
+    headerBg: 'linear-gradient(135deg,#0f172a 0%,#0b2920 100%)'
+  }
+}
+
+function escapeHtmlEmail(raw: string): string {
+  return String(raw || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+/**
+ * Convierte un texto con formato ligero (**negrita**, *cursiva*, listas -, •, 1., separadores ---)
+ * en HTML limpio, seguro contra XSS y compatible con clientes de correo.
+ */
+export function formatearCuerpoComunicadoAHtml(texto: string): string {
+  const clean = (texto || '').replace(/\r\n/g, '\n').trim()
+  if (!clean) return '<p style="margin:0;color:#94a3b8;">(Sin contenido en el mensaje)</p>'
+
+  const applyInline = (line: string) => {
+    let escaped = escapeHtmlEmail(line)
+    escaped = escaped.replace(/\*\*(.+?)\*\*/g, '<strong style="color:#ffffff;">$1</strong>')
+    escaped = escaped.replace(/\*(.+?)\*/g, '<em style="color:#e2e8f0;">$1</em>')
+    return escaped
+  }
+
+  const lines = clean.split('\n')
+  const blocks: string[] = []
+  let listType: 'ul' | 'ol' | null = null
+  let listItems: string[] = []
+
+  const flushList = () => {
+    if (!listType || listItems.length === 0) return
+    const tag = listType
+    blocks.push(`<${tag} style="margin:0 0 16px;padding-left:22px;color:#cbd5e1;font-size:14.5px;line-height:1.65;">${listItems.join('')}</${tag}>`)
+    listType = null
+    listItems = []
+  }
+
+  for (const rawLine of lines) {
+    const trimmed = rawLine.trim()
+    if (!trimmed) {
+      flushList()
+      continue
+    }
+    if (trimmed === '---' || trimmed === '***') {
+      flushList()
+      blocks.push('<hr style="border:none;border-top:1px solid #1e293b;margin:18px 0;" />')
+      continue
+    }
+    if (/^[-•*]\s+/.test(trimmed)) {
+      if (listType === 'ol') flushList()
+      listType = 'ul'
+      listItems.push(`<li style="margin-bottom:6px;">${applyInline(trimmed.replace(/^[-•*]\s+/, ''))}</li>`)
+      continue
+    }
+    if (/^\d+\.\s+/.test(trimmed)) {
+      if (listType === 'ul') flushList()
+      listType = 'ol'
+      listItems.push(`<li style="margin-bottom:6px;">${applyInline(trimmed.replace(/^\d+\.\s+/, ''))}</li>`)
+      continue
+    }
+    flushList()
+    blocks.push(`<p style="margin:0 0 14px;font-size:14.5px;color:#cbd5e1;line-height:1.68;">${applyInline(trimmed)}</p>`)
+  }
+  flushList()
+
+  return blocks.join('\n')
+}
+
+/**
+ * Genera la plantilla HTML oficial Domus para Notificación Global por Correo Masivo.
+ */
+export function generarHtmlNotificacionGlobal(params: {
+  edificioNombre?: string
+  asunto: string
+  cuerpo: string
+  categoria?: CategoriaComunicadoGlobal
+  remitenteNombre?: string
+  portalUrl?: string
+  incluirBotonPortal?: boolean
+  fechaEmision?: string
+}): string {
+  const edificio = params.edificioNombre?.trim() || DEFAULT_EDIFICIO
+  const categoria = params.categoria || 'informativo'
+  const cat = CATEGORIA_GLOBAL_META[categoria] || CATEGORIA_GLOBAL_META.informativo
+  const asuntoEsc = escapeHtmlEmail(params.asunto || 'Comunicado de la Junta de Condominio')
+  const cuerpoHtml = formatearCuerpoComunicadoAHtml(params.cuerpo || '')
+  const remitenteEsc = escapeHtmlEmail(params.remitenteNombre?.trim() || 'Junta de Condominio y Administración')
+  const portal = params.portalUrl || getBasePortalUrl()
+  const incluirBoton = params.incluirBotonPortal !== false
+  const fechaTexto = params.fechaEmision || new Date().toLocaleDateString('es-VE', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric'
+  })
+
+  return `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${asuntoEsc} - ${escapeHtmlEmail(edificio)}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#090a0d;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#f1f5f9;-webkit-font-smoothing:antialiased;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#090a0d;padding:28px 14px;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background-color:#121620;border:1px solid #1f2937;border-radius:18px;overflow:hidden;box-shadow:0 20px 45px rgba(0,0,0,0.65);">
+          <!-- BARRA SUPERIOR ACENTO -->
+          <tr>
+            <td style="height:4px;background:${cat.accent};font-size:0;line-height:0;">&nbsp;</td>
+          </tr>
+
+          <!-- HEADER DOMUS -->
+          <tr>
+            <td style="background:${cat.headerBg};padding:28px 26px;text-align:center;border-bottom:1px solid #1f2937;">
+              <div style="display:inline-block;padding:5px 14px;background:${cat.accentBg};border:1px solid ${cat.accentBorder};border-radius:999px;font-size:11px;font-weight:800;color:${cat.accent};letter-spacing:0.8px;text-transform:uppercase;margin-bottom:12px;">
+                ${cat.badge}
+              </div>
+              <h1 style="margin:0 0 6px;font-size:21px;font-weight:900;color:#ffffff;letter-spacing:-0.4px;line-height:1.25;">
+                ${asuntoEsc}
+              </h1>
+              <div style="font-size:12.5px;color:#94a3b8;font-weight:600;">
+                ${escapeHtmlEmail(edificio)} · ${escapeHtmlEmail(fechaTexto)}
+              </div>
+            </td>
+          </tr>
+
+          <!-- CUERPO DEL COMUNICADO -->
+          <tr>
+            <td style="padding:28px 26px 22px;">
+              <p style="margin:0 0 16px;font-size:15px;color:#f8fafc;font-weight:600;">
+                Estimado(a) propietario(a) y residente,
+              </p>
+
+              <div style="background:#0b0e15;border:1px solid #1e293b;border-radius:14px;padding:20px 22px;margin-bottom:22px;">
+                ${cuerpoHtml}
+              </div>
+
+              ${incluirBoton ? `
+              <div style="text-align:center;margin:24px 0 8px;">
+                <a href="${portal}" target="_blank" style="display:inline-block;padding:13px 28px;background:${cat.accent};color:#ffffff;text-decoration:none;font-weight:800;font-size:13.5px;border-radius:12px;letter-spacing:0.2px;">
+                  Ingresar al Portal Domus →
+                </a>
+              </div>` : ''}
+            </td>
+          </tr>
+
+          <!-- PIE DE FIRMA Y PRIVACIDAD -->
+          <tr>
+            <td style="background-color:#0b0e15;padding:18px 26px;border-top:1px solid #1f2937;text-align:center;">
+              <div style="font-size:12.5px;color:#e2e8f0;font-weight:700;margin-bottom:4px;">
+                ${remitenteEsc}
+              </div>
+              <div style="font-size:11px;color:#64748b;line-height:1.5;">
+                Comunicado enviado de forma masiva y confidencial mediante DOMUS.<br>
+                Tu correo electrónico no ha sido compartido con otros vecinos.
+              </div>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`
+}
+
 
 

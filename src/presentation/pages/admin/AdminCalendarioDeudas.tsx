@@ -5,7 +5,10 @@ import {
   guardarConceptosHistoricos,
   guardarConfiguracionCalendario,
   guardarCeldaPersonalizada,
+  guardarCeldaPersonalizadaMasiva,
   agregarColumnaPersonalizada,
+  editarColumnaPersonalizada,
+  obtenerEventosCalendarioCuotas,
   cambiarSeccionColumna,
   cambiarMonedaColumna,
   moverColumnaPosicion,
@@ -19,7 +22,8 @@ import {
   ReciboMesItem,
   ConfiguracionCalendario,
   ColumnaCalendarioConfig,
-  PosicionInsercionColumna
+  PosicionInsercionColumna,
+  EventoCalendarioCuota
 } from '../../../data/calendarioDeudasService'
 import { useAuth } from '../../../application/contexts/AuthContext'
 import { SkeletonTable } from '../../components/Skeleton'
@@ -94,14 +98,28 @@ export const AdminCalendarioDeudas: React.FC = () => {
   const [histArreglo, setHistArreglo] = useState<string>('')
   const [histMonedaArreglo, setHistMonedaArreglo] = useState<'USD' | 'BS'>('BS')
 
-  // Modal para Crear Nueva Columna (Cuota Especial o concepto vertical)
+  // Modal para Crear / Editar Nueva Columna (Cuota Extraoficial o concepto vertical)
   const [modalNuevaColumnaOpen, setModalNuevaColumnaOpen] = useState(false)
+  const [editingColId, setEditingColId] = useState<string | null>(null)
   const [nuevaColTitulo, setNuevaColTitulo] = useState('')
+  const [nuevaColDescripcion, setNuevaColDescripcion] = useState('')
   const [nuevaColSeccion, setNuevaColSeccion] = useState<'naranja' | 'azul'>('naranja')
   const [nuevaColMoneda, setNuevaColMoneda] = useState<'USD' | 'BS'>('USD')
   const [nuevaColMontoDefecto, setNuevaColMontoDefecto] = useState<string>('')
-  const [nuevaColAplicarATodos, setNuevaColAplicarATodos] = useState(false)
+  const [nuevaColFechaEmision, setNuevaColFechaEmision] = useState<string>(new Date().toISOString().slice(0, 10))
+  const [nuevaColFechaLimite, setNuevaColFechaLimite] = useState<string>('')
+  const [nuevaColAplicarATodos, setNuevaColAplicarATodos] = useState(true)
+  const [nuevaColAlcance, setNuevaColAlcance] = useState<'todos' | 'seleccionados' | 'manual'>('todos')
+  const [nuevaColAptosIds, setNuevaColAptosIds] = useState<string[]>([])
+  const [nuevaColBusquedaApto, setNuevaColBusquedaApto] = useState('')
   const [nuevaColPosicion, setNuevaColPosicion] = useState<string>('fin_naranja')
+
+  // Anexo de Cuotas Extraoficiales y Calendario de Eventos/Recordatorios
+  const [anexoPanelAbierto, setAnexoPanelAbierto] = useState(true)
+  const [eventosCuotas, setEventosCuotas] = useState<EventoCalendarioCuota[]>([])
+  const [calEventosAnio, setCalEventosAnio] = useState<number>(new Date().getFullYear())
+  const [calEventosMes, setCalEventosMes] = useState<number>(new Date().getMonth() + 1)
+  const [diaEventoSeleccionado, setDiaEventoSeleccionado] = useState<string | null>(new Date().toISOString().slice(0, 10))
 
   // Modal para Organizar / Mover Columnas entre Secciones
   const [modalOrganizarColumnasOpen, setModalOrganizarColumnasOpen] = useState(false)
@@ -139,7 +157,10 @@ export const AdminCalendarioDeudas: React.FC = () => {
     setLoading(true)
     setErrorMsg(null)
     try {
-      const res = await obtenerMatrizCalendario(anioSeleccionado, force)
+      const [res, eventos] = await Promise.all([
+        obtenerMatrizCalendario(anioSeleccionado, force),
+        obtenerEventosCalendarioCuotas()
+      ])
       if (res.error) {
         setErrorMsg(res.error)
       } else {
@@ -149,6 +170,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
         if (res.configuracion) {
           setConfiguracion(res.configuracion)
         }
+        setEventosCuotas(eventos)
       }
     } catch (e: any) {
       setErrorMsg(e.message || 'Error cargando datos')
@@ -179,6 +201,40 @@ export const AdminCalendarioDeudas: React.FC = () => {
       .filter(c => c.seccion === 'azul')
       .sort((a, b) => a.orden - b.orden)
   }, [configuracion.columnas])
+
+  const columnasCuotasEspeciales = useMemo(() => {
+    return (configuracion.columnas || [])
+      .filter(c => c.tipo === 'cuota_especial')
+      .sort((a, b) => a.orden - b.orden)
+  }, [configuracion.columnas])
+
+  const eventosPorFecha = useMemo(() => {
+    const map = new Map<string, EventoCalendarioCuota[]>()
+    eventosCuotas.forEach(ev => {
+      if (!ev.fecha) return
+      const arr = map.get(ev.fecha) || []
+      arr.push(ev)
+      map.set(ev.fecha, arr)
+    })
+    return map
+  }, [eventosCuotas])
+
+  const diasCalendarioEventos = useMemo(() => {
+    const primerDia = new Date(calEventosAnio, calEventosMes - 1, 1)
+    const ultimoDia = new Date(calEventosAnio, calEventosMes, 0)
+    const diasEnMes = ultimoDia.getDate()
+    let diaSemanaInicio = primerDia.getDay() - 1
+    if (diaSemanaInicio === -1) diaSemanaInicio = 6
+
+    const celdas: Array<{ diaNum: number | null; fechaIso: string | null }> = []
+    for (let i = 0; i < diaSemanaInicio; i++) celdas.push({ diaNum: null, fechaIso: null })
+    for (let d = 1; d <= diasEnMes; d++) {
+      const mStr = String(calEventosMes).padStart(2, '0')
+      const dStr = String(d).padStart(2, '0')
+      celdas.push({ diaNum: d, fechaIso: `${calEventosAnio}-${mStr}-${dStr}` })
+    }
+    return celdas
+  }, [calEventosAnio, calEventosMes])
 
   // ── Filtrado de filas ────────────────────────────────────────────────────
   const filasFiltradas = useMemo(() => {
@@ -637,26 +693,98 @@ export const AdminCalendarioDeudas: React.FC = () => {
     }
   }
 
-  // ── Gestión de Columnas Dinámicas (Verticales) ───────────────────────────
+  // ── Gestión de Columnas Dinámicas / Cuotas Extraoficiales ────────────────
   const handleAbrirCrearColumna = (seccionPredefinida?: 'naranja' | 'azul') => {
     const sec = seccionPredefinida || 'naranja'
+    setEditingColId(null)
     setNuevaColTitulo('')
+    setNuevaColDescripcion('')
     setNuevaColSeccion(sec)
     setNuevaColMoneda(sec === 'azul' ? 'USD' : 'BS')
     setNuevaColMontoDefecto('')
-    setNuevaColAplicarATodos(false)
+    setNuevaColFechaEmision(new Date().toISOString().slice(0, 10))
+    setNuevaColFechaLimite('')
+    setNuevaColAplicarATodos(true)
+    setNuevaColAlcance('todos')
+    setNuevaColAptosIds([])
+    setNuevaColBusquedaApto('')
     setNuevaColPosicion(sec === 'azul' ? 'fin_azul' : 'fin_naranja')
+    setModalNuevaColumnaOpen(true)
+  }
+
+  const handleAbrirEditarColumna = (col: ColumnaCalendarioConfig) => {
+    setEditingColId(col.id)
+    setNuevaColTitulo(col.titulo || '')
+    setNuevaColDescripcion(col.descripcion || '')
+    setNuevaColSeccion(col.seccion)
+    setNuevaColMoneda(col.moneda)
+    const montoDef = Number(col.montoDefecto || 0)
+    setNuevaColMontoDefecto(montoDef > 0 ? (col.moneda === 'BS' ? fmtBs(montoDef) : montoDef.toFixed(2)) : '')
+    setNuevaColFechaEmision(col.fechaEmision || '')
+    setNuevaColFechaLimite(col.fechaLimite || '')
+
+    const asignadosIds: string[] = []
+    filas.forEach(f => {
+      const val = f.valores_personalizados?.[col.id]
+      if (val && Number(val.monto || 0) > 0) asignadosIds.push(f.apartamento_id)
+    })
+    if (asignadosIds.length === 0) {
+      setNuevaColAlcance('manual')
+      setNuevaColAplicarATodos(false)
+      setNuevaColAptosIds([])
+    } else if (asignadosIds.length >= filas.length && filas.length > 0) {
+      setNuevaColAlcance('todos')
+      setNuevaColAplicarATodos(true)
+      setNuevaColAptosIds(asignadosIds)
+    } else {
+      setNuevaColAlcance('seleccionados')
+      setNuevaColAplicarATodos(false)
+      setNuevaColAptosIds(asignadosIds)
+    }
+    setNuevaColBusquedaApto('')
+    setMenuColumnaId(null)
     setModalNuevaColumnaOpen(true)
   }
 
   const handleGuardarNuevaColumna = async () => {
     if (!nuevaColTitulo.trim()) {
-      showToast('⚠️ Ingresa un título para la columna')
+      showToast('⚠️ Ingresa un título para la cuota / columna')
+      return
+    }
+    if (nuevaColAlcance === 'seleccionados' && nuevaColAptosIds.length === 0) {
+      showToast('⚠️ Selecciona al menos un apartamento o cambia el alcance a Todos')
       return
     }
 
+    const montoParseado = parsearMontoFlexible(nuevaColMontoDefecto, nuevaColMoneda)
     setProcesandoAccion(true)
     try {
+      if (editingColId) {
+        const res = await editarColumnaPersonalizada({
+          colId: editingColId,
+          titulo: nuevaColTitulo.trim(),
+          descripcion: nuevaColDescripcion.trim(),
+          seccion: nuevaColSeccion,
+          moneda: nuevaColMoneda,
+          montoDefecto: montoParseado,
+          fechaEmision: nuevaColFechaEmision || undefined,
+          fechaLimite: nuevaColFechaLimite || undefined,
+          aplicarATodos: nuevaColAlcance === 'todos',
+          apartamentosIds: nuevaColAlcance === 'seleccionados' ? nuevaColAptosIds : undefined,
+          actualizarPendientes: nuevaColAlcance !== 'manual',
+          anio: anioSeleccionado
+        })
+        if (res.success) {
+          showToast(`✅ Cuota extraoficial "${nuevaColTitulo.trim()}" actualizada y sincronizada`)
+          setModalNuevaColumnaOpen(false)
+          setEditingColId(null)
+          await cargarDatos(true)
+        } else {
+          showToast(`❌ Error: ${res.error}`)
+        }
+        return
+      }
+
       let posicionObj: PosicionInsercionColumna = { tipo: 'fin_naranja' }
 
       if (nuevaColPosicion === 'inicio_naranja') {
@@ -677,16 +805,20 @@ export const AdminCalendarioDeudas: React.FC = () => {
 
       const res = await agregarColumnaPersonalizada({
         titulo: nuevaColTitulo.trim(),
+        descripcion: nuevaColDescripcion.trim(),
         seccion: nuevaColSeccion,
         moneda: nuevaColMoneda,
-        montoDefecto: Number(nuevaColMontoDefecto || 0),
+        montoDefecto: montoParseado,
+        fechaEmision: nuevaColFechaEmision || undefined,
+        fechaLimite: nuevaColFechaLimite || undefined,
         posicion: posicionObj,
-        aplicarATodos: nuevaColAplicarATodos,
+        aplicarATodos: nuevaColAlcance === 'todos' || nuevaColAplicarATodos,
+        apartamentosIds: nuevaColAlcance === 'seleccionados' ? nuevaColAptosIds : undefined,
         anio: anioSeleccionado
       })
 
       if (res.success) {
-        showToast(`✅ Columna vertical "${nuevaColTitulo}" agregada`)
+        showToast(`✅ Cuota extraoficial "${nuevaColTitulo.trim()}" creada y sincronizada con deudas y calendario`)
         setModalNuevaColumnaOpen(false)
         await cargarDatos(true)
       } else {
@@ -778,20 +910,24 @@ export const AdminCalendarioDeudas: React.FC = () => {
 
     try {
       if (celdaPersAplicarATodos) {
-        for (const filaItem of filas) {
-          await guardarCeldaPersonalizada({
-            filaId: filaItem.apartamento_id,
-            columnaId: celdaPersCol.id,
-            monto: nuevoMonto,
-            estado: celdaPersEstado,
-            moneda: celdaPersMoneda,
-            anio: anioSeleccionado
-          })
+        const resMas = await guardarCeldaPersonalizadaMasiva({
+          columnaId: celdaPersCol.id,
+          monto: nuevoMonto,
+          estado: celdaPersEstado,
+          moneda: celdaPersMoneda,
+          anio: anioSeleccionado,
+          apartamentosIds: filas.map(f => f.apartamento_id)
+        })
+        if (resMas.success) {
+          showToast(`✅ Cuota "${celdaPersCol.titulo}" (${celdaPersMoneda === 'BS' ? 'Bs' : '$'}) aplicada a ${resMas.afectados} unidades`)
+        } else {
+          showToast(`❌ Error: ${resMas.error}`)
         }
-        showToast(`✅ Cuota "${celdaPersCol.titulo}" (${celdaPersMoneda === 'BS' ? 'Bs' : '$'}) asignada a todos los apartamentos`)
       } else {
         const res = await guardarCeldaPersonalizada({
           filaId: celdaPersApto.apartamento_id,
+          apartamentoNumero: celdaPersApto.apartamento_numero,
+          autorNombre: perfil?.nombre_completo || 'Administrador',
           columnaId: celdaPersCol.id,
           monto: nuevoMonto,
           estado: celdaPersEstado,
@@ -1486,7 +1622,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
 
         {/* Acciones principales superiores */}
         <div className="calendario-actions-bar" style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-          {/* Botón Nueva Columna */}
+          {/* Botón Nueva Columna / Cuota Extraoficial */}
           <button
             onClick={() => handleAbrirCrearColumna()}
             style={{
@@ -1502,9 +1638,30 @@ export const AdminCalendarioDeudas: React.FC = () => {
               fontWeight: 800,
               cursor: 'pointer'
             }}
-            title="Agregar una nueva columna vertical en la posición deseada"
+            title="Crear o asignar una nueva cuota extraoficial / columna vertical"
           >
-            <span>➕</span> Nueva Columna
+            <span>➕</span> Nueva Cuota / Columna
+          </button>
+
+          {/* Botón Anexo de Cuotas Extraoficiales y Calendario */}
+          <button
+            onClick={() => setAnexoPanelAbierto(v => !v)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              backgroundColor: anexoPanelAbierto ? 'rgba(249, 115, 22, 0.2)' : 'rgba(255, 255, 255, 0.05)',
+              color: anexoPanelAbierto ? '#fb923c' : '#cbd5e1',
+              border: `1px solid ${anexoPanelAbierto ? 'rgba(249, 115, 22, 0.45)' : '#334155'}`,
+              padding: '9px 14px',
+              borderRadius: '10px',
+              fontSize: '12px',
+              fontWeight: 800,
+              cursor: 'pointer'
+            }}
+            title="Mostrar u ocultar el Anexo de Cuotas Extraoficiales y Calendario de Recordatorios"
+          >
+            <span>✨</span> Anexo Extraoficiales ({columnasCuotasEspeciales.length})
           </button>
 
           {/* Botón Organizar / Mover Columnas */}
@@ -1943,6 +2100,264 @@ export const AdminCalendarioDeudas: React.FC = () => {
         </div>
       </div>
 
+      {/* ANEXO DE CUOTAS EXTRAOFICIALES (EXTRAORDINARIAS) Y CALENDARIO DE RECORDATORIOS */}
+      {anexoPanelAbierto && (
+        <div style={{
+          backgroundColor: '#111827',
+          border: '1px solid rgba(234, 179, 8, 0.28)',
+          borderRadius: '16px',
+          padding: '20px',
+          marginBottom: '20px',
+          boxShadow: '0 10px 30px rgba(0, 0, 0, 0.4)'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '16px', borderBottom: '1px solid #1f2937', paddingBottom: '12px' }}>
+            <div>
+              <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: '#facc15', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span>✨</span> Anexo de Cuotas Extraoficiales (Extraordinarias) y Calendario de Recordatorios
+              </h2>
+              <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#94a3b8' }}>
+                Cada cuota extraoficial asignada se refleja automáticamente en el Portal de Deudas de los propietarios afectados y sus fechas quedan registradas en el calendario.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => handleAbrirCrearColumna('naranja')}
+              style={{
+                backgroundColor: '#eab308',
+                color: '#000',
+                border: 'none',
+                borderRadius: '10px',
+                padding: '8px 14px',
+                fontSize: '12px',
+                fontWeight: 800,
+                cursor: 'pointer'
+              }}
+            >
+              ➕ Crear Cuota Extraoficial
+            </button>
+          </div>
+
+          <div className="calendario-organizar-grid" style={{ display: 'grid', gridTemplateColumns: '1.15fr 1fr', gap: '18px', alignItems: 'start' }}>
+            {/* Lista de Cuotas Extraoficiales */}
+            <div style={{ backgroundColor: '#090d16', border: '1px solid #1f2937', borderRadius: '12px', padding: '14px' }}>
+              <div style={{ fontSize: '12px', fontWeight: 800, color: '#e2e8f0', marginBottom: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>📋 Cuotas Extraoficiales Activas ({columnasCuotasEspeciales.length})</span>
+                <span style={{ fontSize: '11px', color: '#64748b' }}>Año {anioSeleccionado}</span>
+              </div>
+
+              {columnasCuotasEspeciales.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '26px 14px', color: '#64748b', fontSize: '12.5px' }}>
+                  Aún no hay cuotas extraoficiales creadas en {anioSeleccionado}. Haz clic en <strong>"Crear Cuota Extraoficial"</strong> para emitir una y sincronizarla con Deudas y Calendario.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '340px', overflowY: 'auto', paddingRight: '4px' }}>
+                  {columnasCuotasEspeciales.map(col => {
+                    let asignados = 0
+                    let pagados = 0
+                    let montoPendTotal = 0
+                    filas.forEach(f => {
+                      const val = f.valores_personalizados?.[col.id] ?? (col.montoDefecto ? { monto: col.montoDefecto, estado: 'pendiente' } : null)
+                      if (val && Number(val.monto || 0) > 0) {
+                        asignados++
+                        if (val.estado === 'pagado') pagados++
+                        else montoPendTotal += Number(val.monto || 0)
+                      }
+                    })
+                    const pct = asignados > 0 ? Math.round((pagados / asignados) * 100) : 0
+                    const hoyIso = new Date().toISOString().slice(0, 10)
+                    const vencida = Boolean(col.fechaLimite && col.fechaLimite < hoyIso && pagados < asignados)
+
+                    return (
+                      <div key={col.id} style={{
+                        backgroundColor: '#111827',
+                        border: `1px solid ${vencida ? 'rgba(239, 68, 68, 0.35)' : 'rgba(234, 179, 8, 0.22)'}`,
+                        borderRadius: '10px',
+                        padding: '12px'
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                              <span style={{ color: '#facc15', fontWeight: 800, fontSize: '13px' }}>{col.titulo}</span>
+                              <span style={{ fontSize: '10px', fontWeight: 700, padding: '1px 6px', borderRadius: '4px', backgroundColor: col.moneda === 'BS' ? 'rgba(234,88,12,0.2)' : 'rgba(59,130,246,0.2)', color: col.moneda === 'BS' ? '#fb923c' : '#93c5fd' }}>
+                                {col.moneda} {col.montoDefecto ? (col.moneda === 'BS' ? `Bs. ${fmtBs(col.montoDefecto)}` : `$${fmtUsd(col.montoDefecto)}`) : 'Variable'}
+                              </span>
+                              {vencida && (
+                                <span style={{ fontSize: '10px', fontWeight: 800, color: '#f87171', backgroundColor: 'rgba(239,68,68,0.18)', padding: '1px 6px', borderRadius: '4px' }}>
+                                  ⚠️ Vencida
+                                </span>
+                              )}
+                            </div>
+                            {col.descripcion && (
+                              <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '3px' }}>{col.descripcion}</div>
+                            )}
+                            <div style={{ fontSize: '11px', color: '#cbd5e1', marginTop: '4px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                              {col.fechaEmision && <span>📤 Emisión: <b>{col.fechaEmision}</b></span>}
+                              {col.fechaLimite && <span style={{ color: vencida ? '#f87171' : '#fde047' }}>📅 Límite: <b>{col.fechaLimite}</b></span>}
+                            </div>
+                          </div>
+
+                          <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+                            <button
+                              type="button"
+                              onClick={() => handleAbrirEditarColumna(col)}
+                              style={{ background: 'rgba(59, 130, 246, 0.16)', border: '1px solid rgba(59, 130, 246, 0.35)', color: '#60a5fa', borderRadius: '6px', padding: '4px 8px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
+                              title="Editar cuota extraoficial, fechas o departamentos afectados"
+                            >
+                              ✏️ Editar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleEliminarColumnaClick(col.id, col.titulo)}
+                              style={{ background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)', color: '#f87171', borderRadius: '6px', padding: '4px 7px', fontSize: '11px', cursor: 'pointer' }}
+                              title="Eliminar cuota extraoficial"
+                            >
+                              🗑️
+                            </button>
+                          </div>
+                        </div>
+
+                        <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <div style={{ flex: 1, height: '6px', backgroundColor: '#1f2937', borderRadius: '999px', overflow: 'hidden' }}>
+                            <div style={{ width: `${pct}%`, height: '100%', backgroundColor: pct === 100 ? '#10b981' : '#eab308', transition: 'width 0.3s' }} />
+                          </div>
+                          <span style={{ fontSize: '10.5px', color: '#94a3b8', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                            {pagados}/{asignados} pagados · Pend: {col.moneda === 'BS' ? `Bs. ${fmtBs(montoPendTotal)}` : `$${fmtUsd(montoPendTotal)}`}
+                          </span>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Calendario Visual de Eventos y Recordatorios */}
+            <div style={{ backgroundColor: '#090d16', border: '1px solid #1f2937', borderRadius: '12px', padding: '14px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                <span style={{ fontSize: '12px', fontWeight: 800, color: '#93c5fd' }}>
+                  📅 Calendario de Emisiones y Vencimientos
+                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (calEventosMes === 1) { setCalEventosMes(12); setCalEventosAnio(y => y - 1) }
+                      else setCalEventosMes(m => m - 1)
+                    }}
+                    style={{ background: '#1f2937', border: 'none', color: '#cbd5e1', borderRadius: '6px', padding: '3px 8px', cursor: 'pointer', fontSize: '11px' }}
+                  >◀</button>
+                  <span style={{ fontSize: '11.5px', fontWeight: 800, color: '#fff', minWidth: '92px', textAlign: 'center' }}>
+                    {['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'][calEventosMes - 1]} {calEventosAnio}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (calEventosMes === 12) { setCalEventosMes(1); setCalEventosAnio(y => y + 1) }
+                      else setCalEventosMes(m => m + 1)
+                    }}
+                    style={{ background: '#1f2937', border: 'none', color: '#cbd5e1', borderRadius: '6px', padding: '3px 8px', cursor: 'pointer', fontSize: '11px' }}
+                  >▶</button>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '3px', marginBottom: '4px', textAlign: 'center', fontSize: '10px', color: '#64748b', fontWeight: 700 }}>
+                {['L', 'M', 'X', 'J', 'V', 'S', 'D'].map(d => <div key={d}>{d}</div>)}
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '3px', marginBottom: '12px' }}>
+                {diasCalendarioEventos.map((c, idx) => {
+                  if (!c.diaNum || !c.fechaIso) return <div key={`empty-${idx}`} style={{ height: '30px' }} />
+                  const evs = eventosPorFecha.get(c.fechaIso) || []
+                  const hasLim = evs.some(e => e.tipoEvento === 'vencimiento')
+                  const hasEm = evs.some(e => e.tipoEvento === 'emision')
+                  const isSel = diaEventoSeleccionado === c.fechaIso
+                  const isHoy = c.fechaIso === new Date().toISOString().slice(0, 10)
+                  return (
+                    <button
+                      key={c.fechaIso}
+                      type="button"
+                      onClick={() => setDiaEventoSeleccionado(c.fechaIso)}
+                      style={{
+                        height: '30px',
+                        borderRadius: '6px',
+                        border: isSel ? '1px solid #facc15' : isHoy ? '1px solid #38bdf8' : '1px solid rgba(255,255,255,0.04)',
+                        backgroundColor: evs.length > 0
+                          ? (hasLim ? 'rgba(234, 179, 8, 0.16)' : 'rgba(59, 130, 246, 0.16)')
+                          : 'rgba(255,255,255,0.02)',
+                        color: '#e2e8f0',
+                        fontSize: '11px',
+                        fontWeight: evs.length > 0 ? 800 : 500,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        lineHeight: 1
+                      }}
+                    >
+                      <span>{c.diaNum}</span>
+                      {evs.length > 0 && (
+                        <span style={{ fontSize: '7px', marginTop: '2px', color: hasLim ? '#facc15' : hasEm ? '#60a5fa' : '#34d399' }}>
+                          {hasEm && hasLim ? '●◆' : hasLim ? '◆' : '●'}
+                        </span>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+
+              <div style={{ borderTop: '1px solid #1f2937', paddingTop: '10px', maxHeight: '130px', overflowY: 'auto' }}>
+                {(() => {
+                  const evDia = diaEventoSeleccionado ? (eventosPorFecha.get(diaEventoSeleccionado) || []) : []
+                  const listaMostrar = evDia.length > 0 ? evDia : eventosCuotas.slice(0, 6)
+                  if (listaMostrar.length === 0) {
+                    return (
+                      <div style={{ fontSize: '11.5px', color: '#64748b', textAlign: 'center', padding: '6px 0' }}>
+                        Sin eventos de cuotas programados. Agrega fechas de emisión o límite al crear/editar una cuota.
+                      </div>
+                    )
+                  }
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <div style={{ fontSize: '10px', fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase' }}>
+                        {evDia.length > 0 ? `Eventos del ${diaEventoSeleccionado}` : 'Próximos Recordatorios de Cuotas'}
+                      </div>
+                      {listaMostrar.map(ev => (
+                        <div key={ev.id} style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          backgroundColor: '#111827',
+                          border: '1px solid #1f2937',
+                          borderRadius: '8px',
+                          padding: '6px 10px',
+                          fontSize: '11px'
+                        }}>
+                          <div>
+                            <span style={{ color: ev.tipoEvento === 'vencimiento' ? '#facc15' : '#60a5fa', fontWeight: 800 }}>
+                              {ev.tipoEvento === 'vencimiento' ? '⏳ Límite' : '📤 Emisión'}
+                            </span>{' '}
+                            <strong style={{ color: '#fff' }}>{ev.titulo}</strong>
+                            <span style={{ color: '#64748b', marginLeft: '6px' }}>{ev.fecha}</span>
+                          </div>
+                          <span style={{
+                            fontSize: '10px',
+                            fontWeight: 700,
+                            color: ev.estado === 'completado' ? '#34d399' : ev.estado === 'vencido' ? '#f87171' : '#93c5fd'
+                          }}>
+                            {ev.totalAptosPagados}/{ev.totalAptosAsignados} pag.
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                })()}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* TABLA PRINCIPAL DE LA MATRIZ */}
       {loading ? (
         <div style={{ backgroundColor: '#111827', borderRadius: '14px', padding: '24px' }}>
@@ -2199,7 +2614,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
                           </span>
                           {col.esPersonalizada && (
                             <span style={{ fontSize: '9px', backgroundColor: 'rgba(234, 179, 8, 0.25)', color: '#facc15', padding: '1px 3px', borderRadius: '3px', fontWeight: 600 }}>
-                              Extra
+                              Extra{col.fechaLimite ? ` · 📅 ${col.fechaLimite.slice(5)}` : ''}
                             </span>
                           )}
                           {/* Botón discreto de opciones de columna */}
@@ -2219,7 +2634,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
                               borderRadius: '4px',
                               lineHeight: 1
                             }}
-                            title="Opciones de columna: Mover a Calendario, cambiar moneda o posición"
+                            title="Opciones de columna: Editar cuota, mover o quitar"
                           >
                             ⋮
                           </button>
@@ -2247,6 +2662,30 @@ export const AdminCalendarioDeudas: React.FC = () => {
                                 gap: '4px'
                               }}
                             >
+                              {col.tipo === 'cuota_especial' && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleAbrirEditarColumna(col)}
+                                  style={{
+                                    background: 'transparent',
+                                    border: 'none',
+                                    color: '#facc15',
+                                    padding: '6px 8px',
+                                    borderRadius: '4px',
+                                    fontSize: '11px',
+                                    fontWeight: 700,
+                                    textAlign: 'left',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px'
+                                  }}
+                                  onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(234, 179, 8, 0.15)'}
+                                  onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                                >
+                                  <span>✏️</span> Editar cuota y fechas
+                                </button>
+                              )}
                               <button
                                 type="button"
                                 onClick={() => handleCambiarMonedaColumna(col.id, col.moneda === 'BS' ? 'USD' : 'BS')}
@@ -2383,7 +2822,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
                           </span>
                           {col.esPersonalizada && (
                             <span style={{ fontSize: '9px', backgroundColor: 'rgba(234, 179, 8, 0.25)', color: '#facc15', padding: '1px 3px', borderRadius: '3px', fontWeight: 600 }}>
-                              Extra
+                              Extra{col.fechaLimite ? ` · 📅 ${col.fechaLimite.slice(5)}` : ''}
                             </span>
                           )}
                           {/* Botón discreto de opciones de columna */}
@@ -2403,7 +2842,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
                               borderRadius: '4px',
                               lineHeight: 1
                             }}
-                            title="Opciones de columna: Mover a Deudas Pasadas, cambiar posición o quitar"
+                            title="Opciones de columna: Editar cuota, mover a Deudas Pasadas o quitar"
                           >
                             ⋮
                           </button>
@@ -2431,6 +2870,30 @@ export const AdminCalendarioDeudas: React.FC = () => {
                                 gap: '4px'
                               }}
                             >
+                              {col.tipo === 'cuota_especial' && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleAbrirEditarColumna(col)}
+                                  style={{
+                                    background: 'transparent',
+                                    border: 'none',
+                                    color: '#facc15',
+                                    padding: '6px 8px',
+                                    borderRadius: '4px',
+                                    fontSize: '11px',
+                                    fontWeight: 700,
+                                    textAlign: 'left',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px'
+                                  }}
+                                  onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(234, 179, 8, 0.15)'}
+                                  onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                                >
+                                  <span>✏️</span> Editar cuota y fechas
+                                </button>
+                              )}
                               <button
                                 type="button"
                                 onClick={() => handleCambiarMonedaColumna(col.id, col.moneda === 'BS' ? 'USD' : 'BS')}
@@ -2869,7 +3332,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL CREAR NUEVA COLUMNA (VERTICAL) */}
+      {/* MODAL CREAR / EDITAR CUOTA EXTRAOFICIAL (COLUMNA VERTICAL) */}
       {modalNuevaColumnaOpen && (
         <div className="calendario-modal-overlay" style={{
           position: 'fixed',
@@ -2887,36 +3350,54 @@ export const AdminCalendarioDeudas: React.FC = () => {
             border: '2px solid #eab308',
             borderRadius: '16px',
             width: '100%',
-            maxWidth: '520px',
+            maxWidth: '580px',
+            maxHeight: '90vh',
+            display: 'flex',
+            flexDirection: 'column',
             boxShadow: '0 25px 60px rgba(0,0,0,0.8)',
             overflow: 'hidden'
           }}>
             <div className="calendario-modal-header" style={{ padding: '18px 24px', borderBottom: '1px solid #1f2937', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'rgba(234, 179, 8, 0.1)' }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: '#facc15' }}>
-                  ➕ Agregar Columna (Vertical)
+                  {editingColId ? '✏️ Editar Cuota Extraoficial' : '➕ Nueva Cuota Extraoficial / Columna'}
                 </h3>
                 <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#fde047' }}>
-                  Elige el nombre y en qué parte de la tabla irá (entre qué meses o conceptos)
+                  {editingColId
+                    ? 'Actualiza datos, fechas y alcance; los apartamentos ya pagados se preservan.'
+                    : 'Se sincroniza automáticamente con el Portal de Deudas y el Calendario de Recordatorios.'}
                 </p>
               </div>
-              <button onClick={() => setModalNuevaColumnaOpen(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '20px', cursor: 'pointer' }}>
+              <button onClick={() => { setModalNuevaColumnaOpen(false); setEditingColId(null) }} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '20px', cursor: 'pointer' }}>
                 ✕
               </button>
             </div>
 
-            <div className="calendario-modal-body" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div className="calendario-modal-body" style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '14px', overflowY: 'auto' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px', fontWeight: 700 }}>
-                  Nombre / Título de la Columna *
+                  Nombre / Título de la Cuota Extraoficial *
                 </label>
                 <input
                   type="text"
                   value={nuevaColTitulo}
                   onChange={e => setNuevaColTitulo(e.target.value)}
-                  placeholder="Ej: Cuota Ascensor, Pintura, Febrero Extra..."
+                  placeholder="Ej: Reparación Bomba de Agua, Pintura Fachada, Cuota Ascensor..."
                   autoFocus
                   style={{ width: '100%', backgroundColor: '#030712', border: '1px solid #374151', borderRadius: '8px', padding: '10px 12px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px', fontWeight: 700 }}>
+                  Descripción / Detalle (Opcional)
+                </label>
+                <input
+                  type="text"
+                  value={nuevaColDescripcion}
+                  onChange={e => setNuevaColDescripcion(e.target.value)}
+                  placeholder="Motivo o aclaratoria visible para los propietarios..."
+                  style={{ width: '100%', backgroundColor: '#030712', border: '1px solid #374151', borderRadius: '8px', padding: '9px 12px', color: '#fff', fontSize: '12.5px', boxSizing: 'border-box' }}
                 />
               </div>
 
@@ -2930,8 +3411,8 @@ export const AdminCalendarioDeudas: React.FC = () => {
                     onChange={e => setNuevaColSeccion(e.target.value as 'naranja' | 'azul')}
                     style={{ width: '100%', backgroundColor: '#030712', border: '1px solid #374151', borderRadius: '8px', padding: '10px 12px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
                   >
-                    <option value="naranja">🏛️ Deudas Pasadas (Bs / Conceptos Anteriores)</option>
-                    <option value="azul">📅 Calendario Mensual ($ / Meses {anioSeleccionado})</option>
+                    <option value="naranja">🏛️ Conceptos Extraordinarios / Anteriores</option>
+                    <option value="azul">📅 Calendario Mensual ({anioSeleccionado})</option>
                   </select>
                 </div>
 
@@ -2950,84 +3431,189 @@ export const AdminCalendarioDeudas: React.FC = () => {
                 </div>
               </div>
 
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px', fontWeight: 700 }}>
-                  ¿En qué posición / lugar de la tabla irá la columna?
-                </label>
-                <select
-                  value={nuevaColPosicion}
-                  onChange={e => setNuevaColPosicion(e.target.value)}
-                  style={{ width: '100%', backgroundColor: '#030712', border: '1px solid #eab308', borderRadius: '8px', padding: '10px 12px', color: '#fff', fontSize: '13px', boxSizing: 'border-box', fontWeight: 600 }}
-                >
-                  <optgroup label="🏛️ En Deudas Pasadas">
-                    <option value="inicio_naranja">📍 Al inicio de Deudas Pasadas</option>
-                    {columnasNaranja.map((c, i) => {
-                      const nextCol = columnasNaranja[i + 1]
-                      return (
-                        <option key={c.id} value={`despues_de:${c.id}`}>
-                          {nextCol ? `Entre [${c.titulo}] y [${nextCol.titulo}]` : `Después de [${c.titulo}]`}
-                        </option>
-                      )
-                    })}
-                    <option value="fin_naranja">📍 Al final de Deudas Pasadas</option>
-                  </optgroup>
-                  <optgroup label="📅 En Calendario Mensual">
-                    <option value="inicio_azul">📍 Al inicio del Calendario Mensual</option>
-                    {columnasAzul.map((c, i) => {
-                      const nextCol = columnasAzul[i + 1]
-                      return (
-                        <option key={c.id} value={`despues_de:${c.id}`}>
-                          {nextCol ? `Entre [${c.titulo}] y [${nextCol.titulo}]` : `Después de [${c.titulo}]`}
-                        </option>
-                      )
-                    })}
-                    <option value="fin_azul">📍 Al final del Calendario Mensual</option>
-                  </optgroup>
-                </select>
-              </div>
-
-              <div className="calendario-modal-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', alignItems: 'center' }}>
+              {/* Fechas sincronizadas con el Calendario */}
+              <div className="calendario-modal-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px', fontWeight: 700 }}>
-                    Monto Inicial (Opcional)
+                    📤 Fecha de Emisión (Calendario)
                   </label>
                   <input
-                    type="text"
-                    inputMode="decimal"
-                    value={nuevaColMontoDefecto}
-                    onChange={e => setNuevaColMontoDefecto(e.target.value)}
-                    onBlur={() => {
-                      const num = parsearMontoFlexible(nuevaColMontoDefecto, nuevaColMoneda)
-                      if (num > 0) setNuevaColMontoDefecto(nuevaColMoneda === 'BS' ? fmtBs(num) : num.toFixed(2))
-                    }}
-                    placeholder={nuevaColMoneda === 'BS' ? 'Ej: 14.304,23' : '0.00'}
-                    style={{ width: '100%', backgroundColor: '#030712', border: '1px solid #374151', borderRadius: '8px', padding: '10px 12px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
+                    type="date"
+                    value={nuevaColFechaEmision}
+                    onChange={e => setNuevaColFechaEmision(e.target.value)}
+                    style={{ width: '100%', backgroundColor: '#030712', border: '1px solid #374151', borderRadius: '8px', padding: '9px 12px', color: '#fff', fontSize: '12.5px', boxSizing: 'border-box' }}
                   />
-                  {nuevaColMontoDefecto !== '' && parsearMontoFlexible(nuevaColMontoDefecto, nuevaColMoneda) > 0 && (
-                    <div style={{ fontSize: '11px', color: nuevaColMoneda === 'BS' ? '#fb923c' : '#60a5fa', marginTop: '4px', fontWeight: 700 }}>
-                      {nuevaColMoneda === 'BS' ? `Bs. ${fmtBs(parsearMontoFlexible(nuevaColMontoDefecto, 'BS'))}` : `$${fmtUsd(parsearMontoFlexible(nuevaColMontoDefecto, 'USD'))}`}
-                    </div>
-                  )}
                 </div>
 
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', marginTop: '16px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px', fontWeight: 700 }}>
+                    📅 Fecha Límite de Pago (Recordatorio)
+                  </label>
                   <input
-                    type="checkbox"
-                    checked={nuevaColAplicarATodos}
-                    onChange={e => setNuevaColAplicarATodos(e.target.checked)}
-                    style={{ accentColor: '#eab308' }}
+                    type="date"
+                    value={nuevaColFechaLimite}
+                    onChange={e => setNuevaColFechaLimite(e.target.value)}
+                    style={{ width: '100%', backgroundColor: '#030712', border: '1px solid #374151', borderRadius: '8px', padding: '9px 12px', color: '#fff', fontSize: '12.5px', boxSizing: 'border-box' }}
                   />
-                  <span style={{ fontSize: '12px', color: '#cbd5e1', fontWeight: 600 }}>
-                    Asignar monto a todos los apartamentos
-                  </span>
+                </div>
+              </div>
+
+              {!editingColId && (
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px', fontWeight: 700 }}>
+                    ¿En qué posición / lugar de la tabla irá la columna?
+                  </label>
+                  <select
+                    value={nuevaColPosicion}
+                    onChange={e => setNuevaColPosicion(e.target.value)}
+                    style={{ width: '100%', backgroundColor: '#030712', border: '1px solid #eab308', borderRadius: '8px', padding: '10px 12px', color: '#fff', fontSize: '13px', boxSizing: 'border-box', fontWeight: 600 }}
+                  >
+                    <optgroup label="🏛️ En Conceptos Extraordinarios / Pasados">
+                      <option value="inicio_naranja">📍 Al inicio de Deudas Pasadas</option>
+                      {columnasNaranja.map((c, i) => {
+                        const nextCol = columnasNaranja[i + 1]
+                        return (
+                          <option key={c.id} value={`despues_de:${c.id}`}>
+                            {nextCol ? `Entre [${c.titulo}] y [${nextCol.titulo}]` : `Después de [${c.titulo}]`}
+                          </option>
+                        )
+                      })}
+                      <option value="fin_naranja">📍 Al final de Deudas Pasadas</option>
+                    </optgroup>
+                    <optgroup label="📅 En Calendario Mensual">
+                      <option value="inicio_azul">📍 Al inicio del Calendario Mensual</option>
+                      {columnasAzul.map((c, i) => {
+                        const nextCol = columnasAzul[i + 1]
+                        return (
+                          <option key={c.id} value={`despues_de:${c.id}`}>
+                            {nextCol ? `Entre [${c.titulo}] y [${nextCol.titulo}]` : `Después de [${c.titulo}]`}
+                          </option>
+                        )
+                      })}
+                      <option value="fin_azul">📍 Al final del Calendario Mensual</option>
+                    </optgroup>
+                  </select>
+                </div>
+              )}
+
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px', fontWeight: 700 }}>
+                  Monto por Apartamento ({nuevaColMoneda === 'BS' ? 'Bs.' : '$ USD'})
                 </label>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={nuevaColMontoDefecto}
+                  onChange={e => setNuevaColMontoDefecto(e.target.value)}
+                  onBlur={() => {
+                    const num = parsearMontoFlexible(nuevaColMontoDefecto, nuevaColMoneda)
+                    if (num > 0) setNuevaColMontoDefecto(nuevaColMoneda === 'BS' ? fmtBs(num) : num.toFixed(2))
+                  }}
+                  placeholder={nuevaColMoneda === 'BS' ? 'Ej: 14.304,23' : 'Ej: 25.00'}
+                  style={{ width: '100%', backgroundColor: '#030712', border: '1px solid #374151', borderRadius: '8px', padding: '10px 12px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
+                />
+                {nuevaColMontoDefecto !== '' && parsearMontoFlexible(nuevaColMontoDefecto, nuevaColMoneda) > 0 && (
+                  <div style={{ fontSize: '11px', color: nuevaColMoneda === 'BS' ? '#fb923c' : '#60a5fa', marginTop: '4px', fontWeight: 700 }}>
+                    {nuevaColMoneda === 'BS' ? `Bs. ${fmtBs(parsearMontoFlexible(nuevaColMontoDefecto, 'BS'))}` : `$${fmtUsd(parsearMontoFlexible(nuevaColMontoDefecto, 'USD'))}`}
+                  </div>
+                )}
+              </div>
+
+              {/* Alcance de asignación en Portal de Deudas */}
+              <div style={{ backgroundColor: '#090d16', border: '1px solid #1f2937', borderRadius: '10px', padding: '12px' }}>
+                <label style={{ display: 'block', fontSize: '11.5px', color: '#facc15', marginBottom: '8px', fontWeight: 800, textTransform: 'uppercase' }}>
+                  🎯 Apartamentos afectados en Portal de Deudas
+                </label>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: nuevaColAlcance === 'seleccionados' ? '10px' : 0 }}>
+                  {[
+                    { id: 'todos', label: `🏢 Todos (${filas.length})` },
+                    { id: 'seleccionados', label: `🎯 Seleccionados (${nuevaColAptosIds.length})` },
+                    { id: 'manual', label: '📝 Sin asignar aún (Manual)' }
+                  ].map(opt => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => {
+                        setNuevaColAlcance(opt.id as any)
+                        setNuevaColAplicarATodos(opt.id === 'todos')
+                      }}
+                      style={{
+                        flex: '1 1 auto',
+                        padding: '7px 10px',
+                        borderRadius: '8px',
+                        border: `1px solid ${nuevaColAlcance === opt.id ? '#eab308' : '#374151'}`,
+                        backgroundColor: nuevaColAlcance === opt.id ? 'rgba(234, 179, 8, 0.18)' : '#111827',
+                        color: nuevaColAlcance === opt.id ? '#facc15' : '#94a3b8',
+                        fontSize: '11.5px',
+                        fontWeight: 700,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+
+                {nuevaColAlcance === 'seleccionados' && (
+                  <div>
+                    <div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>
+                      <input
+                        type="text"
+                        placeholder="Filtrar apto..."
+                        value={nuevaColBusquedaApto}
+                        onChange={e => setNuevaColBusquedaApto(e.target.value)}
+                        style={{ flex: 1, backgroundColor: '#030712', border: '1px solid #374151', borderRadius: '6px', padding: '6px 9px', color: '#fff', fontSize: '11.5px' }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setNuevaColAptosIds(filas.map(f => f.apartamento_id))}
+                        style={{ backgroundColor: '#1f2937', border: 'none', color: '#93c5fd', borderRadius: '6px', padding: '5px 8px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        Todos
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setNuevaColAptosIds([])}
+                        style={{ backgroundColor: '#1f2937', border: 'none', color: '#f87171', borderRadius: '6px', padding: '5px 8px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        Ninguno
+                      </button>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(74px, 1fr))', gap: '5px', maxHeight: '140px', overflowY: 'auto' }}>
+                      {filas
+                        .filter(f => !nuevaColBusquedaApto.trim() || f.apartamento_numero.toLowerCase().includes(nuevaColBusquedaApto.toLowerCase().trim()))
+                        .map(f => {
+                          const sel = nuevaColAptosIds.includes(f.apartamento_id)
+                          return (
+                            <button
+                              key={f.apartamento_id}
+                              type="button"
+                              onClick={() => setNuevaColAptosIds(prev => sel ? prev.filter(id => id !== f.apartamento_id) : [...prev, f.apartamento_id])}
+                              style={{
+                                padding: '5px 4px',
+                                borderRadius: '6px',
+                                border: `1px solid ${sel ? '#eab308' : '#262f3f'}`,
+                                backgroundColor: sel ? 'rgba(234, 179, 8, 0.2)' : '#111827',
+                                color: sel ? '#facc15' : '#94a3b8',
+                                fontSize: '11px',
+                                fontWeight: 700,
+                                cursor: 'pointer'
+                              }}
+                            >
+                              {sel ? '✓ ' : ''}{f.apartamento_numero}
+                            </button>
+                          )
+                        })}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
             <div className="calendario-modal-footer" style={{ padding: '16px 24px', backgroundColor: '#030712', borderTop: '1px solid #1f2937', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
               <button
                 type="button"
-                onClick={() => setModalNuevaColumnaOpen(false)}
+                onClick={() => { setModalNuevaColumnaOpen(false); setEditingColId(null) }}
                 style={{ padding: '9px 16px', backgroundColor: 'transparent', color: '#cbd5e1', border: '1px solid #374151', borderRadius: '8px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}
               >
                 Cancelar
@@ -3038,7 +3624,7 @@ export const AdminCalendarioDeudas: React.FC = () => {
                 disabled={procesandoAccion}
                 style={{ padding: '9px 20px', backgroundColor: '#eab308', color: '#000', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 800, cursor: procesandoAccion ? 'not-allowed' : 'pointer' }}
               >
-                {procesandoAccion ? 'Guardando...' : 'Crear Columna'}
+                {procesandoAccion ? 'Guardando...' : editingColId ? 'Guardar Cambios' : 'Crear y Sincronizar'}
               </button>
             </div>
           </div>

@@ -939,14 +939,19 @@ export const ListaMoraResidente: React.FC = () => {
                           {d.desglose.cuotas_especiales?.map(ce => (
                             <div key={ce.id} style={{
                               display: 'inline-flex', alignItems: 'center', gap: '6px',
-                              background: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.12)',
+                              background: 'rgba(234, 179, 8, 0.1)', border: '1px solid rgba(234, 179, 8, 0.3)',
                               borderRadius: '8px', padding: '4px 9px', fontSize: '11px'
                             }}>
-                              <span>⭐</span>
+                              <span>✨</span>
                               <span style={{ color: '#cbd5e1' }}>{ce.label}:</span>
                               <strong style={{ color: ce.moneda === 'BS' ? '#facc15' : '#60a5fa' }}>
                                 {ce.moneda === 'BS' ? `Bs. ${fmtBs(ce.monto)}` : `$${fmtUsd(ce.monto)} USD`}
                               </strong>
+                              {ce.fechaLimite && (
+                                <span style={{ color: '#94a3b8', fontSize: '10px' }}>
+                                  (📅 Límite {ce.fechaLimite})
+                                </span>
+                              )}
                             </div>
                           ))}
                         </div>

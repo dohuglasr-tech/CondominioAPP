@@ -362,7 +362,7 @@ export const AdminGas: React.FC = () => {
         montoBs: da ? da.montoBs : 0,
         montoUsd: da ? da.montoUsd : 0,
         moneda: da ? da.moneda : ('BS' as 'BS' | 'USD'),
-        estado: da ? da.estado : ('pagado' as 'pendiente' | 'pagado'),
+        estado: da ? da.estado : ('pagado' as 'pendiente' | 'pagado' | 'en_verificacion'),
         nota: da?.nota || ''
       }
 
@@ -371,7 +371,7 @@ export const AdminGas: React.FC = () => {
         montoBs: number
         montoUsd: number
         moneda: 'BS' | 'USD'
-        estado: 'pendiente' | 'pagado' | 'sin_cuota'
+        estado: 'pendiente' | 'pagado' | 'en_verificacion' | 'sin_cuota'
         referencia?: string
         metodoPago?: string
         fechaPago?: string
@@ -2429,14 +2429,29 @@ export const AdminGas: React.FC = () => {
                                 padding: '8px 10px',
                                 textAlign: 'center',
                                 borderRight: '2px solid rgba(234, 88, 12, 0.4)',
-                                backgroundColor: fila.deuda_anterior.estado === 'pendiente' && fila.deuda_anterior.montoBs > 0
-                                  ? 'rgba(234, 88, 12, 0.1)'
-                                  : 'transparent',
+                                backgroundColor: fila.deuda_anterior.estado === 'en_verificacion'
+                                  ? 'rgba(245, 158, 11, 0.1)'
+                                  : (fila.deuda_anterior.estado === 'pendiente' && fila.deuda_anterior.montoBs > 0
+                                    ? 'rgba(234, 88, 12, 0.1)'
+                                    : 'transparent'),
                                 cursor: 'pointer'
                               }}
                               title="Clic para modificar o eliminar deuda anterior"
                             >
-                              {fila.deuda_anterior.estado === 'pendiente' && (fila.deuda_anterior.montoBs > 0 || fila.deuda_anterior.montoUsd > 0) ? (
+                              {fila.deuda_anterior.estado === 'en_verificacion' && (fila.deuda_anterior.montoBs > 0 || fila.deuda_anterior.montoUsd > 0) ? (
+                                <span style={{
+                                  display: 'inline-block',
+                                  backgroundColor: 'rgba(245, 158, 11, 0.2)',
+                                  color: '#fbbf24',
+                                  border: '1px solid rgba(245, 158, 11, 0.4)',
+                                  padding: '3px 8px',
+                                  borderRadius: '6px',
+                                  fontSize: '10.5px',
+                                  fontWeight: 800
+                                }}>
+                                  ⏳ {fila.deuda_anterior.moneda === 'BS' ? `Bs. ${fmtBs(fila.deuda_anterior.montoBs)}` : `$${fmtUsd(fila.deuda_anterior.montoUsd)}`}
+                                </span>
+                              ) : fila.deuda_anterior.estado === 'pendiente' && (fila.deuda_anterior.montoBs > 0 || fila.deuda_anterior.montoUsd > 0) ? (
                                 <span style={{
                                   display: 'inline-block',
                                   backgroundColor: 'rgba(234, 88, 12, 0.25)',
@@ -2458,6 +2473,7 @@ export const AdminGas: React.FC = () => {
                             {MESES_CONFIG.map(col => {
                               const mes = fila.meses[col.mesKey]
                               const isPagado = mes?.estado === 'pagado'
+                              const isVerificacion = mes?.estado === 'en_verificacion'
                               const isPendiente = mes?.estado === 'pendiente' && ((mes.montoBs || 0) > 0 || (mes.montoUsd || 0) > 0)
 
                               return (
@@ -2470,12 +2486,16 @@ export const AdminGas: React.FC = () => {
                                     borderRight: '1px solid rgba(255, 255, 255, 0.04)',
                                     backgroundColor: isPendiente
                                       ? 'rgba(239, 68, 68, 0.08)'
+                                      : isVerificacion
+                                      ? 'rgba(245, 158, 11, 0.09)'
                                       : isPagado
                                       ? 'rgba(16, 185, 129, 0.06)'
                                       : 'transparent',
                                     cursor: 'pointer'
                                   }}
-                                  title={`Clic para editar cuota o registrar pago de ${col.nombreCompleto}`}
+                                  title={isVerificacion
+                                    ? `Pago en verificación (Ref: ${mes.referencia || 'S/R'}). Aprueba o rechaza en Reportes de Pago.`
+                                    : `Clic para editar cuota o registrar pago de ${col.nombreCompleto}`}
                                 >
                                   {isPagado ? (
                                     <span style={{
@@ -2491,6 +2511,19 @@ export const AdminGas: React.FC = () => {
                                       fontSize: '12px'
                                     }}>
                                       ✓
+                                    </span>
+                                  ) : isVerificacion ? (
+                                    <span style={{
+                                      display: 'inline-block',
+                                      backgroundColor: 'rgba(245, 158, 11, 0.2)',
+                                      color: '#fbbf24',
+                                      border: '1px solid rgba(245, 158, 11, 0.38)',
+                                      padding: '3px 6px',
+                                      borderRadius: '6px',
+                                      fontSize: '10.5px',
+                                      fontWeight: 800
+                                    }}>
+                                      ⏳ {mes.moneda === 'BS' ? `Bs. ${fmtBs(mes.montoBs)}` : `$${fmtUsd(mes.montoUsd)}`}
                                     </span>
                                   ) : isPendiente ? (
                                     <span style={{
