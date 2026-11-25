@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { getTenantStorageKey } from './tenantContext'
 import { getHoyVE } from '../utils/fechaVE'
 import { getErrorMessage } from '../utils/logger'
 
@@ -184,7 +185,7 @@ const CASOS_SEMILLA: CasoComunidad[] = [
 
 function getLocalCache(): CasoComunidad[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
+    const raw = localStorage.getItem(getTenantStorageKey(STORAGE_KEY))
     if (raw) {
       const parsed = JSON.parse(raw)
       if (Array.isArray(parsed) && parsed.length > 0) {
@@ -204,7 +205,7 @@ function saveLocalCache(casos: CasoComunidad[]) {
       const t = c.tipo || ''
       return !t.startsWith('config_') && !t.startsWith('configuracion_') && !t.startsWith('gas_') && !t.startsWith('comunicado_global_')
     })
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(clean))
+    localStorage.setItem(getTenantStorageKey(STORAGE_KEY), JSON.stringify(clean))
   } catch (e) {
     console.warn('[casosService] Error saving localStorage cache:', e)
   }

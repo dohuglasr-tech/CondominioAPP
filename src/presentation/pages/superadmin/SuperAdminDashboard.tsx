@@ -1050,7 +1050,7 @@ export const SuperAdminDashboard: React.FC = () => {
               </div>
             ) : (
               <div style={{
-                display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+                display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))',
                 gap: '16px', marginBottom: '24px'
               }}>
                 {buildings.map(b => {
@@ -2252,7 +2252,7 @@ export const SuperAdminDashboard: React.FC = () => {
               </div>
             )}
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: '20px' }}>
               {/* Card 1: Banner Global */}
               <div style={{
                 background: 'rgba(10, 14, 23, 0.8)', border: '1px solid rgba(255, 255, 255, 0.08)',

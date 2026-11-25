@@ -281,11 +281,12 @@ export const Layout: React.FC = () => {
       <header className="mobile-top-bar">
         <div className="mobile-top-inner">
           {/* Izquierda: Hamburguesa + Logo + Apto */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flex: 1, overflow: 'hidden' }}>
             <button
               onClick={() => setDrawerOpen(true)}
               className="mobile-hamburger-btn"
               title="Abrir menú"
+              style={{ flexShrink: 0 }}
             >
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="3" y1="12" x2="21" y2="12"/>
@@ -296,7 +297,7 @@ export const Layout: React.FC = () => {
 
             {/* Logo en círculo naranja + Título */}
             <div
-              style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}
+              style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', minWidth: 0, overflow: 'hidden' }}
               onClick={() => navigate('/')}
             >
               <div className="mobile-logo-circle">
@@ -312,7 +313,7 @@ export const Layout: React.FC = () => {
                   </svg>
                 )}
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
                 <span className="mobile-header-building">{edificioNombre.toUpperCase()}</span>
                 <span className="mobile-header-apto">
                   {aptoNumero ? `APTO ${aptoNumero} · RESIDENTE` : 'PORTAL RESIDENTE'}
@@ -322,7 +323,7 @@ export const Layout: React.FC = () => {
           </div>
 
           {/* Derecha: Campanita de Notificaciones + Toggle Tema + Chat + Avatar */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
             {/* Toggle Modo Claro / Oscuro */}
             <ThemeToggle variant="icon" />
 
@@ -515,6 +516,20 @@ export const Layout: React.FC = () => {
                   {SVG.locales}
                 </div>
                 <span className={`drawer-label ${pathname.startsWith('/locales') ? 'active' : ''}`}>Locales</span>
+              </button>
+
+              {/* 7. Fondo de Reserva */}
+              <button
+                className="drawer-item-btn"
+                onClick={() => {
+                  setDrawerOpen(false)
+                  navigate('/fondo-reserva')
+                }}
+              >
+                <div className={`drawer-circle-icon ${pathname.startsWith('/fondo-reserva') ? 'active' : ''}`}>
+                  {SVG.fondoReserva}
+                </div>
+                <span className={`drawer-label ${pathname.startsWith('/fondo-reserva') ? 'active' : ''}`}>Reserva</span>
               </button>
             </div>
           </div>
@@ -851,6 +866,8 @@ export const Layout: React.FC = () => {
         .sidebar-user-info {
           display: flex;
           flex-direction: column;
+          min-width: 0;
+          flex: 1;
           overflow: hidden;
         }
         .sidebar-user-name {
@@ -1198,9 +1215,11 @@ export const Layout: React.FC = () => {
         /* ─── MAIN ──────────────────────────────────────── */
         .layout-main {
           flex: 1;
+          min-width: 0;
           height: 100vh;
           height: 100dvh;
           overflow-y: auto;
+          overflow-x: hidden;
           -webkit-overflow-scrolling: touch;
           position: relative;
           background-color: #090a0d;

@@ -604,7 +604,7 @@ export const AdminLocales: React.FC = () => {
           </button>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '16px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 320px), 1fr))', gap: '16px' }}>
           {localesFiltrados.map(local => {
             const tieneDeuda = (Number(local.deuda_actual_usd) || 0) > 0
             const esActivo = local.estado === 'activo'

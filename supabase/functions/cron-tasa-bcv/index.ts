@@ -95,20 +95,29 @@ async function recalcularCuotasEnBs(nuevaTasa: number): Promise<void> {
 
   if (error || !cuotas?.length) return;
 
-  // Actualizar lote a lote (máx 500 por llamada)
-  const updates = cuotas.map((c: any) => ({
-    id: c.id,
-    saldo_bs: parseFloat((c.saldo_usd * nuevaTasa).toFixed(2)),
-    monto_bs: parseFloat((c.saldo_usd * nuevaTasa).toFixed(2)),
-    tasa_bcv_usada: nuevaTasa,
-    updated_at: new Date().toISOString(),
-  }));
+  const ahora = new Date().toISOString();
 
-  // Upsert en lotes de 100
-  for (let i = 0; i < updates.length; i += 100) {
-    await supabase
-      .from("cuotas_apartamento")
-      .upsert(updates.slice(i, i + 100));
+  // Actualizar por ID en lotes concurrentes de 25 para evitar errores de columnas NOT NULL en upsert
+  for (let i = 0; i < cuotas.length; i += 25) {
+    const batch = cuotas.slice(i, i + 25);
+    const results = await Promise.all(
+      batch.map((c: any) =>
+        supabase
+          .from("cuotas_apartamento")
+          .update({
+            saldo_bs: parseFloat((c.saldo_usd * nuevaTasa).toFixed(2)),
+            monto_bs: parseFloat((c.saldo_usd * nuevaTasa).toFixed(2)),
+            tasa_bcv_usada: nuevaTasa,
+            updated_at: ahora,
+          })
+          .eq("id", c.id)
+      )
+    );
+
+    const firstErr = results.find((r) => r.error)?.error;
+    if (firstErr) {
+      console.warn("[cron-tasa-bcv] Error recalculando lote de cuotas:", firstErr.message);
+    }
   }
 }
 

@@ -5,7 +5,7 @@ import { logger } from '../../../utils/logger'
 import {
   ChatMensaje,
   ChatEstadoConfig,
-  CHAT_CHANNEL_NAME,
+  getChatChannelName,
   obtenerMensajes,
   obtenerEstadoSoloLectura,
   cambiarEstadoSoloLectura,
@@ -67,11 +67,12 @@ export const AdminChat: React.FC = () => {
     cargarDatos()
 
     // 1. Canal Supabase Realtime para Broadcast directo entre pantallas
-    const existing = supabase.getChannels().find(c => c.topic === `realtime:${CHAT_CHANNEL_NAME}`)
+    const channelName = getChatChannelName()
+    const existing = supabase.getChannels().find(c => c.topic === `realtime:${channelName}`)
     if (existing) {
       try { supabase.removeChannel(existing) } catch (err) { logger.debug('AdminChat', 'Fallback limpiando canal realtime', err) }
     }
-    const channel = supabase.channel(CHAT_CHANNEL_NAME)
+    const channel = supabase.channel(channelName)
 
     channel
       .on('broadcast', { event: 'nuevo_mensaje' }, ({ payload }) => {

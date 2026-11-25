@@ -229,38 +229,60 @@ async function resolverCuentaResidenteServidor(
   supabaseAdmin: any,
   rawIdentifier: string,
   fallbackNombre?: string,
-  fallbackApto?: string
+  fallbackApto?: string,
+  targetEdificioId?: string | null,
+  targetSlug?: string | null
 ): Promise<{
   email: string;
   nombre?: string;
   apto?: string;
   edificioId: string | null;
 }> {
+  let scopedEdificioId: string | null =
+    typeof targetEdificioId === "string" && targetEdificioId.trim()
+      ? targetEdificioId.trim()
+      : null;
+
+  if (!scopedEdificioId && typeof targetSlug === "string" && targetSlug.trim()) {
+    const { data: edifBySlug } = await supabaseAdmin
+      .from("configuracion_edificio")
+      .select("id")
+      .eq("slug", targetSlug.trim().toLowerCase())
+      .limit(1)
+      .maybeSingle();
+    if (edifBySlug?.id) {
+      scopedEdificioId = edifBySlug.id;
+    }
+  }
+
   const clean = rawIdentifier.trim();
   if (clean.includes("@")) {
     return {
       email: clean.toLowerCase(),
       nombre: fallbackNombre,
       apto: fallbackApto,
-      edificioId: null,
+      edificioId: scopedEdificioId,
     };
   }
 
   let email = "";
   let nombre = fallbackNombre;
   let apto = fallbackApto;
-  let edificioId: string | null = null;
+  let edificioId: string | null = scopedEdificioId;
 
-  const { data: aptos } = await supabaseAdmin
+  let aptoQuery = supabaseAdmin
     .from("apartamentos")
     .select("*")
-    .ilike("numero", clean)
-    .limit(1);
+    .ilike("numero", clean);
+  if (scopedEdificioId) {
+    aptoQuery = aptoQuery.eq("edificio_id", scopedEdificioId);
+  }
+  const { data: aptos } = await aptoQuery.limit(1);
 
   if (aptos && aptos.length > 0) {
     const aptoRow: any = aptos[0];
     apto = aptoRow.numero;
-    edificioId = aptoRow.edificio_id || null;
+    edificioId = aptoRow.edificio_id || scopedEdificioId || null;
 
     const { data: perfApto } = await supabaseAdmin
       .from("perfiles")
@@ -275,16 +297,20 @@ async function resolverCuentaResidenteServidor(
   } else {
     const digits = clean.replace(/[^0-9]/g, "");
     if (digits.length >= 5) {
-      const { data: perfCed } = await supabaseAdmin
+      let perfCedQuery = supabaseAdmin
         .from("perfiles")
-        .select("nombre_completo, propietario_email, email, apartamento_id, apartamento:apartamento_id(numero)")
-        .or(`cedula.ilike.%${digits}%,propietario_cedula.ilike.%${digits}%`)
-        .limit(1);
+        .select("nombre_completo, propietario_email, email, apartamento_id, edificio_id, apartamento:apartamento_id(numero)")
+        .or(`cedula.ilike.%${digits}%,propietario_cedula.ilike.%${digits}%`);
+      if (scopedEdificioId) {
+        perfCedQuery = perfCedQuery.eq("edificio_id", scopedEdificioId);
+      }
+      const { data: perfCed } = await perfCedQuery.limit(1);
 
       if (perfCed && perfCed.length > 0) {
         const p: any = perfCed[0];
         nombre = p.nombre_completo || nombre;
         apto = p.apartamento?.numero || apto;
+        edificioId = p.edificio_id || scopedEdificioId || null;
         email = String(p.propietario_email || p.email || "").trim().toLowerCase();
       }
     }
@@ -342,7 +368,14 @@ Deno.serve(async (req: Request) => {
         );
       }
 
-      const resolved = await resolverCuentaResidenteServidor(supabaseAdmin, rawIdentifier);
+      const resolved = await resolverCuentaResidenteServidor(
+        supabaseAdmin,
+        rawIdentifier,
+        undefined,
+        undefined,
+        body.edificioId,
+        body.tenantSlug
+      );
       if (!resolved.email || !resolved.email.includes("@")) {
         return new Response(
           JSON.stringify({ ok: false, error: "Código incorrecto o expirado." }),
@@ -399,7 +432,9 @@ Deno.serve(async (req: Request) => {
         supabaseAdmin,
         rawIdentifier,
         body.nombre,
-        body.apto
+        body.apto,
+        body.edificioId,
+        body.tenantSlug
       );
       const emailDestino = resolved.email;
       const nombreDestino = resolved.nombre;

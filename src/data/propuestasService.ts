@@ -1,9 +1,8 @@
+import { supabase } from './supabase'
 import { getErrorMessage } from '../utils/logger'
-// supabase import reservado para cuando se conecte la DB
-// import { supabase } from './supabase'
 
 export interface OpcionVoto {
-  id: string
+  id: 'favor' | 'contra' | 'abstencion'
   texto: string
   votos_count: number
 }
@@ -13,55 +12,236 @@ export interface Propuesta {
   titulo: string
   descripcion: string
   opciones: OpcionVoto[]
-  fecha_cierre: string
-  estado: 'activa' | 'cerrada'
+  fecha_cierre: string | null
+  estado: 'activa' | 'cerrada' | 'aprobada' | 'rechazada'
   created_at: string
+  mi_voto?: string | null
 }
 
-export async function obtenerPropuestasActivas(): Promise<{ data: Propuesta[]; error: string | null }> {
-  try {
-    // Cuando esté lista la BDD:
-    // const { data, error } = await supabase.from('propuestas').select('*').order('created_at', { ascending: false })
-    
-    // Mock Data mientras se conecta la DB
-    const mockPropuestas: Propuesta[] = [
-      {
-        id: '1',
-        titulo: 'Pintar la fachada principal',
-        descripcion: 'Se propone utilizar el fondo de reserva para pintar la fachada del edificio que da hacia la avenida principal. ¿Estás de acuerdo?',
-        opciones: [
-          { id: 'op1', texto: 'Sí, estoy de acuerdo', votos_count: 12 },
-          { id: 'op2', texto: 'No, priorizar filtraciones', votos_count: 5 },
-          { id: 'op3', texto: 'Me abstengo', votos_count: 1 }
-        ],
-        fecha_cierre: '2026-10-15T23:59:59Z',
-        estado: 'activa',
-        created_at: '2026-09-20T10:00:00Z'
-      },
-      {
-        id: '2',
-        titulo: 'Cambio de empresa de seguridad',
-        descripcion: 'Debido a las recientes fallas, se ha recibido una propuesta de la empresa "SecureV" con un costo similar.',
-        opciones: [
-          { id: 'opA', texto: 'Aprobar cambio a SecureV', votos_count: 22 },
-          { id: 'opB', texto: 'Mantener empresa actual', votos_count: 8 }
-        ],
-        fecha_cierre: '2026-09-30T23:59:59Z',
-        estado: 'activa',
-        created_at: '2026-09-22T14:30:00Z'
-      }
-    ]
+interface VotoRow {
+  propuesta_id?: string
+  apartamento_id?: string | null
+  voto: string
+}
 
-    return { data: mockPropuestas, error: null }
+/**
+ * Construye el desglose de opciones estándar y sus conteos reales
+ * a partir de las filas de `votos_propuestas`.
+ */
+export function construirOpcionesPropuesta(votos: Array<{ voto: string }>): OpcionVoto[] {
+  let favor = 0
+  let contra = 0
+  let abstencion = 0
+
+  for (const v of votos) {
+    if (v.voto === 'favor') favor++
+    else if (v.voto === 'contra') contra++
+    else if (v.voto === 'abstencion') abstencion++
+  }
+
+  return [
+    { id: 'favor', texto: 'Sí, estoy de acuerdo', votos_count: favor },
+    { id: 'contra', texto: 'No estoy de acuerdo', votos_count: contra },
+    { id: 'abstencion', texto: 'Me abstengo', votos_count: abstencion },
+  ]
+}
+
+async function mapPropuestasConVotos(
+  rows: Array<{
+    id: string
+    titulo: string
+    descripcion: string
+    estado: string
+    fecha_cierre: string | null
+    created_at: string
+  }>,
+  apartamentoId?: string
+): Promise<Propuesta[]> {
+  if (rows.length === 0) return []
+
+  const ids = rows.map(r => r.id)
+  const { data: votosRows } = await supabase
+    .from('votos_propuestas')
+    .select('propuesta_id, apartamento_id, voto')
+    .in('propuesta_id', ids)
+
+  const votosPorProp = new Map<string, VotoRow[]>()
+  ;((votosRows as VotoRow[] | null) || []).forEach(v => {
+    if (!v.propuesta_id) return
+    const list = votosPorProp.get(v.propuesta_id) || []
+    list.push(v)
+    votosPorProp.set(v.propuesta_id, list)
+  })
+
+  return rows.map(r => {
+    const votosProp = votosPorProp.get(r.id) || []
+    const miVotoRow = apartamentoId
+      ? votosProp.find(v => v.apartamento_id === apartamentoId)
+      : undefined
+    return {
+      id: r.id,
+      titulo: r.titulo,
+      descripcion: r.descripcion,
+      opciones: construirOpcionesPropuesta(votosProp),
+      fecha_cierre: r.fecha_cierre,
+      estado: (r.estado as Propuesta['estado']) || 'activa',
+      created_at: r.created_at,
+      mi_voto: miVotoRow?.voto ?? null,
+    }
+  })
+}
+
+export async function obtenerPropuestasActivas(
+  apartamentoId?: string
+): Promise<{ data: Propuesta[]; error: string | null }> {
+  try {
+    const { data, error } = await supabase
+      .from('propuestas')
+      .select('id, titulo, descripcion, estado, fecha_cierre, created_at')
+      .eq('estado', 'activa')
+      .order('created_at', { ascending: false })
+
+    if (error) return { data: [], error: error.message }
+
+    const mapped = await mapPropuestasConVotos(data || [], apartamentoId)
+    return { data: mapped, error: null }
   } catch (err: unknown) {
     return { data: [], error: getErrorMessage(err) }
   }
 }
 
-export async function emitirVoto(_propuestaId: string, _opcionId: string, _apartamentoId: string): Promise<{ success: boolean; error: string | null }> {
+export async function obtenerTodasLasPropuestasAdmin(): Promise<{ data: Propuesta[]; error: string | null }> {
   try {
-    // Insert en tabla `votos_propuestas`
-    // const { error } = await supabase.from('votos_propuestas').insert({ propuesta_id: propuestaId, opcion_id: opcionId, apartamento_id: apartamentoId })
+    const { data, error } = await supabase
+      .from('propuestas')
+      .select('id, titulo, descripcion, estado, fecha_cierre, created_at')
+      .order('created_at', { ascending: false })
+
+    if (error) return { data: [], error: error.message }
+
+    const mapped = await mapPropuestasConVotos(data || [])
+    return { data: mapped, error: null }
+  } catch (err: unknown) {
+    return { data: [], error: getErrorMessage(err) }
+  }
+}
+
+export async function crearPropuestaAdmin(params: {
+  titulo: string
+  descripcion: string
+  fecha_cierre?: string | null
+  autor_id?: string | null
+}): Promise<{ data: Propuesta | null; error: string | null }> {
+  try {
+    const tituloLimpio = params.titulo.trim()
+    const descripcionLimpia = params.descripcion.trim()
+    if (!tituloLimpio || !descripcionLimpia) {
+      return { data: null, error: 'El título y la descripción son obligatorios.' }
+    }
+
+    let autorId = params.autor_id || null
+    if (!autorId) {
+      const { data: userData } = await supabase.auth.getUser()
+      autorId = userData?.user?.id || null
+    }
+
+    const { data, error } = await supabase
+      .from('propuestas')
+      .insert({
+        titulo: tituloLimpio,
+        descripcion: descripcionLimpia,
+        fecha_cierre: params.fecha_cierre ? new Date(`${params.fecha_cierre}T23:59:59`).toISOString() : null,
+        estado: 'activa',
+        autor_id: autorId,
+      })
+      .select('id, titulo, descripcion, estado, fecha_cierre, created_at')
+      .single()
+
+    if (error) return { data: null, error: error.message }
+
+    return {
+      data: {
+        id: data.id,
+        titulo: data.titulo,
+        descripcion: data.descripcion,
+        opciones: construirOpcionesPropuesta([]),
+        fecha_cierre: data.fecha_cierre,
+        estado: (data.estado as Propuesta['estado']) || 'activa',
+        created_at: data.created_at,
+      },
+      error: null,
+    }
+  } catch (err: unknown) {
+    return { data: null, error: getErrorMessage(err) }
+  }
+}
+
+export async function cambiarEstadoPropuestaAdmin(
+  propuestaId: string,
+  estado: 'activa' | 'cerrada'
+): Promise<{ success: boolean; error: string | null }> {
+  try {
+    const { error } = await supabase
+      .from('propuestas')
+      .update({ estado })
+      .eq('id', propuestaId)
+
+    if (error) return { success: false, error: error.message }
+    return { success: true, error: null }
+  } catch (err: unknown) {
+    return { success: false, error: getErrorMessage(err) }
+  }
+}
+
+export async function eliminarPropuestaAdmin(
+  propuestaId: string
+): Promise<{ success: boolean; error: string | null }> {
+  try {
+    const { error } = await supabase
+      .from('propuestas')
+      .delete()
+      .eq('id', propuestaId)
+
+    if (error) return { success: false, error: error.message }
+    return { success: true, error: null }
+  } catch (err: unknown) {
+    return { success: false, error: getErrorMessage(err) }
+  }
+}
+
+export async function emitirVoto(
+  propuestaId: string,
+  opcionId: string,
+  apartamentoId: string,
+  usuarioId?: string
+): Promise<{ success: boolean; error: string | null }> {
+  try {
+    if (!apartamentoId) {
+      return { success: false, error: 'Tu usuario no tiene un apartamento asignado para votar.' }
+    }
+
+    let uid = usuarioId || null
+    if (!uid) {
+      const { data: userData } = await supabase.auth.getUser()
+      uid = userData?.user?.id || null
+    }
+
+    const { error } = await supabase
+      .from('votos_propuestas')
+      .insert({
+        propuesta_id: propuestaId,
+        apartamento_id: apartamentoId,
+        usuario_id: uid,
+        voto: opcionId,
+      })
+
+    if (error) {
+      if (error.code === '23505') {
+        return { success: false, error: 'Este apartamento ya registró su voto en esta propuesta.' }
+      }
+      return { success: false, error: error.message }
+    }
+
     return { success: true, error: null }
   } catch (err: unknown) {
     return { success: false, error: getErrorMessage(err) }

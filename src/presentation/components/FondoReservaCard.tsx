@@ -93,7 +93,7 @@ export const FondoReservaCard = React.memo<FondoReservaCardProps>(({
           marginBottom: '16px',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: '1 1 240px', minWidth: 0 }}>
           <div
             style={{
               width: '44px',
@@ -110,7 +110,7 @@ export const FondoReservaCard = React.memo<FondoReservaCardProps>(({
           >
             🏦
           </div>
-          <div>
+          <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
               <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: textPrimary }}>
                 Estatus del Fondo de Reserva
@@ -129,7 +129,7 @@ export const FondoReservaCard = React.memo<FondoReservaCardProps>(({
                 Transparencia · Solo Lectura
               </span>
             </div>
-            <p style={{ margin: '3px 0 0', fontSize: '12px', color: textMuted }}>
+            <p style={{ margin: '3px 0 0', fontSize: '12px', color: textMuted, overflowWrap: 'break-word' }}>
               Fondo de Reserva Principal: {loading ? 'Cargando saldos...' : resumenUbicacionesTexto}
             </p>
           </div>
@@ -159,7 +159,7 @@ export const FondoReservaCard = React.memo<FondoReservaCardProps>(({
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(175px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 165px), 1fr))',
           gap: '12px',
           marginBottom: '16px',
         }}
@@ -172,24 +172,25 @@ export const FondoReservaCard = React.memo<FondoReservaCardProps>(({
             border: isLight ? '1px solid #bae6fd' : '1px solid rgba(56, 189, 248, 0.3)',
             borderRadius: '14px',
             padding: '12px 14px',
+            minWidth: 0,
           }}
         >
           <div style={{ fontSize: '10.5px', fontWeight: 800, textTransform: 'uppercase', color: isLight ? '#0369a1' : '#7dd3fc' }}>
             Total Consolidado (BCV Bs. {totales.tasaBcvUsada.toFixed(2)})
           </div>
-          <div style={{ fontSize: '20px', fontWeight: 900, color: textPrimary, marginTop: '4px' }}>
+          <div style={{ fontSize: '20px', fontWeight: 900, color: textPrimary, marginTop: '4px', overflowWrap: 'anywhere' }}>
             {mask(`$${fmtUsd(totales.totalConsolidadoUsd)} USD`)}
           </div>
-          <div style={{ fontSize: '11.5px', fontWeight: 600, color: textMuted, marginTop: '2px' }}>
+          <div style={{ fontSize: '11.5px', fontWeight: 600, color: textMuted, marginTop: '2px', overflowWrap: 'anywhere' }}>
             {mask(`≈ Bs. ${fmtBs(totales.totalConsolidadoBs)}`)}
           </div>
         </div>
 
-        <div style={{ background: innerBg, border: innerBorder, borderRadius: '14px', padding: '12px 14px' }}>
+        <div style={{ background: innerBg, border: innerBorder, borderRadius: '14px', padding: '12px 14px', minWidth: 0 }}>
           <div style={{ fontSize: '10.5px', fontWeight: 800, textTransform: 'uppercase', color: textMuted }}>
             Disponible Nativo USD
           </div>
-          <div style={{ fontSize: '18px', fontWeight: 800, color: isLight ? '#047857' : '#4ade80', marginTop: '4px' }}>
+          <div style={{ fontSize: '18px', fontWeight: 800, color: isLight ? '#047857' : '#4ade80', marginTop: '4px', overflowWrap: 'anywhere' }}>
             {mask(`$${fmtUsd(totales.totalNativoUsd)}`)}
           </div>
           <div style={{ fontSize: '11px', color: textMuted, marginTop: '2px' }}>
@@ -197,11 +198,11 @@ export const FondoReservaCard = React.memo<FondoReservaCardProps>(({
           </div>
         </div>
 
-        <div style={{ background: innerBg, border: innerBorder, borderRadius: '14px', padding: '12px 14px' }}>
+        <div style={{ background: innerBg, border: innerBorder, borderRadius: '14px', padding: '12px 14px', minWidth: 0 }}>
           <div style={{ fontSize: '10.5px', fontWeight: 800, textTransform: 'uppercase', color: textMuted }}>
             Disponible Nativo Bs.
           </div>
-          <div style={{ fontSize: '18px', fontWeight: 800, color: isLight ? '#b45309' : '#fbbf24', marginTop: '4px' }}>
+          <div style={{ fontSize: '18px', fontWeight: 800, color: isLight ? '#b45309' : '#fbbf24', marginTop: '4px', overflowWrap: 'anywhere' }}>
             {mask(`Bs. ${fmtBs(totales.totalNativoBs)}`)}
           </div>
           <div style={{ fontSize: '11px', color: textMuted, marginTop: '2px' }}>
@@ -233,14 +234,15 @@ export const FondoReservaCard = React.memo<FondoReservaCardProps>(({
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  gap: '12px',
+                  flexWrap: 'wrap',
+                  gap: '10px',
                   padding: '10px 12px',
                   backgroundColor: innerBg,
                   border: innerBorder,
                   borderRadius: '12px',
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: '1 1 180px', minWidth: 0 }}>
                   <span style={{ fontSize: '18px', flexShrink: 0 }}>
                     {TIPO_UBICACION_ICON[u.tipo] || '🏦'}
                   </span>
@@ -261,7 +263,7 @@ export const FondoReservaCard = React.memo<FondoReservaCardProps>(({
                       </span>
                     </div>
                     {u.descripcion && (
-                      <div style={{ fontSize: '11px', color: textMuted, marginTop: '1px' }}>{u.descripcion}</div>
+                      <div style={{ fontSize: '11px', color: textMuted, marginTop: '1px', overflowWrap: 'break-word' }}>{u.descripcion}</div>
                     )}
                   </div>
                 </div>
@@ -307,6 +309,7 @@ export const FondoReservaCard = React.memo<FondoReservaCardProps>(({
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
+                    flexWrap: 'wrap',
                     gap: '10px',
                     padding: '10px 12px',
                     backgroundColor: innerBg,
@@ -314,7 +317,7 @@ export const FondoReservaCard = React.memo<FondoReservaCardProps>(({
                     borderRadius: '12px',
                   }}
                 >
-                  <div style={{ minWidth: 0 }}>
+                  <div style={{ flex: '1 1 200px', minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                       <span
                         style={{
@@ -334,7 +337,7 @@ export const FondoReservaCard = React.memo<FondoReservaCardProps>(({
                         </span>
                       )}
                     </div>
-                    <div style={{ fontSize: '12.5px', fontWeight: 600, color: textPrimary, marginTop: '3px' }}>
+                    <div style={{ fontSize: '12.5px', fontWeight: 600, color: textPrimary, marginTop: '3px', overflowWrap: 'break-word' }}>
                       {m.descripcion}
                     </div>
                     <div style={{ fontSize: '10.5px', color: textMuted, marginTop: '2px' }}>

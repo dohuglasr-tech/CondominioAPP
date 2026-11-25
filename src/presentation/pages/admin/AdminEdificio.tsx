@@ -236,7 +236,7 @@ export const AdminEdificio: React.FC = () => {
       const res = await comprimirImagen(file, { maxWidth: 512, maxHeight: 512, quality: 0.85 })
       setLogoFile(res.file)
       setLogoPreview(URL.createObjectURL(res.file))
-    } catch (_) {
+    } catch {
       setLogoFile(file)
       const reader = new FileReader()
       reader.onload = ev => setLogoPreview(ev.target?.result as string)
@@ -542,7 +542,7 @@ export const AdminEdificio: React.FC = () => {
   return (
     <div style={{ padding: '32px 24px', height: '100%', overflowY: 'auto', boxSizing: 'border-box' }}>
       <style>{`
-        .admin-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .admin-grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
         @media (max-width: 768px) { .admin-grid-2 { grid-template-columns: 1fr; gap: 0px; } }
         .logo-drop-zone { transition: border-color 0.2s, background-color 0.2s; }
         .logo-drop-zone:hover { border-color: var(--color-accent, #f97316) !important; background-color: var(--color-accent-light, rgba(249, 115, 22, 0.05)) !important; }
@@ -586,7 +586,7 @@ export const AdminEdificio: React.FC = () => {
       </div>
 
       {/* TABS DE NAVEGACIÓN */}
-      <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid rgba(255, 255, 255, 0.1)', paddingBottom: '12px', marginBottom: '28px' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', borderBottom: '1px solid rgba(255, 255, 255, 0.1)', paddingBottom: '12px', marginBottom: '28px' }}>
         <button
           type="button"
           onClick={() => setActiveTab('edificio')}

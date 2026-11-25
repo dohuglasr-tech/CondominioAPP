@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { notificarApartamento } from './notificacionesService'
+import { getTenantStorageKey } from './tenantContext'
 import { comprimirImagen } from '../utils/imageCompressor'
 import { logger, getErrorMessage } from '../utils/logger'
 
@@ -282,7 +283,7 @@ export async function obtenerReportesResidente(
 ): Promise<{ data: ReporteItem[]; error: string | null }> {
   try {
     // 1. Consultar tabla falencias en Supabase
-    let query = supabase
+    const query = supabase
       .from('falencias')
       .select('id, titulo, descripcion, ubicacion, prioridad, estado, foto_url, creado_por, created_at, updated_at')
       .order('created_at', { ascending: false })
@@ -321,7 +322,7 @@ export async function obtenerReportesResidente(
 
       // Guardar en cache local para uso offline
       try {
-        localStorage.setItem(LOCAL_STORAGE_KEY_REPORTES, JSON.stringify(mapped))
+        localStorage.setItem(getTenantStorageKey(LOCAL_STORAGE_KEY_REPORTES), JSON.stringify(mapped))
       } catch (err) { logger.debug('reportesService', 'Fallback controlado', err) }
 
       return { data: filtrados, error: null }
@@ -332,7 +333,7 @@ export async function obtenerReportesResidente(
 
   // Fallback local
   try {
-    const raw = localStorage.getItem(LOCAL_STORAGE_KEY_REPORTES)
+    const raw = localStorage.getItem(getTenantStorageKey(LOCAL_STORAGE_KEY_REPORTES))
     if (raw) {
       const parsed: ReporteItem[] = JSON.parse(raw)
       return { data: parsed, error: null }
@@ -386,7 +387,7 @@ export async function obtenerTodosLosReportesAdmin(): Promise<{ data: ReporteIte
       })
 
       try {
-        localStorage.setItem(LOCAL_STORAGE_KEY_REPORTES, JSON.stringify(mapped))
+        localStorage.setItem(getTenantStorageKey(LOCAL_STORAGE_KEY_REPORTES), JSON.stringify(mapped))
       } catch (err) { logger.debug('reportesService', 'Fallback controlado', err) }
 
       return { data: mapped, error: null }
@@ -397,7 +398,7 @@ export async function obtenerTodosLosReportesAdmin(): Promise<{ data: ReporteIte
 
   // Fallback local
   try {
-    const raw = localStorage.getItem(LOCAL_STORAGE_KEY_REPORTES)
+    const raw = localStorage.getItem(getTenantStorageKey(LOCAL_STORAGE_KEY_REPORTES))
     if (raw) {
       return { data: JSON.parse(raw), error: null }
     }
@@ -470,9 +471,10 @@ export async function crearReporte(params: {
 
     // Actualizar cache local
     try {
-      const raw = localStorage.getItem(LOCAL_STORAGE_KEY_REPORTES)
+      const storageKey = getTenantStorageKey(LOCAL_STORAGE_KEY_REPORTES)
+      const raw = localStorage.getItem(storageKey)
       const list: ReporteItem[] = raw ? JSON.parse(raw) : []
-      localStorage.setItem(LOCAL_STORAGE_KEY_REPORTES, JSON.stringify([itemCreado, ...list]))
+      localStorage.setItem(storageKey, JSON.stringify([itemCreado, ...list]))
     } catch (err) { logger.debug('reportesService', 'Fallback controlado', err) }
 
     if (insertError) {

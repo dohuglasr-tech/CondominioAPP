@@ -496,8 +496,8 @@ export const GasResidente: React.FC = () => {
             padding: '24px',
             boxShadow: isSolventeGas ? '0 10px 30px rgba(34, 197, 94, 0.08)' : '0 10px 30px rgba(239, 68, 68, 0.12)'
           }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-              <span style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: '#a1a1aa', letterSpacing: '0.6px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: '14px' }}>
+              <span style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: '#a1a1aa', letterSpacing: '0.6px', minWidth: 0 }}>
                 DEUDA ESPECÍFICA DE GAS · APTO {aptoNumero}
               </span>
               <span style={{
@@ -553,8 +553,8 @@ export const GasResidente: React.FC = () => {
               padding: '16px',
               marginBottom: '16px'
             }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                <span style={{ fontSize: '11px', fontWeight: 800, color: '#38bdf8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: '#38bdf8', textTransform: 'uppercase', letterSpacing: '0.5px', minWidth: 0 }}>
                   ⚡ SINCRONIZACIÓN CON LA DEUDA TOTAL DEL APARTAMENTO
                 </span>
                 <span style={{ fontSize: '10px', color: '#a1a1aa' }}>

@@ -140,7 +140,7 @@ export const PerfilResidente: React.FC = () => {
             </svg>
           )}
         </div>
-        <div>
+        <div style={{ minWidth: 0, flex: 1 }}>
           <h1 style={s.name}>{nombre}</h1>
           <p style={s.sub}>Residente · {edificioNombre}</p>
         </div>
@@ -523,15 +523,15 @@ export const PerfilResidente: React.FC = () => {
 
 const s: Record<string, React.CSSProperties> = {
   page: { padding: '24px 20px 48px', maxWidth: 560, margin: '0 auto', boxSizing: 'border-box' },
-  avatarWrap: { display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 },
+  avatarWrap: { display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 16, marginBottom: 20 },
   avatar: {
     width: 68, height: 68, borderRadius: 18,
     background: 'var(--color-accent-light, rgba(249,115,22,0.12))',
     display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
     overflow: 'hidden',
   },
-  name: { color: '#fff', fontSize: 22, fontWeight: 800, margin: 0 },
-  sub:  { color: '#888', fontSize: 13, marginTop: 4 },
+  name: { color: '#fff', fontSize: 22, fontWeight: 800, margin: 0, overflowWrap: 'break-word' },
+  sub:  { color: '#888', fontSize: 13, marginTop: 4, overflowWrap: 'break-word' },
   notice: {
     display: 'flex', alignItems: 'center', gap: 8,
     background: 'var(--color-accent-light, rgba(249,115,22,0.07))',
@@ -543,7 +543,7 @@ const s: Record<string, React.CSSProperties> = {
   card: {
     background: '#141414', border: '1px solid #1e1e1e',
     borderRadius: 16, padding: '18px 20px', marginBottom: 16,
-    boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+    boxShadow: '0 4px 20px rgba(0,0,0,0.3)', minWidth: 0,
   },
   cardTitle: {
     color: 'var(--color-accent, #f97316)', fontSize: 12, fontWeight: 700,
@@ -551,8 +551,8 @@ const s: Record<string, React.CSSProperties> = {
   },
   field: {
     display: 'flex', flexDirection: 'column', gap: 3,
-    padding: '10px 0', borderBottom: '1px solid #1a1a1a',
+    padding: '10px 0', borderBottom: '1px solid #1a1a1a', minWidth: 0,
   },
   flabel: { color: '#666', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 },
-  fvalue: { color: '#e0e0e0', fontSize: 14, fontWeight: 500 },
+  fvalue: { color: '#e0e0e0', fontSize: 14, fontWeight: 500, overflowWrap: 'anywhere' },
 }

@@ -472,7 +472,7 @@ export async function abonarSaldoAFavorApartamento(params: {
     const refCodigo = `ABONO-${Date.now().toString(36).toUpperCase()}`
 
     // 1. Asentar el pago acreditado en pagos_reportados
-    let metodoNorm: 'transferencia_bs' | 'pago_movil' | 'efectivo_usd' | 'efectivo_bs' | 'zelle' | 'otro' = 'otro'
+    const metodoNorm: 'transferencia_bs' | 'pago_movil' | 'efectivo_usd' | 'efectivo_bs' | 'zelle' | 'otro' = 'otro'
     const { error: errPago } = await supabase.from('pagos_reportados').insert({
       apartamento_id: params.apartamento_id,
       monto_usd: montoUsd,

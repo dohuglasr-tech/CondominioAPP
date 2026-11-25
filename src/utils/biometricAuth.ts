@@ -118,7 +118,7 @@ export async function isBiometricsSupported(): Promise<BiometricSupport> {
       }
     }
     return { supported: true, label, type }
-  } catch (err) {
+  } catch {
     return {
       supported: false,
       label,

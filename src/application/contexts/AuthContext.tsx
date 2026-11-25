@@ -4,7 +4,7 @@ import { supabase, Perfil, ConfigEdificio, Rol } from '../../data/supabase'
 import { appCache } from '../../data/cacheService'
 import { applyTheme } from '../../utils/themeManager'
 import { extractTenantSubdomain, resolveTenantBuilding } from '../../data/tenantService'
-import { setActiveEdificioConfig, setActiveEdificioId } from '../../data/tenantContext'
+import { getActiveEdificioId, setActiveEdificioConfig, setActiveEdificioId } from '../../data/tenantContext'
 import { esTasaBcvValida, getTasaBcvNumerica, guardarUltimaTasaBcvConocida } from '../../utils/tasaBcvHelper'
 import { logger } from '../../utils/logger'
 
@@ -325,22 +325,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         { event: 'UPDATE', schema: 'public', table: 'configuracion_edificio' },
         (payload) => {
           const newConfig = payload.new as any
-          if (newConfig) {
+          if (!newConfig) return
+          const currentEdificioId = getActiveEdificioId()
+          if (currentEdificioId && newConfig.id && newConfig.id !== currentEdificioId) {
+            return
+          }
+          setConfig(prev => {
+            if (prev?.id && newConfig.id && prev.id !== newConfig.id) {
+              return prev
+            }
             if (newConfig.color_primario) {
               applyTheme(newConfig.color_primario)
             }
-            setConfig(prev => {
-              const merged = prev ? { ...prev, ...newConfig } : newConfig
-              setActiveEdificioConfig(merged)
-              return merged
-            })
-          }
+            const merged = prev ? { ...prev, ...newConfig } : newConfig
+            setActiveEdificioConfig(merged)
+            return merged
+          })
         }
       )
       .on(
         'broadcast',
         { event: 'force_app_reload' },
         (payload) => {
+          const payloadEdificioId = (payload?.payload as any)?.edificio_id
+          const currentEdificioId = getActiveEdificioId()
+          if (payloadEdificioId && currentEdificioId && payloadEdificioId !== currentEdificioId) {
+            return
+          }
           const eventTimestamp = (payload?.payload as any)?.timestamp || Date.now()
           const lastProcessed = Number(sessionStorage.getItem('domus_last_handled_reload_timestamp') || '0')
           if (lastProcessed && eventTimestamp <= lastProcessed) {
@@ -360,7 +371,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return () => {
       subscription.unsubscribe()
-      configRealtimeChannel.unsubscribe()
+      supabase.removeChannel(configRealtimeChannel).catch(() => {
+        configRealtimeChannel.unsubscribe()
+      })
     }
   }, [cargarPerfil, cargarConfig])
 
@@ -386,7 +399,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       return { error: null }
-    } catch (err) {
+    } catch {
       return { error: 'Error de conexión. Intenta nuevamente.' }
     }
   }
@@ -428,7 +441,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       return { error: null }
-    } catch (err) {
+    } catch {
       return { error: 'No se pudo actualizar la contraseña.' }
     }
   }
@@ -437,6 +450,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = async () => {
     clearPasswordRecovery()
     lastLoadedUserIdRef.current = null
+    appCache.clear()
     setActiveEdificioConfig(null)
     setActiveEdificioId(null)
     await supabase.auth.signOut()

@@ -38,12 +38,13 @@ export const DashboardSideCards = React.memo<DashboardSideCardsProps>(({
               border: '1px solid rgba(34, 197, 94, 0.4)',
               color: '#4ade80',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '24px'
+              fontSize: '24px',
+              flexShrink: 0
             }}>
               📜
             </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                 <span style={{ color: '#fff', fontSize: '16px', fontWeight: 800 }}>
                   Carta de Solvencia
                 </span>
@@ -56,11 +57,11 @@ export const DashboardSideCards = React.memo<DashboardSideCardsProps>(({
                   ✓ 100% Solvente
                 </span>
               </div>
-              <div style={{ color: '#94a3b8', fontSize: '12px', marginTop: '2px' }}>
+              <div style={{ color: '#94a3b8', fontSize: '12px', marginTop: '2px', overflowWrap: 'break-word' }}>
                 Constancia oficial de condominio y gas · Clic para ver y descargar
               </div>
             </div>
-            <span style={{ color: '#4ade80', fontSize: '18px', fontWeight: 800 }}>📥</span>
+            <span style={{ color: '#4ade80', fontSize: '18px', fontWeight: 800, flexShrink: 0 }}>📥</span>
           </div>
         </div>
       )}
@@ -77,19 +78,20 @@ export const DashboardSideCards = React.memo<DashboardSideCardsProps>(({
             border: '1px solid rgba(249, 115, 22, 0.35)',
             color: 'var(--color-accent, #f97316)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '22px'
+            fontSize: '22px',
+            flexShrink: 0
           }}>
             📜
           </div>
-          <div style={{ flex: 1 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ color: '#fff', fontSize: '16px', fontWeight: 800 }}>
               Normas de Convivencia
             </div>
-            <div style={{ color: '#7e8b9b', fontSize: '12px', marginTop: '2px' }}>
+            <div style={{ color: '#7e8b9b', fontSize: '12px', marginTop: '2px', overflowWrap: 'break-word' }}>
               Reglamento interno oficial y descarga en PDF
             </div>
           </div>
-          <span style={{ color: 'var(--color-accent, #f97316)', fontSize: '18px' }}>→</span>
+          <span style={{ color: 'var(--color-accent, #f97316)', fontSize: '18px', flexShrink: 0 }}>→</span>
         </div>
       </div>
 
@@ -105,19 +107,20 @@ export const DashboardSideCards = React.memo<DashboardSideCardsProps>(({
             border: '1px solid rgba(59, 130, 246, 0.3)',
             color: '#60a5fa',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '22px'
+            fontSize: '22px',
+            flexShrink: 0
           }}>
             👥
           </div>
-          <div style={{ flex: 1 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ color: '#fff', fontSize: '16px', fontWeight: 800 }}>
               Junta de Condominio
             </div>
-            <div style={{ color: '#7e8b9b', fontSize: '12px', marginTop: '2px' }}>
+            <div style={{ color: '#7e8b9b', fontSize: '12px', marginTop: '2px', overflowWrap: 'break-word' }}>
               Organigrama, cargos y teléfonos de contacto directo
             </div>
           </div>
-          <span style={{ color: '#60a5fa', fontSize: '18px' }}>→</span>
+          <span style={{ color: '#60a5fa', fontSize: '18px', flexShrink: 0 }}>→</span>
         </div>
       </div>
 
@@ -133,12 +136,13 @@ export const DashboardSideCards = React.memo<DashboardSideCardsProps>(({
             border: '1px solid rgba(168, 85, 247, 0.3)',
             color: '#c084fc',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '22px'
+            fontSize: '22px',
+            flexShrink: 0
           }}>
             ⚖️
           </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
               <span style={{ color: '#fff', fontSize: '16px', fontWeight: 800 }}>
                 Lista de Mora
               </span>
@@ -150,11 +154,11 @@ export const DashboardSideCards = React.memo<DashboardSideCardsProps>(({
                 &gt;3 Meses
               </span>
             </div>
-            <div style={{ color: '#7e8b9b', fontSize: '12px', marginTop: '2px' }}>
+            <div style={{ color: '#7e8b9b', fontSize: '12px', marginTop: '2px', overflowWrap: 'break-word' }}>
               Transparencia comunitaria y tasas de riesgo
             </div>
           </div>
-          <span style={{ color: '#c084fc', fontSize: '18px' }}>→</span>
+          <span style={{ color: '#c084fc', fontSize: '18px', flexShrink: 0 }}>→</span>
         </div>
       </div>
 
@@ -170,19 +174,20 @@ export const DashboardSideCards = React.memo<DashboardSideCardsProps>(({
             border: '1px solid rgba(6, 182, 212, 0.3)',
             color: '#22d3ee',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '22px'
+            fontSize: '22px',
+            flexShrink: 0
           }}>
             💬
           </div>
-          <div style={{ flex: 1 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ color: '#fff', fontSize: '16px', fontWeight: 800 }}>
               Chat Comunitario
             </div>
-            <div style={{ color: '#7e8b9b', fontSize: '12px', marginTop: '2px' }}>
+            <div style={{ color: '#7e8b9b', fontSize: '12px', marginTop: '2px', overflowWrap: 'break-word' }}>
               Conversa en vivo con vecinos y administración
             </div>
           </div>
-          <span style={{ color: '#22d3ee', fontSize: '18px' }}>→</span>
+          <span style={{ color: '#22d3ee', fontSize: '18px', flexShrink: 0 }}>→</span>
         </div>
       </div>
 
@@ -198,19 +203,20 @@ export const DashboardSideCards = React.memo<DashboardSideCardsProps>(({
             border: '1px solid rgba(245, 158, 11, 0.3)',
             color: '#fbbf24',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '22px'
+            fontSize: '22px',
+            flexShrink: 0
           }}>
             🛠️
           </div>
-          <div style={{ flex: 1 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ color: '#fff', fontSize: '16px', fontWeight: 800 }}>
               Reportar Avería o Incidencia
             </div>
-            <div style={{ color: '#7e8b9b', fontSize: '12px', marginTop: '2px' }}>
+            <div style={{ color: '#7e8b9b', fontSize: '12px', marginTop: '2px', overflowWrap: 'break-word' }}>
               Notifica fallas de ascensor, agua, luz o áreas comunes
             </div>
           </div>
-          <span style={{ color: '#fbbf24', fontSize: '18px' }}>→</span>
+          <span style={{ color: '#fbbf24', fontSize: '18px', flexShrink: 0 }}>→</span>
         </div>
       </div>
 
@@ -226,19 +232,20 @@ export const DashboardSideCards = React.memo<DashboardSideCardsProps>(({
             border: '1px solid rgba(56, 189, 248, 0.35)',
             color: '#38bdf8',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '22px'
+            fontSize: '22px',
+            flexShrink: 0
           }}>
             🏢
           </div>
-          <div style={{ flex: 1 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ color: '#fff', fontSize: '16px', fontWeight: 800 }}>
               Locales y Espacios
             </div>
-            <div style={{ color: '#7e8b9b', fontSize: '12px', marginTop: '2px' }}>
+            <div style={{ color: '#7e8b9b', fontSize: '12px', marginTop: '2px', overflowWrap: 'break-word' }}>
               Locales en uso, cuotas mensuales y solvencia comunitaria
             </div>
           </div>
-          <span style={{ color: '#38bdf8', fontSize: '18px' }}>→</span>
+          <span style={{ color: '#38bdf8', fontSize: '18px', flexShrink: 0 }}>→</span>
         </div>
       </div>
 

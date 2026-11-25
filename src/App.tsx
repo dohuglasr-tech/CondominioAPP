@@ -159,6 +159,62 @@ export class ErrorBoundary extends React.Component<{ children: React.ReactNode }
   }
 }
 
+// ── Pantalla de respaldo cuando falla la sincronización del perfil ──
+const ProfileSyncFallback = ({ onRetry, onSignOut }: { onRetry: () => void; onSignOut: () => void }) => (
+  <div style={{
+    minHeight: '100dvh',
+    backgroundColor: '#070b14',
+    color: '#ffffff',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '24px',
+    textAlign: 'center',
+    fontFamily: 'Inter, system-ui, sans-serif'
+  }}>
+    <div style={{ fontSize: '40px', marginBottom: '16px' }}>🏢</div>
+    <h2 style={{ fontSize: '18px', fontWeight: 800, margin: '0 0 8px', color: '#fff' }}>
+      Sincronizando información...
+    </h2>
+    <p style={{ color: '#94a3b8', fontSize: '13px', maxWidth: '340px', margin: '0 0 20px', lineHeight: 1.5 }}>
+      Estamos conectando con tu perfil. Si tarda más de lo habitual, presiona reintentar o vuelve a iniciar sesión.
+    </p>
+    <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', justifyContent: 'center' }}>
+      <button
+        onClick={onRetry}
+        style={{
+          backgroundColor: 'var(--color-accent, #f97316)',
+          color: '#fff',
+          border: 'none',
+          padding: '10px 18px',
+          borderRadius: '10px',
+          fontSize: '13px',
+          fontWeight: 700,
+          cursor: 'pointer'
+        }}
+      >
+        Reintentar
+      </button>
+      <button
+        onClick={onSignOut}
+        style={{
+          backgroundColor: 'rgba(255, 255, 255, 0.08)',
+          color: '#fff',
+          border: '1px solid rgba(255, 255, 255, 0.2)',
+          padding: '10px 18px',
+          borderRadius: '10px',
+          fontSize: '13px',
+          fontWeight: 700,
+          cursor: 'pointer'
+        }}
+      >
+        Cerrar sesión
+      </button>
+    </div>
+  </div>
+)
+
 // ── Protege rutas privadas ────────────────────────────────────────
 const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
   const { session, perfil, loading, needsPasswordChange, needsProfileSetup, isAdmin, isSuperAdmin, refreshPerfil, signOut, isPasswordRecovery } = useAuth()
@@ -167,60 +223,7 @@ const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
   if (!session) return <Navigate to="/login" replace />
   // Si terminó de cargar pero el perfil no se pudo recuperar, mostrar opción de reintento/salir
   if (perfil === null) {
-    return (
-      <div style={{
-        minHeight: '100dvh',
-        backgroundColor: '#070b14',
-        color: '#ffffff',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '24px',
-        textAlign: 'center',
-        fontFamily: 'Inter, system-ui, sans-serif'
-      }}>
-        <div style={{ fontSize: '40px', marginBottom: '16px' }}>🏢</div>
-        <h2 style={{ fontSize: '18px', fontWeight: 800, margin: '0 0 8px', color: '#fff' }}>
-          Sincronizando información...
-        </h2>
-        <p style={{ color: '#94a3b8', fontSize: '13px', maxWidth: '340px', margin: '0 0 20px', lineHeight: 1.5 }}>
-          Estamos conectando con tu perfil. Si tarda más de lo habitual, presiona reintentar o vuelve a iniciar sesión.
-        </p>
-        <div style={{ display: 'flex', gap: '12px' }}>
-          <button
-            onClick={() => refreshPerfil()}
-            style={{
-              backgroundColor: 'var(--color-accent, #f97316)',
-              color: '#fff',
-              border: 'none',
-              padding: '10px 18px',
-              borderRadius: '10px',
-              fontSize: '13px',
-              fontWeight: 700,
-              cursor: 'pointer'
-            }}
-          >
-            Reintentar
-          </button>
-          <button
-            onClick={() => signOut()}
-            style={{
-              backgroundColor: 'rgba(255, 255, 255, 0.08)',
-              color: '#fff',
-              border: '1px solid rgba(255, 255, 255, 0.2)',
-              padding: '10px 18px',
-              borderRadius: '10px',
-              fontSize: '13px',
-              fontWeight: 700,
-              cursor: 'pointer'
-            }}
-          >
-            Cerrar sesión
-          </button>
-        </div>
-      </div>
-    )
+    return <ProfileSyncFallback onRetry={() => refreshPerfil()} onSignOut={() => signOut()} />
   }
   // Si el usuario llega de un enlace de recuperación de contraseña, obligar a definir su nueva clave
   if (isPasswordRecovery) return <Navigate to="/reset-password" replace />
@@ -257,25 +260,32 @@ const ProfileSetupRoute = ({ children }: { children: React.ReactNode }) => {
 
 // ── Guarda para rutas de administrador (Supabase Auth real) ─────────
 const AdminRoute = ({ children }: { children: React.ReactNode }) => {
-  const { session, perfil, loading } = useAuth()
+  const { session, perfil, loading, refreshPerfil, signOut } = useAuth()
 
   // Esperar a que AuthContext termine de cargar la sesión y el perfil
   if (loading) return <Loader />
-  // Si hay sesión activa pero el perfil aún se está cargando, esperar
-  if (session && perfil === null) return <Loader />
-  // Sin sesión o sin rol de administrador / superadmin → ir al login de admin
-  if (!session || (perfil?.rol !== 'administrador' && perfil?.rol !== 'superadmin')) return <Navigate to="/admin-login" replace />
+  // Sin sesión → login admin
+  if (!session) return <Navigate to="/admin-login" replace />
+  // Si hay sesión activa pero el perfil no se pudo cargar, ofrecer reintento / cerrar sesión
+  if (perfil === null) {
+    return <ProfileSyncFallback onRetry={() => refreshPerfil()} onSignOut={() => signOut()} />
+  }
+  // Sin rol de administrador / superadmin → ir al login de admin
+  if (perfil.rol !== 'administrador' && perfil.rol !== 'superadmin') return <Navigate to="/admin-login" replace />
 
   return <>{children}</>
 }
 
 // ── Guarda exclusiva para SuperAdmin (Supabase Auth real) ───────────
 const SuperAdminRoute = ({ children }: { children: React.ReactNode }) => {
-  const { session, perfil, loading } = useAuth()
+  const { session, perfil, loading, refreshPerfil, signOut } = useAuth()
 
   if (loading) return <Loader />
-  if (session && perfil === null) return <Loader />
-  if (!session || perfil?.rol !== 'superadmin') return <Navigate to="/admin-login" replace />
+  if (!session) return <Navigate to="/admin-login" replace />
+  if (perfil === null) {
+    return <ProfileSyncFallback onRetry={() => refreshPerfil()} onSignOut={() => signOut()} />
+  }
+  if (perfil.rol !== 'superadmin') return <Navigate to="/admin-login" replace />
 
   return <>{children}</>
 }
@@ -389,6 +399,7 @@ function AppShell() {
           <Route path="notificaciones-globales" element={<AdminNotificacionesGlobales />} />
           <Route path="historial"  element={<AdminHistorial />} />
           <Route path="logs"       element={<AdminLogs />} />
+          <Route path="*"          element={<Navigate to="/admin" replace />} />
         </Route>
 
         <Route
@@ -412,6 +423,7 @@ function AppShell() {
           <Route path="propuestas" element={<PropuestasPanel />} />
           <Route path="reportes"   element={<ReportesPanel />} />
           <Route path="perfil"     element={<PerfilResidente />} />
+          <Route path="*"          element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
       </Suspense>

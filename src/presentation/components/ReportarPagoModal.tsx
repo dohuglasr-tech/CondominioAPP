@@ -1241,7 +1241,7 @@ export function ReportarPagoModal({
               placeholder={monedaOtroMonto === 'USD' ? '0.00' : '0,00'}
               value={otroMonto}
               onChange={e => {
-                let val = e.target.value.replace(/[^0-9,.]/g, '')
+                const val = e.target.value.replace(/[^0-9,.]/g, '')
                 setOtroMonto(val)
               }}
               style={inputStyle}

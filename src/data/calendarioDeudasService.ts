@@ -713,6 +713,10 @@ export async function obtenerMatrizCalendario(
     `calendario_matriz_${anioSeleccionado}`,
     async () => {
       try {
+        const activeEdificioId = getActiveEdificioId()
+        let edifCalQuery = supabase.from('configuracion_edificio').select('tasa_bcv_actual')
+        if (activeEdificioId) edifCalQuery = edifCalQuery.eq('id', activeEdificioId)
+
         const [
           configRes,
           aptosRes,
@@ -721,7 +725,7 @@ export async function obtenerMatrizCalendario(
           deudasMoraRes,
           configCalendario
         ] = await Promise.all([
-          supabase.from('configuracion_edificio').select('tasa_bcv_actual').limit(1).maybeSingle(),
+          edifCalQuery.limit(1).maybeSingle(),
           supabase.from('apartamentos').select('id, numero, piso, alicuota, propietario_nombre, telefono_contacto').order('numero'),
           supabase.from('perfiles').select('apartamento_id, nombre_completo, propietario_nombre, propietario_email, telefono'),
           fetchAllSupabasePages((from, to) =>
@@ -1089,7 +1093,10 @@ export async function guardarMontoReciboPersonalizado(params: EditarMontoCuotaPa
     const isBs = moneda === 'BS'
     let tasaBcvAplicada = getTasaBcvNumerica()
     try {
-      const { data: edifConfig } = await supabase.from('configuracion_edificio').select('tasa_bcv_actual').limit(1).maybeSingle()
+      const activeEdificioId = getActiveEdificioId()
+      let cfgQ = supabase.from('configuracion_edificio').select('tasa_bcv_actual')
+      if (activeEdificioId) cfgQ = cfgQ.eq('id', activeEdificioId)
+      const { data: edifConfig } = await cfgQ.limit(1).maybeSingle()
       if (edifConfig?.tasa_bcv_actual && Number(edifConfig.tasa_bcv_actual) > 0) {
         tasaBcvAplicada = Number(edifConfig.tasa_bcv_actual)
       }
@@ -1539,7 +1546,10 @@ export async function guardarCeldaPersonalizada(params: {
         if (params.estado === 'pagado' && montoNum > 0.01) {
           let tasa = getTasaBcvNumerica()
           try {
-            const { data: edCfg } = await supabase.from('configuracion_edificio').select('tasa_bcv_actual').limit(1).maybeSingle()
+            const activeEdificioId = getActiveEdificioId()
+            let cfgQ = supabase.from('configuracion_edificio').select('tasa_bcv_actual')
+            if (activeEdificioId) cfgQ = cfgQ.eq('id', activeEdificioId)
+            const { data: edCfg } = await cfgQ.limit(1).maybeSingle()
             if (edCfg?.tasa_bcv_actual && Number(edCfg.tasa_bcv_actual) > 1) tasa = Number(edCfg.tasa_bcv_actual)
           } catch (err) { logger.debug('calendarioDeudasService', 'Fallback controlado', err) }
           const montoBs = monedaFinal === 'BS' ? montoNum : Number((montoNum * tasa).toFixed(2))

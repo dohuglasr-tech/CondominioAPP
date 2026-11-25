@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { appCache } from './cacheService'
+import { getTenantStorageKey } from './tenantContext'
 import { getHoyVE } from '../utils/fechaVE'
 
 export type TipoCuotaLocal = 'fija' | 'variable'
@@ -89,7 +90,7 @@ const LOCALES_SEMILLA: LocalComercial[] = [
 
 function getLocalCache(): LocalComercial[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
+    const raw = localStorage.getItem(getTenantStorageKey(STORAGE_KEY))
     if (raw) {
       const parsed = JSON.parse(raw)
       if (Array.isArray(parsed) && parsed.length > 0) {
@@ -104,7 +105,7 @@ function getLocalCache(): LocalComercial[] {
 
 function saveLocalCache(locales: LocalComercial[]) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(locales))
+    localStorage.setItem(getTenantStorageKey(STORAGE_KEY), JSON.stringify(locales))
     window.dispatchEvent(new CustomEvent('condominio:locales_updated', { detail: locales }))
   } catch (e) {
     console.warn('[localesService] Error guardando cache localStorage:', e)

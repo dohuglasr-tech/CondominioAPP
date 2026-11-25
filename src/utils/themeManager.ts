@@ -81,7 +81,7 @@ export function applyTheme(primaryHex?: string | null): ThemePalette {
 
   try {
     localStorage.setItem('domus_primary_color', palette.primary)
-  } catch (_) {
+  } catch {
     // ignorar si localStorage está restringido
   }
 
@@ -113,7 +113,7 @@ export function applyTheme(primaryHex?: string | null): ThemePalette {
 export function getStoredThemeColor(): string {
   try {
     return localStorage.getItem('domus_primary_color') || '#f97316'
-  } catch (_) {
+  } catch {
     return '#f97316'
   }
 }

@@ -492,7 +492,7 @@ export const AdminFondoReserva: React.FC = () => {
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(310px, 1fr))',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 300px), 1fr))',
             gap: '16px',
             marginBottom: '30px',
           }}
@@ -511,14 +511,15 @@ export const AdminFondoReserva: React.FC = () => {
                   flexDirection: 'column',
                   justifyContent: 'space-between',
                   gap: '14px',
+                  minWidth: 0,
                 }}
               >
-                <div>
+                <div style={{ minWidth: 0 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <span style={{ fontSize: '24px' }}>{infoTipo.icon}</span>
-                      <div>
-                        <div style={{ fontSize: '15px', fontWeight: 800, color: textPrimary }}>{u.nombre}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
+                      <span style={{ fontSize: '24px', flexShrink: 0 }}>{infoTipo.icon}</span>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: '15px', fontWeight: 800, color: textPrimary, overflowWrap: 'break-word' }}>{u.nombre}</div>
                         <div style={{ fontSize: '11.5px', color: textMuted }}>{infoTipo.label}</div>
                       </div>
                     </div>
@@ -531,6 +532,7 @@ export const AdminFondoReserva: React.FC = () => {
                         borderRadius: '999px',
                         backgroundColor: u.moneda === 'USD' ? 'rgba(34, 197, 94, 0.14)' : 'rgba(245, 158, 11, 0.16)',
                         color: u.moneda === 'USD' ? (isLight ? '#15803d' : '#4ade80') : (isLight ? '#b45309' : '#fbbf24'),
+                        flexShrink: 0,
                       }}
                     >
                       {u.moneda}
@@ -554,12 +556,12 @@ export const AdminFondoReserva: React.FC = () => {
                     </div>
                   )}
 
-                  <div style={{ fontSize: '26px', fontWeight: 900, color: textPrimary, marginTop: '12px' }}>
+                  <div style={{ fontSize: 'clamp(20px, 2.4vw, 26px)', fontWeight: 900, color: textPrimary, marginTop: '12px', overflowWrap: 'anywhere' }}>
                     {u.moneda === 'USD' ? `$${fmtUsd(u.saldo)}` : `Bs. ${fmtBs(u.saldo)}`}
                   </div>
 
                   {u.descripcion && (
-                    <div style={{ fontSize: '12px', color: textMuted, marginTop: '4px' }}>{u.descripcion}</div>
+                    <div style={{ fontSize: '12px', color: textMuted, marginTop: '4px', overflowWrap: 'break-word' }}>{u.descripcion}</div>
                   )}
                 </div>
 

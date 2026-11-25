@@ -444,7 +444,7 @@ export const AdminGas: React.FC = () => {
         estado_solvente: totalBs <= 0.01 && totalUsd <= 0.01
       }
     })
-  }, [apartamentosDb, data, calAnio, MESES_CONFIG])
+  }, [apartamentosDb, data, MESES_CONFIG])
 
   const filasFiltradasMatriz = useMemo(() => {
     return filasGasMatriz.filter(f => {
@@ -1709,7 +1709,7 @@ export const AdminGas: React.FC = () => {
 
       {/* ── TAB 1: RESUMEN DE CAMPAÑA ─────────────────────────────────── */}
       {activeTab === 'dashboard' && metricas && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: '20px' }}>
           <div style={{
             background: 'var(--color-bg-card, #12141a)',
             border: '1px solid rgba(255, 255, 255, 0.08)',
@@ -2661,7 +2661,7 @@ export const AdminGas: React.FC = () => {
 
           {/* VISTA 2: BITÁCORA DIARIA ORIGINAL */}
           {vistaCalendarioGas === 'bitacora' && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: '24px' }}>
               {/* Vista Mes Calendario */}
               <div style={{
                 background: 'var(--color-bg-card, #12141a)',

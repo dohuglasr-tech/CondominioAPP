@@ -22,13 +22,13 @@ export const DashboardPagosRecientesCard = React.memo<DashboardPagosRecientesCar
 }) => {
   return (
     <div className="desktop-card">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: '18px' }}>
         <h3 style={{ color: '#fff', fontSize: '17px', fontWeight: 800, margin: 0 }}>
           Historial de Pagos Reportados
         </h3>
         <button
           onClick={onVerHistorialCompleto}
-          style={{ background: 'none', border: 'none', color: 'var(--color-accent, #f97316)', fontSize: '13px', fontWeight: 700, cursor: 'pointer' }}
+          style={{ background: 'none', border: 'none', color: 'var(--color-accent, #f97316)', fontSize: '13px', fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}
         >
           Ver historial completo →
         </button>
@@ -51,13 +51,15 @@ export const DashboardPagosRecientesCard = React.memo<DashboardPagosRecientesCar
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: '12px',
                   padding: '14px 16px',
                   backgroundColor: '#161922',
                   border: '1px solid rgba(255, 255, 255, 0.05)',
                   borderRadius: '14px'
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flex: '1 1 200px', minWidth: 0 }}>
                   <div style={{
                     width: '42px', height: '42px', borderRadius: '12px',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px',
@@ -67,9 +69,9 @@ export const DashboardPagosRecientesCard = React.memo<DashboardPagosRecientesCar
                   }}>
                     {isAprobado ? '✓' : isRechazado ? '✕' : '⏳'}
                   </div>
-                  <div>
+                  <div style={{ minWidth: 0, flex: 1 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                      <span style={{ color: '#fff', fontSize: '14px', fontWeight: 700 }}>
+                      <span style={{ color: '#fff', fontSize: '14px', fontWeight: 700, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                         Referencia Bancaria: {pago.referencia}
                       </span>
                       {(() => {
@@ -92,7 +94,7 @@ export const DashboardPagosRecientesCard = React.memo<DashboardPagosRecientesCar
                   </div>
                 </div>
 
-                <div style={{ textAlign: 'right' }}>
+                <div style={{ textAlign: 'right', flexShrink: 0 }}>
                   <div style={{ color: '#fff', fontSize: '15px', fontWeight: 800 }}>
                     Bs. {pago.monto_bs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}
                   </div>

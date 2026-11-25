@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { getTenantStorageKey } from './tenantContext'
 
 export type TipoAccionAuditoria =
   | 'ELIMINACION_EMISION'
@@ -63,7 +64,7 @@ export async function obtenerHistorialAuditoria(): Promise<LogAuditoria[]> {
   // Cargar del localStorage
   let logsLocales: LogAuditoria[] = []
   try {
-    const raw = localStorage.getItem(LOCAL_STORAGE_KEY)
+    const raw = localStorage.getItem(getTenantStorageKey(LOCAL_STORAGE_KEY))
     if (raw) {
       logsLocales = JSON.parse(raw)
     }
@@ -118,10 +119,11 @@ export async function registrarEventoAuditoria(
 
   // 1. Guardar siempre en cache local protegido (redundancia local inmutable)
   try {
-    const raw = localStorage.getItem(LOCAL_STORAGE_KEY)
+    const storageKey = getTenantStorageKey(LOCAL_STORAGE_KEY)
+    const raw = localStorage.getItem(storageKey)
     const logs: LogAuditoria[] = raw ? JSON.parse(raw) : []
     logs.unshift(logCompleto)
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(logs))
+    localStorage.setItem(storageKey, JSON.stringify(logs))
   } catch (err) {
     console.warn('[Auditoria] Error guardando en cache local:', err)
   }

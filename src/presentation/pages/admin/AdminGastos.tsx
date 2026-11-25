@@ -424,7 +424,7 @@ export const AdminGastos: React.FC = () => {
         }
         .form-grid-2 {
           display: grid;
-          grid-template-columns: 1fr 1fr;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
           gap: 12px;
           margin-bottom: 12px;
         }
@@ -442,7 +442,7 @@ export const AdminGastos: React.FC = () => {
             padding: 12px !important;
           }
           .gastos-summary-grid {
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 8px;
           }
           .gastos-filter-bar {
@@ -458,7 +458,7 @@ export const AdminGastos: React.FC = () => {
           }
           .gasto-actions-footer {
             display: grid;
-            grid-template-columns: 1fr 1fr auto;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
             gap: 8px;
             width: 100%;
           }

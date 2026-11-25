@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { appCache } from './cacheService'
+import { getTenantStorageKey } from './tenantContext'
 import { getErrorMessage } from '../utils/logger'
 
 export type CategoriaOrganigrama = 'administracion' | 'junta_directiva' | 'comite_vocal' | 'operativo'
@@ -130,7 +131,7 @@ const JUNTA_SEMILLA: MiembroJunta[] = [
 
 function getLocalJuntaCache(): MiembroJunta[] {
   try {
-    const raw = localStorage.getItem(STORAGE_JUNTA_KEY)
+    const raw = localStorage.getItem(getTenantStorageKey(STORAGE_JUNTA_KEY))
     if (raw) {
       const parsed = JSON.parse(raw)
       if (Array.isArray(parsed) && parsed.length > 0) return parsed
@@ -143,7 +144,7 @@ function getLocalJuntaCache(): MiembroJunta[] {
 
 function saveLocalJuntaCache(list: MiembroJunta[]) {
   try {
-    localStorage.setItem(STORAGE_JUNTA_KEY, JSON.stringify(list))
+    localStorage.setItem(getTenantStorageKey(STORAGE_JUNTA_KEY), JSON.stringify(list))
   } catch (e) {
     console.warn('[juntaService] Error saving cache:', e)
   }

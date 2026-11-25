@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
 import { notificarTodos } from './notificacionesService'
-import { getActiveEdificioNombre } from './tenantContext'
+import { getActiveEdificioId, getActiveEdificioNombre } from './tenantContext'
 import { getErrorMessage } from '../utils/logger'
 
 export interface ChatMensaje {
@@ -26,20 +26,61 @@ export interface ChatEstadoConfig {
 
 export const CHAT_CHANNEL_NAME = 'chat_comunitario_live'
 
+export function getChatChannelName(edificioId?: string | null): string {
+  const id = (edificioId || getActiveEdificioId() || '').trim()
+  return id ? `${CHAT_CHANNEL_NAME}_${id}` : CHAT_CHANNEL_NAME
+}
+
+/**
+ * Emite un evento Realtime Broadcast reutilizando el canal suscrito en la sesión
+ * o removiendo el canal temporal tras enviar para evitar fugas en memoria.
+ */
+function emitirBroadcastChat(event: string, payload: Record<string, any>): void {
+  const channelName = getChatChannelName()
+  const existing = supabase.getChannels().find(c => c.topic === `realtime:${channelName}`)
+  if (existing) {
+    existing.send({ type: 'broadcast', event, payload })
+    return
+  }
+
+  const tempChannel = supabase.channel(channelName)
+  tempChannel
+    .send({ type: 'broadcast', event, payload })
+    .finally(() => {
+      setTimeout(() => {
+        supabase.removeChannel(tempChannel).catch(() => {})
+      }, 500)
+    })
+}
+
 const LOCAL_STORAGE_KEY_READONLY = 'condominio_chat_solo_lectura'
 const LOCAL_STORAGE_KEY_MOTIVO = 'condominio_chat_motivo'
 const MOTIVO_DEFAULT = 'Modo solo lectura activado por la administración para mantener la sana convivencia y el respeto mutuo.'
+
+const getReadonlyStorageKey = () => {
+  const id = getActiveEdificioId()
+  return id ? `${LOCAL_STORAGE_KEY_READONLY}_${id}` : LOCAL_STORAGE_KEY_READONLY
+}
+const getMotivoStorageKey = () => {
+  const id = getActiveEdificioId()
+  return id ? `${LOCAL_STORAGE_KEY_MOTIVO}_${id}` : LOCAL_STORAGE_KEY_MOTIVO
+}
 
 /**
  * Obtiene el estado actual del Modo Solo Lectura
  */
 export async function obtenerEstadoSoloLectura(): Promise<ChatEstadoConfig> {
   try {
-    const { data, error } = await supabase
+    const activeEdificioId = getActiveEdificioId()
+    let query = supabase
       .from('configuracion_edificio')
       .select('chat_solo_lectura, chat_motivo_bloqueo, chat_bloqueado_en, chat_bloqueado_por')
-      .limit(1)
-      .maybeSingle()
+
+    if (activeEdificioId) {
+      query = query.eq('id', activeEdificioId)
+    }
+
+    const { data, error } = await query.limit(1).maybeSingle()
 
     if (!error && data && data.chat_solo_lectura !== undefined) {
       const config: ChatEstadoConfig = {
@@ -48,8 +89,8 @@ export async function obtenerEstadoSoloLectura(): Promise<ChatEstadoConfig> {
         bloqueado_en: data.chat_bloqueado_en || null,
         bloqueado_por: data.chat_bloqueado_por || 'Administración'
       }
-      localStorage.setItem(LOCAL_STORAGE_KEY_READONLY, config.solo_lectura ? 'true' : 'false')
-      localStorage.setItem(LOCAL_STORAGE_KEY_MOTIVO, config.motivo_bloqueo)
+      localStorage.setItem(getReadonlyStorageKey(), config.solo_lectura ? 'true' : 'false')
+      localStorage.setItem(getMotivoStorageKey(), config.motivo_bloqueo)
       return config
     }
   } catch (err) {
@@ -57,8 +98,8 @@ export async function obtenerEstadoSoloLectura(): Promise<ChatEstadoConfig> {
   }
 
   // Fallback local si la columna aún no está en Supabase
-  const localVal = localStorage.getItem(LOCAL_STORAGE_KEY_READONLY) === 'true'
-  const localMotivo = localStorage.getItem(LOCAL_STORAGE_KEY_MOTIVO) || MOTIVO_DEFAULT
+  const localVal = localStorage.getItem(getReadonlyStorageKey()) === 'true'
+  const localMotivo = localStorage.getItem(getMotivoStorageKey()) || MOTIVO_DEFAULT
 
   return {
     solo_lectura: localVal,
@@ -80,12 +121,17 @@ export async function cambiarEstadoSoloLectura(
   const ahora = new Date().toISOString()
 
   // Guardar en local storage para disponibilidad offline e inmediata
-  localStorage.setItem(LOCAL_STORAGE_KEY_READONLY, activo ? 'true' : 'false')
-  localStorage.setItem(LOCAL_STORAGE_KEY_MOTIVO, motivoFinal)
+  localStorage.setItem(getReadonlyStorageKey(), activo ? 'true' : 'false')
+  localStorage.setItem(getMotivoStorageKey(), motivoFinal)
 
   // 1. Intentar actualizar en base de datos
   try {
-    const { data: configRows } = await supabase.from('configuracion_edificio').select('id').limit(1)
+    const activeEdificioId = getActiveEdificioId()
+    let cfgQuery = supabase.from('configuracion_edificio').select('id')
+    if (activeEdificioId) {
+      cfgQuery = cfgQuery.eq('id', activeEdificioId)
+    }
+    const { data: configRows } = await cfgQuery.limit(1)
     if (configRows && configRows.length > 0) {
       await supabase
         .from('configuracion_edificio')
@@ -103,16 +149,11 @@ export async function cambiarEstadoSoloLectura(
 
   // 2. Transmitir en vivo a todos los clientes conectados mediante Supabase Realtime Broadcast
   try {
-    const channel = supabase.channel(CHAT_CHANNEL_NAME)
-    channel.send({
-      type: 'broadcast',
-      event: 'modo_solo_lectura',
-      payload: {
-        activo,
-        motivo: motivoFinal,
-        bloqueado_en: ahora,
-        bloqueado_por: bloqueadoPor
-      }
+    emitirBroadcastChat('modo_solo_lectura', {
+      activo,
+      motivo: motivoFinal,
+      bloqueado_en: ahora,
+      bloqueado_por: bloqueadoPor
     })
   } catch (bcErr) {
     console.warn('[ChatService] Error en broadcast:', bcErr)
@@ -314,12 +355,7 @@ export async function enviarMensajeDesdeResidente(params: {
 
   // Transmitir en vivo a todos por canal Realtime Broadcast
   try {
-    const channel = supabase.channel(CHAT_CHANNEL_NAME)
-    channel.send({
-      type: 'broadcast',
-      event: 'nuevo_mensaje',
-      payload: nuevoMensaje
-    })
+    emitirBroadcastChat('nuevo_mensaje', nuevoMensaje)
   } catch (bcErr) {
     console.warn('[ChatService] Error transmitiendo broadcast:', bcErr)
   }
@@ -376,12 +412,7 @@ export async function enviarMensajeDesdeAdmin(
 
   // Transmitir en vivo a todos
   try {
-    const channel = supabase.channel(CHAT_CHANNEL_NAME)
-    channel.send({
-      type: 'broadcast',
-      event: 'nuevo_mensaje',
-      payload: nuevoMensaje
-    })
+    emitirBroadcastChat('nuevo_mensaje', nuevoMensaje)
   } catch (bcErr) {
     console.warn('[ChatService] Error transmitiendo broadcast admin:', bcErr)
   }
@@ -411,12 +442,7 @@ export async function eliminarMensajeChat(mensajeId: string): Promise<{ error: s
 
   // Broadcast para borrar en vivo en las pantallas de todos
   try {
-    const channel = supabase.channel(CHAT_CHANNEL_NAME)
-    channel.send({
-      type: 'broadcast',
-      event: 'mensaje_eliminado',
-      payload: { id: mensajeId }
-    })
+    emitirBroadcastChat('mensaje_eliminado', { id: mensajeId })
   } catch (bcErr) {
     console.warn('[ChatService] Error enviando broadcast de borrado:', bcErr)
   }

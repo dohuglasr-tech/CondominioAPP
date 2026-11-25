@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
 import { registrarEventoAuditoria } from './auditoriaService'
 import { notificarTodos } from './notificacionesService'
+import { getTenantStorageKey } from './tenantContext'
 import {
   CategoriaComunicadoGlobal,
   generarHtmlNotificacionGlobal
@@ -513,7 +514,7 @@ export async function guardarDestinatariosUltimoReciboEnviado(params: {
   }
 
   try {
-    localStorage.setItem(LOCAL_KEY_ULTIMO_ENVIO_RECIBOS, JSON.stringify(payload))
+    localStorage.setItem(getTenantStorageKey(LOCAL_KEY_ULTIMO_ENVIO_RECIBOS), JSON.stringify(payload))
   } catch (err) { logger.debug('notificacionesGlobalesService', 'Fallback controlado', err) }
 
   try {
@@ -578,7 +579,7 @@ export async function obtenerDestinatariosUltimoReciboEnviado(): Promise<Resumen
     }
     if (!parsedReg) {
       try {
-        const rawLocal = localStorage.getItem(LOCAL_KEY_ULTIMO_ENVIO_RECIBOS)
+        const rawLocal = localStorage.getItem(getTenantStorageKey(LOCAL_KEY_ULTIMO_ENVIO_RECIBOS))
         if (rawLocal) parsedReg = JSON.parse(rawLocal)
       } catch (err) { logger.debug('notificacionesGlobalesService', 'Fallback controlado', err) }
     }

@@ -28,3 +28,4 @@ scratch/
 supabase/.temp/
 *.zip
 1x/
+*.tsbuildinfo

@@ -553,7 +553,7 @@ export const AdminMora: React.FC = () => {
   // Despacho masivo automático para todos los elegibles (cada 3 días)
   const elegiblesRecordatorio = useMemo(() => {
     return deudas.filter(d => esElegibleRecordatorio3Dias(d.apartamento_id || d.apartamento_numero))
-  }, [deudas, toastMsg])
+  }, [deudas])
 
   const handleDespacharRecordatoriosLote = async () => {
     if (elegiblesRecordatorio.length === 0) {

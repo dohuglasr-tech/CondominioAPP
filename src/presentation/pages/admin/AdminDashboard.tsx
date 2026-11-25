@@ -68,10 +68,11 @@ const StatCard: React.FC<StatCardProps> = ({ icon, label, value, sub, color = 'v
         cursor: onClick ? 'pointer' : 'default',
         transition: 'all 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
         position: 'relative',
+        minWidth: 0,
       }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontSize: '24px' }}>{icon}</span>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
+        <span style={{ fontSize: '24px', flexShrink: 0 }}>{icon}</span>
         {badge && (
           <span style={{
             backgroundColor: isLight ? `${displayColor}14` : `${color}18`,
@@ -86,9 +87,9 @@ const StatCard: React.FC<StatCardProps> = ({ icon, label, value, sub, color = 'v
           </span>
         )}
       </div>
-      <p style={{ color: isLight ? '#64748b' : '#7e8b9b', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.8px', margin: 0 }}>{label}</p>
-      <p style={{ color: isLight ? '#0f172a' : '#fff', fontSize: '24px', fontWeight: 800, margin: 0, letterSpacing: '-0.5px' }}>{value}</p>
-      {sub && <p style={{ color: displayColor, fontSize: '12px', fontWeight: 600, margin: 0 }}>{sub}</p>}
+      <p style={{ color: isLight ? '#64748b' : '#7e8b9b', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.8px', margin: 0, overflowWrap: 'break-word' }}>{label}</p>
+      <p style={{ color: isLight ? '#0f172a' : '#fff', fontSize: 'clamp(18px, 1.9vw, 24px)', fontWeight: 800, margin: 0, letterSpacing: '-0.5px', lineHeight: 1.2, overflowWrap: 'anywhere' }}>{value}</p>
+      {sub && <p style={{ color: displayColor, fontSize: '12px', fontWeight: 600, margin: 0, overflowWrap: 'break-word' }}>{sub}</p>}
     </div>
   )
 }
@@ -154,6 +155,12 @@ export const AdminDashboard: React.FC = () => {
   const [todosLosPagos, setTodosLosPagos] = useState<any[]>([])
   const [serverKpis, setServerKpis] = useState<any>(null)
   const [gastosMesBs, setGastosMesBs] = useState<number>(0)
+  const [enMoraBs, setEnMoraBs] = useState<number>(0)
+  const [cobranzaMesInfo, setCobranzaMesInfo] = useState<{ pct: number; pagados: number; total: number }>({
+    pct: 0,
+    pagados: 0,
+    total: 0
+  })
 
   // Ocultar/mostrar saldo
   const [ocultarSaldos, setOcultarSaldos] = useState(false)
@@ -210,10 +217,11 @@ export const AdminDashboard: React.FC = () => {
             supabase.from('gastos_comunes').select('monto_usd, monto_bs, mes_aplicacion'),
             supabase.from('falencias').select('id', { count: 'exact', head: true }),
             supabase.from('propuestas').select('id', { count: 'exact', head: true }).eq('estado', 'activa'),
-            supabase.from('deudas_mora').select('id, apartamento_id, monto_usd, monto_bs, updated_at, created_at').eq('estado', 'solventado')
+            supabase.from('deudas_mora').select('id, apartamento_id, monto_usd, monto_bs, estado, updated_at, created_at')
           ])
 
           const kpis = !kpiRpcRes.error ? kpiRpcRes.data : null
+          const moraAll = moraRes.data || []
 
           return {
             kpis,
@@ -224,7 +232,8 @@ export const AdminDashboard: React.FC = () => {
             gastosList: gastosRes.data || [],
             falCount: kpis?.reportes_averias ?? falRes.count ?? 0,
             propCount: kpis?.votaciones_activas ?? propRes.count ?? 0,
-            moraSolventadaList: moraRes.data || []
+            moraSolventadaList: moraAll.filter((m: any) => m.estado === 'solventado'),
+            moraPendienteList: moraAll.filter((m: any) => m.estado !== 'solventado' && m.estado !== 'pagado' && m.estado !== 'anulado')
           }
         },
         { ttlMs: 2 * 60 * 1000, tags: ['apartamentos', 'pagos', 'recibos', 'gastos', 'falencias', 'mora'], forceRefresh }
@@ -252,6 +261,31 @@ export const AdminDashboard: React.FC = () => {
         })
       }
       setGastosMesBs(totalGastosBs)
+
+      // Mora real acumulada (recibos impagos + deudas_mora pendientes)
+      const recibosImpagosBs = (data.recibosList || []).reduce((acc: number, r: any) => {
+        if (r.estado === 'pagado') return acc
+        const bs = Number(r.total_bs || 0)
+        const usd = Number(r.total_usd || 0)
+        return acc + (bs > 0 ? bs : usd * currentRate)
+      }, 0)
+      const moraHistoricaPendienteBs = (data.moraPendienteList || []).reduce((acc: number, m: any) => {
+        const bs = Number(m.monto_bs || 0)
+        const usd = Number(m.monto_usd || 0)
+        return acc + (bs > 0 ? bs : usd * currentRate)
+      }, 0)
+      setEnMoraBs(Number((recibosImpagosBs + moraHistoricaPendienteBs).toFixed(2)))
+
+      // Porcentaje real de cobranza del mes seleccionado
+      const recibosMesSel = (data.recibosList || []).filter(
+        (r: any) => (r.mes_facturado || '').substring(0, 7) === mesSeleccionado
+      )
+      const totalRecibosMes = recibosMesSel.length
+      const pagadosRecibosMes = recibosMesSel.filter((r: any) => r.estado === 'pagado').length
+      const pctCobranzaMes = totalRecibosMes > 0
+        ? Math.round((pagadosRecibosMes / totalRecibosMes) * 1000) / 10
+        : 0
+      setCobranzaMesInfo({ pct: pctCobranzaMes, pagados: pagadosRecibosMes, total: totalRecibosMes })
 
       // Meses disponibles (combinando RPC sin tope de 1,000 filas + lista local)
       const mesesSet = new Set<string>()
@@ -668,12 +702,12 @@ export const AdminDashboard: React.FC = () => {
           </div>
 
           {/* Gran cifra en Bolívares */}
-          <div style={{ color: '#fff', fontSize: '34px', fontWeight: 900, letterSpacing: '-0.5px', lineHeight: 1.1 }}>
+          <div style={{ color: '#fff', fontSize: 'clamp(24px, 7vw, 34px)', fontWeight: 900, letterSpacing: '-0.5px', lineHeight: 1.15, overflowWrap: 'anywhere' }}>
             {ocultarSaldos ? 'Bs. ••••••' : `Bs. ${(stats.recaudadoMesBs || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
           </div>
 
           {/* Píldora de Rendimiento / Cobranza */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px', marginBottom: '18px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px', marginBottom: '18px', flexWrap: 'wrap' }}>
             <span style={{
               backgroundColor: 'rgba(34, 197, 94, 0.14)',
               color: '#22c55e',
@@ -686,50 +720,54 @@ export const AdminDashboard: React.FC = () => {
               alignItems: 'center',
               gap: '4px'
             }}>
-              ↗ +{stats.aprobadosMes > 0 ? '12.50%' : '0,00%'}
+              {cobranzaMesInfo.total > 0
+                ? `${cobranzaMesInfo.pct.toLocaleString('es-VE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}% cobrado`
+                : `${stats.aprobadosMes} aprob.`}
             </span>
             <span style={{ color: '#8e8e93', fontSize: '11px', fontWeight: 500 }}>
-              cobranza {getMesSoloNombre(mesSeleccionado) || 'del mes'}
+              {cobranzaMesInfo.total > 0
+                ? `${cobranzaMesInfo.pagados}/${cobranzaMesInfo.total} recibos · ${getMesSoloNombre(mesSeleccionado) || 'mes'}`
+                : `cobranza ${getMesSoloNombre(mesSeleccionado) || 'del mes'}`}
             </span>
           </div>
 
           {/* Desglose de 3 Columnas al pie (COBRADO | GASTOS | EN MORA) */}
           <div style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(3, 1fr)',
+            gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
             gap: '10px',
             borderTop: '1px solid rgba(255, 255, 255, 0.06)',
             paddingTop: '16px'
           }}>
-            <div>
+            <div style={{ minWidth: 0 }}>
               <div style={{ color: '#8e8e93', fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '4px' }}>
                 COBRADO
               </div>
-              <div style={{ color: '#fff', fontSize: '13px', fontWeight: 800 }}>
+              <div style={{ color: '#fff', fontSize: '13px', fontWeight: 800, overflowWrap: 'anywhere' }}>
                 {ocultarSaldos ? '••••' : `Bs. ${(stats.recaudadoMesBs || 0).toLocaleString('es-VE', { minimumFractionDigits: 2 })}`}
               </div>
             </div>
 
-            <div>
+            <div style={{ minWidth: 0 }}>
               <div style={{ color: '#8e8e93', fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '4px' }}>
                 GASTOS
               </div>
-              <div style={{ color: '#fff', fontSize: '13px', fontWeight: 800 }}>
+              <div style={{ color: '#fff', fontSize: '13px', fontWeight: 800, overflowWrap: 'anywhere' }}>
                 {ocultarSaldos ? '••••' : `Bs. ${(gastosMesBs || 0).toLocaleString('es-VE', { minimumFractionDigits: 2 })}`}
               </div>
             </div>
 
             <div
               onClick={() => navigate('/admin/calendario-deudas')}
-              style={{ cursor: 'pointer', transition: 'transform 0.15s' }}
+              style={{ cursor: 'pointer', transition: 'transform 0.15s', minWidth: 0 }}
               title="Abrir Calendario de Deudas e Impago"
             >
-              <div style={{ color: '#8e8e93', fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <div style={{ color: '#8e8e93', fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
                 <span>EN MORA</span>
                 <span style={{ color: '#60a5fa', fontSize: '9px', fontWeight: 700 }}>📅 Ver</span>
               </div>
-              <div style={{ color: '#f87171', fontSize: '13px', fontWeight: 800 }}>
-                {ocultarSaldos ? '••••' : `Bs. ${(stats.pendientesTotal > 0 ? (stats.pendientesTotal * 15 * (rate || 40)) : 0).toLocaleString('es-VE', { minimumFractionDigits: 2 })}`}
+              <div style={{ color: '#f87171', fontSize: '13px', fontWeight: 800, overflowWrap: 'anywhere' }}>
+                {ocultarSaldos ? '••••' : `Bs. ${enMoraBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}`}
               </div>
             </div>
           </div>
@@ -1369,17 +1407,19 @@ export const AdminDashboard: React.FC = () => {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '12px',
               cursor: 'pointer',
               transition: 'all 0.2s',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-              <span style={{ fontSize: '24px' }}>⏳</span>
-              <div>
-                <p style={{ color: '#f59e0b', fontSize: '14px', fontWeight: 700, margin: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flex: '1 1 260px', minWidth: 0 }}>
+              <span style={{ fontSize: '24px', flexShrink: 0 }}>⏳</span>
+              <div style={{ minWidth: 0 }}>
+                <p style={{ color: '#f59e0b', fontSize: '14px', fontWeight: 700, margin: 0, overflowWrap: 'break-word' }}>
                   Tienes {stats.pendientesTotal} {stats.pendientesTotal === 1 ? 'pago pendiente' : 'pagos pendientes'} por revisar y aprobar
                 </p>
-                <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0, marginTop: '2px' }}>
+                <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0, marginTop: '2px', overflowWrap: 'break-word' }}>
                   Los residentes están esperando la confirmación de su solvencia.
                 </p>
               </div>
@@ -1393,6 +1433,7 @@ export const AdminDashboard: React.FC = () => {
               fontWeight: 700,
               fontSize: '12px',
               cursor: 'pointer',
+              flexShrink: 0,
               boxShadow: 'var(--color-brand-shadow, 0 4px 14px var(--color-accent-glow))',
             }}>
               Revisar Ahora →
@@ -1584,16 +1625,17 @@ export const AdminDashboard: React.FC = () => {
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
+                      flexWrap: 'wrap',
                       padding: '14px 18px',
                       backgroundColor: '#0a0a0a',
                       border: esAdmin ? '1px solid rgba(16, 185, 129, 0.25)' : '1px solid #1e1e1e',
                       borderRadius: '14px',
                       cursor: 'pointer',
                       transition: 'all 0.15s',
-                      gap: '16px'
+                      gap: '12px 16px'
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flex: '1 1 220px', minWidth: 0 }}>
                       <span style={{
                         width: '38px',
                         height: '38px',
@@ -1609,9 +1651,9 @@ export const AdminDashboard: React.FC = () => {
                         {esAdmin ? '🛡️' : '📱'}
                       </span>
 
-                      <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span style={{ color: '#fff', fontSize: '14px', fontWeight: 700 }}>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          <span style={{ color: '#fff', fontSize: '14px', fontWeight: 700, overflowWrap: 'break-word' }}>
                             {item.titulo}
                           </span>
                           <span style={{
@@ -1632,13 +1674,13 @@ export const AdminDashboard: React.FC = () => {
                           )}
                         </div>
 
-                        <p style={{ color: '#777', fontSize: '12px', margin: '3px 0 0 0' }}>
+                        <p style={{ color: '#777', fontSize: '12px', margin: '3px 0 0 0', overflowWrap: 'anywhere' }}>
                           Ref: <strong style={{ color: '#cbd5e1' }}>{item.referencia}</strong> · {esAdmin ? `Por: ${item.autor} · ` : ''}{item.fecha}
                         </p>
                       </div>
                     </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px', textAlign: 'right' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', textAlign: 'right', flexWrap: 'wrap', flexShrink: 0 }}>
                       <div>
                         {item.monto && (
                           <div style={{ color: '#fff', fontSize: '15px', fontWeight: 800 }}>

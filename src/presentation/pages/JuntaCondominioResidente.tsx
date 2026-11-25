@@ -184,7 +184,7 @@ export const JuntaCondominioResidente: React.FC = () => {
                   display: 'grid',
                   gridTemplateColumns: catKey === 'administracion' && miembrosCat.length === 1
                     ? '1fr'
-                    : 'repeat(auto-fit, minmax(300px, 1fr))',
+                    : 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))',
                   gap: '16px'
                 }}>
                   {miembrosCat.map(m => {
@@ -200,13 +200,13 @@ export const JuntaCondominioResidente: React.FC = () => {
                           borderRadius: '20px', padding: '22px',
                           display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
                           gap: '16px', boxShadow: `0 10px 30px rgba(0,0,0,0.45), 0 0 15px ${catMeta.color}10`,
-                          position: 'relative', overflow: 'hidden'
+                          position: 'relative', overflow: 'hidden', minWidth: 0
                         }}
                       >
                         {/* Upper Info */}
-                        <div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', marginBottom: '14px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px', marginBottom: '14px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: '1 1 180px', minWidth: 0 }}>
                               <div style={{
                                 width: '48px', height: '48px', borderRadius: '14px',
                                 background: catMeta.bg, border: `1px solid ${catMeta.border}`,
@@ -216,16 +216,17 @@ export const JuntaCondominioResidente: React.FC = () => {
                                 {catKey === 'administracion' ? '👑' : catKey === 'operativo' ? '🛠️' : '👤'}
                               </div>
 
-                              <div>
+                              <div style={{ minWidth: 0, flex: 1 }}>
                                 <span style={{
                                   fontSize: '11px', fontWeight: 800, textTransform: 'uppercase',
                                   color: catMeta.color, background: catMeta.bg,
-                                  border: `1px solid ${catMeta.border}`, padding: '2px 8px', borderRadius: '6px'
+                                  border: `1px solid ${catMeta.border}`, padding: '2px 8px', borderRadius: '6px',
+                                  display: 'inline-block', maxWidth: '100%', overflowWrap: 'break-word'
                                 }}>
                                   {m.cargo}
                                 </span>
 
-                                <h3 style={{ margin: '6px 0 0', fontSize: '18px', fontWeight: 800, color: '#fff' }}>
+                                <h3 style={{ margin: '6px 0 0', fontSize: '18px', fontWeight: 800, color: '#fff', overflowWrap: 'break-word' }}>
                                   {m.nombre}
                                 </h3>
                               </div>

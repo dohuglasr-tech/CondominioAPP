@@ -53,35 +53,19 @@ export function GastosPanel({ onClose }: Props) {
   const [modalTipo, setModalTipo] = useState<'factura' | 'transferencia'>('factura')
   const [showModal, setShowModal] = useState(false)
 
-  // ── DATOS DE PRUEBA (MOCK) PARA VISUALIZAR EL DISEÑO ──
-  const MOCK_GASTOS: GastoComun[] = [
-    { id: '1', descripcion: 'Hidrocapital - Servicio Mensual', categoria: 'agua', tipo: 'ordinario', monto_usd: 120.50, mes_aplicacion: '2025-01-01', factura_url: null, notas: null, created_at: '' },
-    { id: '2', descripcion: 'Corpoelec', categoria: 'luz', tipo: 'ordinario', monto_usd: 45.00, mes_aplicacion: '2025-01-01', factura_url: null, notas: null, created_at: '' },
-    { id: '3', descripcion: 'Reparación de tubería principal', categoria: 'agua', tipo: 'extraordinario', monto_usd: 250.00, mes_aplicacion: '2025-01-01', factura_url: null, notas: 'Aprobado en asamblea', created_at: '' },
-    { id: '4', descripcion: 'Mantenimiento ascensores', categoria: 'servicios_externos', tipo: 'ordinario', monto_usd: 300.00, mes_aplicacion: '2025-01-01', factura_url: null, notas: null, created_at: '' },
-    { id: '5', descripcion: 'Honorarios Administradora', categoria: 'administracion', tipo: 'ordinario', monto_usd: 150.00, mes_aplicacion: '2025-01-01', factura_url: null, notas: null, created_at: '' },
-    { id: '6', descripcion: 'Quincena Conserje', categoria: 'conserjeria', tipo: 'ordinario', monto_usd: 100.00, mes_aplicacion: '2025-01-01', factura_url: null, notas: null, created_at: '' },
-    { id: '7', descripcion: 'Bolsas de basura', categoria: 'conserjeria', tipo: 'ordinario', monto_usd: 15.00, mes_aplicacion: '2025-01-01', factura_url: null, notas: null, created_at: '' },
-    { id: '8', descripcion: 'Fondo de Reserva', categoria: 'espacios_comunes', tipo: 'fondo_reserva', monto_usd: 50.00, mes_aplicacion: '2025-01-01', factura_url: null, notas: 'Aporte mensual 10%', created_at: '' },
-  ]
-
-  const gastosAMostrar = gastos.length > 0 ? gastos : MOCK_GASTOS;
-  const totalAMostrar = gastos.length > 0 ? totalUsd : MOCK_GASTOS.reduce((acc, g) => acc + g.monto_usd, 0);
-
-  const MOCK_MESES = ['2025-01-01', '2024-12-01', '2024-11-01'];
-  const mesesAMostrar = meses.length > 0 ? meses : MOCK_MESES;
-
   // Cargar meses disponibles al montar
   useEffect(() => {
+    let active = true
     obtenerMesesDisponibles().then((m) => {
+      if (!active) return
       setMeses(m)
       if (m.length > 0) {
         setMesActual(m[0]) // Mes más reciente
       } else {
-        // Fallback al mes mock
-        setMesActual(MOCK_MESES[0])
+        setLoading(false)
       }
     })
+    return () => { active = false }
   }, [])
 
   // Cargar gastos cuando cambie el mes
@@ -181,8 +165,8 @@ export function GastosPanel({ onClose }: Props) {
     otros: { label: 'Otros', icon: '📦' }
   }
 
-  // Agrupar (usando los datos a mostrar)
-  const gastosAgrupados = gastosAMostrar.reduce((acc, gasto) => {
+  // Agrupar gastos reales del período
+  const gastosAgrupados = gastos.reduce((acc, gasto) => {
     const cat = gasto.categoria && categoriasConfig[gasto.categoria] ? gasto.categoria : 'otros'
     if (!acc[cat]) acc[cat] = { items: [], totalUsd: 0 }
     acc[cat].items.push(gasto)
@@ -220,9 +204,9 @@ export function GastosPanel({ onClose }: Props) {
 
     doc.setFontSize(11);
     doc.setFont("helvetica", "normal");
-    const bsVal = tasa > 0 ? `Bs. ${formatUsd(totalAMostrar * tasa)}` : '---';
+    const bsVal = tasa > 0 ? `Bs. ${formatUsd(totalUsd * tasa)}` : '---';
     doc.text(`Total a facturar: ${bsVal}`, 14, 68);
-    doc.text(`Valor Referencial: $${formatUsd(totalAMostrar)}`, 14, 75);
+    doc.text(`Valor Referencial: $${formatUsd(totalUsd)}`, 14, 75);
     doc.text(`Tasa Aplicada (BCV): ${tasa > 0 ? tasa : 'No disponible'}`, 14, 82);
 
     // Separador
@@ -231,7 +215,7 @@ export function GastosPanel({ onClose }: Props) {
 
     // Tabla
     const tableData: string[][] = [];
-    gastosAMostrar.forEach(g => {
+    gastos.forEach(g => {
       const bs = tasa > 0 ? `Bs. ${formatUsd(g.monto_usd * tasa)}` : '---';
       const usd = `$${formatUsd(g.monto_usd)}`;
       const cat = categoriasConfig[g.categoria || 'otros']?.label || 'Otros';
@@ -289,7 +273,7 @@ export function GastosPanel({ onClose }: Props) {
               <h2 style={st.title}>Gastos Comunes</h2>
 
               {/* Selector de mes Desplegable */}
-              {mesesAMostrar.length > 0 && (
+              {meses.length > 0 && (
                 <select
                   value={mesActual}
                   onChange={(e) => { setMesActual(e.target.value); setExpandedCat(null) }}
@@ -310,7 +294,7 @@ export function GastosPanel({ onClose }: Props) {
                     backgroundSize: '10px auto'
                   }}
                 >
-                  {mesesAMostrar.map((m) => (
+                  {meses.map((m) => (
                     <option key={m} value={m} style={{ backgroundColor: '#141414', color: '#fff' }}>
                       {formatMes(m)}
                     </option>
@@ -322,14 +306,14 @@ export function GastosPanel({ onClose }: Props) {
         </div>
 
         {/* RESUMEN */}
-        {!loading && (
+        {!loading && gastos.length > 0 && (
           <div style={st.summary} className="animate-slide-up">
             <div>
               <p style={{ color: '#666', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 700, marginBottom: '4px' }}>
                 Total del Mes
               </p>
               <p style={{ color: '#fff', fontSize: '28px', fontWeight: 800, letterSpacing: '-1px' }}>
-                Bs. {tasa > 0 ? formatUsd(totalAMostrar * tasa) : '---'}
+                Bs. {tasa > 0 ? formatUsd(totalUsd * tasa) : '---'}
               </p>
               <p style={{ color: '#666', fontSize: '12px', marginTop: '2px' }}>Bolívares</p>
             </div>
@@ -338,7 +322,7 @@ export function GastosPanel({ onClose }: Props) {
                 Equivalente
               </p>
               <p style={{ color: 'var(--color-accent, #f97316)', fontSize: '20px', fontWeight: 700 }}>
-                ${formatUsd(totalAMostrar)}
+                ${formatUsd(totalUsd)}
               </p>
               <p style={{ color: '#555', fontSize: '11px', marginTop: '2px' }}>
                 USD (Ref) {tasa > 0 ? `| Tasa: ${tasa.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Bs/$` : ''}
@@ -359,9 +343,19 @@ export function GastosPanel({ onClose }: Props) {
               <p style={{ fontSize: '28px', marginBottom: '8px' }}>⚠️</p>
               <p style={{ fontSize: '13px', color: '#fca5a5' }}>{error}</p>
             </div>
+          ) : gastos.length === 0 ? (
+            <div style={st.empty}>
+              <p style={{ fontSize: '30px', marginBottom: '8px' }}>🧾</p>
+              <p style={{ fontSize: '14px', color: '#cbd5e1', fontWeight: 600 }}>
+                Aún no hay gastos comunes registrados para este período.
+              </p>
+              <p style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                Cuando la administración publique la relación de gastos del mes, aparecerá aquí con sus comprobantes.
+              </p>
+            </div>
           ) : (
             <>
-              <div className="stagger-children" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '12px' }}>
+              <div className="stagger-children" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 240px), 1fr))', gap: '12px' }}>
                 {Object.entries(gastosAgrupados).map(([catKey, grupo]) => {
                   const cfg = categoriasConfig[catKey]
                   const isExpanded = expandedCat === catKey

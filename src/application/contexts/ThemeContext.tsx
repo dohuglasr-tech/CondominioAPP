@@ -27,7 +27,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (stored === 'light' || stored === 'dark') {
         return stored
       }
-    } catch (_) {
+    } catch {
       // localStorage inaccesible
     }
     return 'dark' // Modo nativo por defecto
@@ -66,7 +66,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       body.classList.remove('theme-light')
       body.setAttribute('data-theme', 'dark')
 
-      let metaTheme = document.querySelector('meta[name="theme-color"]')
+      const metaTheme = document.querySelector('meta[name="theme-color"]')
       if (metaTheme) {
         metaTheme.setAttribute('content', '#070b14')
       }
@@ -77,7 +77,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     applyThemeToDOM(theme)
     try {
       localStorage.setItem(THEME_STORAGE_KEY, theme)
-    } catch (_) {
+    } catch {
       // ignorar
     }
   }, [theme, applyThemeToDOM])

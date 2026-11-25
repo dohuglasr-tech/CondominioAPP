@@ -5,7 +5,7 @@ import { despacharEmailPagoAprobado } from './emailService'
 import { registrarEventoAuditoria } from './auditoriaService'
 import { fetchAllSupabasePages } from './supabasePagination'
 import { getHoyVE } from '../utils/fechaVE'
-import { getActiveEdificioNombre } from './tenantContext'
+import { getActiveEdificioNombre, getTenantStorageKey } from './tenantContext'
 import { logger, getErrorMessage } from '../utils/logger'
 
 export type TasaRiesgoMora = 'azul' | 'amarillo' | 'rojo' | 'morado'
@@ -322,7 +322,7 @@ const DEUDAS_SEMILLA: DeudaMoraItem[] = [
 
 function getLocalMoraCache(): DeudaMoraItem[] {
   try {
-    const raw = localStorage.getItem(STORAGE_MORA_KEY)
+    const raw = localStorage.getItem(getTenantStorageKey(STORAGE_MORA_KEY))
     if (raw) {
       const parsed = JSON.parse(raw)
       if (Array.isArray(parsed) && parsed.length > 0) return parsed
@@ -336,6 +336,7 @@ function getLocalMoraCache(): DeudaMoraItem[] {
 export function limpiarCacheMora() {
   try {
     localStorage.removeItem(STORAGE_MORA_KEY)
+    localStorage.removeItem(getTenantStorageKey(STORAGE_MORA_KEY))
     appCache.invalidateTags(['mora'])
   } catch (e) {
     console.warn('[moraService] Error limpiando cache de mora:', e)
@@ -344,7 +345,7 @@ export function limpiarCacheMora() {
 
 function saveLocalMoraCache(list: DeudaMoraItem[]) {
   try {
-    localStorage.setItem(STORAGE_MORA_KEY, JSON.stringify(list))
+    localStorage.setItem(getTenantStorageKey(STORAGE_MORA_KEY), JSON.stringify(list))
   } catch (e) {
     console.warn('[moraService] Error guardando cache de deudas_mora:', e)
   }

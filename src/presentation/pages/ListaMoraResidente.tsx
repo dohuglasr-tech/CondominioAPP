@@ -352,13 +352,13 @@ export const ListaMoraResidente: React.FC = () => {
       {/* STATS OVERVIEW - INDICADORES CONSOLIDADOS */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 130px), 1fr))',
         gap: '10px',
         marginBottom: '18px'
       }}>
         <div style={{
           background: 'linear-gradient(180deg, #151922 0%, #0d1117 100%)',
-          border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '14px', padding: '12px', textAlign: 'center'
+          border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '14px', padding: '12px', textAlign: 'center', minWidth: 0
         }}>
           <div style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>Aptos en Deuda</div>
           <div style={{ fontSize: '20px', fontWeight: 800, marginTop: '3px', color: '#f87171' }}>
@@ -368,20 +368,20 @@ export const ListaMoraResidente: React.FC = () => {
 
         <div style={{
           background: 'linear-gradient(180deg, #151922 0%, #0d1117 100%)',
-          border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '14px', padding: '12px', textAlign: 'center'
+          border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '14px', padding: '12px', textAlign: 'center', minWidth: 0
         }}>
           <div style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>Por Cobrar ($)</div>
-          <div style={{ fontSize: '19px', fontWeight: 800, color: 'var(--color-accent, #f97316)', marginTop: '3px' }}>
+          <div style={{ fontSize: '19px', fontWeight: 800, color: 'var(--color-accent, #f97316)', marginTop: '3px', overflowWrap: 'anywhere' }}>
             ${fmtUsd(stats.totalUsd)}
           </div>
         </div>
 
         <div style={{
           background: 'linear-gradient(180deg, #151922 0%, #0d1117 100%)',
-          border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '14px', padding: '12px', textAlign: 'center'
+          border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '14px', padding: '12px', textAlign: 'center', minWidth: 0
         }}>
           <div style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>Por Cobrar (Bs.)</div>
-          <div style={{ fontSize: '19px', fontWeight: 800, color: '#facc15', marginTop: '3px' }}>
+          <div style={{ fontSize: '19px', fontWeight: 800, color: '#facc15', marginTop: '3px', overflowWrap: 'anywhere' }}>
             Bs. {fmtBs(stats.totalBs)}
           </div>
         </div>

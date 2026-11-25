@@ -1,5 +1,7 @@
 import { supabase } from './supabase'
 import { getBasePortalUrl } from './emailService'
+import { getActiveEdificioId } from './tenantContext'
+import { extractTenantSubdomain } from './tenantService'
 import { getErrorMessage } from '../utils/logger'
 
 export interface ResolveResidentResult {
@@ -14,7 +16,7 @@ export interface ResolveResidentResult {
 
 /**
  * Enmascara un correo electrónico para proteger la privacidad del residente
- * Ejemplo: dohuglas.r@gmail.com -> d*******r@gmail.com
+ * Ejemplo: usuario@ejemplo.com -> u*****o@ejemplo.com
  */
 export function maskEmail(email: string): string {
   if (!email || !email.includes('@')) return email
@@ -51,6 +53,8 @@ export async function sendResidentPasswordReset(identifier: string): Promise<Res
   try {
     const portalBase = getBasePortalUrl()
     const redirectUrl = `${portalBase}/reset-password`
+    const edificioId = getActiveEdificioId() || undefined
+    const tenantSlug = extractTenantSubdomain() || undefined
 
     // 1. Envío seguro resuelto íntegramente en la Edge Function con service_role
     const { data: edgeData, error: edgeError } = await supabase.functions.invoke('enviar-email', {
@@ -59,6 +63,8 @@ export async function sendResidentPasswordReset(identifier: string): Promise<Res
         identifier: clean,
         email: cleanEmail,
         redirectTo: redirectUrl,
+        edificioId,
+        tenantSlug,
       }
     })
 
@@ -140,6 +146,8 @@ export async function verifyResidentRecoveryOtp(
         tipo: 'verificar-otp-recovery',
         identifier: cleanId,
         token: cleanCode,
+        edificioId: getActiveEdificioId() || undefined,
+        tenantSlug: extractTenantSubdomain() || undefined,
       },
     })
 

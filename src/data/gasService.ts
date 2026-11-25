@@ -3,7 +3,7 @@ import { appCache } from './cacheService'
 import { despacharEmailCuotaGas } from './emailService'
 import { getHoyVE, getMesActualVE } from '../utils/fechaVE'
 import { getTasaBcvNumerica } from '../utils/tasaBcvHelper'
-import { getActiveEdificioId } from './tenantContext'
+import { getActiveEdificioId, getTenantStorageKey } from './tenantContext'
 import { logger, getErrorMessage } from '../utils/logger'
 
 export interface DatosPagoGas {
@@ -229,7 +229,7 @@ export function generarDatosSemillaGas(
 
 function getLocalGasCache(): GasServicioData | null {
   try {
-    const raw = localStorage.getItem(STORAGE_GAS_KEY)
+    const raw = localStorage.getItem(getTenantStorageKey(STORAGE_GAS_KEY))
     if (raw) {
       const parsed = JSON.parse(raw)
       if (parsed && parsed.config && Array.isArray(parsed.llenados)) {
@@ -244,7 +244,7 @@ function getLocalGasCache(): GasServicioData | null {
 
 function saveLocalGasCache(data: GasServicioData) {
   try {
-    localStorage.setItem(STORAGE_GAS_KEY, JSON.stringify(data))
+    localStorage.setItem(getTenantStorageKey(STORAGE_GAS_KEY), JSON.stringify(data))
   } catch (e) {
     console.warn('[gasService] Error guardando caché local:', e)
   }
@@ -256,6 +256,7 @@ export function limpiarCacheLocalGas() {
     localStorage.removeItem('condominio_gas_servicio_v1')
     localStorage.removeItem('condominio_gas_servicio_v2')
     localStorage.removeItem(STORAGE_GAS_KEY)
+    localStorage.removeItem(getTenantStorageKey(STORAGE_GAS_KEY))
   } catch (err) { logger.debug('gasService', 'Fallback controlado', err) }
 }
 
@@ -547,9 +548,12 @@ export async function obtenerGasServicioData(forceRefresh: boolean = false): Pro
           .order('numero')
 
         // 2. Consultar tasa BCV actual
-        const { data: configEdificio } = await supabase
+        const activeEdificioId = getActiveEdificioId()
+        let cfgGasQuery = supabase
           .from('configuracion_edificio')
           .select('tasa_bcv_actual')
+        if (activeEdificioId) cfgGasQuery = cfgGasQuery.eq('id', activeEdificioId)
+        const { data: configEdificio } = await cfgGasQuery
           .limit(1)
           .maybeSingle()
 
@@ -1255,9 +1259,12 @@ export async function reiniciarDatosGasAFabrica(): Promise<{
       .select('id, numero, propietario_nombre')
       .order('numero')
 
-    const { data: configEdificio } = await supabase
+    const activeEdifId = getActiveEdificioId()
+    let cfgLimpiarQuery = supabase
       .from('configuracion_edificio')
       .select('tasa_bcv_actual')
+    if (activeEdifId) cfgLimpiarQuery = cfgLimpiarQuery.eq('id', activeEdifId)
+    const { data: configEdificio } = await cfgLimpiarQuery
       .limit(1)
       .maybeSingle()
 
@@ -1814,9 +1821,12 @@ export async function crearOActualizarCuotaGas(
     const debeEnviarEmail = params.enviarEmail !== undefined ? params.enviarEmail : !!params.notificarEmail
 
     if (debeEnviarEmail) {
-      const { data: configEdificio } = await supabase
+      const activeEdifId = getActiveEdificioId()
+      let cfgEmailQuery = supabase
         .from('configuracion_edificio')
         .select('nombre_edificio, color_primario')
+      if (activeEdifId) cfgEmailQuery = cfgEmailQuery.eq('id', activeEdifId)
+      const { data: configEdificio } = await cfgEmailQuery
         .limit(1)
         .maybeSingle()
 
@@ -2671,7 +2681,7 @@ export async function guardarDeudaMesGas(params: {
     const cleanNum = String(params.apartamentoNumero || '').trim().replace(/^APTO\.?\s*/i, '')
 
     // 1. Buscar o crear la jornada correspondiente a este mes
-    let jornada = actual.jornadas.find(j => j.mes === params.mesKey)
+    const jornada = actual.jornadas.find(j => j.mes === params.mesKey)
     let jornadaId: string
     let jornadaTitulo = params.mesLabel || `Cuota Gas ${params.mesKey}`
 
@@ -2803,7 +2813,7 @@ export async function guardarCuotaMesEdificioGas(params: {
     const titulo = params.titulo || params.mesLabel || `Cuota Gas ${params.mesKey}`
 
     // 1. Buscar o crear la jornada correspondiente
-    let jornada = actual.jornadas.find(j => j.mes === params.mesKey)
+    const jornada = actual.jornadas.find(j => j.mes === params.mesKey)
     let jornadaId: string
 
     if (!jornada) {
@@ -3613,8 +3623,11 @@ export async function obtenerResumenGasApartamento(
     `gas_resumen_apto_${apartamentoId}`,
     async () => {
       try {
+        const activeEdifId = getActiveEdificioId()
+        let edCfgQuery = supabase.from('configuracion_edificio').select('tasa_bcv_actual')
+        if (activeEdifId) edCfgQuery = edCfgQuery.eq('id', activeEdifId)
         const [edCfgRes, cfgCasosRes, campanasRes, asigsRes] = await Promise.all([
-          supabase.from('configuracion_edificio').select('tasa_bcv_actual').limit(1).maybeSingle(),
+          edCfgQuery.limit(1).maybeSingle(),
           supabase
             .from('casos_comunidad')
             .select('id, apartamento_id, tipo, titulo, descripcion, monto_usd, monto_bs, moneda, estado, fecha')

@@ -10,6 +10,9 @@
 
 import { supabase } from './supabase'
 import { logger, getErrorMessage } from '../utils/logger'
+import { getActiveEdificioId } from './tenantContext'
+
+const GLOBAL_CACHE_KEYS = new Set(['tasa_bcv_oficial'])
 
 export interface CacheEntry<T> {
   data: T
@@ -40,6 +43,20 @@ class CacheService {
   private realtimeDebounceTimer: ReturnType<typeof setTimeout> | null = null
 
   /**
+   * Prefija la clave con el edificio activo para aislar la caché multi-tenant.
+   */
+  private scopedKey(key: string): string {
+    if (GLOBAL_CACHE_KEYS.has(key) || key.includes('::')) return key
+    const edificioId = getActiveEdificioId()
+    return edificioId ? `${edificioId}::${key}` : key
+  }
+
+  private rawKey(storedKey: string): string {
+    const sepIdx = storedKey.indexOf('::')
+    return sepIdx >= 0 ? storedKey.slice(sepIdx + 2) : storedKey
+  }
+
+  /**
    * Obtiene un dato desde la caché en memoria o ejecuta la función fetcher si expiró/no existe.
    * Si dos o más componentes solicitan la misma clave a la vez, se ejecuta UNA sola consulta.
    */
@@ -55,11 +72,12 @@ class CacheService {
       persistSession = false,
     } = options
 
+    const resolvedKey = this.scopedKey(key)
     const ahora = Date.now()
 
     // 1. Si no se fuerza recarga, verificar memoria
     if (!forceRefresh) {
-      const hit = this.memoryCache.get(key)
+      const hit = this.memoryCache.get(resolvedKey)
       if (hit && ahora - hit.timestamp < hit.ttl) {
         return hit.data as T
       }
@@ -67,12 +85,12 @@ class CacheService {
       // 2. Verificar persistencia en sessionStorage si aplica
       if (persistSession && typeof window !== 'undefined') {
         try {
-          const raw = sessionStorage.getItem(`app_cache_${key}`)
+          const raw = sessionStorage.getItem(`app_cache_${resolvedKey}`)
           if (raw) {
             const parsed = JSON.parse(raw)
             if (ahora - parsed.timestamp < (parsed.ttl || ttlMs)) {
               // Restaurar a memoria
-              this.memoryCache.set(key, parsed)
+              this.memoryCache.set(resolvedKey, parsed)
               return parsed.data as T
             }
           }
@@ -83,8 +101,8 @@ class CacheService {
     }
 
     // 3. Deduplicación de peticiones concurrentes (In-Flight)
-    if (this.inFlightRequests.has(key)) {
-      return this.inFlightRequests.get(key)! as Promise<T>
+    if (this.inFlightRequests.has(resolvedKey)) {
+      return this.inFlightRequests.get(resolvedKey)! as Promise<T>
     }
 
     // 4. Ejecutar consulta
@@ -99,21 +117,21 @@ class CacheService {
           tags,
         }
 
-        this.memoryCache.set(key, entry)
+        this.memoryCache.set(resolvedKey, entry)
 
         if (persistSession && typeof window !== 'undefined') {
           try {
-            sessionStorage.setItem(`app_cache_${key}`, JSON.stringify(entry))
+            sessionStorage.setItem(`app_cache_${resolvedKey}`, JSON.stringify(entry))
           } catch (err) { logger.debug('cacheService', 'Fallback controlado', err) }
         }
 
         return result
       } finally {
-        this.inFlightRequests.delete(key)
+        this.inFlightRequests.delete(resolvedKey)
       }
     })()
 
-    this.inFlightRequests.set(key, promise)
+    this.inFlightRequests.set(resolvedKey, promise)
     return promise
   }
 
@@ -121,9 +139,12 @@ class CacheService {
    * Invalida una clave exacta de la caché.
    */
   invalidate(key: string): void {
+    const resolvedKey = this.scopedKey(key)
+    this.memoryCache.delete(resolvedKey)
     this.memoryCache.delete(key)
     if (typeof window !== 'undefined') {
       try {
+        sessionStorage.removeItem(`app_cache_${resolvedKey}`)
         sessionStorage.removeItem(`app_cache_${key}`)
       } catch (err) { logger.debug('cacheService', 'Fallback controlado', err) }
     }
@@ -137,7 +158,7 @@ class CacheService {
   invalidateTag(tag: string): void {
     const keysToDelete: string[] = []
     for (const [key, entry] of this.memoryCache.entries()) {
-      if (entry.tags.includes(tag) || key.startsWith(tag)) {
+      if (entry.tags.includes(tag) || key.startsWith(tag) || this.rawKey(key).startsWith(tag)) {
         keysToDelete.push(key)
       }
     }
@@ -166,7 +187,7 @@ class CacheService {
    */
   invalidatePattern(pattern: RegExp): void {
     for (const key of this.memoryCache.keys()) {
-      if (pattern.test(key)) {
+      if (pattern.test(key) || pattern.test(this.rawKey(key))) {
         this.memoryCache.delete(key)
         if (typeof window !== 'undefined') {
           try {
@@ -302,7 +323,7 @@ export async function purgarCacheLocalNavegador(recargar: boolean = false): Prom
     if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
       try {
         const registrations = await navigator.serviceWorker.getRegistrations()
-        await Promise.all(registrations.map((reg) => reg.update().catch(() => {})))
+        await Promise.all(registrations.map((reg) => reg.update().catch(() => { })))
       } catch (err) { logger.debug('cacheService', 'Fallback controlado', err) }
     }
   } catch (err) {
@@ -346,7 +367,7 @@ export async function purgarCacheGlobalTotal(adminNombre?: string): Promise<{ ok
     if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
       try {
         const registrations = await navigator.serviceWorker.getRegistrations()
-        await Promise.all(registrations.map((reg) => reg.update().catch(() => {})))
+        await Promise.all(registrations.map((reg) => reg.update().catch(() => { })))
       } catch (err) { logger.debug('cacheService', 'Fallback controlado', err) }
     }
 
@@ -378,6 +399,7 @@ export async function purgarCacheGlobalTotal(adminNombre?: string): Promise<{ ok
         event: 'force_app_reload',
         payload: {
           timestamp: ahora,
+          edificio_id: getActiveEdificioId() || null,
           version: '1.0.2',
           admin: adminNombre || 'Sistema',
           motivo: 'Actualización y reinicio global en todos los dispositivos'
@@ -391,12 +413,17 @@ export async function purgarCacheGlobalTotal(adminNombre?: string): Promise<{ ok
       } catch (err) { logger.debug('cacheService', 'Fallback controlado', err) }
     }
 
-    // 6. Actualizar configuracion_edificio.updated_at para disparar postgres_changes en todos los clientes
+    // 6. Actualizar configuracion_edificio.updated_at para disparar postgres_changes en los clientes del edificio
     try {
-      await supabase
+      const activeEdificioId = getActiveEdificioId()
+      const updQuery = supabase
         .from('configuracion_edificio')
         .update({ updated_at: ahoraIso })
-        .neq('id', '00000000-0000-0000-0000-000000000000') // Actualiza el registro de config del edificio
+      if (activeEdificioId) {
+        await updQuery.eq('id', activeEdificioId)
+      } else {
+        await updQuery.neq('id', '00000000-0000-0000-0000-000000000000')
+      }
     } catch (confErr) {
       console.warn('[CacheService] Error actualizando timestamp de configuracion_edificio:', confErr)
     }

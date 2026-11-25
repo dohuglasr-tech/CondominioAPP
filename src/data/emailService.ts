@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { getTenantStorageKey } from './tenantContext'
 import type { ExpedienteLegalAptoData } from '../utils/expedienteLegalPdfGenerator'
 import type { DatosCartaSolvencia } from '../utils/solvenciaPdfGenerator'
 import { generarCodigoSolvencia, formatearFechaIso } from '../utils/solvenciaPdfGenerator'
@@ -155,7 +156,7 @@ interface RegistroRecordatorio {
 
 function getRegistrosRecordatorios(): RegistroRecordatorio {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY_RECORDATORIOS)
+    const raw = localStorage.getItem(getTenantStorageKey(STORAGE_KEY_RECORDATORIOS))
     return raw ? JSON.parse(raw) : {}
   } catch {
     return {}
@@ -184,7 +185,7 @@ export function registrarRecordatorioEnviado(idOrNumero: string) {
   try {
     const registros = getRegistrosRecordatorios()
     registros[idOrNumero] = Date.now()
-    localStorage.setItem(STORAGE_KEY_RECORDATORIOS, JSON.stringify(registros))
+    localStorage.setItem(getTenantStorageKey(STORAGE_KEY_RECORDATORIOS), JSON.stringify(registros))
   } catch (err) {
     console.warn('[EmailService] Error guardando registro de recordatorio:', err)
   }
@@ -761,7 +762,7 @@ export async function enviarEmail(params: {
       if (errMsg.includes('only send testing emails to your own email address')) {
         return {
           ok: false,
-          error: 'Modo de prueba Resend: Actualmente solo permite enviar a dohuglas.r@gmail.com. Para enviar a otros residentes, verifica un dominio en resend.com/domains.'
+          error: 'Modo de prueba Resend: Solo permite enviar al correo titular de la cuenta Resend. Para enviar a otros residentes, verifica un dominio en resend.com/domains.'
         }
       }
       return { ok: false, error: errMsg }
@@ -798,7 +799,7 @@ export async function enviarEmail(params: {
       if (resData?.message?.includes('only send testing emails to your own email address')) {
         return {
           ok: false,
-          error: 'Modo de prueba Resend: Actualmente solo permite enviar a dohuglas.r@gmail.com. Para enviar a otros residentes, verifica un dominio en resend.com/domains.'
+          error: 'Modo de prueba Resend: Solo permite enviar al correo titular de la cuenta Resend. Para enviar a otros residentes, verifica un dominio en resend.com/domains.'
         }
       }
       return { ok: false, error: resData?.message || 'Error en servicio Resend' }

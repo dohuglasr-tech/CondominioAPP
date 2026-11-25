@@ -288,7 +288,7 @@ export const LocalesResidente: React.FC = () => {
               </div>
 
               {/* Grid de Locales Asignados */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 290px), 1fr))', gap: '16px' }}>
                 {misLocales.map(loc => {
                   const tieneDeuda = (Number(loc.deuda_actual_usd) || 0) > 0
                   const garantiaUsd = Number(loc.deposito_garantia_usd) || 0
@@ -305,14 +305,15 @@ export const LocalesResidente: React.FC = () => {
                         display: 'flex',
                         flexDirection: 'column',
                         justifyContent: 'space-between',
-                        gap: '14px'
+                        gap: '14px',
+                        minWidth: 0
                       }}
                     >
-                      <div>
+                      <div style={{ minWidth: 0 }}>
                         {/* Cabecera del Espacio */}
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-                          <div>
-                            <div style={{ fontSize: '17px', fontWeight: 900, color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '8px', marginBottom: '12px' }}>
+                          <div style={{ minWidth: 0, flex: '1 1 160px' }}>
+                            <div style={{ fontSize: '17px', fontWeight: 900, color: '#fff', display: 'flex', alignItems: 'center', gap: '6px', overflowWrap: 'break-word' }}>
                               <span>🏬</span>
                               <span>{loc.nombre}</span>
                             </div>
@@ -330,7 +331,8 @@ export const LocalesResidente: React.FC = () => {
                             fontWeight: 800,
                             backgroundColor: loc.estado === 'activo' ? 'rgba(34, 197, 94, 0.15)' : 'rgba(148, 163, 184, 0.15)',
                             color: loc.estado === 'activo' ? '#4ade80' : '#94a3b8',
-                            border: `1px solid ${loc.estado === 'activo' ? 'rgba(34, 197, 94, 0.3)' : 'rgba(148, 163, 184, 0.2)'}`
+                            border: `1px solid ${loc.estado === 'activo' ? 'rgba(34, 197, 94, 0.3)' : 'rgba(148, 163, 184, 0.2)'}`,
+                            flexShrink: 0
                           }}>
                             {loc.estado.toUpperCase()}
                           </span>
@@ -339,19 +341,19 @@ export const LocalesResidente: React.FC = () => {
                         {/* DESGLOSE FINANCIERO Y DEPÓSITO */}
                         <div style={{
                           display: 'grid',
-                          gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+                          gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 120px), 1fr))',
                           gap: '8px',
                           marginBottom: '14px'
                         }}>
                           {/* 1. Cuota Mensual */}
-                          <div style={{ backgroundColor: '#172236', borderRadius: '10px', padding: '10px 12px' }}>
+                          <div style={{ backgroundColor: '#172236', borderRadius: '10px', padding: '10px 12px', minWidth: 0 }}>
                             <div style={{ color: '#94a3b8', fontSize: '10.5px', fontWeight: 700, textTransform: 'uppercase' }}>
                               Cuota Mensual
                             </div>
-                            <div style={{ color: '#38bdf8', fontSize: '16px', fontWeight: 900, marginTop: '2px' }}>
+                            <div style={{ color: '#38bdf8', fontSize: '16px', fontWeight: 900, marginTop: '2px', overflowWrap: 'anywhere' }}>
                               ${fmtUsd(loc.monto_usd)} USD
                             </div>
-                            <div style={{ color: '#94a3b8', fontSize: '11px' }}>
+                            <div style={{ color: '#94a3b8', fontSize: '11px', overflowWrap: 'anywhere' }}>
                               Bs. {fmtBs(loc.monto_bs || (loc.monto_usd * getTasaBcvNumerica(tasaBcv)))}
                             </div>
                             <span style={{ fontSize: '10px', color: '#64748b', fontWeight: 600, display: 'block', marginTop: '2px', textTransform: 'capitalize' }}>
@@ -360,14 +362,14 @@ export const LocalesResidente: React.FC = () => {
                           </div>
 
                           {/* 2. Depósito en Garantía */}
-                          <div style={{ backgroundColor: '#172236', borderRadius: '10px', padding: '10px 12px', border: '1px solid rgba(249, 115, 22, 0.25)' }}>
+                          <div style={{ backgroundColor: '#172236', borderRadius: '10px', padding: '10px 12px', border: '1px solid rgba(249, 115, 22, 0.25)', minWidth: 0 }}>
                             <div style={{ color: '#fdba74', fontSize: '10.5px', fontWeight: 800, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '4px' }}>
                               <span>🛡️</span> Depósito Garantía
                             </div>
-                            <div style={{ color: '#fb923c', fontSize: '16px', fontWeight: 900, marginTop: '2px' }}>
+                            <div style={{ color: '#fb923c', fontSize: '16px', fontWeight: 900, marginTop: '2px', overflowWrap: 'anywhere' }}>
                               ${fmtUsd(garantiaUsd)} USD
                             </div>
-                            <div style={{ color: '#fdba74', fontSize: '11px' }}>
+                            <div style={{ color: '#fdba74', fontSize: '11px', overflowWrap: 'anywhere' }}>
                               {garantiaUsd > 0 ? `Bs. ${fmtBs(garantiaBs)}` : 'Sin depósito'}
                             </div>
                             <span style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 600, display: 'block', marginTop: '2px' }}>

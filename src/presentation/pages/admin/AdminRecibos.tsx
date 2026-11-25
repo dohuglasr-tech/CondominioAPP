@@ -545,58 +545,58 @@ export const AdminRecibos: React.FC = () => {
             }
           }
 
-            // Calcular montos finales en Bs y USD
-            let montoFinalBs = Number(pagoDb?.monto_bs ?? selected?.monto_bs ?? pagoObj?.monto_bs ?? 0)
-            let montoFinalUsd = Number(pagoDb?.monto_usd ?? selected?.monto_usd ?? pagoObj?.monto_usd ?? 0)
+          // Calcular montos finales en Bs y USD
+          const montoFinalBs = Number(pagoDb?.monto_bs ?? selected?.monto_bs ?? pagoObj?.monto_bs ?? 0)
+          let montoFinalUsd = Number(pagoDb?.monto_usd ?? selected?.monto_usd ?? pagoObj?.monto_usd ?? 0)
 
-            if (!montoFinalUsd && montoFinalBs > 0) {
-              const tasa = getTasaBcvNumerica(config?.tasa_bcv_actual)
-              montoFinalUsd = Number((montoFinalBs / tasa).toFixed(2))
-            }
+          if (!montoFinalUsd && montoFinalBs > 0) {
+            const tasa = getTasaBcvNumerica(config?.tasa_bcv_actual)
+            montoFinalUsd = Number((montoFinalBs / tasa).toFixed(2))
+          }
 
-            // Extraer banco de origen
-            let bancoFinal = selected?.banco_origen || pagoObj?.banco_origen || 'Transferencia'
-            if (pagoDb?.notas_admin && pagoDb.notas_admin.includes('Banco')) {
-              const match = pagoDb.notas_admin.match(/Banco(?: Origen)?:\s*([^\n,|]+)/i)
-              if (match) bancoFinal = match[1].trim()
-            }
+          // Extraer banco de origen
+          let bancoFinal = selected?.banco_origen || pagoObj?.banco_origen || 'Transferencia'
+          if (pagoDb?.notas_admin && pagoDb.notas_admin.includes('Banco')) {
+            const match = pagoDb.notas_admin.match(/Banco(?: Origen)?:\s*([^\n,|]+)/i)
+            if (match) bancoFinal = match[1].trim()
+          }
 
-            if (emailDestino && emailDestino.includes('@')) {
-              console.log(`[AdminRecibos] Despachando email de agradecimiento y solvencia a: ${emailDestino} (Apto ${aptoNum})`)
-              const emailRes = await despacharEmailPagoAprobado({
-                destinatarioEmail: emailDestino,
-                apartamentoNumero: aptoNum,
-                propietarioNombre: nombreDestino,
-                edificioNombre: config?.nombre_edificio || 'Condominio Domus',
-                montoUsd: montoFinalUsd,
-                montoBs: montoFinalBs,
-                referencia: pagoDb?.referencia || selected?.numero_referencia || pagoObj?.numero_referencia || 'S/R',
-                fechaPago: pagoDb?.fecha_pago || selected?.fecha_pago || pagoObj?.fecha_pago || getHoyVE(),
-                bancoOrigen: bancoFinal
-              })
-              console.log('[AdminRecibos] Resultado email enviado:', emailRes)
-              if (emailRes.ok) {
-                setToastMsg(`✅ Pago aprobado y correo de solvencia enviado a ${emailDestino}`)
-              } else {
-                setToastMsg(`✅ Pago aprobado y recibo marcado como solvente`)
-              }
+          if (emailDestino && emailDestino.includes('@')) {
+            console.log(`[AdminRecibos] Despachando email de agradecimiento y solvencia a: ${emailDestino} (Apto ${aptoNum})`)
+            const emailRes = await despacharEmailPagoAprobado({
+              destinatarioEmail: emailDestino,
+              apartamentoNumero: aptoNum,
+              propietarioNombre: nombreDestino,
+              edificioNombre: config?.nombre_edificio || 'Condominio Domus',
+              montoUsd: montoFinalUsd,
+              montoBs: montoFinalBs,
+              referencia: pagoDb?.referencia || selected?.numero_referencia || pagoObj?.numero_referencia || 'S/R',
+              fechaPago: pagoDb?.fecha_pago || selected?.fecha_pago || pagoObj?.fecha_pago || getHoyVE(),
+              bancoOrigen: bancoFinal
+            })
+            console.log('[AdminRecibos] Resultado email enviado:', emailRes)
+            if (emailRes.ok) {
+              setToastMsg(`✅ Pago aprobado y correo de solvencia enviado a ${emailDestino}`)
             } else {
-              console.log(`[AdminRecibos] Apto ${aptoNum} no posee correo registrado, se omite envío.`)
               setToastMsg(`✅ Pago aprobado y recibo marcado como solvente`)
             }
-          } catch (emailErr) {
-            console.warn('[AdminRecibos] Error despachando email automático:', emailErr)
-            setToastMsg(`✅ Pago aprobado y cuenta solvente`)
+          } else {
+            console.log(`[AdminRecibos] Apto ${aptoNum} no posee correo registrado, se omite envío.`)
+            setToastMsg(`✅ Pago aprobado y recibo marcado como solvente`)
           }
+        } catch (emailErr) {
+          console.warn('[AdminRecibos] Error despachando email automático:', emailErr)
+          setToastMsg(`✅ Pago aprobado y cuenta solvente`)
         }
+      }
 
-        liquidacionConfirmada = true
-        setPagos(prev => prev.map(p => (p.id === id ? { ...p, estado: accion, notas_admin: notasFinal, notas_limpias: stripPagoMeta(notasFinal) } : p)))
-        appCache.invalidateTags(['pagos', 'recibos', 'saldos', 'mora', 'gas', 'deudas_gas', 'calendario_config', 'fondo_reserva'])
-        if (metaExistente?.tipoServicio === 'gas' || metaExistente?.tipoServicio === 'mixto') {
-          window.dispatchEvent(new CustomEvent('condominio_gas_updated'))
-        }
-        setTimeout(() => setToastMsg(null), 4000)
+      liquidacionConfirmada = true
+      setPagos(prev => prev.map(p => (p.id === id ? { ...p, estado: accion, notas_admin: notasFinal, notas_limpias: stripPagoMeta(notasFinal) } : p)))
+      appCache.invalidateTags(['pagos', 'recibos', 'saldos', 'mora', 'gas', 'deudas_gas', 'calendario_config', 'fondo_reserva'])
+      if (metaExistente?.tipoServicio === 'gas' || metaExistente?.tipoServicio === 'mixto') {
+        window.dispatchEvent(new CustomEvent('condominio_gas_updated'))
+      }
+      setTimeout(() => setToastMsg(null), 4000)
     } catch (err: any) {
       console.error('[AdminRecibos] Error en handleAction:', err)
       if (reclamadoEnServidor && !liquidacionConfirmada) {
@@ -879,9 +879,9 @@ export const AdminRecibos: React.FC = () => {
                 }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-                  <div>
+                  <div style={{ flex: '1 1 280px', minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                      <p style={{ color: '#fff', fontSize: '16px', fontWeight: 700, margin: 0 }}>
+                      <p style={{ color: '#fff', fontSize: '16px', fontWeight: 700, margin: 0, overflowWrap: 'break-word' }}>
                         Apto {pago.apartamento?.numero || 'S/A'} — {pago.monto_usd && Number(pago.monto_usd) > 0 ? `$${Number(pago.monto_usd).toFixed(2)} USD (Bs. ${pago.monto_bs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})` : `Bs. ${pago.monto_bs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                       </p>
                       <span style={{
@@ -899,18 +899,18 @@ export const AdminRecibos: React.FC = () => {
                         backgroundColor: pago.servicio === 'gas'
                           ? 'rgba(249, 115, 22, 0.16)'
                           : pago.servicio === 'mixto'
-                          ? 'rgba(168, 85, 247, 0.16)'
-                          : 'rgba(59, 130, 246, 0.14)',
+                            ? 'rgba(168, 85, 247, 0.16)'
+                            : 'rgba(59, 130, 246, 0.14)',
                         color: pago.servicio === 'gas'
                           ? '#fb923c'
                           : pago.servicio === 'mixto'
-                          ? '#c084fc'
-                          : '#60a5fa',
+                            ? '#c084fc'
+                            : '#60a5fa',
                         border: `1px solid ${pago.servicio === 'gas'
                           ? 'rgba(249, 115, 22, 0.35)'
                           : pago.servicio === 'mixto'
-                          ? 'rgba(168, 85, 247, 0.35)'
-                          : 'rgba(59, 130, 246, 0.3)'}`,
+                            ? 'rgba(168, 85, 247, 0.35)'
+                            : 'rgba(59, 130, 246, 0.3)'}`,
                         padding: '2px 8px',
                         borderRadius: '6px',
                         fontSize: '11px',
@@ -935,12 +935,12 @@ export const AdminRecibos: React.FC = () => {
                       )}
                     </div>
 
-                    <p style={{ color: '#888', fontSize: '12px', marginTop: '6px', margin: 0 }}>
+                    <p style={{ color: '#888', fontSize: '12px', marginTop: '6px', margin: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                       {pago.banco_origen} · Ref: <strong style={{ color: '#ccc' }}>{pago.numero_referencia}</strong> · Reportado por <strong style={{ color: '#fff' }}>{pago.residente_nombre}</strong> · {new Date(pago.created_at).toLocaleString('es-VE', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                     </p>
 
                     {(pago.notas_limpias || stripPagoMeta(pago.notas_admin)) && (
-                      <p style={{ color: '#aaa', fontSize: '12px', marginTop: '6px', margin: 0, fontStyle: 'italic' }}>
+                      <p style={{ color: '#aaa', fontSize: '12px', marginTop: '6px', margin: 0, fontStyle: 'italic', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                         Nota: {pago.notas_limpias || stripPagoMeta(pago.notas_admin)}
                       </p>
                     )}
@@ -974,7 +974,7 @@ export const AdminRecibos: React.FC = () => {
                     )}
                   </div>
 
-                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                     {pago.comprobante_url && (
                       <button
                         onClick={() => setPreviewImg(pago.comprobante_url || null)}

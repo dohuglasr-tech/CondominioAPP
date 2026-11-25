@@ -86,7 +86,7 @@ export const AvisoBanner: React.FC = () => {
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: 0 }}>
         <span style={{ fontSize: '18px', flexShrink: 0 }}>{configColor.icon}</span>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', minWidth: 0, flex: 1 }}>
           <span
             style={{
               backgroundColor: configColor.badgeBg,
@@ -110,9 +110,14 @@ export const AvisoBanner: React.FC = () => {
               fontWeight: 500,
               margin: 0,
               lineHeight: 1.4,
+              minWidth: 0,
+              overflowWrap: 'break-word',
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
               overflow: 'hidden',
-              textOverflow: 'ellipsis',
             }}
+            title={aviso.mensaje}
           >
             {aviso.mensaje}
           </p>

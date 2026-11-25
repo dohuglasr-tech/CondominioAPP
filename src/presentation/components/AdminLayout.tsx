@@ -191,7 +191,7 @@ const adminNav = [
 export const AdminLayout: React.FC = () => {
   const { pathname } = useLocation()
   const navigate = useNavigate()
-  const { perfil, config } = useAuth()
+  const { perfil, config, signOut } = useAuth()
 
   const [pendingCount, setPendingCount] = useState<number>(0)
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -250,25 +250,25 @@ export const AdminLayout: React.FC = () => {
   }, [config?.tasa_bcv_actualizada, perfil?.nombre_completo])
 
   const handleLogout = async () => {
-    await supabase.auth.signOut()
+    await signOut()
     window.location.href = '/admin-login'
   }
 
   // Nombre e iniciales del usuario
-  const adminNombre = perfil?.nombre_completo || 'Dohuglas Rafael Guevara'
-  const adminEmail = (perfil as any)?.email || config?.email_contacto || 'dohuglas.r@gmail.com'
+  const adminNombre = perfil?.nombre_completo || 'Administrador'
+  const adminEmail = (perfil as any)?.email || config?.email_contacto || ''
   const adminInitials = adminNombre
     .split(' ')
     .filter(Boolean)
     .slice(0, 2)
     .map(w => w[0].toUpperCase())
-    .join('') || 'DG'
+    .join('') || 'AD'
 
   return (
     <div className="admin-layout-container">
       <style>{`
         .admin-layout-container {
-          display: flex; height: 100vh; height: 100dvh; background-color: #090a0d; font-family: Inter, sans-serif;
+          display: flex; height: 100vh; height: 100dvh; width: 100%; overflow: hidden; background-color: #090a0d; font-family: Inter, sans-serif;
         }
         .admin-sidebar {
           width: 240px; flex-shrink: 0; background: linear-gradient(180deg, #121620 0%, #0a0d13 100%);
@@ -276,7 +276,7 @@ export const AdminLayout: React.FC = () => {
           padding: 24px 0;
         }
         .admin-main {
-          flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; background-color: #090a0d;
+          flex: 1; min-width: 0; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; background-color: #090a0d;
         }
         
         /* MOBILE TOP BAR */
@@ -578,7 +578,7 @@ export const AdminLayout: React.FC = () => {
       <div className="admin-mobile-top-bar">
         <div className="admin-mobile-top-inner">
           {/* Izquierda: Botón Hamburguesa + Logo / Título */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flex: 1, overflow: 'hidden' }}>
             <button
               onClick={() => setDrawerOpen(true)}
               style={{
@@ -589,7 +589,8 @@ export const AdminLayout: React.FC = () => {
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'center'
+                justifyContent: 'center',
+                flexShrink: 0
               }}
               title="Abrir menú"
             >
@@ -601,7 +602,7 @@ export const AdminLayout: React.FC = () => {
             </button>
 
             {/* Logo del edificio en círculo naranja */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }} onClick={() => navigate('/admin')}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, overflow: 'hidden', cursor: 'pointer' }} onClick={() => navigate('/admin')}>
               <div style={{
                 width: '34px',
                 height: '34px',
@@ -611,7 +612,8 @@ export const AdminLayout: React.FC = () => {
                 alignItems: 'center',
                 justifyContent: 'center',
                 boxShadow: 'var(--color-brand-shadow, 0 2px 10px rgba(249, 115, 22, 0.4))',
-                overflow: 'hidden'
+                overflow: 'hidden',
+                flexShrink: 0
               }}>
                 {edificioLogo ? (
                   <img src={edificioLogo} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -625,19 +627,19 @@ export const AdminLayout: React.FC = () => {
                   </svg>
                 )}
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                <span style={{ color: '#fff', fontSize: '13px', fontWeight: 800, letterSpacing: '0.4px', lineHeight: 1.1 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
+                <span style={{ color: '#fff', fontSize: '13px', fontWeight: 800, letterSpacing: '0.4px', lineHeight: 1.1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {edificioNombre.toUpperCase()}
                 </span>
-                <span style={{ color: 'var(--color-accent, #f97316)', fontSize: '9px', fontWeight: 700, letterSpacing: '0.6px' }}>
+                <span style={{ color: 'var(--color-accent, #f97316)', fontSize: '9px', fontWeight: 700, letterSpacing: '0.6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   PANEL ADMINISTRADOR
                 </span>
               </div>
             </div>
           </div>
 
-          {/* Derecha: Buscador, Notificaciones y Avatar DG */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          {/* Derecha: Buscador, Notificaciones y Avatar */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
             {/* Selector de Modo Claro / Nativo */}
             <ThemeToggle variant="icon" />
 
@@ -911,6 +913,13 @@ export const AdminLayout: React.FC = () => {
                   {ADMIN_ICONS.gas}
                 </div>
                 <span className={`offcanvas-label ${pathname.startsWith('/admin/gas') ? 'active' : ''}`}>Gas</span>
+              </button>
+
+              <button className="offcanvas-item-btn" onClick={() => navigate('/admin/fondo-reserva')}>
+                <div className={`offcanvas-circle-icon ${pathname.startsWith('/admin/fondo-reserva') ? 'active' : ''}`}>
+                  {ADMIN_ICONS.fondoReserva}
+                </div>
+                <span className={`offcanvas-label ${pathname.startsWith('/admin/fondo-reserva') ? 'active' : ''}`}>Reserva</span>
               </button>
 
               <button className="offcanvas-item-btn" onClick={() => navigate('/admin/edificio')}>
@@ -1230,10 +1239,10 @@ export const AdminLayout: React.FC = () => {
                   color: isActive ? 'var(--color-accent, #f97316)' : '#71717a'
                 }}
               >
-                <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: isActive ? 'var(--color-accent, #f97316)' : '#94a3b8' }}>{ADMIN_ICONS[item.key]}</span>
-                <div style={{ flex: 1 }}>
-                  <div style={{ color: isActive ? 'var(--color-accent, #f97316)' : '#ccc', fontSize: '13px', fontWeight: 600 }}>{item.label}</div>
-                  <div style={{ color: '#555', fontSize: '11px' }}>{item.desc}</div>
+                <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: isActive ? 'var(--color-accent, #f97316)' : '#94a3b8' }}>{ADMIN_ICONS[item.key]}</span>
+                <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }} title={`${item.label} — ${item.desc}`}>
+                  <div style={{ color: isActive ? 'var(--color-accent, #f97316)' : '#ccc', fontSize: '13px', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.label}</div>
+                  <div style={{ color: '#555', fontSize: '11px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.desc}</div>
                 </div>
 
                 {isRecibos && pendingCount > 0 && (
@@ -1247,6 +1256,7 @@ export const AdminLayout: React.FC = () => {
                       padding: '2px 8px',
                       borderRadius: '999px',
                       boxShadow: '0 0 10px rgba(245,158,11,0.5)',
+                      flexShrink: 0,
                     }}
                     title={`${pendingCount} pagos pendientes por revisar`}
                   >

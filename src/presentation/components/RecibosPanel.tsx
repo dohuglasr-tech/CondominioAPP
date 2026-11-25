@@ -586,19 +586,20 @@ export function RecibosPanel({ onClose }: Props) {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
+              flexWrap: 'wrap',
               gap: '14px',
               boxShadow: '0 4px 16px rgba(0, 0, 0, 0.3)'
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: '1 1 220px', minWidth: 0 }}>
                 <div style={{
                   width: '40px', height: '40px', borderRadius: '12px',
                   backgroundColor: 'rgba(34, 197, 94, 0.2)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: '20px', color: '#4ade80'
+                  fontSize: '20px', color: '#4ade80', flexShrink: 0
                 }}>
                   💚
                 </div>
-                <div>
+                <div style={{ minWidth: 0 }}>
                   <div style={{ color: '#4ade80', fontSize: '13px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.4px' }}>
                     Saldo a Favor Disponible
                   </div>
@@ -940,14 +941,14 @@ export function RecibosPanel({ onClose }: Props) {
                         flexWrap: 'wrap',
                         gap: '10px'
                       }}>
-                        <div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ fontSize: '18px' }}>{esDeudaAtrasada ? '📜' : '📄'}</span>
-                            <h2 style={{ color: '#fff', fontSize: '17px', fontWeight: 800, margin: 0 }}>
+                        <div style={{ minWidth: 0, flex: '1 1 220px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: '18px', flexShrink: 0 }}>{esDeudaAtrasada ? '📜' : '📄'}</span>
+                            <h2 style={{ color: '#fff', fontSize: '17px', fontWeight: 800, margin: 0, overflowWrap: 'break-word' }}>
                               {esDeudaAtrasada ? 'Recibo de Pago de Deuda Atrasada' : `Recibo ${mesLabel} ${anio}`}
                             </h2>
                           </div>
-                          <p style={{ color: '#94a3b8', fontSize: '11px', margin: '4px 0 0' }}>
+                          <p style={{ color: '#94a3b8', fontSize: '11px', margin: '4px 0 0', overflowWrap: 'break-word' }}>
                             {esDeudaAtrasada ? (
                               <>Validación de deuda histórica liquidada · Conciliado con la administración</>
                             ) : esHistorico ? (
@@ -997,7 +998,7 @@ export function RecibosPanel({ onClose }: Props) {
                       {/* Montos y Alícuota */}
                       <div style={{
                         display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 135px), 1fr))',
                         gap: '12px',
                         margin: '16px 0',
                         padding: '12px 14px',
@@ -1005,19 +1006,19 @@ export function RecibosPanel({ onClose }: Props) {
                         borderRadius: '12px',
                         border: '1px solid rgba(255, 255, 255, 0.05)'
                       }}>
-                        <div>
+                        <div style={{ minWidth: 0 }}>
                           <span style={{ color: '#82828e', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase' }}>
                             Total Cuota ($ USD)
                           </span>
-                          <div style={{ color: '#fff', fontSize: '18px', fontWeight: 800, marginTop: '2px' }}>
+                          <div style={{ color: '#fff', fontSize: '18px', fontWeight: 800, marginTop: '2px', overflowWrap: 'anywhere' }}>
                             ${fmtUsd(recibo.total_usd)}
                           </div>
                         </div>
-                        <div>
+                        <div style={{ minWidth: 0 }}>
                           <span style={{ color: '#82828e', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase' }}>
                             Total Cuota (Bs)
                           </span>
-                          <div style={{ color: '#38bdf8', fontSize: '16px', fontWeight: 800, marginTop: '2px' }}>
+                          <div style={{ color: '#38bdf8', fontSize: '16px', fontWeight: 800, marginTop: '2px', overflowWrap: 'anywhere' }}>
                             Bs. {fmtBs(recibo.total_bs)}
                           </div>
                         </div>

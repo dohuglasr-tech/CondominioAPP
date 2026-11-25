@@ -1597,7 +1597,7 @@ export const AdminRecibosEmitidos: React.FC = () => {
           </div>
 
           {/* Skeleton Charts */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '16px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 310px), 1fr))', gap: '16px' }}>
             <SkeletonChart height="220px" title="Recaudación vs Morosidad" />
             <SkeletonChart height="220px" title="Distribución de Gastos" />
             <SkeletonChart height="220px" title="Morosidad por Piso" />
@@ -1845,7 +1845,7 @@ export const AdminRecibosEmitidos: React.FC = () => {
           </div>
 
           {/* ── BENTO CHARTS ── */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '16px', marginBottom: '22px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 310px), 1fr))', gap: '16px', marginBottom: '22px' }}>
 
             {/* GRÁFICO 1: Barra de Recaudación vs Mora */}
             <div style={{

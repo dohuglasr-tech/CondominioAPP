@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
 import { appCache } from './cacheService'
 import { registrarEventoAuditoria } from './auditoriaService'
+import { getActiveEdificioId } from './tenantContext'
 import { guardarUltimaTasaBcvConocida } from '../utils/tasaBcvHelper'
 import { logger, getErrorMessage } from '../utils/logger'
 
@@ -73,9 +74,13 @@ export async function guardarTasaBcvEnDb(
       return { ok: false, error: 'El valor de la tasa debe ser un número válido mayor a 1.' }
     }
 
-    const { data: config } = await supabase
+    const activeEdificioId = getActiveEdificioId()
+    let cfgQuery = supabase
       .from('configuracion_edificio')
       .select('id, tasa_bcv_actual')
+    if (activeEdificioId) cfgQuery = cfgQuery.eq('id', activeEdificioId)
+
+    const { data: config } = await cfgQuery
       .limit(1)
       .maybeSingle()
 
@@ -149,9 +154,13 @@ export async function sincronizarTasaBcvConApi(
   // Obtener la tasa actual en base de datos para comparar
   let tasaActualDb = 0
   try {
-    const { data: config } = await supabase
+    const activeEdificioId = getActiveEdificioId()
+    let cfgQuery = supabase
       .from('configuracion_edificio')
       .select('tasa_bcv_actual')
+    if (activeEdificioId) cfgQuery = cfgQuery.eq('id', activeEdificioId)
+
+    const { data: config } = await cfgQuery
       .limit(1)
       .maybeSingle()
     if (config?.tasa_bcv_actual) {

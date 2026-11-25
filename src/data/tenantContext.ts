@@ -36,3 +36,11 @@ export function withEdificioId<T extends Record<string, any>>(payload: T): T & {
   if (payload.edificio_id) return payload
   return activeEdificioId ? { ...payload, edificio_id: activeEdificioId } : payload
 }
+
+/**
+ * Devuelve una clave de localStorage segmentada por edificio activo para
+ * evitar fugas de respaldos offline entre edificios en el mismo navegador.
+ */
+export function getTenantStorageKey(baseKey: string): string {
+  return activeEdificioId ? `${baseKey}_${activeEdificioId}` : baseKey
+}

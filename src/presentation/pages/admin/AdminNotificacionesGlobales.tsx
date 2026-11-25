@@ -577,7 +577,7 @@ export const AdminNotificacionesGlobales: React.FC = () => {
       </div>
 
       {tab === 'redactar' ? (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', gap: '20px', alignItems: 'start' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: '20px', alignItems: 'start' }}>
           {/* PANEL IZQUIERDO: COMPOSITOR */}
           <div style={{
             backgroundColor: '#141414',

@@ -679,7 +679,7 @@ export function Dashboard() {
         /* Bento Grid Desktop */
         .bento-desktop-grid {
           display: grid;
-          grid-template-columns: repeat(12, 1fr);
+          grid-template-columns: repeat(12, minmax(0, 1fr));
           gap: 20px;
           margin-top: 24px;
         }
@@ -688,12 +688,20 @@ export function Dashboard() {
           display: flex;
           flex-direction: column;
           gap: 20px;
+          min-width: 0;
         }
         .bento-col-side {
           grid-column: span 5;
           display: flex;
           flex-direction: column;
           gap: 20px;
+          min-width: 0;
+        }
+        @media (max-width: 1180px) {
+          .bento-col-main,
+          .bento-col-side {
+            grid-column: span 12;
+          }
         }
 
         .desktop-card {
@@ -705,6 +713,8 @@ export function Dashboard() {
           box-shadow: 0 14px 34px -4px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06);
           position: relative;
           overflow: hidden;
+          min-width: 0;
+          overflow-wrap: break-word;
         }
 
         body.theme-light .resident-page {
@@ -794,7 +804,7 @@ export function Dashboard() {
             </div>
 
             {/* Gran cifra en Bolívares (Consolidada: Condominio + Gas) */}
-            <div style={{ color: '#fff', fontSize: '34px', fontWeight: 900, letterSpacing: '-0.5px', lineHeight: 1.1 }}>
+            <div style={{ color: '#fff', fontSize: 'clamp(24px, 7vw, 34px)', fontWeight: 900, letterSpacing: '-0.5px', lineHeight: 1.15, overflowWrap: 'anywhere' }}>
               {ocultarSaldos ? 'Bs. ••••••' : `Bs. ${(deudaTotalConsolidadaBs > 0 ? deudaTotalConsolidadaBs : 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
             </div>
 
@@ -1100,34 +1110,34 @@ export function Dashboard() {
             {/* Desglose de 3 Columnas al pie (MES ACTUAL | ALÍCUOTA | TASA BCV) */}
             <div style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(3, 1fr)',
+              gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
               gap: '10px',
               borderTop: '1px solid rgba(255, 255, 255, 0.06)',
               paddingTop: '16px'
             }}>
-              <div>
+              <div style={{ minWidth: 0 }}>
                 <div style={{ color: '#8e8e93', fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '4px' }}>
                   MES ACTUAL
                 </div>
-                <div style={{ color: '#fff', fontSize: '13px', fontWeight: 800 }}>
+                <div style={{ color: '#fff', fontSize: '13px', fontWeight: 800, overflowWrap: 'anywhere' }}>
                   {ocultarSaldos ? '••••' : `$${deudaUsd.toFixed(2)}`}
                 </div>
               </div>
 
-              <div>
+              <div style={{ minWidth: 0 }}>
                 <div style={{ color: '#8e8e93', fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '4px' }}>
                   ALÍCUOTA
                 </div>
-                <div style={{ color: 'var(--color-accent, #f97316)', fontSize: '13px', fontWeight: 800 }}>
+                <div style={{ color: 'var(--color-accent, #f97316)', fontSize: '13px', fontWeight: 800, overflowWrap: 'break-word' }}>
                   {formatAlicuotaPct(alicuota)} {esPenthouse ? '(PH)' : ''}
                 </div>
               </div>
 
-              <div>
+              <div style={{ minWidth: 0 }}>
                 <div style={{ color: '#8e8e93', fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '4px' }}>
                   TASA BCV
                 </div>
-                <div style={{ color: '#fff', fontSize: '13px', fontWeight: 800 }}>
+                <div style={{ color: '#fff', fontSize: '13px', fontWeight: 800, overflowWrap: 'anywhere' }}>
                   Bs. {getTasaBcvNumerica(rate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </div>
               </div>
@@ -1908,13 +1918,15 @@ export function Dashboard() {
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '14px',
             marginBottom: '28px',
             borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
             paddingBottom: '20px'
           }}>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <h1 style={{ color: '#fff', fontSize: '26px', fontWeight: 900, margin: 0, letterSpacing: '-0.5px' }}>
+            <div style={{ minWidth: 0, flex: '1 1 280px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                <h1 style={{ color: '#fff', fontSize: 'clamp(20px, 2.2vw, 26px)', fontWeight: 900, margin: 0, letterSpacing: '-0.5px', overflowWrap: 'break-word' }}>
                   ¡Hola, {residenteNombre}!
                 </h1>
                 <span style={{
@@ -1924,7 +1936,8 @@ export function Dashboard() {
                   padding: '3px 10px',
                   borderRadius: '999px',
                   fontSize: '12px',
-                  fontWeight: 800
+                  fontWeight: 800,
+                  flexShrink: 0
                 }}>
                   Apartamento {aptoNumero}
                 </span>
@@ -1934,7 +1947,7 @@ export function Dashboard() {
               </p>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', flexShrink: 0 }}>
               {/* Tasa BCV Oficial Widget */}
               <div style={{
                 background: 'rgba(255, 255, 255, 0.03)',
@@ -2013,12 +2026,14 @@ export function Dashboard() {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '14px',
               marginBottom: '24px',
               boxShadow: `0 8px 30px rgba(0, 0, 0, 0.5), 0 0 16px ${accentDesktop}35`
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                <span style={{ fontSize: '32px' }}>{esDiferencia ? '💳' : esSoloExtraVigente ? '✨' : (moraRecord.tasa_riesgo === 'azul' ? '🔴' : '⚠️')}</span>
-                <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flex: '1 1 280px', minWidth: 0 }}>
+                <span style={{ fontSize: '32px', flexShrink: 0 }}>{esDiferencia ? '💳' : esSoloExtraVigente ? '✨' : (moraRecord.tasa_riesgo === 'azul' ? '🔴' : '⚠️')}</span>
+                <div style={{ minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                     <span style={{ fontWeight: 800, fontSize: '16px', color: '#fff' }}>
                       {esDiferencia
@@ -2404,10 +2419,11 @@ export function Dashboard() {
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
+              flexWrap: 'wrap',
               boxShadow: deudaGas.esCuotaEspecial ? '0 10px 30px rgba(239, 68, 68, 0.2)' : '0 10px 30px rgba(0, 0, 0, 0.4)',
               gap: '20px'
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flex: '1 1 280px', minWidth: 0 }}>
                 <div style={{
                   width: '48px',
                   height: '48px',
@@ -2421,8 +2437,8 @@ export function Dashboard() {
                 }}>
                   {deudaGas.esCuotaEspecial ? '⚡' : '⛽'}
                 </div>
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '4px' }}>
                     <span style={{
                       fontWeight: 900,
                       fontSize: '13px',
@@ -2453,7 +2469,7 @@ export function Dashboard() {
                 </div>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
                 <div style={{ textAlign: 'right' }}>
                   <div style={{ fontSize: '24px', fontWeight: 900, color: '#fff' }}>
                     Bs. {fmtBs(deudaGas.montoBs)}
@@ -2463,7 +2479,7 @@ export function Dashboard() {
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', gap: '10px' }}>
+                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                   <button
                     onClick={() => navigate('/gas?tab=calendario')}
                     style={{
@@ -2523,9 +2539,10 @@ export function Dashboard() {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              gap: '24px'
+              flexWrap: 'wrap',
+              gap: '20px'
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '18px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '18px', flex: '1 1 300px', minWidth: 0 }}>
                 <div style={{
                   width: '56px',
                   height: '56px',
@@ -2541,8 +2558,8 @@ export function Dashboard() {
                 }}>
                   📜
                 </div>
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                     <h3 style={{ margin: 0, color: '#fff', fontSize: '18px', fontWeight: 900 }}>
                       Carta de Solvencia de Condominio
                     </h3>
@@ -2561,7 +2578,7 @@ export function Dashboard() {
                   <p style={{ margin: '6px 0 0', color: '#cbd5e1', fontSize: '13px', lineHeight: 1.4, maxWidth: '640px' }}>
                     Tu apartamento se encuentra completamente solvente (Condominio al día y Gas Comunal solventado). Puedes descargar o imprimir tu constancia oficial expedida por la Junta de Condominio.
                   </p>
-                  <div style={{ marginTop: '8px', display: 'flex', gap: '16px', fontSize: '11.5px', color: '#94a3b8' }}>
+                  <div style={{ marginTop: '8px', display: 'flex', flexWrap: 'wrap', gap: '6px 14px', fontSize: '11.5px', color: '#94a3b8' }}>
                     <span>Apto: <strong style={{ color: '#fff' }}>{datosCartaSolvencia.residenteApto}</strong></span>
                     <span>·</span>
                     <span>Titular: <strong style={{ color: '#fff' }}>{datosCartaSolvencia.residenteNombre}</strong></span>
@@ -2571,7 +2588,7 @@ export function Dashboard() {
                 </div>
               </div>
 
-              <div style={{ display: 'flex', gap: '10px', flexShrink: 0 }}>
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', flexShrink: 0 }}>
                 <button
                   onClick={() => setModalSolvenciaOpen(true)}
                   style={{
@@ -2626,8 +2643,8 @@ export function Dashboard() {
 
               {/* 1. Tarjeta Hero Estado de Cuenta */}
               <div className="desktop-card">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
-                  <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', marginBottom: '20px' }}>
+                  <div style={{ minWidth: 0 }}>
                     <span style={{ color: '#7e8b9b', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.8px' }}>
                       ESTADO DE CUENTA
                     </span>
@@ -2636,7 +2653,7 @@ export function Dashboard() {
                     </h2>
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                     <button
                       onClick={() => setOcultarSaldos(!ocultarSaldos)}
                       style={{
@@ -2716,11 +2733,11 @@ export function Dashboard() {
                 </div>
 
                 {/* Gran Monto Consolidado (Condominio + Gas) */}
-                <div style={{ color: '#fff', fontSize: '42px', fontWeight: 900, letterSpacing: '-1.5px', lineHeight: 1 }}>
+                <div style={{ color: '#fff', fontSize: 'clamp(26px, 3vw, 42px)', fontWeight: 900, letterSpacing: '-1px', lineHeight: 1.1, overflowWrap: 'anywhere' }}>
                   {ocultarSaldos ? 'Bs. ••••••' : `Bs. ${(deudaTotalConsolidadaBs > 0 ? deudaTotalConsolidadaBs : 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px', color: 'var(--color-accent, #f97316)', fontSize: '16px', fontWeight: 700 }}>
+                <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginTop: '6px', color: 'var(--color-accent, #f97316)', fontSize: '16px', fontWeight: 700 }}>
                   <span>{ocultarSaldos ? '•••• USD' : `≈ $${deudaTotalConsolidadaUsd.toFixed(2)} USD`}</span>
                   <span style={{ color: '#64748b', fontSize: '13px', fontWeight: 500 }}>
                     · Total consolidado en tiempo real
@@ -2738,7 +2755,7 @@ export function Dashboard() {
                   flexDirection: 'column',
                   gap: '12px'
                 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
                     <div style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.6px' }}>
                       Estado Sincronizado por Servicio:
                     </div>
@@ -2747,7 +2764,7 @@ export function Dashboard() {
                     </span>
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: localesAsignados.length > 0 ? 'repeat(auto-fit, minmax(180px, 1fr))' : '1fr 1fr', gap: '14px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 175px), 1fr))', gap: '14px' }}>
                     {/* Tarjeta Condominio */}
                     <div style={{
                       backgroundColor: 'rgba(255, 255, 255, 0.03)',
@@ -2936,11 +2953,11 @@ export function Dashboard() {
                     </div>
 
                     {deudaIndexadaUsd > 0 && (
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ color: '#86efac', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                        <span style={{ color: '#86efac', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
                           <span>🟢</span> Deuda indexada al Dólar (Tasa Oficial BCV):
                         </span>
-                        <div style={{ textAlign: 'right' }}>
+                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
                           <span style={{ color: '#4ade80', fontWeight: 800, fontSize: '14px' }}>
                             {ocultarSaldos ? '••••' : `$${deudaIndexadaUsd.toFixed(2)} USD`}
                           </span>
@@ -2964,20 +2981,21 @@ export function Dashboard() {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
+                    flexWrap: 'wrap',
                     gap: '12px'
                   }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <span style={{ fontSize: '20px' }}>💚</span>
-                      <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: '1 1 220px', minWidth: 0 }}>
+                      <span style={{ fontSize: '20px', flexShrink: 0 }}>💚</span>
+                      <div style={{ minWidth: 0 }}>
                         <div style={{ color: '#4ade80', fontSize: '12px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                           Saldo a Favor en Cuenta
                         </div>
-                        <div style={{ color: '#94a3b8', fontSize: '12px' }}>
+                        <div style={{ color: '#94a3b8', fontSize: '12px', overflowWrap: 'break-word' }}>
                           Dispones de crédito prepagado que se deducirá de tu siguiente facturación.
                         </div>
                       </div>
                     </div>
-                    <div style={{ textAlign: 'right' }}>
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
                       <div style={{ color: '#4ade80', fontSize: '17px', fontWeight: 800 }}>
                         {ocultarSaldos ? '••••' : (saldoAFavor >= 1 ? `+$${saldoAFavor.toFixed(2)} USD` : `+Bs. ${saldoAFavorBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`)}
                       </div>
@@ -2991,30 +3009,30 @@ export function Dashboard() {
                 {/* Desglose Inferior */}
                 <div style={{
                   display: 'grid',
-                  gridTemplateColumns: 'repeat(3, 1fr)',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
                   gap: '14px',
                   borderTop: '1px solid rgba(255, 255, 255, 0.08)',
                   marginTop: '22px',
                   paddingTop: '18px'
                 }}>
-                  <div>
+                  <div style={{ minWidth: 0 }}>
                     <div style={{ color: '#7e8b9b', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase' }}>ALÍCUOTA</div>
-                    <div style={{ color: '#fff', fontSize: '16px', fontWeight: 800, marginTop: '2px' }}>
+                    <div style={{ color: '#fff', fontSize: '15px', fontWeight: 800, marginTop: '2px', overflowWrap: 'break-word' }}>
                       {formatAlicuotaPct(alicuota)} {esPenthouse ? '(Penthouse)' : '(Estándar)'}
                     </div>
                   </div>
 
-                  <div>
+                  <div style={{ minWidth: 0 }}>
                     <div style={{ color: '#7e8b9b', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase' }}>EQUIVALENTE USD</div>
-                    <div style={{ color: '#fff', fontSize: '16px', fontWeight: 800, marginTop: '2px' }}>
+                    <div style={{ color: '#fff', fontSize: '15px', fontWeight: 800, marginTop: '2px', overflowWrap: 'anywhere' }}>
                       ${deudaUsd.toFixed(2)}
                     </div>
                   </div>
 
-                  <div>
+                  <div style={{ minWidth: 0 }}>
                     <div style={{ color: '#7e8b9b', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase' }}>TASA DEL DÍA</div>
-                    <div style={{ color: '#22c55e', fontSize: '16px', fontWeight: 800, marginTop: '2px' }}>
-                      Bs. {(rate || 40).toFixed(2)}
+                    <div style={{ color: '#22c55e', fontSize: '15px', fontWeight: 800, marginTop: '2px', overflowWrap: 'anywhere' }}>
+                      Bs. {getTasaBcvNumerica(rate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </div>
                   </div>
                 </div>
